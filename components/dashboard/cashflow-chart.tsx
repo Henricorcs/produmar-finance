@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer,
-  Tooltip, CartesianGrid, Cell,
+  Tooltip, CartesianGrid,
 } from "recharts";
 import { formatBRL, formatBRLCompact } from "@/lib/utils";
 import type { CashflowMonth } from "@/lib/types";
@@ -81,36 +81,24 @@ export function CashflowChart({ data }: { data: CashflowMonth[] }) {
             {/* Receitas — clica → Contas (pagos/recebidos) do mês */}
             <Bar
               dataKey="receitas"
+              fill="#0A4DB8"
               radius={[4, 4, 0, 0]}
               maxBarSize={28}
               style={{ cursor: "pointer" }}
               activeBar={{ fill: "#1260CC" }}
               onClick={(entry) => handleBarClick(entry as CashflowMonth, "pagos")}
-            >
-              {data.map((entry) => (
-                <Cell
-                  key={`rec-${entry.month}`}
-                  fill="#0A4DB8"
-                />
-              ))}
-            </Bar>
+            />
 
             {/* Despesas — clica → Para onde foi do mês */}
             <Bar
               dataKey="despesas"
+              fill="#5A97FF"
               radius={[4, 4, 0, 0]}
               maxBarSize={28}
               style={{ cursor: "pointer" }}
               activeBar={{ fill: "#3378F0" }}
               onClick={(entry) => handleBarClick(entry as CashflowMonth, "para-onde-foi")}
-            >
-              {data.map((entry) => (
-                <Cell
-                  key={`dep-${entry.month}`}
-                  fill="#5A97FF"
-                />
-              ))}
-            </Bar>
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>
