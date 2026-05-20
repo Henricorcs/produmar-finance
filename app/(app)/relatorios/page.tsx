@@ -1,21 +1,32 @@
-﻿import { BarChart3, Sparkles } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { RelatoriosClient } from "@/components/relatorios/relatorios-client";
+import type { Transaction } from "@/lib/types";
 
-export default function RelatoriosPage() {
+export const dynamic = "force-dynamic";
+
+export default async function RelatoriosPage() {
+  const supabase = createClient();
+
+  // Last 12 months window — only confirmed cash movements (pago / recebido)
+  const now = new Date();
+  const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const endDate   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const startStr  = startDate.toISOString().split("T")[0];
+  const endStr    = endDate.toISOString().split("T")[0];
+
+  const { data: transactions } = await supabase
+    .from("transactions")
+    .select("*, categories(name, color)")
+    .in("status", ["pago", "recebido"])
+    .gte("due_date", startStr)
+    .lte("due_date", endStr)
+    .order("due_date", { ascending: true });
+
   return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="text-center max-w-md">
-        <div className="w-16 h-16 mx-auto bg-produmar-100 text-produmar-600 rounded-2xl flex items-center justify-center mb-4">
-          <BarChart3 className="w-6 h-6" />
-        </div>
-        <h2 className="text-xl font-medium text-produmar-800 mb-2">Relatórios</h2>
-        <p className="text-sm text-slate-500 mb-4">
-          DRE, fluxo de caixa detalhado e exportação para Excel/PDF chegam na Fase 4.
-        </p>
-        <div className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-produmar-50 text-produmar-700 rounded-full">
-          <Sparkles className="w-3 h-3" />
-          Em desenvolvimento
-        </div>
-      </div>
-    </div>
+    <RelatoriosClient
+      transactions={(transactions ?? []) as (Transaction & {
+        categories: { name: string; color: string } | null;
+      })[]}
+    />
   );
 }
