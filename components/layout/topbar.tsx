@@ -65,7 +65,7 @@ export function Topbar({ profile, notifications = [] }: TopbarProps) {
             {notifOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} aria-hidden />
-                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl shadow-black/10 overflow-hidden z-50">
+                <div className="absolute right-0 mt-2 w-[min(320px,calc(100vw-2rem))] bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl shadow-black/10 overflow-hidden z-50">
                   {/* Header */}
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
                     <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">

@@ -25,10 +25,10 @@ export function CashflowChart({ data }: { data: CashflowMonth[] }) {
 
   return (
     <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-start justify-between gap-2 mb-1 flex-wrap">
         <div>
           <div className="text-sm font-medium text-produmar-800 dark:text-slate-100">Fluxo de caixa</div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">Últimos 6 meses — clique nas barras para filtrar</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">Últimos 6 meses — toque nas barras para filtrar</div>
         </div>
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
@@ -42,7 +42,7 @@ export function CashflowChart({ data }: { data: CashflowMonth[] }) {
         </div>
       </div>
 
-      <div className="h-[220px]">
+      <div className="h-[190px] sm:h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 5, right: 0, left: -10, bottom: 0 }}>
             <CartesianGrid
@@ -84,13 +84,13 @@ export function CashflowChart({ data }: { data: CashflowMonth[] }) {
               radius={[4, 4, 0, 0]}
               maxBarSize={28}
               style={{ cursor: "pointer" }}
+              activeBar={{ fill: "#1260CC" }}
               onClick={(entry) => handleBarClick(entry as CashflowMonth, "pagos")}
             >
               {data.map((entry) => (
                 <Cell
                   key={`rec-${entry.month}`}
-                  fill="#0F62D8"
-                  className="hover:brightness-110 transition-all"
+                  fill="#0A4DB8"
                 />
               ))}
             </Bar>
@@ -101,13 +101,13 @@ export function CashflowChart({ data }: { data: CashflowMonth[] }) {
               radius={[4, 4, 0, 0]}
               maxBarSize={28}
               style={{ cursor: "pointer" }}
+              activeBar={{ fill: "#3378F0" }}
               onClick={(entry) => handleBarClick(entry as CashflowMonth, "para-onde-foi")}
             >
               {data.map((entry) => (
                 <Cell
                   key={`dep-${entry.month}`}
-                  fill="#6BB6FF"
-                  className="hover:brightness-110 transition-all"
+                  fill="#5A97FF"
                 />
               ))}
             </Bar>
