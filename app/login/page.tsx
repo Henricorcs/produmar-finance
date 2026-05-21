@@ -1,38 +1,29 @@
-﻿"use client";
+"use client";
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
-import { signInAction, signUpAction } from "./actions";
+import { Wallet, Loader2, AlertCircle } from "lucide-react";
+import { signInAction } from "./actions";
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
     const formData = new FormData(e.currentTarget);
-
     startTransition(async () => {
-      const result =
-        mode === "signin" ? await signInAction(formData) : await signUpAction(formData);
+      const result = await signInAction(formData);
       if (result?.error) setError(result.error);
-      if ((result as any)?.ok) {
-        setSuccess("Cadastro feito! Verifique seu email para confirmar e depois faça login.");
-        setMode("signin");
-      }
     });
   }
 
   return (
     <div className="min-h-screen flex">
-      {/* Lado esquerdo - hero brand */}
+      {/* Lado esquerdo — hero brand */}
       <div className="hidden lg:flex lg:w-1/2 produmar-hero relative overflow-hidden">
         <div className="absolute inset-0 opacity-20">
           <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
@@ -73,9 +64,10 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Lado direito - form */}
+      {/* Lado direito — formulário */}
       <div className="flex-1 flex items-center justify-center p-6 produmar-gradient dark:bg-slate-950">
         <div className="w-full max-w-md">
+          {/* Logo mobile */}
           <div className="lg:hidden flex items-center gap-3 mb-8">
             <div className="w-10 h-10 bg-produmar-600 rounded-xl flex items-center justify-center">
               <Wallet className="w-6 h-6 text-white" />
@@ -85,29 +77,13 @@ export default function LoginPage() {
 
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-produmar-100 dark:border-slate-800 shadow-xl shadow-produmar-600/5 p-8">
             <h2 className="text-2xl font-medium text-produmar-800 dark:text-slate-100 mb-1">
-              {mode === "signin" ? "Bem-vindo de volta" : "Criar conta"}
+              Bem-vindo de volta
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-              {mode === "signin"
-                ? "Entre com suas credenciais para continuar"
-                : "Preencha seus dados para começar"}
+              Entre com suas credenciais para continuar
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {mode === "signup" && (
-                <div>
-                  <Label htmlFor="full_name">Nome completo</Label>
-                  <Input
-                    id="full_name"
-                    name="full_name"
-                    type="text"
-                    placeholder="José Silva"
-                    required
-                    autoComplete="name"
-                  />
-                </div>
-              )}
-
               <div>
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -129,7 +105,7 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   required
                   minLength={6}
-                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                  autoComplete="current-password"
                 />
               </div>
 
@@ -140,52 +116,11 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {success && (
-                <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-md text-sm text-emerald-700">
-                  <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>{success}</span>
-                </div>
-              )}
-
               <Button type="submit" className="w-full" disabled={pending} size="lg">
                 {pending && <Loader2 className="w-4 h-4 animate-spin" />}
-                {mode === "signin" ? "Entrar" : "Criar conta"}
+                Entrar
               </Button>
             </form>
-
-            <div className="mt-6 pt-6 border-t border-produmar-100 dark:border-slate-800 text-center text-sm text-slate-600 dark:text-slate-400">
-              {mode === "signin" ? (
-                <>
-                  Não tem conta?{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode("signup");
-                      setError(null);
-                      setSuccess(null);
-                    }}
-                    className="text-produmar-600 font-medium hover:underline"
-                  >
-                    Criar conta
-                  </button>
-                </>
-              ) : (
-                <>
-                  Já tem conta?{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode("signin");
-                      setError(null);
-                      setSuccess(null);
-                    }}
-                    className="text-produmar-600 font-medium hover:underline"
-                  >
-                    Entrar
-                  </button>
-                </>
-              )}
-            </div>
           </div>
 
           <p className="text-center text-xs text-slate-500 dark:text-slate-500 mt-6">

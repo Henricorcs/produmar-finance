@@ -1,9 +1,11 @@
-﻿import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertConfigClient } from "@/components/configuracoes/alert-config-client";
 import { ProfileFormClient } from "@/components/configuracoes/profile-form-client";
 import { CategoriasConfig } from "@/components/configuracoes/categorias-config";
-import { User, Bell, Building2, Tag } from "lucide-react";
+import { UserManagementClient } from "@/components/configuracoes/user-management-client";
+import { User, Bell, Building2, Tag, Users } from "lucide-react";
 import type { Profile, Category } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -30,12 +32,32 @@ export default async function ConfiguracoesPage() {
   const profile = profileRes.data;
   const alertConfigs = alertConfigsRes.data ?? [];
   const categories = (categoriesRes.data as Category[]) ?? [];
+  const isAdmin = profile?.role === "admin";
+
+  // Fetch all users if admin (uses service-role key to bypass RLS)
+  let allUsers: Profile[] = [];
+  if (isAdmin) {
+    try {
+      const admin = createAdminClient();
+      const { data } = await admin
+        .from("profiles")
+        .select("*")
+        .order("full_name", { ascending: true });
+      allUsers = (data as Profile[]) ?? [];
+    } catch {
+      // If service role key is not configured, skip the user list gracefully
+    }
+  }
 
   return (
     <div className="space-y-5 animate-fade-in max-w-3xl">
       <div>
-        <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Configurações</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Gerencie sua conta e preferências</p>
+        <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">
+          Configurações
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Gerencie sua conta e preferências
+        </p>
       </div>
 
       <Card>
@@ -77,6 +99,24 @@ export default async function ConfiguracoesPage() {
           <CategoriasConfig categories={categories} />
         </CardContent>
       </Card>
+
+      {/* Admin-only: user management */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-produmar-600" />
+              <CardTitle>Usuários</CardTitle>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Gerencie quem tem acesso ao sistema
+            </p>
+          </CardHeader>
+          <CardContent>
+            <UserManagementClient users={allUsers} currentUserId={user!.id} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
