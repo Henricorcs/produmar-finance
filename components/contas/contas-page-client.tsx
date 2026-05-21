@@ -126,7 +126,7 @@ export function ContasPageClient({
         </div>
         <Button onClick={openCreate}>
           <Plus className="w-4 h-4" />
-          Nova conta
+          Lançamento
         </Button>
       </div>
 

@@ -19,7 +19,10 @@ interface TransactionPayload {
 function parsePayload(formData: FormData): TransactionPayload | { error: string } {
   const type = formData.get("type") as TransactionType;
   const description = String(formData.get("description") ?? "").trim();
-  const amountRaw = String(formData.get("amount") ?? "").replace(",", ".");
+  // Accept BR format "1.234,56" or bare "1234.56"
+  const amountRaw = String(formData.get("amount") ?? "")
+    .replace(/\./g, "")
+    .replace(",", ".");
   const amount = parseFloat(amountRaw);
   const due_date = String(formData.get("due_date") ?? "");
   const paid_date = String(formData.get("paid_date") ?? "") || null;

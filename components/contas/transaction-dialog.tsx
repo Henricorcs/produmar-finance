@@ -36,6 +36,24 @@ interface Props {
   costCenters: CostCenter[];
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Format a number (or a raw input string) as Brazilian currency: 1234.56 → "1.234,56" */
+function formatBRLInput(raw: string | number): string {
+  let digits: string;
+  if (typeof raw === "number") {
+    digits = String(Math.round(raw * 100));
+  } else {
+    digits = raw.replace(/\D/g, "");
+  }
+  if (!digits) return "";
+  const cents = parseInt(digits, 10);
+  return (cents / 100).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function TransactionDialog({
   open,
   onClose,
@@ -49,6 +67,9 @@ export function TransactionDialog({
   const [status, setStatus] = useState<TransactionStatus>(transaction?.status ?? "pendente");
   const [categoryId, setCategoryId] = useState<string>(transaction?.category_id ?? "");
   const [costCenterId, setCostCenterId] = useState<string>(transaction?.cost_center_id ?? "");
+  const [amount, setAmount] = useState<string>(
+    transaction?.amount ? formatBRLInput(transaction.amount) : ""
+  );
 
   useEffect(() => {
     if (open) {
@@ -56,6 +77,7 @@ export function TransactionDialog({
       setStatus(transaction?.status ?? "pendente");
       setCategoryId(transaction?.category_id ?? "");
       setCostCenterId(transaction?.cost_center_id ?? "");
+      setAmount(transaction?.amount ? formatBRLInput(transaction.amount) : "");
       setError(null);
     }
   }, [open, transaction]);
@@ -68,13 +90,29 @@ export function TransactionDialog({
   const filteredCategories = categories.filter((c) => c.type === type);
   const isPaid = status === "pago" || status === "recebido";
 
+  function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setAmount(formatBRLInput(e.target.value));
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+
+    // Force uppercase on text fields (visual is via CSS; this guarantees stored value)
+    formData.set(
+      "description",
+      String(formData.get("description") ?? "").trim().toUpperCase()
+    );
+    formData.set(
+      "notes",
+      String(formData.get("notes") ?? "").trim().toUpperCase()
+    );
+
     formData.set("type", type);
     formData.set("status", status);
     formData.set("category_id", categoryId);
     formData.set("cost_center_id", costCenterId);
+    formData.set("amount", amount); // controlled BR-formatted value
 
     startTransition(async () => {
       const result = transaction
@@ -122,19 +160,21 @@ export function TransactionDialog({
             </div>
           </div>
 
-          {/* Description */}
+          {/* Description — auto uppercase */}
           <div className="space-y-1.5">
             <Label htmlFor="description">Descrição *</Label>
             <Input
               id="description"
               name="description"
               defaultValue={transaction?.description ?? ""}
-              placeholder="Ex: Conta de energia"
+              placeholder="Ex: conta de energia"
+              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               required
             />
           </div>
 
-          {/* Amount */}
+          {/* Amount — auto BRL format (R$ 1.234,56) */}
           <div className="space-y-1.5">
             <Label htmlFor="amount">Valor (R$) *</Label>
             <div className="relative">
@@ -144,12 +184,12 @@ export function TransactionDialog({
               <Input
                 id="amount"
                 name="amount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                defaultValue={transaction?.amount ?? ""}
+                type="text"
+                inputMode="decimal"
+                value={amount}
+                onChange={handleAmountChange}
                 placeholder="0,00"
-                className="pl-9"
+                className="pl-9 tabular-nums"
                 required
               />
             </div>
@@ -234,7 +274,7 @@ export function TransactionDialog({
             </Select>
           </div>
 
-          {/* Notes */}
+          {/* Notes — auto uppercase */}
           <div className="space-y-1.5">
             <Label htmlFor="notes">Observações</Label>
             <Textarea
@@ -243,6 +283,8 @@ export function TransactionDialog({
               defaultValue={transaction?.notes ?? ""}
               placeholder="Observações opcionais..."
               rows={2}
+              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 
@@ -257,7 +299,7 @@ export function TransactionDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Salvando..." : transaction ? "Salvar alterações" : "Criar lançamento"}
+              {isPending ? "Salvando..." : transaction ? "Salvar alterações" : "Lançar"}
             </Button>
           </DialogFooter>
         </form>
