@@ -23,7 +23,9 @@ export default async function ContasPage({
   const [transactionsRes, categoriesRes, costCentersRes] = await Promise.all([
     supabase
       .from("transactions")
-      .select("*, categories(name, color)")
+      .select(
+        "*, categories(name, color), transaction_attachments(id, transaction_id, file_name, file_size, mime_type, storage_path, created_by, created_at)"
+      )
       .gte("due_date", startDate)
       .lte("due_date", endDate)
       .order("due_date", { ascending: true }),

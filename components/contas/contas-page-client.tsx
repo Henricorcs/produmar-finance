@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   ArrowDownCircle,
   ArrowUpCircle,
+  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
@@ -18,10 +19,11 @@ import { Card } from "@/components/ui/card";
 import { TransactionDialog } from "./transaction-dialog";
 import { deleteTransaction, markTransactionPaid } from "@/app/(app)/contas/actions";
 import { formatBRL, formatDate } from "@/lib/utils";
-import type { Category, CostCenter, Transaction } from "@/lib/types";
+import type { Category, CostCenter, Transaction, TransactionAttachment } from "@/lib/types";
 
 type TransactionWithCategory = Transaction & {
   categories: { name: string; color: string } | null;
+  transaction_attachments?: TransactionAttachment[];
 };
 
 interface Props {
@@ -53,7 +55,8 @@ export function ContasPageClient({
   const pathname = usePathname();
   const [, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingTransaction, setEditingTransaction] =
+    useState<TransactionWithCategory | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterValue>(
     (FILTER_TABS.some((f) => f.value === initialFilter) ? initialFilter : "") as FilterValue
   );
@@ -102,7 +105,7 @@ export function ContasPageClient({
     setDialogOpen(true);
   }
 
-  function openEdit(t: Transaction) {
+  function openEdit(t: TransactionWithCategory) {
     setEditingTransaction(t);
     setDialogOpen(true);
   }
@@ -239,12 +242,13 @@ function TransactionRow({
   onMarkPaid,
 }: {
   transaction: TransactionWithCategory;
-  onEdit: (t: Transaction) => void;
+  onEdit: (t: TransactionWithCategory) => void;
   onDelete: (id: string) => void;
   onMarkPaid: (t: Transaction) => void;
 }) {
   const canMarkPaid = t.status === "pendente" || t.status === "vencido";
   const markLabel = t.type === "entrada" ? "Marcar como recebido" : "Marcar como pago";
+  const attachmentCount = t.transaction_attachments?.length ?? 0;
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/60 transition-colors group">
@@ -257,7 +261,18 @@ function TransactionRow({
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{t.description}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{t.description}</p>
+          {attachmentCount > 0 && (
+            <span
+              className="flex items-center gap-0.5 text-[10px] text-slate-500 dark:text-slate-400 flex-shrink-0"
+              title={`${attachmentCount} anexo(s)`}
+            >
+              <Paperclip className="w-3 h-3" />
+              {attachmentCount}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {t.categories && (
             <span

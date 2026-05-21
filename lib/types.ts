@@ -78,6 +78,17 @@ export interface Invoice {
   transaction_id: string | null;
 }
 
+export interface TransactionAttachment {
+  id: string;
+  transaction_id: string;
+  file_name: string;
+  file_size: number | null;
+  mime_type: string | null;
+  storage_path: string;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface DashboardKPIs {
   saldo_atual: number;
   receitas_mes: number;

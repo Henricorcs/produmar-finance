@@ -22,11 +22,13 @@ import {
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { QuickCreateCategoryDialog } from "./quick-create-category-dialog";
 import { QuickCreateCostCenterDialog } from "./quick-create-cost-center-dialog";
+import { AttachmentUploader } from "./attachment-uploader";
 import { createTransaction, updateTransaction } from "@/app/(app)/contas/actions";
 import type {
   Category,
   CostCenter,
   Transaction,
+  TransactionAttachment,
   TransactionStatus,
   TransactionType,
 } from "@/lib/types";
@@ -34,7 +36,7 @@ import type {
 interface Props {
   open: boolean;
   onClose: () => void;
-  transaction?: Transaction | null;
+  transaction?: (Transaction & { transaction_attachments?: TransactionAttachment[] }) | null;
   categories: Category[];
   costCenters: CostCenter[];
 }
@@ -81,6 +83,12 @@ export function TransactionDialog({
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [ccDialogOpen, setCCDialogOpen] = useState(false);
 
+  // Attachments
+  const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [existingAttachments, setExistingAttachments] = useState<TransactionAttachment[]>(
+    transaction?.transaction_attachments ?? []
+  );
+
   useEffect(() => {
     if (open) {
       setType(transaction?.type ?? "saida");
@@ -88,6 +96,8 @@ export function TransactionDialog({
       setCategoryId(transaction?.category_id ?? "");
       setCostCenterId(transaction?.cost_center_id ?? "");
       setAmount(transaction?.amount ? formatBRLInput(transaction.amount) : "");
+      setNewFiles([]);
+      setExistingAttachments(transaction?.transaction_attachments ?? []);
       setError(null);
     }
   }, [open, transaction]);
@@ -147,6 +157,9 @@ export function TransactionDialog({
     formData.set("category_id", categoryId);
     formData.set("cost_center_id", costCenterId);
     formData.set("amount", amount);
+
+    // Append new file uploads
+    newFiles.forEach((f) => formData.append("attachments", f));
 
     startTransition(async () => {
       const result = transaction
@@ -329,6 +342,18 @@ export function TransactionDialog({
                 rows={2}
                 className="uppercase placeholder:normal-case placeholder:lowercase"
                 autoCapitalize="characters"
+              />
+            </div>
+
+            {/* Attachments */}
+            <div className="space-y-1.5">
+              <Label>Anexos</Label>
+              <AttachmentUploader
+                newFiles={newFiles}
+                onNewFilesChange={setNewFiles}
+                existingAttachments={existingAttachments}
+                onExistingChange={setExistingAttachments}
+                disabled={isPending}
               />
             </div>
 
