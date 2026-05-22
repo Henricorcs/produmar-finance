@@ -80,7 +80,7 @@ export async function inviteUser(
 
   if (!email) return { error: "Email obrigatório" };
   if (!password || password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };
-  if (!["admin", "financeiro", "visualizador"].includes(role))
+  if (!["admin", "financeiro", "visualizador", "operador"].includes(role))
     return { error: "Perfil de acesso inválido" };
 
   const admin = createAdminClient();
