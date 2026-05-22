@@ -48,12 +48,25 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Visualizador só pode acessar /visualizador
+  // Roles com acesso restrito
   if (user) {
     const role = user.user_metadata?.role as string | undefined;
+
     if (role === "visualizador" && !path.startsWith("/visualizador") && !isPublicRoute) {
       const url = request.nextUrl.clone();
       url.pathname = "/visualizador";
+      return NextResponse.redirect(url);
+    }
+
+    // Operador: acessa apenas /operador e /imprimir (comprovantes)
+    if (
+      role === "operador" &&
+      !path.startsWith("/operador") &&
+      !path.startsWith("/imprimir") &&
+      !isPublicRoute
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/operador";
       return NextResponse.redirect(url);
     }
   }

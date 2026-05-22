@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "financeiro" | "visualizador";
+export type UserRole = "admin" | "financeiro" | "visualizador" | "operador";
 export type TransactionType = "entrada" | "saida";
 export type TransactionStatus = "pendente" | "pago" | "recebido" | "vencido" | "cancelado";
 export type InvoiceSource = "xml" | "pdf" | "manual";
@@ -170,6 +170,10 @@ export interface ServiceOrder {
 
   issue_date: string;
   delivery_date: string | null;
+
+  hourmeter_start: number | null;
+  hourmeter_end: number | null;
+  received_by: string | null;
 
   total_amount: number;
   transaction_id: string | null;

@@ -20,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const profile = profileRes.data as Profile | null;
   const isVisualizador = profile?.role === "visualizador";
+  const isOperador     = profile?.role === "operador";
 
   // Layout simplificado para visualizador — sem nav, sem notificações
   if (isVisualizador) {
@@ -27,6 +28,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
         <Topbar profile={profile} notifications={[]} />
         <main className="max-w-5xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
+      </div>
+    );
+  }
+
+  // Layout simplificado para operador — painel de OS apenas
+  if (isOperador) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <Topbar profile={profile} notifications={[]} />
+        <main className="max-w-3xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
       </div>
     );
   }

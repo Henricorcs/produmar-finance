@@ -210,6 +210,9 @@ export interface ServiceOrderInput {
   delivery_address?: string | null;
   service_description?: string | null;
   delivery_date?: string | null;
+  hourmeter_start?: number | null;
+  hourmeter_end?: number | null;
+  received_by?: string | null;
   notes?: string | null;
   items: ServiceOrderItemInput[];
 }
@@ -230,6 +233,9 @@ function sanitizeOrder(input: ServiceOrderInput) {
       ? input.service_description.trim().toUpperCase()
       : null,
     delivery_date: input.delivery_date || null,
+    hourmeter_start: input.hourmeter_start ?? null,
+    hourmeter_end: input.hourmeter_end ?? null,
+    received_by: input.received_by?.trim() ? input.received_by.trim().toUpperCase() : null,
     notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
   };
 }
@@ -409,4 +415,40 @@ export async function generateTransactionFromOrder(
 
   revalidate();
   return { ok: true, transactionId: tx.id };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINALIZAR OS (usado pelo painel do operador)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function finalizeServiceOrder(id: string, receivedBy: string) {
+  const supabase = createClient();
+
+  const trimmed = receivedBy.trim();
+  if (!trimmed) return { error: "Informe o nome de quem recebeu" };
+
+  // Preserva delivery_date se já estiver preenchido
+  const { data: existing } = await supabase
+    .from("service_orders")
+    .select("delivery_date")
+    .eq("id", id)
+    .single();
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const { error } = await supabase
+    .from("service_orders")
+    .update({
+      status: "entregue",
+      received_by: trimmed.toUpperCase(),
+      delivery_date: existing?.delivery_date ?? today,
+    })
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  revalidatePath("/dashboard");
+  return { ok: true };
 }

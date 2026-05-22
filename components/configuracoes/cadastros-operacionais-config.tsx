@@ -306,6 +306,7 @@ function ProductsList({ products }: { products: Product[] }) {
               placeholder="preço médio (opcional)"
               className="h-9 text-sm"
               inputMode="decimal"
+              autoComplete="off"
             />
           </div>
           <div className="flex gap-2">

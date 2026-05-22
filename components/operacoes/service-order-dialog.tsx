@@ -130,8 +130,11 @@ export function ServiceOrderDialog({
   const [deliveryAddress, setDeliveryAddress]     = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
 
-  const [deliveryDate, setDeliveryDate] = useState("");
-  const [notes, setNotes]               = useState("");
+  const [deliveryDate, setDeliveryDate]       = useState("");
+  const [hourmeterStart, setHourmeterStart]   = useState("");
+  const [hourmeterEnd, setHourmeterEnd]       = useState("");
+  const [receivedBy, setReceivedBy]           = useState("");
+  const [notes, setNotes]                     = useState("");
 
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
 
@@ -166,6 +169,9 @@ export function ServiceOrderDialog({
       setDeliveryAddress(order.delivery_address ?? "");
       setServiceDescription(order.service_description ?? "");
       setDeliveryDate(order.delivery_date ?? "");
+      setHourmeterStart(order.hourmeter_start?.toString().replace(".", ",") ?? "");
+      setHourmeterEnd(order.hourmeter_end?.toString().replace(".", ",") ?? "");
+      setReceivedBy(order.received_by ?? "");
       setNotes(order.notes ?? "");
       setItems(
         (order.service_order_items ?? []).length > 0
@@ -190,6 +196,9 @@ export function ServiceOrderDialog({
       setDeliveryAddress("");
       setServiceDescription("");
       setDeliveryDate(todayStr());
+      setHourmeterStart("");
+      setHourmeterEnd("");
+      setReceivedBy("");
       setNotes("");
       setItems([emptyItem()]);
     }
@@ -279,6 +288,15 @@ export function ServiceOrderDialog({
       delivery_address: deliveryAddress,
       service_description: serviceDescription,
       delivery_date: deliveryDate || null,
+      hourmeter_start:
+        type === "prestacao_servico" && hourmeterStart.trim()
+          ? parseFloat(hourmeterStart.replace(",", "."))
+          : null,
+      hourmeter_end:
+        type === "prestacao_servico" && hourmeterEnd.trim()
+          ? parseFloat(hourmeterEnd.replace(",", "."))
+          : null,
+      received_by: receivedBy.trim() || null,
       notes,
       items: itemsPayload,
     };
@@ -443,19 +461,65 @@ export function ServiceOrderDialog({
               </div>
             </div>
 
-            {/* Service description (only for prestacao_servico) */}
+            {/* Service description + hourmeter (only for prestacao_servico) */}
             {type === "prestacao_servico" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="srv_desc">Descrição do serviço</Label>
-                <Textarea
-                  id="srv_desc"
-                  value={serviceDescription}
-                  onChange={(e) => setServiceDescription(e.target.value)}
-                  placeholder="ex: terraplanagem do terreno, 8 horas"
-                  rows={2}
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
-                />
-              </div>
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="srv_desc">Descrição do serviço</Label>
+                  <Textarea
+                    id="srv_desc"
+                    value={serviceDescription}
+                    onChange={(e) => setServiceDescription(e.target.value)}
+                    placeholder="ex: terraplanagem do terreno, 8 horas"
+                    rows={2}
+                    className="uppercase placeholder:normal-case placeholder:lowercase"
+                  />
+                </div>
+
+                {/* Horímetro */}
+                <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
+                  <div className="col-span-2">
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-2">
+                      Horímetro da máquina
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hmt_start" className="text-xs">Inicial (h)</Label>
+                    <Input
+                      id="hmt_start"
+                      value={hourmeterStart}
+                      onChange={(e) => setHourmeterStart(e.target.value.replace(/[^\d,]/g, ""))}
+                      placeholder="0,0"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      className="tabular-nums"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hmt_end" className="text-xs">Final (h)</Label>
+                    <Input
+                      id="hmt_end"
+                      value={hourmeterEnd}
+                      onChange={(e) => setHourmeterEnd(e.target.value.replace(/[^\d,]/g, ""))}
+                      placeholder="0,0"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      className="tabular-nums"
+                    />
+                  </div>
+                  {hourmeterStart && hourmeterEnd && (
+                    <p className="col-span-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                      Total trabalhado:{" "}
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        {(
+                          parseFloat(hourmeterEnd.replace(",", ".")) -
+                          parseFloat(hourmeterStart.replace(",", "."))
+                        ).toFixed(1).replace(".", ",")}h
+                      </span>
+                    </p>
+                  )}
+                </div>
+              </>
             )}
 
             {/* Items */}
@@ -532,6 +596,7 @@ export function ServiceOrderDialog({
                             onChange={(e) => setItem(idx, { quantity: formatQty(e.target.value) })}
                             placeholder="0"
                             inputMode="decimal"
+                            autoComplete="off"
                             className="h-9 text-sm"
                           />
                         </div>
@@ -541,6 +606,7 @@ export function ServiceOrderDialog({
                             value={it.unit}
                             onChange={(e) => setItem(idx, { unit: e.target.value })}
                             placeholder="m³"
+                            autoComplete="off"
                             className="h-9 text-sm"
                           />
                         </div>
@@ -551,6 +617,7 @@ export function ServiceOrderDialog({
                             onChange={(e) => setItem(idx, { unit_price: formatBRLInput(e.target.value) })}
                             placeholder="0,00"
                             inputMode="decimal"
+                            autoComplete="off"
                             className="h-9 text-sm tabular-nums"
                           />
                         </div>
@@ -617,6 +684,21 @@ export function ServiceOrderDialog({
                 </Select>
               </div>
             </div>
+
+            {/* Recebido por (visível quando status = entregue) */}
+            {status === "entregue" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="received_by">Recebido por</Label>
+                <Input
+                  id="received_by"
+                  value={receivedBy}
+                  onChange={(e) => setReceivedBy(e.target.value)}
+                  placeholder="nome de quem recebeu"
+                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoComplete="off"
+                />
+              </div>
+            )}
 
             {/* Notes */}
             <div className="space-y-1.5">

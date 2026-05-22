@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus, ShieldCheck, User, Eye, Trash2 } from "lucide-react";
+import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,20 +9,23 @@ import { inviteUser, removeUser } from "@/app/(app)/configuracoes/actions";
 import type { Profile, UserRole } from "@/lib/types";
 
 const ROLES: { value: UserRole; label: string; desc: string }[] = [
-  { value: "admin",       label: "Admin",       desc: "Acesso total"            },
-  { value: "financeiro",  label: "Financeiro",  desc: "Lançamentos e relatórios" },
-  { value: "visualizador",label: "Visualizador",desc: "Somente leitura"          },
+  { value: "admin",       label: "Admin",       desc: "Acesso total"                   },
+  { value: "financeiro",  label: "Financeiro",  desc: "Lançamentos e relatórios"       },
+  { value: "operador",    label: "Operador",    desc: "Painel de ordens de serviço"    },
+  { value: "visualizador",label: "Visualizador",desc: "Somente leitura"                },
 ];
 
 const ROLE_BADGE: Record<UserRole, string> = {
   admin:        "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400",
   financeiro:   "bg-produmar-100 dark:bg-produmar-900/40 text-produmar-700 dark:text-produmar-400",
+  operador:     "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400",
   visualizador: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400",
 };
 
 const ROLE_ICON: Record<UserRole, React.ComponentType<{ className?: string }>> = {
   admin:        ShieldCheck,
   financeiro:   User,
+  operador:     Wrench,
   visualizador: Eye,
 };
 

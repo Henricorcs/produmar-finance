@@ -238,6 +238,7 @@ export function TransactionDialog({
                   onChange={handleAmountChange}
                   placeholder="0,00"
                   className="pl-9 tabular-nums"
+                  autoComplete="off"
                   required
                 />
               </div>

@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Pencil,
+  Printer,
   Trash2,
   Truck,
   Wrench,
@@ -533,6 +534,13 @@ function OrderRow({
             <Receipt className="w-4 h-4" />
           </button>
         )}
+        <button
+          onClick={() => window.open(`/imprimir/os/${o.id}`, "_blank")}
+          title="Imprimir orçamento / comprovante"
+          className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 transition-colors"
+        >
+          <Printer className="w-4 h-4" />
+        </button>
         <button
           onClick={() => onEdit(o)}
           title="Editar"
