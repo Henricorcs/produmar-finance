@@ -113,3 +113,81 @@ export interface CashflowMonth {
   receitas: number;
   despesas: number;
 }
+
+// ── Operações (Ordens de Serviço) ────────────────────────────────────────────
+
+export type ServiceOrderType   = "entrega_material" | "prestacao_servico";
+export type ServiceFreightType = "cliente" | "interno";
+export type ServiceOrderStatus = "pendente" | "em_andamento" | "entregue" | "cancelado";
+
+export interface Machine {
+  id: string;
+  name: string;
+  plate: string | null;
+  type: string | null;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  unit: string;
+  default_price: number | null;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PickupLocation {
+  id: string;
+  name: string;
+  address: string | null;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceOrder {
+  id: string;
+  order_number: number;
+  type: ServiceOrderType;
+  freight_type: ServiceFreightType;
+  status: ServiceOrderStatus;
+
+  client_name: string | null;
+  client_document: string | null;
+  client_phone: string | null;
+
+  machine_id: string | null;
+  pickup_location_id: string | null;
+  delivery_address: string | null;
+  service_description: string | null;
+
+  issue_date: string;
+  delivery_date: string | null;
+
+  total_amount: number;
+  transaction_id: string | null;
+
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceOrderItem {
+  id: string;
+  service_order_id: string;
+  product_id: string | null;
+  description: string | null;
+  quantity: number;
+  unit: string | null;
+  unit_price: number;
+  total: number;
+  created_at: string;
+}
