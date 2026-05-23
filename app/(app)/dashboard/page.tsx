@@ -1,10 +1,17 @@
 ﻿import { createClient } from "@/lib/supabase/server";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { CashflowChart } from "@/components/dashboard/cashflow-chart";
+import { CashflowProjection } from "@/components/dashboard/cashflow-projection";
 import { ExpenseBreakdown } from "@/components/dashboard/expense-breakdown";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock } from "lucide-react";
-import type { DashboardKPIs, ExpenseByCategory, CashflowMonth, Transaction } from "@/lib/types";
+import type {
+  DashboardKPIs,
+  ExpenseByCategory,
+  CashflowMonth,
+  CashflowProjectionDay,
+  Transaction,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +23,11 @@ export default async function DashboardPage() {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [kpisRes, expensesRes, cashflowRes, billsRes, profileRes] = await Promise.all([
+  const [kpisRes, expensesRes, cashflowRes, projectionRes, billsRes, profileRes] = await Promise.all([
     supabase.from("v_dashboard_kpis").select("*").single(),
     supabase.from("v_expenses_by_category").select("*"),
     supabase.from("v_cashflow_6m").select("*"),
+    supabase.from("v_cashflow_projection").select("*"),
     supabase
       .from("transactions")
       .select("*, contacts(name)")
@@ -44,6 +52,7 @@ export default async function DashboardPage() {
 
   const expenses = (expensesRes.data as ExpenseByCategory[]) ?? [];
   const cashflow = (cashflowRes.data as CashflowMonth[]) ?? [];
+  const projection = (projectionRes.data as CashflowProjectionDay[]) ?? [];
   const bills = (billsRes.data as Transaction[]) ?? [];
   const firstName =
     (profileRes.data as { full_name?: string } | null)?.full_name?.split(" ")[0] ?? "";
@@ -108,6 +117,9 @@ export default async function DashboardPage() {
 
       {/* Gráfico */}
       <CashflowChart data={cashflow} />
+
+      {/* Projeção 90 dias */}
+      <CashflowProjection data={projection} saldoAtual={kpis.saldo_atual} />
 
       {/* Bottom grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">

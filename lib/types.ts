@@ -114,6 +114,14 @@ export interface CashflowMonth {
   despesas: number;
 }
 
+export interface CashflowProjectionDay {
+  day: string;          // YYYY-MM-DD
+  day_label: string;    // DD/MM
+  entradas: number;
+  saidas: number;
+  saldo_projetado: number;
+}
+
 // ── Operações (Ordens de Serviço) ────────────────────────────────────────────
 
 export type ServiceOrderType   = "entrega_material" | "prestacao_servico";
