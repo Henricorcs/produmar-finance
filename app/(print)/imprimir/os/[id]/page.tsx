@@ -6,7 +6,12 @@ import type { ServiceOrder, ServiceOrderItem } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 type PrintOrder = ServiceOrder & {
-  machines: { name: string; plate: string | null; type: string | null } | null;
+  machines: {
+    name: string;
+    plate: string | null;
+    type: string | null;
+    tracking_type?: "hourmeter" | "km";
+  } | null;
   pickup_locations: { name: string; address: string | null } | null;
   service_order_items: ServiceOrderItem[];
 };
@@ -27,7 +32,7 @@ export default async function ImprimirOSPage({ params }: Props) {
   const { data: order, error } = await supabase
     .from("service_orders")
     .select(
-      `*, machines(name, plate, type), pickup_locations(name, address), service_order_items(*)`
+      `*, machines(name, plate, type, tracking_type), pickup_locations(name, address), service_order_items(*)`
     )
     .eq("id", params.id)
     .single<PrintOrder>();

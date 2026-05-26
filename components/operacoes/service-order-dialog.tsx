@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useTransition, useEffect, useMemo } from "react";
-import { Plus, X, Truck, Wrench, User, Building2 } from "lucide-react";
+import {
+  Plus, X, Truck, Wrench, User, Building2,
+  Clock, Gauge, DollarSign, Fuel,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +32,7 @@ import {
   updateServiceOrder,
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL } from "@/lib/utils";
+import { formatBRL, osStatusLabel } from "@/lib/utils";
 import type {
   Machine,
   PickupLocation,
@@ -73,7 +76,6 @@ function formatBRLInput(raw: string | number): string {
 
 function formatQty(raw: string | number): string {
   if (typeof raw === "number") return raw.toString().replace(".", ",");
-  // Allow digits + one comma; cap at 3 decimals
   const cleaned = raw.replace(/[^\d,]/g, "");
   const parts = cleaned.split(",");
   if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
@@ -87,12 +89,21 @@ function parseQty(s: string): number {
   return isNaN(n) ? 0 : n;
 }
 
+function sanitizeDecimal(raw: string): string {
+  // dígitos + uma única vírgula, máx 2 casas
+  const cleaned = raw.replace(/[^\d,]/g, "");
+  const parts = cleaned.split(",");
+  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
+  if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
+  return cleaned;
+}
+
 interface ItemDraft {
   product_id: string;
   description: string;
-  quantity: string;       // BR formatted "1,5"
+  quantity: string;
   unit: string;
-  unit_price: string;     // BR formatted "120,00"
+  unit_price: string;
 }
 
 function emptyItem(): ItemDraft {
@@ -116,7 +127,7 @@ export function ServiceOrderDialog({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  // Form state
+  // Common form state
   const [type, setType] = useState<ServiceOrderType>("entrega_material");
   const [freightType, setFreightType] = useState<ServiceFreightType>("cliente");
   const [status, setStatus] = useState<ServiceOrderStatus>("pendente");
@@ -125,20 +136,33 @@ export function ServiceOrderDialog({
   const [clientDocument, setClientDocument] = useState("");
   const [clientPhone, setClientPhone]       = useState("");
 
-  const [machineId, setMachineId]                 = useState("");
-  const [pickupLocationId, setPickupLocationId]   = useState("");
-  const [deliveryAddress, setDeliveryAddress]     = useState("");
+  const [machineId, setMachineId]                   = useState("");
+  const [pickupLocationId, setPickupLocationId]     = useState("");
+  const [deliveryAddress, setDeliveryAddress]       = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
 
-  const [deliveryDate, setDeliveryDate]       = useState("");
-  const [hourmeterStart, setHourmeterStart]   = useState("");
-  const [hourmeterEnd, setHourmeterEnd]       = useState("");
-  const [receivedBy, setReceivedBy]           = useState("");
-  const [notes, setNotes]                     = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [receivedBy, setReceivedBy]     = useState("");
+  const [notes, setNotes]               = useState("");
 
+  // prestacao_servico — horímetro
+  const [hourmeterStart, setHourmeterStart] = useState("");
+  const [hourmeterEnd, setHourmeterEnd]     = useState("");
+  const [hourlyRate, setHourlyRate]         = useState(""); // BRL formatted
+
+  // prestacao_servico — km ou sem máquina
+  const [kmStart, setKmStart]                       = useState("");
+  const [kmEnd, setKmEnd]                           = useState("");
+  const [flatServiceAmount, setFlatServiceAmount]   = useState(""); // BRL formatted
+
+  // prestacao_servico — custos internos (não somam no total)
+  const [serviceCost, setServiceCost] = useState(""); // gasto no serviço
+  const [fuelCost, setFuelCost]       = useState(""); // abastecimento
+
+  // entrega_material
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
 
-  // Local lists for optimistic insertion of new entities
+  // Local lists for optimistic insertion
   const [localMachines, setLocalMachines]     = useState<Machine[]>(machines);
   const [localProducts, setLocalProducts]     = useState<Product[]>(products);
   const [localLocations, setLocalLocations]   = useState<PickupLocation[]>(pickupLocations);
@@ -149,12 +173,11 @@ export function ServiceOrderDialog({
   const [locDialogOpen, setLocDialogOpen] = useState(false);
   const [prdDialogIdx, setPrdDialogIdx]   = useState<number | null>(null);
 
-  // Sync local lists when props change
   useEffect(() => setLocalMachines(machines),     [machines]);
   useEffect(() => setLocalProducts(products),     [products]);
   useEffect(() => setLocalLocations(pickupLocations), [pickupLocations]);
 
-  // Hydrate from `order` when editing or reset when creating
+  // Hydrate / reset
   useEffect(() => {
     if (!open) return;
     if (order) {
@@ -171,6 +194,11 @@ export function ServiceOrderDialog({
       setDeliveryDate(order.delivery_date ?? "");
       setHourmeterStart(order.hourmeter_start?.toString().replace(".", ",") ?? "");
       setHourmeterEnd(order.hourmeter_end?.toString().replace(".", ",") ?? "");
+      setKmStart(order.km_start?.toString().replace(".", ",") ?? "");
+      setKmEnd(order.km_end?.toString().replace(".", ",") ?? "");
+      setHourlyRate(order.hourly_rate != null ? formatBRLInput(order.hourly_rate) : "");
+      setServiceCost(order.service_cost != null ? formatBRLInput(order.service_cost) : "");
+      setFuelCost(order.fuel_cost != null ? formatBRLInput(order.fuel_cost) : "");
       setReceivedBy(order.received_by ?? "");
       setNotes(order.notes ?? "");
       setItems(
@@ -184,29 +212,72 @@ export function ServiceOrderDialog({
             }))
           : [emptyItem()]
       );
+      // Para edição: se serviço sem horímetro/taxa, usar total como valor flat
+      if (
+        order.type === "prestacao_servico" &&
+        order.hourly_rate == null &&
+        order.total_amount > 0
+      ) {
+        setFlatServiceAmount(formatBRLInput(order.total_amount));
+      } else {
+        setFlatServiceAmount("");
+      }
     } else {
       setType("entrega_material");
       setFreightType("cliente");
       setStatus("pendente");
-      setClientName("");
-      setClientDocument("");
-      setClientPhone("");
-      setMachineId("");
-      setPickupLocationId("");
-      setDeliveryAddress("");
-      setServiceDescription("");
+      setClientName(""); setClientDocument(""); setClientPhone("");
+      setMachineId(""); setPickupLocationId("");
+      setDeliveryAddress(""); setServiceDescription("");
       setDeliveryDate(todayStr());
-      setHourmeterStart("");
-      setHourmeterEnd("");
-      setReceivedBy("");
-      setNotes("");
+      setHourmeterStart(""); setHourmeterEnd("");
+      setKmStart(""); setKmEnd("");
+      setHourlyRate(""); setFlatServiceAmount("");
+      setServiceCost(""); setFuelCost("");
+      setReceivedBy(""); setNotes("");
       setItems([emptyItem()]);
     }
     setError(null);
   }, [open, order]);
 
-  // ── Item helpers ─────────────────────────────────────────────────────────
+  // ── Selected machine & pricing mode ──────────────────────────────────────
+  const selectedMachine = useMemo(
+    () => localMachines.find((m) => m.id === machineId) ?? null,
+    [localMachines, machineId]
+  );
+  const machineIsKm        = selectedMachine?.tracking_type === "km";
+  const machineIsHourmeter = !!selectedMachine && selectedMachine.tracking_type !== "km";
+  const useHourBasedPricing =
+    type === "prestacao_servico" && machineIsHourmeter;
 
+  // ── Computed values ──────────────────────────────────────────────────────
+  const hoursWorked = useMemo(() => {
+    const s = parseFloat(hourmeterStart.replace(",", "."));
+    const e = parseFloat(hourmeterEnd.replace(",", "."));
+    if (isNaN(s) || isNaN(e) || e <= s) return 0;
+    return e - s;
+  }, [hourmeterStart, hourmeterEnd]);
+
+  const kmDelta = useMemo(() => {
+    const s = parseFloat(kmStart.replace(",", "."));
+    const e = parseFloat(kmEnd.replace(",", "."));
+    if (isNaN(s) || isNaN(e) || e <= s) return 0;
+    return e - s;
+  }, [kmStart, kmEnd]);
+
+  const total = useMemo(() => {
+    if (type === "prestacao_servico") {
+      if (useHourBasedPricing) return hoursWorked * parseBRLToNumber(hourlyRate);
+      return parseBRLToNumber(flatServiceAmount);
+    }
+    return items.reduce((s, it) => s + parseQty(it.quantity) * parseBRLToNumber(it.unit_price), 0);
+  }, [type, useHourBasedPricing, hoursWorked, hourlyRate, flatServiceAmount, items]);
+
+  // Lucro estimado = total - custos internos (apenas para visualização)
+  const internalCosts = parseBRLToNumber(serviceCost) + parseBRLToNumber(fuelCost);
+  const estimatedProfit = total - internalCosts;
+
+  // ── Item helpers ─────────────────────────────────────────────────────────
   function setItem(idx: number, patch: Partial<ItemDraft>) {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   }
@@ -223,16 +294,12 @@ export function ServiceOrderDialog({
     });
   }
 
-  function addItem() {
-    setItems((prev) => [...prev, emptyItem()]);
-  }
-
+  function addItem() { setItems((prev) => [...prev, emptyItem()]); }
   function removeItem(idx: number) {
     setItems((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
   }
 
   // ── Quick-create callbacks ───────────────────────────────────────────────
-
   function handleMachineCreated(m: Machine) {
     setLocalMachines((prev) => [...prev.filter((x) => x.id !== m.id), m].sort((a, b) => a.name.localeCompare(b.name)));
     setMachineId(m.id);
@@ -243,37 +310,67 @@ export function ServiceOrderDialog({
   }
   function handleProductCreated(p: Product) {
     setLocalProducts((prev) => [...prev.filter((x) => x.id !== p.id), p].sort((a, b) => a.name.localeCompare(b.name)));
-    if (prdDialogIdx !== null) {
-      pickProduct(prdDialogIdx, p.id);
-    }
+    if (prdDialogIdx !== null) pickProduct(prdDialogIdx, p.id);
     setPrdDialogIdx(null);
   }
 
-  // ── Total ────────────────────────────────────────────────────────────────
-
-  const total = useMemo(() => {
-    return items.reduce((s, it) => s + parseQty(it.quantity) * parseBRLToNumber(it.unit_price), 0);
-  }, [items]);
-
   // ── Submit ───────────────────────────────────────────────────────────────
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    const itemsPayload: ServiceOrderItemInput[] = items
-      .filter((it) => it.product_id || it.description.trim())
-      .map((it) => ({
-        product_id: it.product_id || null,
-        description: it.description,
-        quantity: parseQty(it.quantity),
-        unit: it.unit,
-        unit_price: parseBRLToNumber(it.unit_price),
-      }));
+    let itemsPayload: ServiceOrderItemInput[];
 
-    if (itemsPayload.length === 0) {
-      setError("Adicione ao menos um item");
-      return;
+    if (type === "prestacao_servico") {
+      if (useHourBasedPricing) {
+        if (hoursWorked <= 0) {
+          setError("Informe horímetro inicial e final válidos");
+          return;
+        }
+        const rate = parseBRLToNumber(hourlyRate);
+        if (rate <= 0) {
+          setError("Informe o valor da hora");
+          return;
+        }
+        itemsPayload = [{
+          product_id: null,
+          description: `PRESTAÇÃO DE SERVIÇO — ${hoursWorked.toFixed(2).replace(".", ",")}H × R$ ${hourlyRate}/H`,
+          quantity: Number(hoursWorked.toFixed(2)),
+          unit: "h",
+          unit_price: rate,
+        }];
+      } else {
+        const amount = parseBRLToNumber(flatServiceAmount);
+        if (amount <= 0) {
+          setError(machineIsKm
+            ? "Informe o valor do serviço / aluguel"
+            : "Informe o valor do serviço");
+          return;
+        }
+        itemsPayload = [{
+          product_id: null,
+          description: serviceDescription?.trim()
+            ? serviceDescription.trim().toUpperCase()
+            : "PRESTAÇÃO DE SERVIÇO",
+          quantity: 1,
+          unit: "ud",
+          unit_price: amount,
+        }];
+      }
+    } else {
+      itemsPayload = items
+        .filter((it) => it.product_id || it.description.trim())
+        .map((it) => ({
+          product_id: it.product_id || null,
+          description: it.description,
+          quantity: parseQty(it.quantity),
+          unit: it.unit,
+          unit_price: parseBRLToNumber(it.unit_price),
+        }));
+      if (itemsPayload.length === 0) {
+        setError("Adicione ao menos um item");
+        return;
+      }
     }
 
     const payload = {
@@ -289,12 +386,26 @@ export function ServiceOrderDialog({
       service_description: serviceDescription,
       delivery_date: deliveryDate || null,
       hourmeter_start:
-        type === "prestacao_servico" && hourmeterStart.trim()
+        type === "prestacao_servico" && useHourBasedPricing && hourmeterStart.trim()
           ? parseFloat(hourmeterStart.replace(",", "."))
           : null,
       hourmeter_end:
-        type === "prestacao_servico" && hourmeterEnd.trim()
+        type === "prestacao_servico" && useHourBasedPricing && hourmeterEnd.trim()
           ? parseFloat(hourmeterEnd.replace(",", "."))
+          : null,
+      km_start: kmStart.trim() ? parseFloat(kmStart.replace(",", ".")) : null,
+      km_end: kmEnd.trim() ? parseFloat(kmEnd.replace(",", ".")) : null,
+      hourly_rate:
+        type === "prestacao_servico" && useHourBasedPricing && hourlyRate.trim()
+          ? parseBRLToNumber(hourlyRate)
+          : null,
+      service_cost:
+        type === "prestacao_servico" && serviceCost.trim()
+          ? parseBRLToNumber(serviceCost)
+          : null,
+      fuel_cost:
+        type === "prestacao_servico" && fuelCost.trim()
+          ? parseBRLToNumber(fuelCost)
           : null,
       received_by: receivedBy.trim() || null,
       notes,
@@ -311,7 +422,6 @@ export function ServiceOrderDialog({
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
-
   const isClient = freightType === "cliente";
 
   return (
@@ -331,7 +441,7 @@ export function ServiceOrderDialog({
               <Label>O que é? *</Label>
               <div className="grid grid-cols-2 gap-2">
                 {([
-                  { v: "entrega_material",  label: "Entrega de material", icon: Truck },
+                  { v: "entrega_material",  label: "Entrega de material",  icon: Truck },
                   { v: "prestacao_servico", label: "Prestação de serviço", icon: Wrench },
                 ] as const).map(({ v, label, icon: Icon }) => (
                   <button
@@ -351,7 +461,7 @@ export function ServiceOrderDialog({
               </div>
             </div>
 
-            {/* Freight type toggle */}
+            {/* Freight type */}
             <div className="space-y-1.5">
               <Label>Para quem é? *</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -378,7 +488,7 @@ export function ServiceOrderDialog({
               </div>
             </div>
 
-            {/* Client info (only when cliente) */}
+            {/* Client info */}
             {isClient && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40">
                 <div className="space-y-1.5 sm:col-span-2">
@@ -423,130 +533,121 @@ export function ServiceOrderDialog({
                 onChange={setMachineId}
                 getId={(m) => m.id}
                 getLabel={(m) => (m.plate ? `${m.name} (${m.plate})` : m.name)}
+                renderItem={(m) => (
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <span className="truncate">
+                      {m.name}{m.plate ? ` (${m.plate})` : ""}
+                    </span>
+                    <span className="text-[10px] text-slate-400 flex-shrink-0 flex items-center gap-0.5">
+                      {m.tracking_type === "km" ? (
+                        <><Gauge className="w-3 h-3" />km</>
+                      ) : (
+                        <><Clock className="w-3 h-3" />h</>
+                      )}
+                    </span>
+                  </div>
+                )}
                 placeholder="Selecione uma máquina..."
                 searchPlaceholder="Buscar máquina ou placa..."
                 emptyMessage="Nenhuma máquina encontrada"
                 onCreateNew={() => setMchDialogOpen(true)}
                 createNewLabel="Cadastrar nova máquina"
               />
+              {selectedMachine && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-1 flex items-center gap-1">
+                  {selectedMachine.tracking_type === "km" ? (
+                    <><Gauge className="w-3 h-3" />Medido por km (hodômetro)</>
+                  ) : (
+                    <><Clock className="w-3 h-3" />Medido por horímetro</>
+                  )}
+                </p>
+              )}
             </div>
 
-            {/* Pickup location + delivery address */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Local de retirada</Label>
-                <SearchableSelect
-                  items={localLocations}
-                  value={pickupLocationId}
-                  onChange={setPickupLocationId}
-                  getId={(l) => l.id}
-                  getLabel={(l) => l.name}
-                  placeholder="Selecione um local..."
-                  searchPlaceholder="Buscar local..."
-                  emptyMessage="Nenhum local cadastrado"
-                  onCreateNew={() => setLocDialogOpen(true)}
-                  createNewLabel="Cadastrar novo local"
-                />
+            {/* Locations */}
+            {type === "entrega_material" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Local de retirada</Label>
+                  <SearchableSelect
+                    items={localLocations}
+                    value={pickupLocationId}
+                    onChange={setPickupLocationId}
+                    getId={(l) => l.id}
+                    getLabel={(l) => l.name}
+                    placeholder="Onde foi retirado..."
+                    searchPlaceholder="Buscar local..."
+                    emptyMessage="Nenhum local cadastrado"
+                    onCreateNew={() => setLocDialogOpen(true)}
+                    createNewLabel="Cadastrar novo local"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="delivery_addr">Local de entrega</Label>
+                  <Input
+                    id="delivery_addr"
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    placeholder="endereço de entrega"
+                    className="uppercase placeholder:normal-case placeholder:lowercase"
+                    autoCapitalize="characters"
+                  />
+                </div>
               </div>
+            ) : (
               <div className="space-y-1.5">
-                <Label htmlFor="delivery_addr">Endereço de entrega</Label>
+                <Label htmlFor="delivery_addr">Local de execução do serviço</Label>
                 <Input
                   id="delivery_addr"
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
-                  placeholder="onde será entregue"
+                  placeholder="onde o serviço foi feito"
                   className="uppercase placeholder:normal-case placeholder:lowercase"
                   autoCapitalize="characters"
                 />
               </div>
-            </div>
-
-            {/* Service description + hourmeter (only for prestacao_servico) */}
-            {type === "prestacao_servico" && (
-              <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="srv_desc">Descrição do serviço</Label>
-                  <Textarea
-                    id="srv_desc"
-                    value={serviceDescription}
-                    onChange={(e) => setServiceDescription(e.target.value)}
-                    placeholder="ex: terraplanagem do terreno, 8 horas"
-                    rows={2}
-                    className="uppercase placeholder:normal-case placeholder:lowercase"
-                  />
-                </div>
-
-                {/* Horímetro */}
-                <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
-                  <div className="col-span-2">
-                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-2">
-                      Horímetro da máquina
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="hmt_start" className="text-xs">Inicial (h)</Label>
-                    <Input
-                      id="hmt_start"
-                      value={hourmeterStart}
-                      onChange={(e) => setHourmeterStart(e.target.value.replace(/[^\d,]/g, ""))}
-                      placeholder="0,0"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      className="tabular-nums"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="hmt_end" className="text-xs">Final (h)</Label>
-                    <Input
-                      id="hmt_end"
-                      value={hourmeterEnd}
-                      onChange={(e) => setHourmeterEnd(e.target.value.replace(/[^\d,]/g, ""))}
-                      placeholder="0,0"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      className="tabular-nums"
-                    />
-                  </div>
-                  {hourmeterStart && hourmeterEnd && (
-                    <p className="col-span-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                      Total trabalhado:{" "}
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">
-                        {(
-                          parseFloat(hourmeterEnd.replace(",", ".")) -
-                          parseFloat(hourmeterStart.replace(",", "."))
-                        ).toFixed(1).replace(".", ",")}h
-                      </span>
-                    </p>
-                  )}
-                </div>
-              </>
             )}
 
-            {/* Items */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>{type === "entrega_material" ? "Materiais" : "Itens cobrados"}</Label>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="text-xs text-produmar-600 hover:text-produmar-700 font-medium flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  Adicionar item
-                </button>
+            {/* Service description (prestacao_servico only) */}
+            {type === "prestacao_servico" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="srv_desc">Descrição do serviço</Label>
+                <Textarea
+                  id="srv_desc"
+                  value={serviceDescription}
+                  onChange={(e) => setServiceDescription(e.target.value)}
+                  placeholder="ex: terraplanagem do terreno"
+                  rows={2}
+                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                />
               </div>
+            )}
 
+            {/* ── ITENS (entrega_material) ──────────────────────────── */}
+            {type === "entrega_material" && (
               <div className="space-y-2">
-                {items.map((it, idx) => {
-                  const lineTotal = parseQty(it.quantity) * parseBRLToNumber(it.unit_price);
-                  return (
-                    <div
-                      key={idx}
-                      className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2 bg-slate-50/40 dark:bg-slate-800/40"
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="flex-1 min-w-0">
-                          {type === "entrega_material" ? (
+                <div className="flex items-center justify-between">
+                  <Label>Materiais</Label>
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    className="text-xs text-produmar-600 hover:text-produmar-700 font-medium flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Adicionar item
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {items.map((it, idx) => {
+                    const lineTotal = parseQty(it.quantity) * parseBRLToNumber(it.unit_price);
+                    return (
+                      <div
+                        key={idx}
+                        className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2 bg-slate-50/40 dark:bg-slate-800/40"
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
                             <SearchableSelect
                               items={localProducts}
                               value={it.product_id}
@@ -567,87 +668,270 @@ export function ServiceOrderDialog({
                               onCreateNew={() => { setPrdDialogIdx(idx); setPrdDialogOpen(true); }}
                               createNewLabel="Cadastrar produto"
                             />
-                          ) : (
-                            <Input
-                              value={it.description}
-                              onChange={(e) => setItem(idx, { description: e.target.value })}
-                              placeholder="descrição do item / serviço"
-                              className="uppercase placeholder:normal-case placeholder:lowercase"
-                            />
+                          </div>
+                          {items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeItem(idx)}
+                              className="p-1.5 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
+                              title="Remover item"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
                           )}
                         </div>
-                        {items.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeItem(idx)}
-                            className="p-1.5 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
-                            title="Remover item"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
 
-                      <div className="grid grid-cols-12 gap-2 items-end">
-                        <div className="col-span-4 sm:col-span-3 space-y-1">
-                          <Label className="text-[10px] text-slate-500 dark:text-slate-400">Quantidade</Label>
-                          <Input
-                            value={it.quantity}
-                            onChange={(e) => setItem(idx, { quantity: formatQty(e.target.value) })}
-                            placeholder="0"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            className="h-9 text-sm"
-                          />
+                        <div className="grid grid-cols-12 gap-2 items-end">
+                          <div className="col-span-4 sm:col-span-3 space-y-1">
+                            <Label className="text-[10px] text-slate-500 dark:text-slate-400">Quantidade</Label>
+                            <Input
+                              value={it.quantity}
+                              onChange={(e) => setItem(idx, { quantity: formatQty(e.target.value) })}
+                              placeholder="0"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                          <div className="col-span-3 sm:col-span-2 space-y-1">
+                            <Label className="text-[10px] text-slate-500 dark:text-slate-400">Un.</Label>
+                            <Input
+                              value={it.unit}
+                              onChange={(e) => setItem(idx, { unit: e.target.value })}
+                              placeholder="m³"
+                              autoComplete="off"
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                          <div className="col-span-5 sm:col-span-4 space-y-1">
+                            <Label className="text-[10px] text-slate-500 dark:text-slate-400">Valor unit. (R$)</Label>
+                            <Input
+                              value={it.unit_price}
+                              onChange={(e) => setItem(idx, { unit_price: formatBRLInput(e.target.value) })}
+                              placeholder="0,00"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              className="h-9 text-sm tabular-nums"
+                            />
+                          </div>
+                          <div className="col-span-12 sm:col-span-3 space-y-1 sm:text-right">
+                            <Label className="text-[10px] text-slate-500 dark:text-slate-400">Subtotal</Label>
+                            <p className="h-9 flex items-center sm:justify-end text-sm font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
+                              {formatBRL(lineTotal)}
+                            </p>
+                          </div>
                         </div>
-                        <div className="col-span-3 sm:col-span-2 space-y-1">
-                          <Label className="text-[10px] text-slate-500 dark:text-slate-400">Un.</Label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── PRECIFICAÇÃO DE SERVIÇO ──────────────────────────── */}
+            {type === "prestacao_servico" && (
+              <div className="space-y-3">
+
+                {/* Horímetro OU km da máquina */}
+                {selectedMachine && (
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                      {selectedMachine.tracking_type === "km" ? (
+                        <><Gauge className="w-3.5 h-3.5" />Hodômetro (km)</>
+                      ) : (
+                        <><Clock className="w-3.5 h-3.5" />Horímetro</>
+                      )}
+                    </p>
+                    {selectedMachine.tracking_type === "km" ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-slate-500">KM inicial</Label>
                           <Input
-                            value={it.unit}
-                            onChange={(e) => setItem(idx, { unit: e.target.value })}
-                            placeholder="m³"
-                            autoComplete="off"
-                            className="h-9 text-sm"
-                          />
-                        </div>
-                        <div className="col-span-5 sm:col-span-4 space-y-1">
-                          <Label className="text-[10px] text-slate-500 dark:text-slate-400">Valor unit. (R$)</Label>
-                          <Input
-                            value={it.unit_price}
-                            onChange={(e) => setItem(idx, { unit_price: formatBRLInput(e.target.value) })}
-                            placeholder="0,00"
+                            value={kmStart}
+                            onChange={(e) => setKmStart(sanitizeDecimal(e.target.value))}
+                            placeholder="0,0"
                             inputMode="decimal"
                             autoComplete="off"
                             className="h-9 text-sm tabular-nums"
                           />
                         </div>
-                        <div className="col-span-12 sm:col-span-3 space-y-1 sm:text-right">
-                          <Label className="text-[10px] text-slate-500 dark:text-slate-400">Subtotal</Label>
-                          <p className="h-9 flex items-center sm:justify-end text-sm font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
-                            {formatBRL(lineTotal)}
-                          </p>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-slate-500">KM final</Label>
+                          <Input
+                            value={kmEnd}
+                            onChange={(e) => setKmEnd(sanitizeDecimal(e.target.value))}
+                            placeholder="0,0"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="h-9 text-sm tabular-nums"
+                          />
                         </div>
+                        {kmDelta > 0 && (
+                          <p className="col-span-2 text-[11px] text-slate-500 tabular-nums">
+                            Total rodado:{" "}
+                            <span className="font-semibold text-slate-700 dark:text-slate-200">
+                              {kmDelta.toFixed(1).replace(".", ",")} km
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-slate-500">Horímetro inicial</Label>
+                          <Input
+                            value={hourmeterStart}
+                            onChange={(e) => setHourmeterStart(sanitizeDecimal(e.target.value))}
+                            placeholder="0,0"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="h-9 text-sm tabular-nums"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-slate-500">Horímetro final</Label>
+                          <Input
+                            value={hourmeterEnd}
+                            onChange={(e) => setHourmeterEnd(sanitizeDecimal(e.target.value))}
+                            placeholder="0,0"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="h-9 text-sm tabular-nums"
+                          />
+                        </div>
+                        {hoursWorked > 0 && (
+                          <p className="col-span-2 text-[11px] text-slate-500 tabular-nums">
+                            Horas trabalhadas:{" "}
+                            <span className="font-semibold text-slate-700 dark:text-slate-200">
+                              {hoursWorked.toFixed(2).replace(".", ",")}h
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Valor da hora OU valor flat */}
+                <div className="rounded-xl border border-produmar-100 dark:border-produmar-900/40 bg-produmar-50/40 dark:bg-produmar-950/20 p-3 space-y-2">
+                  {useHourBasedPricing ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
+                          <DollarSign className="w-3.5 h-3.5" />
+                          Valor por hora *
+                        </Label>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
+                        <Input
+                          value={hourlyRate}
+                          onChange={(e) => setHourlyRate(formatBRLInput(e.target.value))}
+                          placeholder="0,00"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          className="pl-9 tabular-nums"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
+                        <DollarSign className="w-3.5 h-3.5" />
+                        {machineIsKm
+                          ? "Valor do serviço / aluguel *"
+                          : "Valor do serviço *"}
+                      </Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
+                        <Input
+                          value={flatServiceAmount}
+                          onChange={(e) => setFlatServiceAmount(formatBRLInput(e.target.value))}
+                          placeholder="0,00"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          className="pl-9 tabular-nums"
+                        />
+                      </div>
+                      {machineIsKm && (
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Veículo de km não usa cálculo por hora — informe o valor combinado (diária, aluguel ou fechado).
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Custos internos */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    Custos internos
+                    <span className="text-[10px] text-slate-400 ml-1.5 font-normal">
+                      (não somam no total cobrado)
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500 flex items-center gap-1">
+                        <DollarSign className="w-3 h-3" />
+                        Gasto no serviço
+                      </Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">R$</span>
+                        <Input
+                          value={serviceCost}
+                          onChange={(e) => setServiceCost(formatBRLInput(e.target.value))}
+                          placeholder="0,00"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          className="pl-8 h-9 text-sm tabular-nums"
+                        />
                       </div>
                     </div>
-                  );
-                })}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500 flex items-center gap-1">
+                        <Fuel className="w-3 h-3" />
+                        Abastecimento
+                      </Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">R$</span>
+                        <Input
+                          value={fuelCost}
+                          onChange={(e) => setFuelCost(formatBRLInput(e.target.value))}
+                          placeholder="0,00"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          className="pl-8 h-9 text-sm tabular-nums"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {internalCosts > 0 && total > 0 && (
+                    <p className="text-[11px] text-slate-500 tabular-nums pt-1">
+                      Lucro estimado:{" "}
+                      <span className={`font-semibold ${estimatedProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+                        {formatBRL(estimatedProfit)}
+                      </span>
+                    </p>
+                  )}
+                </div>
               </div>
+            )}
 
-              {/* Total */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
-                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                  Total da OS
-                </span>
-                <span
-                  className={`text-lg font-bold tabular-nums ${
-                    isClient
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-amber-700 dark:text-amber-400"
-                  }`}
-                >
-                  {formatBRL(total)}
-                </span>
-              </div>
+            {/* Total */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+              <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                Total {type === "prestacao_servico" ? "do serviço" : "da OS"}
+              </span>
+              <span
+                className={`text-lg font-bold tabular-nums ${
+                  isClient
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-amber-700 dark:text-amber-400"
+                }`}
+              >
+                {formatBRL(total)}
+              </span>
             </div>
 
             {/* Dates + status */}
@@ -656,12 +940,14 @@ export function ServiceOrderDialog({
                 <Label className="text-xs">Data do lançamento</Label>
                 <div className="h-10 px-3 flex items-center text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 tabular-nums">
                   {order
-                    ? new Date(order.issue_date).toLocaleDateString("pt-BR")
+                    ? new Date(order.issue_date + "T12:00:00").toLocaleDateString("pt-BR")
                     : new Date().toLocaleDateString("pt-BR")}
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="delivery_date">Data de entrega *</Label>
+                <Label htmlFor="delivery_date">
+                  Data {type === "prestacao_servico" ? "do serviço" : "de entrega"} *
+                </Label>
                 <Input
                   id="delivery_date"
                   type="date"
@@ -673,19 +959,21 @@ export function ServiceOrderDialog({
                 <Label>Status</Label>
                 <Select value={status} onValueChange={(v) => setStatus(v as ServiceOrderStatus)}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{osStatusLabel(status, type)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pendente">Pendente</SelectItem>
                     <SelectItem value="em_andamento">Em andamento</SelectItem>
-                    <SelectItem value="entregue">Entregue</SelectItem>
+                    <SelectItem value="entregue">
+                      {osStatusLabel("entregue", type)}
+                    </SelectItem>
                     <SelectItem value="cancelado">Cancelado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {/* Recebido por (visível quando status = entregue) */}
+            {/* Recebido por */}
             {status === "entregue" && (
               <div className="space-y-1.5">
                 <Label htmlFor="received_by">Recebido por</Label>

@@ -29,7 +29,7 @@ import {
   generateTransactionFromOrder,
   updateServiceOrderStatus,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatDate } from "@/lib/utils";
+import { formatBRL, formatDate, osStatusLabel } from "@/lib/utils";
 import type {
   Category,
   CostCenter,
@@ -68,13 +68,6 @@ const FILTER_TABS = [
 ] as const;
 
 type FilterValue = (typeof FILTER_TABS)[number]["value"];
-
-const STATUS_LABEL: Record<ServiceOrderStatus, string> = {
-  pendente:     "Pendente",
-  em_andamento: "Em andamento",
-  entregue:     "Entregue",
-  cancelado:    "Cancelado",
-};
 
 const STATUS_STYLE: Record<ServiceOrderStatus, string> = {
   pendente:     "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400",
@@ -115,7 +108,7 @@ function exportCSV(orders: ServiceOrderWithDetails[], fileLabel: string) {
       .map((it) => `${it.quantity} ${it.unit ?? ""} ${it.description ?? ""}`.trim())
       .join(" | "),
     o.total_amount.toFixed(2).replace(".", ","),
-    STATUS_LABEL[o.status],
+    osStatusLabel(o.status, o.type),
   ]);
 
   const csv =
@@ -506,7 +499,7 @@ function OrderRow({
         <span
           className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_STYLE[o.status]}`}
         >
-          {STATUS_LABEL[o.status]}
+          {osStatusLabel(o.status, o.type)}
         </span>
       </div>
 
@@ -515,7 +508,13 @@ function OrderRow({
         {canAdvance && (
           <button
             onClick={() => onStatus(o, nextStatus)}
-            title={nextStatus === "em_andamento" ? "Marcar em andamento" : "Marcar como entregue"}
+            title={
+              nextStatus === "em_andamento"
+                ? "Marcar em andamento"
+                : o.type === "prestacao_servico"
+                  ? "Marcar como finalizado"
+                  : "Marcar como entregue"
+            }
             className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 transition-colors"
           >
             {nextStatus === "em_andamento" ? (

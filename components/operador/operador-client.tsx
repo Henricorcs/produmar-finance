@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FinalizeOSDialog } from "./finalize-os-dialog";
 import { updateServiceOrderStatus } from "@/app/(app)/operacoes/actions";
-import { formatBRL } from "@/lib/utils";
+import { formatBRL, osStatusLabel } from "@/lib/utils";
 import type { ServiceOrder, ServiceOrderItem, ServiceOrderStatus } from "@/lib/types";
 
 type OrderWithDetails = ServiceOrder & {
@@ -27,13 +27,6 @@ interface Props {
   orders: OrderWithDetails[];
   operadorName: string;
 }
-
-const STATUS_LABEL: Record<ServiceOrderStatus, string> = {
-  pendente:     "Pendente",
-  em_andamento: "Em andamento",
-  entregue:     "Entregue",
-  cancelado:    "Cancelado",
-};
 
 const STATUS_STYLE: Record<ServiceOrderStatus, string> = {
   pendente:     "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400",
@@ -223,7 +216,7 @@ function OSCard({
               <span
                 className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_STYLE[o.status]}`}
               >
-                {STATUS_LABEL[o.status]}
+                {osStatusLabel(o.status, o.type)}
               </span>
             </div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight">

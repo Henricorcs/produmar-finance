@@ -124,15 +124,17 @@ export interface CashflowProjectionDay {
 
 // ── Operações (Ordens de Serviço) ────────────────────────────────────────────
 
-export type ServiceOrderType   = "entrega_material" | "prestacao_servico";
-export type ServiceFreightType = "cliente" | "interno";
-export type ServiceOrderStatus = "pendente" | "em_andamento" | "entregue" | "cancelado";
+export type ServiceOrderType    = "entrega_material" | "prestacao_servico";
+export type ServiceFreightType  = "cliente" | "interno";
+export type ServiceOrderStatus  = "pendente" | "em_andamento" | "entregue" | "cancelado";
+export type MachineTrackingType = "hourmeter" | "km";
 
 export interface Machine {
   id: string;
   name: string;
   plate: string | null;
   type: string | null;
+  tracking_type: MachineTrackingType;
   notes: string | null;
   active: boolean;
   created_at: string;
@@ -181,6 +183,11 @@ export interface ServiceOrder {
 
   hourmeter_start: number | null;
   hourmeter_end: number | null;
+  km_start: number | null;
+  km_end: number | null;
+  hourly_rate: number | null;
+  service_cost: number | null;
+  fuel_cost: number | null;
   received_by: string | null;
 
   total_amount: number;

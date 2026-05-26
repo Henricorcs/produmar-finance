@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
+import { osStatusLabel } from "@/lib/utils";
 import type { ServiceOrder, ServiceOrderItem } from "@/lib/types";
 
 type PrintOrder = ServiceOrder & {
-  machines: { name: string; plate: string | null; type: string | null } | null;
+  machines: {
+    name: string;
+    plate: string | null;
+    type: string | null;
+    tracking_type?: "hourmeter" | "km";
+  } | null;
   pickup_locations: { name: string; address: string | null } | null;
   service_order_items: ServiceOrderItem[];
 };
@@ -25,12 +31,6 @@ function formatDate(s: string | null | undefined) {
   return `${d}/${m}/${y}`;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pendente:     "Pendente",
-  em_andamento: "Em andamento",
-  entregue:     "Entregue",
-  cancelado:    "Cancelado",
-};
 
 export function OrcamentoPrint({ order, autoPrint }: Props) {
   useEffect(() => {
@@ -122,7 +122,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
               { label: "Emissão",   value: formatDate(order.issue_date) },
               { label: "Entrega",   value: formatDate(order.delivery_date) },
               { label: "Tipo",      value: isMaterial ? "Entrega de material" : "Prestação de serviço" },
-              { label: "Status",    value: STATUS_LABEL[order.status] ?? order.status },
+              { label: "Status",    value: osStatusLabel(order.status, order.type) },
             ].map((f) => (
               <div key={f.label} className="px-3 py-2.5 border-r last:border-r-0 border-slate-200">
                 <p className="text-[10px] text-slate-400 uppercase font-semibold">{f.label}</p>
@@ -194,7 +194,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
             (order.hourmeter_start != null || order.hourmeter_end != null) && (
             <div className="border border-slate-200 rounded-lg p-3 text-xs">
               <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">Horímetro</p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-3">
                 <div>
                   <p className="text-slate-400">Inicial</p>
                   <p className="font-semibold text-slate-700 tabular-nums">
@@ -211,6 +211,43 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                   <div>
                     <p className="text-slate-400">Total trabalhado</p>
                     <p className="font-bold text-produmar-700 tabular-nums">{hourmeterDiff} h</p>
+                  </div>
+                )}
+                {order.hourly_rate != null && (
+                  <div>
+                    <p className="text-slate-400">Valor da hora</p>
+                    <p className="font-bold text-produmar-700 tabular-nums">
+                      R$ {formatBRL(order.hourly_rate)}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* KM (hodômetro) */}
+          {(order.km_start != null || order.km_end != null) && (
+            <div className="border border-slate-200 rounded-lg p-3 text-xs">
+              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">Hodômetro</p>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-slate-400">KM inicial</p>
+                  <p className="font-semibold text-slate-700 tabular-nums">
+                    {order.km_start?.toString().replace(".", ",") ?? "—"} km
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-400">KM final</p>
+                  <p className="font-semibold text-slate-700 tabular-nums">
+                    {order.km_end?.toString().replace(".", ",") ?? "—"} km
+                  </p>
+                </div>
+                {order.km_start != null && order.km_end != null && order.km_end > order.km_start && (
+                  <div>
+                    <p className="text-slate-400">Total rodado</p>
+                    <p className="font-bold text-produmar-700 tabular-nums">
+                      {(order.km_end - order.km_start).toFixed(1).replace(".", ",")} km
+                    </p>
                   </div>
                 )}
               </div>

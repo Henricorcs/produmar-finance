@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type {
   Machine,
+  MachineTrackingType,
   Product,
   PickupLocation,
   ServiceFreightType,
@@ -26,6 +27,7 @@ export async function createMachine(input: {
   name: string;
   plate?: string | null;
   type?: string | null;
+  tracking_type?: MachineTrackingType;
   notes?: string | null;
 }): Promise<{ error: string } | { ok: true; machine: Machine }> {
   const supabase = createClient();
@@ -38,6 +40,7 @@ export async function createMachine(input: {
       name: name.toUpperCase(),
       plate: input.plate?.trim() ? input.plate.trim().toUpperCase() : null,
       type: input.type?.trim() ? input.type.trim() : null,
+      tracking_type: input.tracking_type ?? "hourmeter",
       notes: input.notes?.trim() ? input.notes.trim() : null,
     })
     .select()
@@ -50,13 +53,14 @@ export async function createMachine(input: {
 
 export async function updateMachine(
   id: string,
-  input: Partial<Pick<Machine, "name" | "plate" | "type" | "notes" | "active">>
+  input: Partial<Pick<Machine, "name" | "plate" | "type" | "tracking_type" | "notes" | "active">>
 ) {
   const supabase = createClient();
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name.trim().toUpperCase();
   if (input.plate !== undefined) patch.plate = input.plate?.toString().trim().toUpperCase() || null;
   if (input.type !== undefined) patch.type = input.type?.toString().trim() || null;
+  if (input.tracking_type !== undefined) patch.tracking_type = input.tracking_type;
   if (input.notes !== undefined) patch.notes = input.notes?.toString().trim() || null;
   if (input.active !== undefined) patch.active = input.active;
 
@@ -212,6 +216,11 @@ export interface ServiceOrderInput {
   delivery_date?: string | null;
   hourmeter_start?: number | null;
   hourmeter_end?: number | null;
+  km_start?: number | null;
+  km_end?: number | null;
+  hourly_rate?: number | null;
+  service_cost?: number | null;
+  fuel_cost?: number | null;
   received_by?: string | null;
   notes?: string | null;
   items: ServiceOrderItemInput[];
@@ -235,6 +244,11 @@ function sanitizeOrder(input: ServiceOrderInput) {
     delivery_date: input.delivery_date || null,
     hourmeter_start: input.hourmeter_start ?? null,
     hourmeter_end: input.hourmeter_end ?? null,
+    km_start: input.km_start ?? null,
+    km_end: input.km_end ?? null,
+    hourly_rate: input.hourly_rate ?? null,
+    service_cost: input.service_cost ?? null,
+    fuel_cost: input.fuel_cost ?? null,
     received_by: input.received_by?.trim() ? input.received_by.trim().toUpperCase() : null,
     notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
   };

@@ -28,7 +28,7 @@ export default async function ContasPage({
       )
       .gte("due_date", startDate)
       .lte("due_date", endDate)
-      .order("due_date", { ascending: true }),
+      .order("due_date", { ascending: false }),
     supabase.from("categories").select("*").order("name"),
     supabase.from("cost_centers").select("*").eq("active", true).order("name"),
   ]);

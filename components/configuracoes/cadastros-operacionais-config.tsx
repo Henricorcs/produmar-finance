@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, X, Check, Truck, Package, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, Truck, Package, MapPin, Clock, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,7 +15,7 @@ import {
   updatePickupLocation,
   deletePickupLocation,
 } from "@/app/(app)/operacoes/actions";
-import type { Machine, Product, PickupLocation } from "@/lib/types";
+import type { Machine, MachineTrackingType, Product, PickupLocation } from "@/lib/types";
 
 interface Props {
   machines: Machine[];
@@ -73,9 +73,11 @@ function MachinesList({ machines }: { machines: Machine[] }) {
   const [name, setName]   = useState("");
   const [plate, setPlate] = useState("");
   const [type, setType]   = useState("");
+  const [tracking, setTracking] = useState<MachineTrackingType>("hourmeter");
 
   function reset() {
-    setName(""); setPlate(""); setType(""); setEditingId(null); setShowForm(false);
+    setName(""); setPlate(""); setType(""); setTracking("hourmeter");
+    setEditingId(null); setShowForm(false);
   }
 
   function startEdit(m: Machine) {
@@ -83,15 +85,16 @@ function MachinesList({ machines }: { machines: Machine[] }) {
     setName(m.name);
     setPlate(m.plate ?? "");
     setType(m.type ?? "");
+    setTracking(m.tracking_type ?? "hourmeter");
     setShowForm(true);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (editingId) {
-      await updateMachine(editingId, { name, plate, type });
+      await updateMachine(editingId, { name, plate, type, tracking_type: tracking });
     } else {
-      await createMachine({ name, plate, type });
+      await createMachine({ name, plate, type, tracking_type: tracking });
     }
     reset();
   }
@@ -123,7 +126,16 @@ function MachinesList({ machines }: { machines: Machine[] }) {
                 {m.name}
                 {m.plate && <span className="text-xs text-slate-400 ml-1.5">({m.plate})</span>}
               </p>
-              {m.type && <p className="text-[10px] text-slate-400">{m.type}</p>}
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {m.type && <span className="text-[10px] text-slate-400">{m.type}</span>}
+                <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                  {m.tracking_type === "km" ? (
+                    <><Gauge className="w-2.5 h-2.5" />km</>
+                  ) : (
+                    <><Clock className="w-2.5 h-2.5" />horímetro</>
+                  )}
+                </span>
+              </div>
             </div>
             <button
               onClick={() => handleToggleActive(m)}
@@ -173,6 +185,27 @@ function MachinesList({ machines }: { machines: Machine[] }) {
               placeholder="tipo"
               className="h-9 text-sm"
             />
+          </div>
+          {/* Tracking type */}
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { v: "hourmeter", label: "Horímetro", icon: Clock },
+              { v: "km",        label: "Km",        icon: Gauge },
+            ] as const).map(({ v, label, icon: Icon }) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setTracking(v)}
+                className={`flex items-center justify-center gap-1 h-8 text-[11px] rounded-md border transition-colors ${
+                  tracking === v
+                    ? "bg-produmar-50 border-produmar-300 text-produmar-700 dark:bg-produmar-900/30 dark:border-produmar-600 dark:text-produmar-400"
+                    : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700"
+                }`}
+              >
+                <Icon className="w-3 h-3" />
+                {label}
+              </button>
+            ))}
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={reset} className="flex-1 h-9 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50">
