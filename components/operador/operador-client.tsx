@@ -170,11 +170,19 @@ function OSCard({
   const isClient   = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
 
-  const itemSummary = o.service_order_items
-    .slice(0, 3)
-    .map((it) => `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""} ${it.description ?? ""}`.trim())
-    .join(" · ");
-  const moreItems = o.service_order_items.length > 3 ? ` +${o.service_order_items.length - 3} item(s)` : "";
+  // Para serviço: só mostra service_description. Para entrega: lista de itens.
+  let primaryInfo: string | null = null;
+  if (isMaterial) {
+    const itemsStr = o.service_order_items
+      .slice(0, 3)
+      .map((it) => `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""} ${it.description ?? ""}`.trim())
+      .filter(Boolean)
+      .join(" · ");
+    const more = o.service_order_items.length > 3 ? ` +${o.service_order_items.length - 3}` : "";
+    primaryInfo = itemsStr ? itemsStr + more : null;
+  } else {
+    primaryInfo = o.service_description?.trim() || null;
+  }
 
   return (
     <div
@@ -220,7 +228,9 @@ function OSCard({
               </span>
             </div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight">
-              {isClient ? (o.client_name ?? "Cliente") : "Consumo interno"}
+              {isClient
+                ? (o.client_name ?? "Cliente")
+                : isMaterial ? "Consumo interno" : "Interno"}
             </p>
           </div>
         </div>
@@ -237,13 +247,11 @@ function OSCard({
 
       {/* Details */}
       <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400 pl-11">
-        {itemSummary && (
-          <p>
-            📦 {itemSummary}{moreItems}
-          </p>
+        {primaryInfo && (
+          <p>{isMaterial ? "📦" : "🔧"} {primaryInfo}</p>
         )}
-        {o.service_description && (
-          <p>🔧 {o.service_description.slice(0, 80)}</p>
+        {o.delivery_address && (
+          <p>📍 {o.delivery_address}</p>
         )}
         {o.machines && (
           <p>
@@ -251,12 +259,9 @@ function OSCard({
             {o.machines.plate ? ` (${o.machines.plate})` : ""}
           </p>
         )}
-        {o.pickup_locations && (
-          <p>📍 {o.pickup_locations.name}</p>
-        )}
         {o.delivery_date && (
           <p>
-            📅 Entrega:{" "}
+            📅 {isMaterial ? "Entrega" : "Serviço"}:{" "}
             {new Date(o.delivery_date + "T12:00:00").toLocaleDateString("pt-BR")}
           </p>
         )}

@@ -405,19 +405,43 @@ function OrderRow({
 }) {
   const isClient = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
-  const counterpart = isClient ? (o.client_name ?? "Cliente") : "Consumo interno";
 
-  // Item summary
-  const itemSummary = o.service_order_items
-    .slice(0, 2)
-    .map((it) => {
-      const desc = it.description ?? "";
-      return `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""} ${desc}`.trim();
-    })
-    .join(" · ");
-  const moreItems = o.service_order_items.length > 2
-    ? ` +${o.service_order_items.length - 2}`
-    : "";
+  // Counterpart label — só "Interno" para serviço; "Consumo interno" só faz
+  // sentido em entrega (está consumindo material). Ícone já indica o tipo.
+  const counterpart = isClient
+    ? (o.client_name ?? "Cliente")
+    : isMaterial ? "Consumo interno" : "Interno";
+
+  // ── Linha primária (O QUE foi feito) ──────────────────────────────────────
+  // Serviço: só a descrição do serviço (o item sintético "1 ud × R$ X" é lixo
+  // visual). Entrega: lista de materiais com qty + unidade.
+  let primaryInfo: string | null = null;
+  if (isMaterial) {
+    const itemsStr = o.service_order_items
+      .slice(0, 2)
+      .map((it) => {
+        const qty = it.quantity.toString().replace(".", ",");
+        const desc = it.description ?? "";
+        return `${qty} ${it.unit ?? ""} ${desc}`.trim();
+      })
+      .filter(Boolean)
+      .join(" · ");
+    const more = o.service_order_items.length > 2
+      ? ` +${o.service_order_items.length - 2}`
+      : "";
+    primaryInfo = itemsStr ? itemsStr + more : null;
+  } else {
+    primaryInfo = o.service_description?.trim() || null;
+  }
+
+  // ── Linha secundária (ONDE + máquina + data) ──────────────────────────────
+  const parts: string[] = [];
+  if (o.delivery_address?.trim()) parts.push(`📍 ${o.delivery_address}`);
+  if (o.machines) {
+    parts.push(`🚛 ${o.machines.name}${o.machines.plate ? ` (${o.machines.plate})` : ""}`);
+  }
+  if (o.delivery_date) parts.push(`📅 ${formatDate(o.delivery_date)}`);
+  const secondaryInfo = parts.join(" · ");
 
   const canAdvance = o.status === "pendente" || o.status === "em_andamento";
   const nextStatus: ServiceOrderStatus =
@@ -469,23 +493,17 @@ function OrderRow({
             )}
           </div>
 
-          {/* Item summary — single line truncated */}
-          {(itemSummary || o.service_description) && (
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-              {itemSummary}{moreItems}
-              {o.service_description && itemSummary && " · "}
-              {o.service_description}
+          {/* Primary: o que foi feito (descrição do serviço OU itens) */}
+          {primaryInfo && (
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
+              {primaryInfo}
             </p>
           )}
 
-          {/* Machine + date — single line truncated */}
-          {(o.machines || o.delivery_date) && (
+          {/* Secondary: local + máquina + data, separados por · */}
+          {secondaryInfo && (
             <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
-              {o.machines && (
-                <>🚛 {o.machines.name}{o.machines.plate ? ` (${o.machines.plate})` : ""}</>
-              )}
-              {o.machines && o.delivery_date && " · "}
-              {o.delivery_date && <>📅 {formatDate(o.delivery_date)}</>}
+              {secondaryInfo}
             </p>
           )}
         </div>
