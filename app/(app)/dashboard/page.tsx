@@ -4,7 +4,7 @@ import { CashflowChart } from "@/components/dashboard/cashflow-chart";
 import { CashflowProjection } from "@/components/dashboard/cashflow-projection";
 import { ExpenseBreakdown } from "@/components/dashboard/expense-breakdown";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
-import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock, Banknote } from "lucide-react";
 import type {
   DashboardKPIs,
   ExpenseByCategory,
@@ -45,9 +45,11 @@ export default async function DashboardPage() {
     receitas_mes: 0,
     despesas_mes: 0,
     a_pagar_7dias: 0,
+    a_receber_mes: 0,
     count_receitas_mes: 0,
     count_despesas_mes: 0,
-    count_a_pagar_7dias: 0
+    count_a_pagar_7dias: 0,
+    count_a_receber_mes: 0,
   };
 
   const expenses = (expensesRes.data as ExpenseByCategory[]) ?? [];
@@ -80,7 +82,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KpiCard
           label="Saldo atual"
           value={kpis.saldo_atual}
@@ -104,6 +106,14 @@ export default async function DashboardPage() {
           variant="danger"
           icon={TrendingDown}
           href="/para-onde-foi"
+        />
+        <KpiCard
+          label="A receber (mês)"
+          value={kpis.a_receber_mes}
+          caption={`${kpis.count_a_receber_mes} pendente(s)`}
+          variant="info"
+          icon={Banknote}
+          href="/contas?filter=a-receber"
         />
         <KpiCard
           label="A pagar (7 dias)"

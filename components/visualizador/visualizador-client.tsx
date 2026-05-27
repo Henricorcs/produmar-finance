@@ -11,6 +11,7 @@ import {
   Download,
   ArrowDownCircle,
   ArrowUpCircle,
+  Banknote,
   Clock,
   FileText,
   Paperclip,
@@ -215,9 +216,13 @@ export function VisualizadorClient({ transactions, month }: Props) {
     .filter((t) => t.type === "saida" && t.status === "pago")
     .reduce((s, t) => s + t.amount, 0);
 
-  // Pendentes / vencidos que ainda não foram pagos
+  // Pendentes / vencidos que ainda não foram pagos ou recebidos
   const totalAPagar = filteredTransactions
     .filter((t) => t.type === "saida" && (t.status === "pendente" || t.status === "vencido"))
+    .reduce((s, t) => s + t.amount, 0);
+
+  const totalAReceber = filteredTransactions
+    .filter((t) => t.type === "entrada" && (t.status === "pendente" || t.status === "vencido"))
     .reduce((s, t) => s + t.amount, 0);
 
   return (
@@ -288,7 +293,7 @@ export function VisualizadorClient({ transactions, month }: Props) {
 
       {/* Summary */}
       {filteredTransactions.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
           {/* Receitas recebidas */}
           <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 rounded-xl px-3 sm:px-4 py-2.5 min-w-0">
             <ArrowDownCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
@@ -331,6 +336,16 @@ export function VisualizadorClient({ transactions, month }: Props) {
               <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">A pagar</p>
               <p className="text-xs sm:text-sm font-semibold text-amber-700 dark:text-amber-400 tabular-nums truncate">
                 {formatBRL(totalAPagar)}
+              </p>
+            </div>
+          </div>
+          {/* A receber */}
+          <div className="flex items-center gap-2 bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-100 dark:border-cyan-900/50 rounded-xl px-3 sm:px-4 py-2.5 min-w-0">
+            <Banknote className="w-4 h-4 text-cyan-600 dark:text-cyan-400 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">A receber</p>
+              <p className="text-xs sm:text-sm font-semibold text-cyan-700 dark:text-cyan-400 tabular-nums truncate">
+                {formatBRL(totalAReceber)}
               </p>
             </div>
           </div>

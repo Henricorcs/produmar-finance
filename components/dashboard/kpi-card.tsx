@@ -7,7 +7,7 @@ interface KpiCardProps {
   value: number;
   caption?: string;
   trend?: { value: number; direction: "up" | "down" };
-  variant?: "primary" | "success" | "danger" | "warning" | "neutral";
+  variant?: "primary" | "success" | "danger" | "warning" | "info" | "neutral";
   icon?: LucideIcon;
   href?: string;
 }
@@ -28,6 +28,7 @@ export function KpiCard({
     success: "bg-white dark:bg-slate-900 border-produmar-100 dark:border-slate-800 text-emerald-700 dark:text-emerald-400",
     danger:  "bg-white dark:bg-slate-900 border-produmar-100 dark:border-slate-800 text-red-700 dark:text-red-400",
     warning: "bg-white dark:bg-slate-900 border-produmar-100 dark:border-slate-800 text-amber-700 dark:text-amber-400",
+    info:    "bg-white dark:bg-slate-900 border-produmar-100 dark:border-slate-800 text-cyan-700 dark:text-cyan-400",
     neutral: "bg-white dark:bg-slate-900 border-produmar-100 dark:border-slate-800 text-produmar-800 dark:text-slate-100",
   };
 
