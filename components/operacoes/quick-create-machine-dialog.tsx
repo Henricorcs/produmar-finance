@@ -52,7 +52,7 @@ export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="mch_name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.toUpperCase())}
               placeholder="ex: caminhão 01"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
@@ -65,7 +65,7 @@ export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
               <Input
                 id="mch_plate"
                 value={plate}
-                onChange={(e) => setPlate(e.target.value)}
+                onChange={(e) => setPlate(e.target.value.toUpperCase())}
                 placeholder="ABC-1234"
                 className="uppercase placeholder:normal-case"
               />

@@ -55,7 +55,7 @@ export function QuickCreateProductDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="prd_name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.toUpperCase())}
               placeholder="ex: areia média"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"

@@ -467,7 +467,12 @@ export function ServiceOrderDialog({
               <div className="grid grid-cols-2 gap-2">
                 {([
                   { v: "cliente", label: "Cliente externo", icon: User },
-                  { v: "interno", label: "Consumo interno", icon: Building2 },
+                  {
+                    v: "interno",
+                    // "Consumo interno" só faz sentido em entrega; para serviço é só "Interno"
+                    label: type === "prestacao_servico" ? "Interno" : "Consumo interno",
+                    icon: Building2,
+                  },
                 ] as const).map(({ v, label, icon: Icon }) => (
                   <button
                     key={v}
@@ -496,7 +501,7 @@ export function ServiceOrderDialog({
                   <Input
                     id="client_name"
                     value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
+                    onChange={(e) => setClientName(e.target.value.toUpperCase())}
                     placeholder="ex: construtora silva"
                     className="uppercase placeholder:normal-case placeholder:lowercase"
                     autoCapitalize="characters"
@@ -587,7 +592,7 @@ export function ServiceOrderDialog({
                   <Input
                     id="delivery_addr"
                     value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    onChange={(e) => setDeliveryAddress(e.target.value.toUpperCase())}
                     placeholder="endereço de entrega"
                     className="uppercase placeholder:normal-case placeholder:lowercase"
                     autoCapitalize="characters"
@@ -600,7 +605,7 @@ export function ServiceOrderDialog({
                 <Input
                   id="delivery_addr"
                   value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  onChange={(e) => setDeliveryAddress(e.target.value.toUpperCase())}
                   placeholder="onde o serviço foi feito"
                   className="uppercase placeholder:normal-case placeholder:lowercase"
                   autoCapitalize="characters"
@@ -615,7 +620,7 @@ export function ServiceOrderDialog({
                 <Textarea
                   id="srv_desc"
                   value={serviceDescription}
-                  onChange={(e) => setServiceDescription(e.target.value)}
+                  onChange={(e) => setServiceDescription(e.target.value.toUpperCase())}
                   placeholder="ex: terraplanagem do terreno"
                   rows={2}
                   className="uppercase placeholder:normal-case placeholder:lowercase"
@@ -980,7 +985,7 @@ export function ServiceOrderDialog({
                 <Input
                   id="received_by"
                   value={receivedBy}
-                  onChange={(e) => setReceivedBy(e.target.value)}
+                  onChange={(e) => setReceivedBy(e.target.value.toUpperCase())}
                   placeholder="nome de quem recebeu"
                   className="uppercase placeholder:normal-case placeholder:lowercase"
                   autoComplete="off"
@@ -994,7 +999,7 @@ export function ServiceOrderDialog({
               <Textarea
                 id="notes"
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => setNotes(e.target.value.toUpperCase())}
                 placeholder="observações opcionais..."
                 rows={2}
                 className="uppercase placeholder:normal-case placeholder:lowercase"

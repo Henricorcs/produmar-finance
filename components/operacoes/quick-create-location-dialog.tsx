@@ -47,7 +47,7 @@ export function QuickCreateLocationDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="loc_name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.toUpperCase())}
               placeholder="ex: pedreira norte"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
@@ -59,7 +59,7 @@ export function QuickCreateLocationDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="loc_addr"
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={(e) => setAddress(e.target.value.toUpperCase())}
               placeholder="rua / km / referência"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
