@@ -11,6 +11,7 @@ import {
   Download,
   ArrowDownCircle,
   ArrowUpCircle,
+  Clock,
   FileText,
   Paperclip,
   Search,
@@ -213,6 +214,10 @@ export function VisualizadorClient({ transactions, month }: Props) {
     .filter((t) => t.type === "saida")
     .reduce((s, t) => s + t.amount, 0);
 
+  const totalAPagar = filteredTransactions
+    .filter((t) => t.type === "saida" && (t.status === "pendente" || t.status === "vencido"))
+    .reduce((s, t) => s + t.amount, 0);
+
   return (
     <div className="space-y-5 animate-fade-in min-w-0">
 
@@ -281,36 +286,49 @@ export function VisualizadorClient({ transactions, month }: Props) {
 
       {/* Summary */}
       {filteredTransactions.length > 0 && (
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-          <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 rounded-xl px-2.5 sm:px-4 py-2 sm:py-2.5 min-w-0">
-            <ArrowDownCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+          {/* Receitas */}
+          <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 rounded-xl px-3 sm:px-4 py-2.5 min-w-0">
+            <ArrowDownCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <div className="min-w-0">
-              <p className="text-[9px] sm:text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Receitas</p>
-              <p className="text-[11px] sm:text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Receitas</p>
+              <p className="text-xs sm:text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
                 {formatBRL(totalReceitas)}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/50 rounded-xl px-2.5 sm:px-4 py-2 sm:py-2.5 min-w-0">
-            <ArrowUpCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+          {/* Despesas */}
+          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/50 rounded-xl px-3 sm:px-4 py-2.5 min-w-0">
+            <ArrowUpCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
             <div className="min-w-0">
-              <p className="text-[9px] sm:text-[10px] text-red-600 dark:text-red-400 font-medium">Despesas</p>
-              <p className="text-[11px] sm:text-sm font-semibold text-red-700 dark:text-red-400 tabular-nums truncate">
+              <p className="text-[10px] text-red-600 dark:text-red-400 font-medium">Despesas</p>
+              <p className="text-xs sm:text-sm font-semibold text-red-700 dark:text-red-400 tabular-nums truncate">
                 {formatBRL(totalDespesas)}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-2.5 sm:px-4 py-2 sm:py-2.5 min-w-0">
+          {/* Saldo */}
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-3 sm:px-4 py-2.5 min-w-0">
             <div className="min-w-0">
-              <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-medium">Saldo</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Saldo</p>
               <p
-                className={`text-[11px] sm:text-sm font-semibold tabular-nums truncate ${
+                className={`text-xs sm:text-sm font-semibold tabular-nums truncate ${
                   totalReceitas - totalDespesas >= 0
                     ? "text-emerald-600 dark:text-emerald-400"
                     : "text-red-600 dark:text-red-400"
                 }`}
               >
                 {formatBRL(totalReceitas - totalDespesas)}
+              </p>
+            </div>
+          </div>
+          {/* A pagar */}
+          <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/50 rounded-xl px-3 sm:px-4 py-2.5 min-w-0">
+            <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">A pagar</p>
+              <p className="text-xs sm:text-sm font-semibold text-amber-700 dark:text-amber-400 tabular-nums truncate">
+                {formatBRL(totalAPagar)}
               </p>
             </div>
           </div>
