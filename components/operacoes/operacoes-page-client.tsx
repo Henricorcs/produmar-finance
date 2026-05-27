@@ -424,87 +424,91 @@ function OrderRow({
     o.status === "pendente" ? "em_andamento" : "entregue";
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors group">
-      {/* Type icon */}
-      <div
-        className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-          isClient
-            ? "bg-emerald-50 dark:bg-emerald-950/40"
-            : "bg-amber-50 dark:bg-amber-950/40"
-        }`}
-      >
-        {isMaterial ? (
-          <Truck
-            className={`w-4 h-4 ${
-              isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
-            }`}
-          />
-        ) : (
-          <Wrench
-            className={`w-4 h-4 ${
-              isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
-            }`}
-          />
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tabular-nums">
-            #{o.order_number}
-          </span>
-          <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-            {counterpart}
-          </p>
-          {o.transaction_id && (
-            <span
-              title="Lançamento financeiro gerado"
-              className="text-emerald-500 dark:text-emerald-400"
-            >
-              <Receipt className="w-3 h-3" />
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-            {itemSummary}{moreItems}
-            {o.service_description && ` · ${o.service_description.slice(0, 40)}`}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          {o.machines && (
-            <span className="text-[10px] text-slate-400 dark:text-slate-500">
-              🚛 {o.machines.name}
-              {o.machines.plate ? ` (${o.machines.plate})` : ""}
-            </span>
-          )}
-          {o.delivery_date && (
-            <span className="text-[10px] text-slate-400 dark:text-slate-500">
-              📅 {formatDate(o.delivery_date)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Amount + status */}
-      <div className="text-right flex-shrink-0 space-y-1">
-        <p
-          className={`text-sm font-semibold tabular-nums ${
-            isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"
+    <div className="relative px-3 sm:px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors group">
+      <div className="flex items-start gap-3 min-w-0">
+        {/* Type icon */}
+        <div
+          className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+            isClient
+              ? "bg-emerald-50 dark:bg-emerald-950/40"
+              : "bg-amber-50 dark:bg-amber-950/40"
           }`}
         >
-          {formatBRL(o.total_amount)}
-        </p>
-        <span
-          className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_STYLE[o.status]}`}
-        >
-          {osStatusLabel(o.status, o.type)}
-        </span>
+          {isMaterial ? (
+            <Truck
+              className={`w-4 h-4 ${
+                isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
+              }`}
+            />
+          ) : (
+            <Wrench
+              className={`w-4 h-4 ${
+                isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
+              }`}
+            />
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0 space-y-0.5">
+          {/* counterpart + #N */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tabular-nums flex-shrink-0">
+              #{o.order_number}
+            </span>
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex-1 min-w-0">
+              {counterpart}
+            </p>
+            {o.transaction_id && (
+              <span
+                title="Lançamento financeiro gerado"
+                className="text-emerald-500 dark:text-emerald-400 flex-shrink-0"
+              >
+                <Receipt className="w-3 h-3" />
+              </span>
+            )}
+          </div>
+
+          {/* Item summary — single line truncated */}
+          {(itemSummary || o.service_description) && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              {itemSummary}{moreItems}
+              {o.service_description && itemSummary && " · "}
+              {o.service_description}
+            </p>
+          )}
+
+          {/* Machine + date — single line truncated */}
+          {(o.machines || o.delivery_date) && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+              {o.machines && (
+                <>🚛 {o.machines.name}{o.machines.plate ? ` (${o.machines.plate})` : ""}</>
+              )}
+              {o.machines && o.delivery_date && " · "}
+              {o.delivery_date && <>📅 {formatDate(o.delivery_date)}</>}
+            </p>
+          )}
+        </div>
+
+        {/* Amount + status (always visible on right) */}
+        <div className="text-right flex-shrink-0 space-y-1">
+          <p
+            className={`text-sm font-semibold tabular-nums whitespace-nowrap ${
+              isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"
+            }`}
+          >
+            {formatBRL(o.total_amount)}
+          </p>
+          <span
+            className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLE[o.status]}`}
+          >
+            {osStatusLabel(o.status, o.type)}
+          </span>
+        </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+      {/* Actions row — full width, separate line on mobile; hover only on desktop */}
+      <div className="flex items-center justify-end gap-0.5 mt-1.5 sm:mt-0 sm:absolute sm:top-2.5 sm:right-3 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity">
         {canAdvance && (
           <button
             onClick={() => onStatus(o, nextStatus)}
@@ -515,7 +519,7 @@ function OrderRow({
                   ? "Marcar como finalizado"
                   : "Marcar como entregue"
             }
-            className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
           >
             {nextStatus === "em_andamento" ? (
               <Loader2 className="w-4 h-4" />
@@ -528,7 +532,7 @@ function OrderRow({
           <button
             onClick={() => onGenerateTransaction(o)}
             title="Gerar lançamento financeiro"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
           >
             <Receipt className="w-4 h-4" />
           </button>
@@ -536,21 +540,21 @@ function OrderRow({
         <button
           onClick={() => window.open(`/imprimir/os/${o.id}`, "_blank")}
           title="Imprimir orçamento / comprovante"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 transition-colors"
+          className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
         >
           <Printer className="w-4 h-4" />
         </button>
         <button
           onClick={() => onEdit(o)}
           title="Editar"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 transition-colors"
+          className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
         >
           <Pencil className="w-4 h-4" />
         </button>
         <button
           onClick={() => onDelete(o.id)}
           title="Excluir"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
         >
           <Trash2 className="w-4 h-4" />
         </button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -8,14 +9,20 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   FileText,
+  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBRL, formatDate } from "@/lib/utils";
-import type { Transaction } from "@/lib/types";
+import {
+  TransactionDetailsDialog,
+  type DetailTransaction,
+} from "./transaction-details-dialog";
+import type { Transaction, TransactionAttachment } from "@/lib/types";
 
 type TransactionRow = Transaction & {
   categories: { name: string; color: string } | null;
   cost_centers: { name: string } | null;
+  transaction_attachments?: TransactionAttachment[];
 };
 
 interface Props {
@@ -88,7 +95,7 @@ function exportCSV(transactions: TransactionRow[], fileLabel: string) {
 function StatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${
         STATUS_STYLE[status] ?? STATUS_STYLE.pendente
       }`}
     >
@@ -101,6 +108,8 @@ function StatusBadge({ status }: { status: string }) {
 
 export function VisualizadorClient({ transactions, month }: Props) {
   const router = useRouter();
+  const [selected, setSelected] = useState<DetailTransaction | null>(null);
+
   const [year, monthNum] = month.split("-").map(Number);
 
   const monthLabel = new Date(year, monthNum - 1, 1).toLocaleDateString("pt-BR", {
@@ -124,16 +133,16 @@ export function VisualizadorClient({ transactions, month }: Props) {
     .reduce((s, t) => s + t.amount, 0);
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in min-w-0">
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">
             Lançamentos
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Consulte e exporte os lançamentos por período
+            Toque em qualquer lançamento para ver os detalhes
           </p>
         </div>
         {transactions.length > 0 && (
@@ -143,20 +152,20 @@ export function VisualizadorClient({ transactions, month }: Props) {
             onClick={() => exportCSV(transactions, fileLabel)}
           >
             <Download className="w-4 h-4" />
-            Exportar CSV
+            CSV
           </Button>
         )}
       </div>
 
       {/* Month navigator */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 justify-center sm:justify-start">
         <button
           onClick={() => navigate(-1)}
           className="p-2.5 sm:p-1.5 rounded-lg hover:bg-produmar-50 dark:hover:bg-slate-800 text-produmar-600 transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-        <span className="text-sm font-medium text-produmar-800 dark:text-slate-100 capitalize min-w-[160px] text-center">
+        <span className="text-sm font-medium text-produmar-800 dark:text-slate-100 capitalize min-w-[140px] sm:min-w-[160px] text-center">
           {monthLabel}
         </span>
         <button
@@ -169,30 +178,30 @@ export function VisualizadorClient({ transactions, month }: Props) {
 
       {/* Summary */}
       {transactions.length > 0 && (
-        <div className="flex gap-3 flex-wrap">
-          <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 rounded-xl px-4 py-2.5">
-            <ArrowDownCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-            <div>
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Receitas</p>
-              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 rounded-xl px-2.5 sm:px-4 py-2 sm:py-2.5 min-w-0">
+            <ArrowDownCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Receitas</p>
+              <p className="text-[11px] sm:text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
                 {formatBRL(totalReceitas)}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/50 rounded-xl px-4 py-2.5">
-            <ArrowUpCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
-            <div>
-              <p className="text-[10px] text-red-600 dark:text-red-400 font-medium">Despesas</p>
-              <p className="text-sm font-semibold text-red-700 dark:text-red-400 tabular-nums">
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/50 rounded-xl px-2.5 sm:px-4 py-2 sm:py-2.5 min-w-0">
+            <ArrowUpCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] text-red-600 dark:text-red-400 font-medium">Despesas</p>
+              <p className="text-[11px] sm:text-sm font-semibold text-red-700 dark:text-red-400 tabular-nums truncate">
                 {formatBRL(totalDespesas)}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-4 py-2.5">
-            <div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Saldo do período</p>
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-2.5 sm:px-4 py-2 sm:py-2.5 min-w-0">
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-medium">Saldo</p>
               <p
-                className={`text-sm font-semibold tabular-nums ${
+                className={`text-[11px] sm:text-sm font-semibold tabular-nums truncate ${
                   totalReceitas - totalDespesas >= 0
                     ? "text-emerald-600 dark:text-emerald-400"
                     : "text-red-600 dark:text-red-400"
@@ -215,9 +224,11 @@ export function VisualizadorClient({ transactions, month }: Props) {
         </div>
       )}
 
-      {/* Desktop table */}
+      {/* List */}
       {transactions.length > 0 && (
         <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+
+          {/* Desktop table */}
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -238,10 +249,12 @@ export function VisualizadorClient({ transactions, month }: Props) {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {transactions.map((t) => {
                   const isEntrada = t.type === "entrada";
+                  const hasAttachments = (t.transaction_attachments?.length ?? 0) > 0;
                   return (
                     <tr
                       key={t.id}
-                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                      onClick={() => setSelected(t as DetailTransaction)}
+                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                     >
                       <td className="px-4 py-3">
                         <div
@@ -258,7 +271,12 @@ export function VisualizadorClient({ transactions, month }: Props) {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-800 dark:text-slate-200 font-medium max-w-[200px]">
-                        <p className="truncate">{t.description}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate">{t.description}</p>
+                          {hasAttachments && (
+                            <Paperclip className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                          )}
+                        </div>
                         {t.notes && (
                           <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
                             {t.notes}
@@ -274,7 +292,7 @@ export function VisualizadorClient({ transactions, month }: Props) {
                       <td className="px-4 py-3">
                         {t.categories ? (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded-full text-white font-semibold"
+                            className="text-[10px] px-1.5 py-0.5 rounded-full text-white font-semibold whitespace-nowrap"
                             style={{ backgroundColor: t.categories.color }}
                           >
                             {t.categories.name}
@@ -310,49 +328,65 @@ export function VisualizadorClient({ transactions, month }: Props) {
           <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
             {transactions.map((t) => {
               const isEntrada = t.type === "entrada";
+              const hasAttachments = (t.transaction_attachments?.length ?? 0) > 0;
               return (
-                <div key={t.id} className="flex items-start gap-3 px-4 py-3.5">
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelected(t as DetailTransaction)}
+                  className="w-full flex items-start gap-2.5 px-3 py-3 text-left hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                >
                   <div
-                    className={`w-1 h-10 rounded-full flex-shrink-0 mt-0.5 ${
+                    className={`w-1 self-stretch rounded-full flex-shrink-0 ${
                       isEntrada ? "bg-emerald-400" : "bg-red-400"
                     }`}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                      {t.description}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    {/* Top row: description + amount */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                          {t.description}
+                        </p>
+                        {hasAttachments && (
+                          <Paperclip className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                        )}
+                      </div>
+                      <p
+                        className={`text-sm font-semibold tabular-nums flex-shrink-0 whitespace-nowrap ${
+                          isEntrada
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-red-600 dark:text-red-400"
+                        }`}
+                      >
+                        {isEntrada ? "+" : "−"}
+                        {formatBRL(t.amount)}
+                      </p>
+                    </div>
+
+                    {/* Category + date + status row */}
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                       {t.categories && (
                         <span
-                          className="text-[10px] px-1.5 py-0.5 rounded-full text-white font-semibold"
+                          className="text-[10px] px-1.5 py-0.5 rounded-full text-white font-semibold truncate max-w-[140px]"
                           style={{ backgroundColor: t.categories.color }}
                         >
                           {t.categories.name}
                         </span>
                       )}
-                      <span className="text-xs text-slate-400 dark:text-slate-500">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums whitespace-nowrap">
                         {formatDate(t.due_date)}
                       </span>
                       <StatusBadge status={t.status} />
                     </div>
                   </div>
-                  <p
-                    className={`text-sm font-semibold tabular-nums flex-shrink-0 ${
-                      isEntrada
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-red-600 dark:text-red-400"
-                    }`}
-                  >
-                    {isEntrada ? "+" : "−"}
-                    {formatBRL(t.amount)}
-                  </p>
-                </div>
+                </button>
               );
             })}
           </div>
 
-          {/* Table footer */}
-          <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between">
+          {/* Footer */}
+          <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-2">
             <span className="text-xs text-slate-400 dark:text-slate-500">
               {transactions.length} lançamento{transactions.length !== 1 ? "s" : ""}
             </span>
@@ -368,6 +402,13 @@ export function VisualizadorClient({ transactions, month }: Props) {
           </div>
         </div>
       )}
+
+      {/* Details dialog (read-only) */}
+      <TransactionDetailsDialog
+        open={!!selected}
+        transaction={selected}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }

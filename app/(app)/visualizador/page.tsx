@@ -22,12 +22,12 @@ export default async function VisualizadorPage({
   const { data } = await supabase
     .from("transactions")
     .select(
-      "*, categories(name, color), cost_centers(name)"
+      "*, categories(name, color), cost_centers(name), transaction_attachments(id, transaction_id, file_name, file_size, mime_type, storage_path, created_by, created_at)"
     )
     .gte("due_date", startDate)
     .lte("due_date", endDate)
     .neq("status", "cancelado")
-    .order("due_date", { ascending: true });
+    .order("due_date", { ascending: false });
 
   return (
     <VisualizadorClient
