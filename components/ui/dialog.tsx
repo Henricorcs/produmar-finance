@@ -5,7 +5,60 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const Dialog = DialogPrimitive.Root;
+/**
+ * Wrapper sobre Radix Dialog.Root que integra com o histórico do navegador:
+ * - Ao abrir, empurra uma entrada de história (sem mudar a URL)
+ * - Ao usuário pressionar o botão "voltar" do navegador / Android, fecha o
+ *   diálogo ao invés de navegar
+ * - Ao fechar manualmente (X, click no overlay, ESC, programaticamente),
+ *   remove a entrada que adicionamos para manter o histórico limpo
+ */
+const Dialog = ({
+  open,
+  onOpenChange,
+  children,
+  ...rest
+}: React.ComponentProps<typeof DialogPrimitive.Root>) => {
+  // Mantém a referência ao callback estável entre renders para evitar
+  // disparar o efeito a cada render do pai
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  React.useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (typeof window === "undefined") return;
+
+    // Empurra uma entrada de histórico ao abrir (sem alterar a URL)
+    window.history.pushState({ __dialog: true }, "");
+    let poppedFromBack = false;
+
+    const handlePopState = () => {
+      poppedFromBack = true;
+      onOpenChangeRef.current?.(false);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      // Se fechou por outro caminho (X, overlay, ESC, programático),
+      // remove a entrada de histórico que adicionamos
+      if (!poppedFromBack) {
+        window.history.back();
+      }
+    };
+  }, [open]);
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...rest}>
+      {children}
+    </DialogPrimitive.Root>
+  );
+};
+Dialog.displayName = "Dialog";
+
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogClose = DialogPrimitive.Close;
 const DialogPortal = DialogPrimitive.Portal;
