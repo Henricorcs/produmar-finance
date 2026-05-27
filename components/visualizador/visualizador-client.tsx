@@ -206,14 +206,16 @@ export function VisualizadorClient({ transactions, month }: Props) {
     });
   }, [transactions, search, sortKey, sortDir]);
 
+  // Apenas valores efetivamente recebidos / pagos
   const totalReceitas = filteredTransactions
-    .filter((t) => t.type === "entrada")
+    .filter((t) => t.type === "entrada" && t.status === "recebido")
     .reduce((s, t) => s + t.amount, 0);
 
   const totalDespesas = filteredTransactions
-    .filter((t) => t.type === "saida")
+    .filter((t) => t.type === "saida" && t.status === "pago")
     .reduce((s, t) => s + t.amount, 0);
 
+  // Pendentes / vencidos que ainda não foram pagos
   const totalAPagar = filteredTransactions
     .filter((t) => t.type === "saida" && (t.status === "pendente" || t.status === "vencido"))
     .reduce((s, t) => s + t.amount, 0);
@@ -287,21 +289,21 @@ export function VisualizadorClient({ transactions, month }: Props) {
       {/* Summary */}
       {filteredTransactions.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-          {/* Receitas */}
+          {/* Receitas recebidas */}
           <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 rounded-xl px-3 sm:px-4 py-2.5 min-w-0">
             <ArrowDownCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <div className="min-w-0">
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Receitas</p>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Recebido</p>
               <p className="text-xs sm:text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
                 {formatBRL(totalReceitas)}
               </p>
             </div>
           </div>
-          {/* Despesas */}
+          {/* Despesas pagas */}
           <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/50 rounded-xl px-3 sm:px-4 py-2.5 min-w-0">
             <ArrowUpCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
             <div className="min-w-0">
-              <p className="text-[10px] text-red-600 dark:text-red-400 font-medium">Despesas</p>
+              <p className="text-[10px] text-red-600 dark:text-red-400 font-medium">Pago</p>
               <p className="text-xs sm:text-sm font-semibold text-red-700 dark:text-red-400 tabular-nums truncate">
                 {formatBRL(totalDespesas)}
               </p>
