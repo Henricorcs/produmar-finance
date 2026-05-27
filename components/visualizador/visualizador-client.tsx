@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -10,6 +10,8 @@ import {
   ArrowUpCircle,
   FileText,
   Paperclip,
+  Search,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBRL, formatDate } from "@/lib/utils";
@@ -109,6 +111,7 @@ function StatusBadge({ status }: { status: string }) {
 export function VisualizadorClient({ transactions, month }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<DetailTransaction | null>(null);
+  const [search, setSearch] = useState("");
 
   const [year, monthNum] = month.split("-").map(Number);
 
@@ -124,11 +127,25 @@ export function VisualizadorClient({ transactions, month }: Props) {
     router.push(`/visualizador?m=${m}`);
   }
 
-  const totalReceitas = transactions
+  const filteredTransactions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return transactions;
+    return transactions.filter((t) => {
+      return (
+        t.description.toLowerCase().includes(q) ||
+        (t.notes ?? "").toLowerCase().includes(q) ||
+        (t.categories?.name ?? "").toLowerCase().includes(q) ||
+        (t.cost_centers?.name ?? "").toLowerCase().includes(q) ||
+        (STATUS_LABEL[t.status] ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [transactions, search]);
+
+  const totalReceitas = filteredTransactions
     .filter((t) => t.type === "entrada")
     .reduce((s, t) => s + t.amount, 0);
 
-  const totalDespesas = transactions
+  const totalDespesas = filteredTransactions
     .filter((t) => t.type === "saida")
     .reduce((s, t) => s + t.amount, 0);
 
@@ -149,7 +166,7 @@ export function VisualizadorClient({ transactions, month }: Props) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => exportCSV(transactions, fileLabel)}
+            onClick={() => exportCSV(filteredTransactions, fileLabel)}
           >
             <Download className="w-4 h-4" />
             CSV
@@ -176,8 +193,30 @@ export function VisualizadorClient({ transactions, month }: Props) {
         </button>
       </div>
 
-      {/* Summary */}
+      {/* Search */}
       {transactions.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquisar por descrição, categoria, status…"
+            className="w-full pl-9 pr-9 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-produmar-500 transition"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Summary */}
+      {filteredTransactions.length > 0 && (
         <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
           <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 rounded-xl px-2.5 sm:px-4 py-2 sm:py-2.5 min-w-0">
             <ArrowDownCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
@@ -215,17 +254,27 @@ export function VisualizadorClient({ transactions, month }: Props) {
       )}
 
       {/* Empty state */}
-      {transactions.length === 0 && (
+      {filteredTransactions.length === 0 && (
         <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-14 flex flex-col items-center gap-3">
           <FileText className="w-10 h-10 text-slate-300 dark:text-slate-600" />
           <p className="text-sm text-slate-400 dark:text-slate-500 text-center">
-            Nenhum lançamento encontrado neste período.
+            {search
+              ? "Nenhum lançamento encontrado para esta pesquisa."
+              : "Nenhum lançamento encontrado neste período."}
           </p>
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="text-xs text-produmar-600 dark:text-produmar-400 hover:underline"
+            >
+              Limpar pesquisa
+            </button>
+          )}
         </div>
       )}
 
       {/* List */}
-      {transactions.length > 0 && (
+      {filteredTransactions.length > 0 && (
         <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
 
           {/* Desktop table */}
@@ -247,7 +296,7 @@ export function VisualizadorClient({ transactions, month }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {transactions.map((t) => {
+                {filteredTransactions.map((t) => {
                   const isEntrada = t.type === "entrada";
                   const hasAttachments = (t.transaction_attachments?.length ?? 0) > 0;
                   return (
@@ -329,7 +378,7 @@ export function VisualizadorClient({ transactions, month }: Props) {
 
           {/* Mobile cards */}
           <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
-            {transactions.map((t) => {
+            {filteredTransactions.map((t) => {
               const isEntrada = t.type === "entrada";
               const hasAttachments = (t.transaction_attachments?.length ?? 0) > 0;
               return (
@@ -391,12 +440,13 @@ export function VisualizadorClient({ transactions, month }: Props) {
           {/* Footer */}
           <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-2">
             <span className="text-xs text-slate-400 dark:text-slate-500">
-              {transactions.length} lançamento{transactions.length !== 1 ? "s" : ""}
+              {filteredTransactions.length}
+              {search ? `/${transactions.length}` : ""} lançamento{filteredTransactions.length !== 1 ? "s" : ""}
             </span>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => exportCSV(transactions, fileLabel)}
+              onClick={() => exportCSV(filteredTransactions, fileLabel)}
               className="h-7 text-xs"
             >
               <Download className="w-3 h-3" />
