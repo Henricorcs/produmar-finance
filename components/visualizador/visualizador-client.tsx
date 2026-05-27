@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
   Download,
   ArrowDownCircle,
   ArrowUpCircle,
@@ -106,12 +109,67 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Column definitions ────────────────────────────────────────────────────────
+
+type SortKey = "type" | "description" | "due_date" | "paid_date" | "category" | "cost_center" | "status" | "amount";
+type SortDir = "asc" | "desc";
+
+const COLUMNS: { label: string; key: SortKey; align?: "right" }[] = [
+  { label: "Tipo",           key: "type" },
+  { label: "Descrição",      key: "description" },
+  { label: "Vencimento",     key: "due_date" },
+  { label: "Pagamento",      key: "paid_date" },
+  { label: "Categoria",      key: "category" },
+  { label: "Centro de Custo", key: "cost_center" },
+  { label: "Status",         key: "status" },
+  { label: "Valor",          key: "amount", align: "right" },
+];
+
+function getSortValue(t: TransactionRow, key: SortKey): string | number {
+  switch (key) {
+    case "type":        return t.type;
+    case "description": return t.description.toLowerCase();
+    case "due_date":    return t.due_date ?? "";
+    case "paid_date":   return t.paid_date ?? "";
+    case "category":    return (t.categories?.name ?? "").toLowerCase();
+    case "cost_center": return (t.cost_centers?.name ?? "").toLowerCase();
+    case "status":      return STATUS_LABEL[t.status] ?? t.status;
+    case "amount":      return t.amount;
+  }
+}
+
+// ── Sort icon ─────────────────────────────────────────────────────────────────
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ChevronsUpDown className="w-3 h-3 opacity-30" />;
+  return dir === "asc"
+    ? <ChevronUp className="w-3 h-3 text-produmar-600 dark:text-produmar-400" />
+    : <ChevronDown className="w-3 h-3 text-produmar-600 dark:text-produmar-400" />;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function VisualizadorClient({ transactions, month }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<DetailTransaction | null>(null);
   const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      if (sortDir === "asc") {
+        setSortDir("desc");
+      } else {
+        // third click: clear sort
+        setSortKey(null);
+        setSortDir("asc");
+      }
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   const [year, monthNum] = month.split("-").map(Number);
 
@@ -129,17 +187,23 @@ export function VisualizadorClient({ transactions, month }: Props) {
 
   const filteredTransactions = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return transactions;
-    return transactions.filter((t) => {
-      return (
-        t.description.toLowerCase().includes(q) ||
-        (t.notes ?? "").toLowerCase().includes(q) ||
-        (t.categories?.name ?? "").toLowerCase().includes(q) ||
-        (t.cost_centers?.name ?? "").toLowerCase().includes(q) ||
-        (STATUS_LABEL[t.status] ?? "").toLowerCase().includes(q)
-      );
+    const filtered = !q ? transactions : transactions.filter((t) =>
+      t.description.toLowerCase().includes(q) ||
+      (t.notes ?? "").toLowerCase().includes(q) ||
+      (t.categories?.name ?? "").toLowerCase().includes(q) ||
+      (t.cost_centers?.name ?? "").toLowerCase().includes(q) ||
+      (STATUS_LABEL[t.status] ?? "").toLowerCase().includes(q)
+    );
+
+    if (!sortKey) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      const av = getSortValue(a, sortKey);
+      const bv = getSortValue(b, sortKey);
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [transactions, search]);
+  }, [transactions, search, sortKey, sortDir]);
 
   const totalReceitas = filteredTransactions
     .filter((t) => t.type === "entrada")
@@ -282,15 +346,22 @@ export function VisualizadorClient({ transactions, month }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/60">
-                  {[
-                    "Tipo", "Descrição", "Vencimento", "Pagamento",
-                    "Categoria", "Centro de Custo", "Status", "Valor",
-                  ].map((h) => (
+                  {COLUMNS.map((col) => (
                     <th
-                      key={h}
-                      className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 px-3 py-3 whitespace-nowrap"
+                      key={col.key}
+                      className={`px-3 py-3 whitespace-nowrap ${col.align === "right" ? "text-right" : "text-left"}`}
                     >
-                      {h}
+                      <button
+                        onClick={() => handleSort(col.key)}
+                        className={`inline-flex items-center gap-1 text-xs font-semibold transition-colors select-none ${
+                          sortKey === col.key
+                            ? "text-produmar-700 dark:text-produmar-300"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                        }`}
+                      >
+                        {col.label}
+                        <SortIcon active={sortKey === col.key} dir={sortDir} />
+                      </button>
                     </th>
                   ))}
                 </tr>
