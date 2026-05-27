@@ -239,7 +239,7 @@ export function VisualizadorClient({ transactions, month }: Props) {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 px-4 py-3 whitespace-nowrap"
+                      className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 px-3 py-3 whitespace-nowrap"
                     >
                       {h}
                     </th>
@@ -256,9 +256,9 @@ export function VisualizadorClient({ transactions, month }: Props) {
                       onClick={() => setSelected(t as DetailTransaction)}
                       className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <div
-                          className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                          className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${
                             isEntrada
                               ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
                               : "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400"
@@ -270,9 +270,9 @@ export function VisualizadorClient({ transactions, month }: Props) {
                           {isEntrada ? "Receita" : "Despesa"}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-800 dark:text-slate-200 font-medium max-w-[200px]">
+                      <td className="px-3 py-3 text-slate-800 dark:text-slate-200 font-medium max-w-[220px]">
                         <div className="flex items-center gap-1.5">
-                          <p className="truncate">{t.description}</p>
+                          <p className="truncate" title={t.description}>{t.description}</p>
                           {hasAttachments && (
                             <Paperclip className="w-3 h-3 text-slate-400 flex-shrink-0" />
                           )}
@@ -283,17 +283,18 @@ export function VisualizadorClient({ transactions, month }: Props) {
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                      <td className="px-3 py-3 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
                         {formatDate(t.due_date)}
                       </td>
-                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                      <td className="px-3 py-3 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
                         {t.paid_date ? formatDate(t.paid_date) : "—"}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 max-w-[140px]">
                         {t.categories ? (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded-full text-white font-semibold whitespace-nowrap"
+                            className="inline-block text-[10px] px-1.5 py-0.5 rounded-full text-white font-semibold max-w-full truncate align-middle"
                             style={{ backgroundColor: t.categories.color }}
+                            title={t.categories.name}
                           >
                             {t.categories.name}
                           </span>
@@ -301,14 +302,16 @@ export function VisualizadorClient({ transactions, month }: Props) {
                           <span className="text-slate-300 dark:text-slate-600">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">
-                        {t.cost_centers?.name ?? "—"}
+                      <td className="px-3 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[130px]">
+                        <p className="truncate" title={t.cost_centers?.name ?? undefined}>
+                          {t.cost_centers?.name ?? "—"}
+                        </p>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <StatusBadge status={t.status} />
                       </td>
                       <td
-                        className={`px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap ${
+                        className={`px-3 py-3 text-right font-semibold tabular-nums whitespace-nowrap ${
                           isEntrada
                             ? "text-emerald-600 dark:text-emerald-400"
                             : "text-red-600 dark:text-red-400"
