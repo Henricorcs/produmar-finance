@@ -212,3 +212,57 @@ export interface ServiceOrderItem {
   total: number;
   created_at: string;
 }
+
+// ── Empréstimos ───────────────────────────────────────────────────────────────
+
+export type LoanRepaymentType = "avulso" | "parcelado";
+export type LoanStatus = "em_aberto" | "quitado" | "cancelado";
+
+export interface Loan {
+  id: string;
+  loan_number: number;
+
+  borrower_name: string;
+  borrower_document: string | null;
+  borrower_phone: string | null;
+
+  principal: number;
+  interest_rate: number | null;   // % ao mês (juros simples)
+  term_months: number | null;
+
+  repayment_type: LoanRepaymentType;
+  installments_count: number | null;
+
+  loan_date: string;
+  due_date: string | null;
+
+  status: LoanStatus;
+  transaction_id: string | null;
+
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LoanInstallment {
+  id: string;
+  loan_id: string;
+  number: number;
+  due_date: string;
+  amount: number;
+  paid: boolean;
+  created_at: string;
+}
+
+export interface LoanPayment {
+  id: string;
+  loan_id: string;
+  installment_id: string | null;
+  amount: number;
+  payment_date: string;
+  transaction_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}

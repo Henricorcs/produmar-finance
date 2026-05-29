@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { ServiceOrderStatus, ServiceOrderType } from "./types";
+import type { Loan, ServiceOrderStatus, ServiceOrderType } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -82,6 +82,28 @@ export function formatDueLabel(date: string | Date): {
   if (days <= 3) return { label: `Em ${days} dias`, variant: "warning" };
   if (days <= 15) return { label: `Em ${days} dias`, variant: "muted" };
   return { label: formatDate(date), variant: "muted" };
+}
+
+// ── Empréstimos ───────────────────────────────────────────────────────────────
+
+type LoanCalcInput = Pick<Loan, "principal" | "interest_rate" | "term_months">;
+
+/** Juros simples: principal × (taxa%/100) × prazo_meses. 0 se faltar taxa ou prazo. */
+export function loanInterestAmount(loan: LoanCalcInput): number {
+  const rate = loan.interest_rate ?? 0;
+  const months = loan.term_months ?? 0;
+  if (rate <= 0 || months <= 0) return 0;
+  return loan.principal * (rate / 100) * months;
+}
+
+/** Total a receber = principal + juros simples. */
+export function loanTotalDue(loan: LoanCalcInput): number {
+  return loan.principal + loanInterestAmount(loan);
+}
+
+/** Saldo devedor = total a receber − soma dos pagamentos (nunca negativo). */
+export function loanBalance(loan: LoanCalcInput, totalPaid: number): number {
+  return Math.max(0, loanTotalDue(loan) - totalPaid);
 }
 
 export function getInitials(name?: string | null): string {
