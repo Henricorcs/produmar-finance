@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -247,10 +248,11 @@ export async function updateLoan(id: string, input: LoanInput) {
 export async function deleteLoan(id: string) {
   const supabase = createClient();
 
-  // Coleta todos os lançamentos vinculados (saída do empréstimo + entradas dos pagamentos)
-  const [{ data: loan }, { data: payments }] = await Promise.all([
+  // Coleta lançamentos vinculados + comprovantes no storage
+  const [{ data: loan }, { data: payments }, { data: attachments }] = await Promise.all([
     supabase.from("loans").select("transaction_id").eq("id", id).single(),
     supabase.from("loan_payments").select("transaction_id").eq("loan_id", id),
+    supabase.from("loan_attachments").select("storage_path").eq("loan_id", id),
   ]);
 
   const txIds = [
@@ -262,7 +264,12 @@ export async function deleteLoan(id: string) {
     await supabase.from("transactions").delete().in("id", txIds);
   }
 
-  // installments + payments caem por cascade
+  // Remove os arquivos do storage (as linhas caem por cascade junto com o loan)
+  if (attachments && attachments.length > 0) {
+    await supabase.storage.from("attachments").remove(attachments.map((a) => a.storage_path));
+  }
+
+  // installments + payments + attachments caem por cascade
   const { error } = await supabase.from("loans").delete().eq("id", id);
   if (error) return { error: error.message };
 
@@ -370,6 +377,95 @@ export async function deletePayment(paymentId: string) {
   if (error) return { error: error.message };
 
   await recomputeStatus(supabase, payment.loan_id);
+  revalidate();
+  return { ok: true };
+}
+
+// ── Comprovantes (anexos) ────────────────────────────────────────────────────
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+/** Faz upload de um ou mais comprovantes para o bucket 'attachments' sob loans/<id>/. */
+export async function uploadLoanAttachments(loanId: string, formData: FormData) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { error: "Nenhum arquivo selecionado" };
+
+  const paymentId = (formData.get("payment_id") as string) || null;
+  const rows: Record<string, unknown>[] = [];
+  const errors: string[] = [];
+
+  for (const file of files) {
+    if (file.size > MAX_FILE_SIZE) {
+      errors.push(`${file.name}: maior que 10 MB`);
+      continue;
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `loans/${loanId}/${randomUUID()}_${safeName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("attachments")
+      .upload(path, file, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false,
+      });
+
+    if (uploadErr) {
+      errors.push(`${file.name}: ${uploadErr.message}`);
+      continue;
+    }
+
+    rows.push({
+      loan_id: loanId,
+      payment_id: paymentId,
+      storage_path: path,
+      file_name: file.name,
+      file_size: file.size,
+      mime_type: file.type || null,
+      created_by: user.id,
+    });
+  }
+
+  if (rows.length > 0) {
+    const { error } = await supabase.from("loan_attachments").insert(rows);
+    if (error) return { error: error.message };
+  }
+
+  revalidate();
+  if (errors.length > 0) return { ok: true as const, warning: errors.join("; ") };
+  return { ok: true as const };
+}
+
+/** Gera uma URL assinada (1h) para abrir/baixar um comprovante. */
+export async function getLoanAttachmentSignedUrl(storagePath: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase.storage
+    .from("attachments")
+    .createSignedUrl(storagePath, 60 * 60);
+  if (error) return { error: error.message };
+  return { url: data.signedUrl };
+}
+
+export async function deleteLoanAttachment(id: string) {
+  const supabase = createClient();
+
+  const { data: att } = await supabase
+    .from("loan_attachments")
+    .select("storage_path")
+    .eq("id", id)
+    .single();
+  if (!att) return { error: "Comprovante não encontrado" };
+
+  await supabase.storage.from("attachments").remove([att.storage_path]);
+
+  const { error } = await supabase.from("loan_attachments").delete().eq("id", id);
+  if (error) return { error: error.message };
+
   revalidate();
   return { ok: true };
 }

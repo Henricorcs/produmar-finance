@@ -1,12 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { EmprestimosPageClient } from "@/components/emprestimos/emprestimos-page-client";
-import type { Loan, LoanInstallment, LoanPayment } from "@/lib/types";
+import type { Loan, LoanInstallment, LoanPayment, LoanAttachment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export type LoanWithDetails = Loan & {
   loan_payments: LoanPayment[];
   loan_installments: LoanInstallment[];
+  loan_attachments: LoanAttachment[];
 };
 
 export default async function EmprestimosPage() {
@@ -14,7 +15,7 @@ export default async function EmprestimosPage() {
 
   const { data } = await supabase
     .from("loans")
-    .select("*, loan_payments(*), loan_installments(*)")
+    .select("*, loan_payments(*), loan_installments(*), loan_attachments(*)")
     .order("loan_date", { ascending: false })
     .order("loan_number", { ascending: false });
 

@@ -266,3 +266,15 @@ export interface LoanPayment {
   created_by: string | null;
   created_at: string;
 }
+
+export interface LoanAttachment {
+  id: string;
+  loan_id: string;
+  payment_id: string | null;
+  file_name: string;
+  file_size: number | null;
+  mime_type: string | null;
+  storage_path: string;
+  created_by: string | null;
+  created_at: string;
+}

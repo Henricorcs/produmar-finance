@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
-import { Plus, Pencil, Trash2, HandCoins, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, HandCoins, Search, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -213,6 +213,15 @@ export function EmprestimosPageClient({ loans }: Props) {
                       {loan.repayment_type === "parcelado" && (
                         <span className="text-[10px] text-slate-400">
                           {loan.installments_count}x
+                        </span>
+                      )}
+                      {loan.loan_attachments.length > 0 && (
+                        <span
+                          className="flex items-center gap-0.5 text-[10px] text-slate-400"
+                          title={`${loan.loan_attachments.length} comprovante(s)`}
+                        >
+                          <Paperclip className="w-3 h-3" />
+                          {loan.loan_attachments.length}
                         </span>
                       )}
                     </div>

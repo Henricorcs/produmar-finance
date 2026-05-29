@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { addPayment, deletePayment } from "@/app/(app)/emprestimos/actions";
+import { LoanComprovantes } from "./loan-comprovantes";
 import {
   loanTotalDue,
   loanInterestAmount,
@@ -241,6 +242,11 @@ export function LoanDetailDialog({ open, onClose, loan }: Props) {
               </div>
             </div>
           )}
+
+          {/* Comprovantes (prints, PIX, PDF) */}
+          <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+            <LoanComprovantes loanId={loan.id} attachments={loan.loan_attachments ?? []} />
+          </div>
 
           {loan.notes && (
             <p className="text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
