@@ -84,7 +84,7 @@ export function SearchableSelect<T>({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="group flex h-10 w-full items-center justify-between gap-2 rounded-md border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-produmar-500 focus:border-produmar-500 transition-colors"
+        className="group flex h-11 sm:h-10 w-full items-center justify-between gap-2 rounded-md border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-base sm:text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-produmar-500 focus:border-produmar-500 transition-colors"
       >
         <span
           className={cn(
@@ -121,7 +121,7 @@ export function SearchableSelect<T>({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full bg-transparent text-sm pl-9 pr-3 py-2.5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
+              className="w-full bg-transparent text-base sm:text-sm pl-9 pr-3 py-2.5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
             />
           </div>
 

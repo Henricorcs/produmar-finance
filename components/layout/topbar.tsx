@@ -30,7 +30,7 @@ export function Topbar({ profile, notifications = [] }: TopbarProps) {
   const hasUnread = notifications.length > 0;
 
   return (
-    <header className="produmar-hero text-white">
+    <header className="produmar-hero text-white pt-safe">
       <div className="max-w-7xl mx-auto px-4 lg:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center shrink-0">

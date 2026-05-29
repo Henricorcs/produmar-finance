@@ -49,10 +49,17 @@
   * {
     @apply border-border;
   }
+  html {
+    /* Trava o tamanho do texto na rotação e impede zoom-out indesejado no mobile */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
   html, body {
     @apply bg-produmar-50/40 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
     font-feature-settings: "rlig" 1, "calt" 1, "cv11";
     -webkit-font-smoothing: antialiased;
+    /* Remove o flash cinza ao tocar elementos no mobile */
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
@@ -103,5 +110,23 @@
 @layer utilities {
   .animate-fade-in {
     animation: fade-in 0.4s ease-out;
+  }
+
+  /* ── Safe-area insets (notch / barra de gestos do iPhone, modo PWA) ── */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Espaço inferior que limpa a nav fixa (56px) + área segura do dispositivo.
+     No desktop (sm+) a nav some, então volta ao padding normal. */
+  .pb-safe-nav {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 640px) {
+    .pb-safe-nav {
+      padding-bottom: 1.5rem;
+    }
   }
 }

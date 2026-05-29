@@ -59,7 +59,7 @@ export function TabsNav() {
       </nav>
 
       {/* ── Mobile: fixed bottom nav ──────────────────────────────── */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 pb-safe">
         <div className="flex items-stretch h-14">
           {tabs.map((tab) => {
             const active =
@@ -70,14 +70,18 @@ export function TabsNav() {
                 key={tab.href}
                 href={tab.href}
                 className={cn(
-                  "flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors",
+                  "relative flex-1 flex flex-col items-center justify-center gap-0.5 px-0.5 transition-colors",
                   active
                     ? "text-produmar-600 dark:text-produmar-400"
                     : "text-slate-400 dark:text-slate-500 active:text-produmar-500"
                 )}
               >
-                <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium leading-none">
+                {/* Indicador da aba ativa */}
+                {active && (
+                  <span className="absolute top-0 h-0.5 w-7 rounded-full bg-produmar-600 dark:bg-produmar-400" />
+                )}
+                <Icon className={cn("w-[22px] h-[22px] transition-transform", active && "-translate-y-px")} />
+                <span className="text-[10px] font-medium leading-none whitespace-nowrap">
                   {tab.short}
                 </span>
               </Link>

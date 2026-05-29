@@ -81,7 +81,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI cards */}
+      {/* KPI cards — Saldo em destaque full-width no mobile, depois 2×2; 5 em linha no desktop */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KpiCard
           label="Saldo atual"
@@ -90,6 +90,8 @@ export default async function DashboardPage() {
           variant="primary"
           icon={Wallet}
           href="/para-onde-foi"
+          wide
+          className="col-span-2 lg:col-span-1"
         />
         <KpiCard
           label="Receitas (mês)"

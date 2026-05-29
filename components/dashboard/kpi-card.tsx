@@ -10,6 +10,10 @@ interface KpiCardProps {
   variant?: "primary" | "success" | "danger" | "warning" | "info" | "neutral";
   icon?: LucideIcon;
   href?: string;
+  /** Classe extra no contêiner (ex.: col-span no grid). */
+  className?: string;
+  /** Card em destaque: mostra o valor cheio mesmo no mobile e fonte maior. */
+  wide?: boolean;
 }
 
 export function KpiCard({
@@ -20,6 +24,8 @@ export function KpiCard({
   variant = "neutral",
   icon: Icon,
   href,
+  className,
+  wide = false,
 }: KpiCardProps) {
   const isPrimary = variant === "primary";
 
@@ -50,10 +56,23 @@ export function KpiCard({
         )}
       </div>
 
-      <div className="mt-2 text-2xl font-medium tracking-tight tabular-nums truncate">
-        {/* Compacto no mobile p/ não estourar o card de 2 colunas; cheio no desktop */}
-        <span className="sm:hidden">{formatBRLCompact(value)}</span>
-        <span className="hidden sm:inline">{formatBRL(value)}</span>
+      <div
+        className={cn(
+          "mt-2 font-medium tracking-tight tabular-nums truncate",
+          // wide: maior enquanto ocupa a largura toda; volta ao normal quando vira 1 de 5 colunas (lg)
+          wide ? "text-3xl lg:text-2xl" : "text-2xl"
+        )}
+      >
+        {wide ? (
+          // Card em destaque: valor cheio em qualquer tela
+          formatBRL(value)
+        ) : (
+          <>
+            {/* Compacto no mobile p/ não estourar o card de 2 colunas; cheio no desktop */}
+            <span className="sm:hidden">{formatBRLCompact(value)}</span>
+            <span className="hidden sm:inline">{formatBRL(value)}</span>
+          </>
+        )}
       </div>
 
       <div className={cn("mt-1.5 flex items-center justify-between gap-1 text-xs", captionColor)}>
@@ -78,7 +97,8 @@ export function KpiCard({
   const base = cn(
     "rounded-xl border p-4 transition-all hover:shadow-md hover:-translate-y-0.5 min-w-0",
     href && "group cursor-pointer",
-    variantStyles[variant]
+    variantStyles[variant],
+    className
   );
 
   if (href) {

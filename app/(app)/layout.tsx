@@ -66,8 +66,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
       <Topbar profile={profile} notifications={notifications} />
       <TabsNav />
-      {/* pb-20 on mobile clears the fixed bottom nav (56 px + buffer) */}
-      <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-20 sm:pb-6">{children}</main>
+      {/* pb-safe-nav limpa a nav fixa (56px) + área segura do dispositivo no mobile */}
+      <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-safe-nav">{children}</main>
     </div>
   );
 }

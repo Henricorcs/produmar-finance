@@ -9,7 +9,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <input
         type={type}
         className={cn(
-          "flex h-10 w-full rounded-md border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100",
+          // h-11/text-base no mobile: alvo de toque maior e evita o zoom automático do iOS (fonte < 16px)
+          "flex h-11 sm:h-10 w-full rounded-md border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-base sm:text-sm text-slate-900 dark:text-slate-100",
           "placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2",
           "focus-visible:ring-produmar-500 focus-visible:border-produmar-500 transition-colors",
           "disabled:cursor-not-allowed disabled:opacity-50",

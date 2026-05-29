@@ -24,7 +24,7 @@ export function CashflowChart({ data }: { data: CashflowMonth[] }) {
   }
 
   return (
-    <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+    <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5">
       <div className="flex items-start justify-between gap-2 mb-1 flex-wrap">
         <div>
           <div className="text-sm font-medium text-produmar-800 dark:text-slate-100">Fluxo de caixa</div>

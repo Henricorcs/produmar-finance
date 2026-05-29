@@ -8,7 +8,7 @@ export function ExpenseBreakdown({ data }: { data: ExpenseByCategory[] }) {
   const max = Math.max(...filtered.map((d) => d.total), 1);
 
   return (
-    <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+    <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
           <div className="text-sm font-medium text-produmar-800 dark:text-slate-100">Para onde foi o dinheiro</div>

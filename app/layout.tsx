@@ -19,7 +19,9 @@ export const viewport: Viewport = {
   themeColor: "#0A4DB8",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5
+  maximumScale: 5,
+  // Permite que o conteúdo respeite as áreas seguras (notch / barra de gestos)
+  viewportFit: "cover"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
