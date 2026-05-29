@@ -15,7 +15,7 @@ import {
   Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatBRL, formatDate } from "@/lib/utils";
+import { formatBRL, formatBRLCompact, formatDate } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/badge";
 import type { Category, CostCenter, Transaction } from "@/lib/types";
 
@@ -132,11 +132,14 @@ export function ParaOndeFoiClient({ transactions, categories, costCenters, month
       {/* Total */}
       <div className="flex items-center gap-3 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/50 rounded-xl px-5 py-4">
         <TrendingDown className="w-5 h-5 text-red-500 flex-shrink-0" />
-        <div>
-          <p className="text-xs text-red-600 dark:text-red-400 font-medium">Total de despesas em {monthLabel}</p>
-          <p className="text-2xl font-bold text-red-700 dark:text-red-400">{formatBRL(totalDespesas)}</p>
+        <div className="min-w-0">
+          <p className="text-xs text-red-600 dark:text-red-400 font-medium truncate">Total de despesas em {monthLabel}</p>
+          <p className="text-xl sm:text-2xl font-bold text-red-700 dark:text-red-400 tabular-nums truncate">
+            <span className="sm:hidden">{formatBRLCompact(totalDespesas)}</span>
+            <span className="hidden sm:inline">{formatBRL(totalDespesas)}</span>
+          </p>
         </div>
-        <div className="ml-auto text-right">
+        <div className="ml-auto text-right flex-shrink-0 pl-2">
           <p className="text-xs text-slate-400 dark:text-slate-500">{transactions.length} lançamento(s)</p>
         </div>
       </div>

@@ -197,9 +197,9 @@ export function TransactionDialog({
                     className={`py-2.5 text-sm rounded-lg border font-medium transition-colors ${
                       type === t
                         ? t === "saida"
-                          ? "bg-red-50 border-red-200 text-red-700"
-                          : "bg-emerald-50 border-emerald-200 text-emerald-700"
-                        : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                          ? "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400"
+                          : "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400"
+                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
                     }`}
                   >
                     {t === "saida" ? "💸 Despesa" : "💰 Receita"}

@@ -42,7 +42,7 @@ export default function LoginPage() {
               <Wallet className="w-7 h-7 text-produmar-600" />
             </div>
             <div>
-              <div className="text-xl font-medium">ILNET Finance</div>
+              <div className="text-xl font-medium">PRODUMAR Finance</div>
               <div className="text-sm text-produmar-100">Controle financeiro</div>
             </div>
           </div>
@@ -53,13 +53,13 @@ export default function LoginPage() {
               sob controle.
             </h1>
             <p className="text-produmar-100 text-lg max-w-md">
-              Acompanhe receitas, despesas e fluxo de caixa da ILNET em tempo real.
+              Acompanhe receitas, despesas e fluxo de caixa da PRODUMAR em tempo real.
               Importe notas fiscais e extratos bancários em segundos.
             </p>
           </div>
 
           <div className="text-produmar-200 text-sm">
-            ILNET Telecom — São Mateus do Maranhão
+            PRODUMAR — Controle financeiro interno
           </div>
         </div>
       </div>
@@ -72,7 +72,7 @@ export default function LoginPage() {
             <div className="w-10 h-10 bg-produmar-600 rounded-xl flex items-center justify-center">
               <Wallet className="w-6 h-6 text-white" />
             </div>
-            <div className="text-lg font-medium text-produmar-800">ILNET Finance</div>
+            <div className="text-lg font-medium text-produmar-800 dark:text-slate-100">PRODUMAR Finance</div>
           </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-produmar-100 dark:border-slate-800 shadow-xl shadow-produmar-600/5 p-8">
@@ -90,7 +90,7 @@ export default function LoginPage() {
                   id="email"
                   name="email"
                   type="email"
-                  placeholder="seuemail@ilnet.com.br"
+                  placeholder="seuemail@empresa.com.br"
                   required
                   autoComplete="email"
                 />
@@ -110,7 +110,7 @@ export default function LoginPage() {
               </div>
 
               {error && (
-                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-md text-sm text-red-700">
+                <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/50 rounded-md text-sm text-red-700 dark:text-red-400">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -124,7 +124,7 @@ export default function LoginPage() {
           </div>
 
           <p className="text-center text-xs text-slate-500 dark:text-slate-500 mt-6">
-            © {new Date().getFullYear()} ILNET Telecom. Todos os direitos reservados.
+            © {new Date().getFullYear()} PRODUMAR. Todos os direitos reservados.
           </p>
         </div>
       </div>

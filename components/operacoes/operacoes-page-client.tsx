@@ -29,7 +29,7 @@ import {
   generateTransactionFromOrder,
   updateServiceOrderStatus,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatDate, osStatusLabel } from "@/lib/utils";
+import { formatBRL, formatBRLCompact, formatDate, osStatusLabel } from "@/lib/utils";
 import type {
   Category,
   CostCenter,
@@ -269,25 +269,27 @@ export function OperacoesPageClient({
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <div className="bg-emerald-50 dark:bg-emerald-950/40 rounded-xl p-3 sm:p-4 border border-emerald-100 dark:border-emerald-900/50">
+        <div className="bg-emerald-50 dark:bg-emerald-950/40 rounded-xl p-3 sm:p-4 border border-emerald-100 dark:border-emerald-900/50 min-w-0">
           <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
             <User className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-emerald-600 dark:text-emerald-400 font-medium truncate">Cliente</p>
           </div>
-          <p className="text-xs sm:text-base font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
-            {formatBRL(totalCliente)}
+          <p className="text-xs sm:text-base font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
+            <span className="sm:hidden">{formatBRLCompact(totalCliente)}</span>
+            <span className="hidden sm:inline">{formatBRL(totalCliente)}</span>
           </p>
         </div>
-        <div className="bg-amber-50 dark:bg-amber-950/40 rounded-xl p-3 sm:p-4 border border-amber-100 dark:border-amber-900/50">
+        <div className="bg-amber-50 dark:bg-amber-950/40 rounded-xl p-3 sm:p-4 border border-amber-100 dark:border-amber-900/50 min-w-0">
           <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
             <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-400 font-medium truncate">Interno</p>
           </div>
-          <p className="text-xs sm:text-base font-semibold text-amber-700 dark:text-amber-400 tabular-nums">
-            {formatBRL(totalInterno)}
+          <p className="text-xs sm:text-base font-semibold text-amber-700 dark:text-amber-400 tabular-nums truncate">
+            <span className="sm:hidden">{formatBRLCompact(totalInterno)}</span>
+            <span className="hidden sm:inline">{formatBRL(totalInterno)}</span>
           </p>
         </div>
-        <div className="bg-produmar-50 dark:bg-produmar-950/40 rounded-xl p-3 sm:p-4 border border-produmar-100 dark:border-produmar-900/50">
+        <div className="bg-produmar-50 dark:bg-produmar-950/40 rounded-xl p-3 sm:p-4 border border-produmar-100 dark:border-produmar-900/50 min-w-0">
           <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
             <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-produmar-600 dark:text-produmar-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-produmar-600 dark:text-produmar-400 font-medium truncate">Total OS</p>

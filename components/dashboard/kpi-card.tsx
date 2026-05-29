@@ -1,6 +1,6 @@
 ﻿import Link from "next/link";
 import { TrendingUp, TrendingDown, LucideIcon, ArrowRight } from "lucide-react";
-import { cn, formatBRL } from "@/lib/utils";
+import { cn, formatBRL, formatBRLCompact } from "@/lib/utils";
 
 interface KpiCardProps {
   label: string;
@@ -50,7 +50,11 @@ export function KpiCard({
         )}
       </div>
 
-      <div className="mt-2 text-2xl font-medium tracking-tight">{formatBRL(value)}</div>
+      <div className="mt-2 text-2xl font-medium tracking-tight tabular-nums truncate">
+        {/* Compacto no mobile p/ não estourar o card de 2 colunas; cheio no desktop */}
+        <span className="sm:hidden">{formatBRLCompact(value)}</span>
+        <span className="hidden sm:inline">{formatBRL(value)}</span>
+      </div>
 
       <div className={cn("mt-1.5 flex items-center justify-between gap-1 text-xs", captionColor)}>
         <span className="flex items-center gap-1">
@@ -72,7 +76,7 @@ export function KpiCard({
   );
 
   const base = cn(
-    "rounded-xl border p-4 transition-all hover:shadow-md hover:-translate-y-0.5",
+    "rounded-xl border p-4 transition-all hover:shadow-md hover:-translate-y-0.5 min-w-0",
     href && "group cursor-pointer",
     variantStyles[variant]
   );

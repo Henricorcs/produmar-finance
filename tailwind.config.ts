@@ -16,6 +16,10 @@ const config: Config = {
       }
     },
     extend: {
+      screens: {
+        // breakpoint extra p/ telas pequenas (usado em listas/cards mobile)
+        xs: "475px",
+      },
       colors: {
         // PRODUMAR brand palette
         produmar: {

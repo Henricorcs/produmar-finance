@@ -133,7 +133,7 @@ function ProjectionKpi({ label, value }: { label: string; value: number }) {
   const Icon = positive ? TrendingUp : TrendingDown;
   return (
     <div
-      className={`rounded-lg border p-3 ${
+      className={`rounded-lg border p-2.5 sm:p-3 min-w-0 ${
         positive
           ? "border-produmar-100 dark:border-slate-700 bg-produmar-50/40 dark:bg-slate-800/40"
           : "border-red-200 dark:border-red-900/50 bg-red-50/60 dark:bg-red-950/30"
@@ -141,20 +141,22 @@ function ProjectionKpi({ label, value }: { label: string; value: number }) {
     >
       <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mb-1">
         <Icon
-          className={`w-3 h-3 ${
+          className={`w-3 h-3 shrink-0 ${
             positive ? "text-produmar-600 dark:text-produmar-400" : "text-red-600 dark:text-red-400"
           }`}
         />
-        {label}
+        <span className="truncate">{label}</span>
       </div>
       <div
-        className={`text-sm font-semibold ${
+        className={`text-sm font-semibold tabular-nums truncate ${
           positive
             ? "text-produmar-800 dark:text-produmar-300"
             : "text-red-700 dark:text-red-400"
         }`}
       >
-        {formatBRL(value)}
+        {/* Compacto no mobile (R$ 1,2M) p/ caber em 3 colunas; valor cheio no desktop */}
+        <span className="sm:hidden">{formatBRLCompact(value)}</span>
+        <span className="hidden sm:inline">{formatBRL(value)}</span>
       </div>
     </div>
   );
