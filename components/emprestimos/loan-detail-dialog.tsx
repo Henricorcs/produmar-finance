@@ -169,8 +169,8 @@ export function LoanDetailDialog({ open, onClose, loan }: Props) {
             </div>
           )}
 
-          {/* Registrar pagamento avulso */}
-          {balance > 0 && (
+          {/* Registrar pagamento avulso — só p/ empréstimos sem parcelas */}
+          {balance > 0 && installments.length === 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                 Registrar pagamento

@@ -39,33 +39,122 @@ async function loanCategoryId(
   return data?.id ?? null;
 }
 
+interface LoanMeta {
+  id: string;
+  loan_number: number;
+  borrower_name: string;
+}
+
 /**
  * Gera/recria o cronograma de parcelas de um empréstimo parcelado.
- * Apaga as parcelas existentes (FK em loan_payments cai para null) e recria.
+ * Cada parcela ganha uma transação de ENTRADA pendente (recebível), que
+ * aparece em "A receber" e vira "Recebido" quando a parcela é marcada paga.
  */
 async function regenerateInstallments(
   supabase: SupabaseClient,
-  loanId: string,
+  loan: LoanMeta,
   total: number,
   count: number,
-  firstDueDate: string
+  firstDueDate: string,
+  categoryId: string | null,
+  userId: string
 ) {
-  await supabase.from("loan_installments").delete().eq("loan_id", loanId);
+  // Remove parcelas antigas e seus recebíveis
+  const { data: old } = await supabase
+    .from("loan_installments")
+    .select("transaction_id")
+    .eq("loan_id", loan.id);
+  const oldTxIds = (old ?? [])
+    .map((o) => o.transaction_id)
+    .filter((x): x is string => !!x);
+  if (oldTxIds.length > 0) await supabase.from("transactions").delete().in("id", oldTxIds);
+  await supabase.from("loan_installments").delete().eq("loan_id", loan.id);
+
   if (count < 1) return;
 
   const base = Math.floor((total / count) * 100) / 100;
-  const rows = Array.from({ length: count }, (_, i) => {
+  for (let i = 0; i < count; i++) {
     const isLast = i === count - 1;
     // última parcela absorve o arredondamento
     const amount = isLast ? Math.round((total - base * (count - 1)) * 100) / 100 : base;
-    return {
-      loan_id: loanId,
+    const due = addMonths(firstDueDate, i);
+
+    const { data: tx } = await supabase
+      .from("transactions")
+      .insert({
+        type: "entrada",
+        description: `A RECEBER EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name} (parcela ${i + 1}/${count})`,
+        amount,
+        due_date: due,
+        status: "pendente",
+        category_id: categoryId,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+
+    await supabase.from("loan_installments").insert({
+      loan_id: loan.id,
       number: i + 1,
-      due_date: addMonths(firstDueDate, i),
+      due_date: due,
       amount,
-    };
-  });
-  await supabase.from("loan_installments").insert(rows);
+      transaction_id: tx?.id ?? null,
+    });
+  }
+}
+
+/**
+ * Cria/atualiza o recebível único de um empréstimo AVULSO.
+ * O valor reflete o saldo devedor (total − pago); quando quita, o lançamento
+ * é cancelado para sair de "A receber".
+ */
+async function syncAvulsoReceivable(
+  supabase: SupabaseClient,
+  loan: LoanMeta & {
+    receivable_transaction_id: string | null;
+    principal: number;
+    interest_rate: number | null;
+    term_months: number | null;
+    due_date: string | null;
+    loan_date: string;
+  },
+  categoryId: string | null,
+  userId: string
+) {
+  const { data: payments } = await supabase
+    .from("loan_payments")
+    .select("amount")
+    .eq("loan_id", loan.id);
+  const totalPaid = (payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
+  const outstanding = Math.max(0, loanTotalDue(loan) - totalPaid);
+
+  const due = loan.due_date || loan.loan_date;
+  const description = `A RECEBER EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name}`;
+  const status = outstanding > 0.005 ? "pendente" : "cancelado";
+
+  if (loan.receivable_transaction_id) {
+    await supabase
+      .from("transactions")
+      .update({ amount: outstanding, due_date: due, description, status })
+      .eq("id", loan.receivable_transaction_id);
+  } else {
+    const { data: tx } = await supabase
+      .from("transactions")
+      .insert({
+        type: "entrada",
+        description,
+        amount: outstanding,
+        due_date: due,
+        status,
+        category_id: categoryId,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (tx) {
+      await supabase.from("loans").update({ receivable_transaction_id: tx.id }).eq("id", loan.id);
+    }
+  }
 }
 
 /** Recalcula o status (quitado / em_aberto) com base nos pagamentos. Não mexe em 'cancelado'. */
@@ -185,16 +274,32 @@ export async function createLoan(input: LoanInput) {
     await supabase.from("loans").update({ transaction_id: tx.id }).eq("id", loan.id);
   }
 
-  // Cronograma de parcelas (se parcelado)
+  // Recebíveis (entradas pendentes) → aparecem em "A receber"
+  const recCategoryId = await loanCategoryId(supabase, "entrada");
+  const meta: LoanMeta = {
+    id: loan.id,
+    loan_number: loan.loan_number,
+    borrower_name: fields.borrower_name,
+  };
+
   if (fields.repayment_type === "parcelado" && fields.installments_count) {
     const total = loanTotalDue(fields);
     const firstDue = fields.due_date || addMonths(fields.loan_date, 1);
     await regenerateInstallments(
       supabase,
-      loan.id,
+      meta,
       total,
       fields.installments_count,
-      firstDue
+      firstDue,
+      recCategoryId,
+      user.id
+    );
+  } else {
+    await syncAvulsoReceivable(
+      supabase,
+      { ...meta, ...fields, receivable_transaction_id: null },
+      recCategoryId,
+      user.id
     );
   }
 
@@ -207,11 +312,15 @@ export async function updateLoan(id: string, input: LoanInput) {
   if (err) return { error: err };
 
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
   const fields = sanitize(input);
 
   const { data: existing } = await supabase
     .from("loans")
-    .select("transaction_id, loan_number")
+    .select("transaction_id, loan_number, receivable_transaction_id")
     .eq("id", id)
     .single();
 
@@ -231,13 +340,48 @@ export async function updateLoan(id: string, input: LoanInput) {
       .eq("id", existing.transaction_id);
   }
 
-  // Recria o cronograma
+  const recCategoryId = await loanCategoryId(supabase, "entrada");
+  const meta: LoanMeta = {
+    id,
+    loan_number: existing?.loan_number ?? 0,
+    borrower_name: fields.borrower_name,
+  };
+
   if (fields.repayment_type === "parcelado" && fields.installments_count) {
+    // Se antes era avulso, remove o recebível único
+    if (existing?.receivable_transaction_id) {
+      await supabase.from("transactions").delete().eq("id", existing.receivable_transaction_id);
+      await supabase.from("loans").update({ receivable_transaction_id: null }).eq("id", id);
+    }
     const total = loanTotalDue(fields);
     const firstDue = fields.due_date || addMonths(fields.loan_date, 1);
-    await regenerateInstallments(supabase, id, total, fields.installments_count, firstDue);
+    await regenerateInstallments(
+      supabase,
+      meta,
+      total,
+      fields.installments_count,
+      firstDue,
+      recCategoryId,
+      user.id
+    );
   } else {
+    // Avulso: remove parcelas + seus recebíveis, e mantém o recebível único
+    const { data: insts } = await supabase
+      .from("loan_installments")
+      .select("transaction_id")
+      .eq("loan_id", id);
+    const instTxIds = (insts ?? [])
+      .map((i) => i.transaction_id)
+      .filter((x): x is string => !!x);
+    if (instTxIds.length > 0) await supabase.from("transactions").delete().in("id", instTxIds);
     await supabase.from("loan_installments").delete().eq("loan_id", id);
+
+    await syncAvulsoReceivable(
+      supabase,
+      { ...meta, ...fields, receivable_transaction_id: existing?.receivable_transaction_id ?? null },
+      recCategoryId,
+      user.id
+    );
   }
 
   await recomputeStatus(supabase, id);
@@ -249,15 +393,19 @@ export async function deleteLoan(id: string) {
   const supabase = createClient();
 
   // Coleta lançamentos vinculados + comprovantes no storage
-  const [{ data: loan }, { data: payments }, { data: attachments }] = await Promise.all([
-    supabase.from("loans").select("transaction_id").eq("id", id).single(),
-    supabase.from("loan_payments").select("transaction_id").eq("loan_id", id),
-    supabase.from("loan_attachments").select("storage_path").eq("loan_id", id),
-  ]);
+  const [{ data: loan }, { data: payments }, { data: insts }, { data: attachments }] =
+    await Promise.all([
+      supabase.from("loans").select("transaction_id, receivable_transaction_id").eq("id", id).single(),
+      supabase.from("loan_payments").select("transaction_id").eq("loan_id", id),
+      supabase.from("loan_installments").select("transaction_id").eq("loan_id", id),
+      supabase.from("loan_attachments").select("storage_path").eq("loan_id", id),
+    ]);
 
   const txIds = [
     loan?.transaction_id,
+    loan?.receivable_transaction_id,
     ...(payments ?? []).map((p) => p.transaction_id),
+    ...(insts ?? []).map((i) => i.transaction_id),
   ].filter((x): x is string => !!x);
 
   if (txIds.length > 0) {
@@ -306,46 +454,84 @@ export async function addPayment(loanId: string, input: PaymentInput) {
 
   const { data: loan } = await supabase
     .from("loans")
-    .select("loan_number, borrower_name")
+    .select(
+      "loan_number, borrower_name, principal, interest_rate, term_months, due_date, loan_date, receivable_transaction_id, repayment_type"
+    )
     .eq("id", loanId)
     .single();
   if (!loan) return { error: "Empréstimo não encontrado" };
 
-  // Lançamento de ENTRADA — o dinheiro voltou ao caixa
-  const categoryId = await loanCategoryId(supabase, "entrada");
-  const { data: tx } = await supabase
-    .from("transactions")
-    .insert({
-      type: "entrada",
-      description: `RECEB. EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name}`,
-      amount: input.amount,
-      due_date: input.payment_date,
-      paid_date: input.payment_date,
-      status: "recebido",
-      category_id: categoryId,
-      notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
+  const recCategoryId = await loanCategoryId(supabase, "entrada");
+  let txId: string | null = null;
+
+  if (input.installment_id) {
+    // Pagamento de parcela: o recebível pendente da parcela vira "recebido"
+    const { data: inst } = await supabase
+      .from("loan_installments")
+      .select("transaction_id")
+      .eq("id", input.installment_id)
+      .single();
+
+    if (inst?.transaction_id) {
+      await supabase
+        .from("transactions")
+        .update({ status: "recebido", paid_date: input.payment_date })
+        .eq("id", inst.transaction_id);
+      txId = inst.transaction_id;
+    } else {
+      // Parcela sem recebível (empréstimo antigo): cria um recebido novo
+      const { data: tx } = await supabase
+        .from("transactions")
+        .insert({
+          type: "entrada",
+          description: `RECEB. EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name}`,
+          amount: input.amount,
+          due_date: input.payment_date,
+          paid_date: input.payment_date,
+          status: "recebido",
+          category_id: recCategoryId,
+          created_by: user.id,
+        })
+        .select("id")
+        .single();
+      txId = tx?.id ?? null;
+    }
+
+    await supabase.from("loan_installments").update({ paid: true }).eq("id", input.installment_id);
+  } else {
+    // Pagamento avulso: registra a entrada no caixa
+    const { data: tx } = await supabase
+      .from("transactions")
+      .insert({
+        type: "entrada",
+        description: `RECEB. EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name}`,
+        amount: input.amount,
+        due_date: input.payment_date,
+        paid_date: input.payment_date,
+        status: "recebido",
+        category_id: recCategoryId,
+        notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+    txId = tx?.id ?? null;
+  }
 
   const { error } = await supabase.from("loan_payments").insert({
     loan_id: loanId,
     installment_id: input.installment_id || null,
     amount: input.amount,
     payment_date: input.payment_date,
-    transaction_id: tx?.id ?? null,
+    transaction_id: txId,
     notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
     created_by: user.id,
   });
   if (error) return { error: error.message };
 
-  // Marca a parcela como paga, se vinculada
-  if (input.installment_id) {
-    await supabase
-      .from("loan_installments")
-      .update({ paid: true })
-      .eq("id", input.installment_id);
+  // Avulso: encolhe o recebível único conforme o saldo cai
+  if (!input.installment_id && loan.repayment_type !== "parcelado") {
+    await syncAvulsoReceivable(supabase, { id: loanId, ...loan }, recCategoryId, user.id);
   }
 
   await recomputeStatus(supabase, loanId);
@@ -355,6 +541,10 @@ export async function addPayment(loanId: string, input: PaymentInput) {
 
 export async function deletePayment(paymentId: string) {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
 
   const { data: payment } = await supabase
     .from("loan_payments")
@@ -363,18 +553,43 @@ export async function deletePayment(paymentId: string) {
     .single();
   if (!payment) return { error: "Pagamento não encontrado" };
 
-  if (payment.transaction_id) {
-    await supabase.from("transactions").delete().eq("id", payment.transaction_id);
-  }
   if (payment.installment_id) {
-    await supabase
+    // Parcela: o recebível volta a ficar PENDENTE (não apaga o lançamento)
+    const { data: inst } = await supabase
       .from("loan_installments")
-      .update({ paid: false })
-      .eq("id", payment.installment_id);
-  }
+      .select("transaction_id")
+      .eq("id", payment.installment_id)
+      .single();
 
-  const { error } = await supabase.from("loan_payments").delete().eq("id", paymentId);
-  if (error) return { error: error.message };
+    if (inst?.transaction_id && inst.transaction_id === payment.transaction_id) {
+      await supabase
+        .from("transactions")
+        .update({ status: "pendente", paid_date: null })
+        .eq("id", inst.transaction_id);
+    } else if (payment.transaction_id) {
+      await supabase.from("transactions").delete().eq("id", payment.transaction_id);
+    }
+    await supabase.from("loan_installments").update({ paid: false }).eq("id", payment.installment_id);
+    await supabase.from("loan_payments").delete().eq("id", paymentId);
+  } else {
+    // Avulso: apaga o recebido e restaura o recebível ao novo saldo
+    if (payment.transaction_id) {
+      await supabase.from("transactions").delete().eq("id", payment.transaction_id);
+    }
+    await supabase.from("loan_payments").delete().eq("id", paymentId);
+
+    const { data: loan } = await supabase
+      .from("loans")
+      .select(
+        "loan_number, borrower_name, principal, interest_rate, term_months, due_date, loan_date, receivable_transaction_id"
+      )
+      .eq("id", payment.loan_id)
+      .single();
+    if (loan) {
+      const recCategoryId = await loanCategoryId(supabase, "entrada");
+      await syncAvulsoReceivable(supabase, { id: payment.loan_id, ...loan }, recCategoryId, user.id);
+    }
+  }
 
   await recomputeStatus(supabase, payment.loan_id);
   revalidate();

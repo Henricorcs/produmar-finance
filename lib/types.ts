@@ -237,7 +237,8 @@ export interface Loan {
   due_date: string | null;
 
   status: LoanStatus;
-  transaction_id: string | null;
+  transaction_id: string | null;            // lançamento de SAÍDA (dinheiro emprestado)
+  receivable_transaction_id: string | null; // recebível (entrada pendente) — empréstimo avulso
 
   notes: string | null;
   created_by: string | null;
@@ -252,6 +253,7 @@ export interface LoanInstallment {
   due_date: string;
   amount: number;
   paid: boolean;
+  transaction_id: string | null;            // recebível (entrada pendente) desta parcela
   created_at: string;
 }
 
