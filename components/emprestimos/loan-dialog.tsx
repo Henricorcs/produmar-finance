@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
+import {
+  Camera,
+  Paperclip,
+  X,
+  FileText,
+  Image as ImageIcon,
+  File as FileIcon,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +20,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createLoan, updateLoan, type LoanInput } from "@/app/(app)/emprestimos/actions";
+import {
+  createLoan,
+  updateLoan,
+  uploadLoanAttachments,
+  type LoanInput,
+} from "@/app/(app)/emprestimos/actions";
 import { loanTotalDue, formatBRL } from "@/lib/utils";
 import type { Loan, LoanRepaymentType } from "@/lib/types";
 
@@ -41,6 +54,9 @@ function parseBRL(value: string): number {
 
 const todayStr = () => new Date().toISOString().split("T")[0];
 
+const MAX_SIZE_MB = 10;
+const MAX_SIZE = MAX_SIZE_MB * 1024 * 1024;
+
 export function LoanDialog({ open, onClose, loan }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +67,13 @@ export function LoanDialog({ open, onClose, loan }: Props) {
   const [termMonths, setTermMonths] = useState("");
   const [installments, setInstallments] = useState("");
 
+  // Comprovantes anexados já na criação (ex.: print do PIX)
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const savedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (open) {
       setRepaymentType(loan?.repayment_type ?? "avulso");
@@ -59,6 +82,9 @@ export function LoanDialog({ open, onClose, loan }: Props) {
       setTermMonths(loan?.term_months != null ? String(loan.term_months) : "");
       setInstallments(loan?.installments_count != null ? String(loan.installments_count) : "");
       setError(null);
+      setFiles([]);
+      setFileError(null);
+      savedIdRef.current = loan?.id ?? null;
     }
   }, [open, loan]);
 
@@ -68,6 +94,28 @@ export function LoanDialog({ open, onClose, loan }: Props) {
   const months = parseInt(termMonths, 10) || 0;
   const total = loanTotalDue({ principal, interest_rate: rate, term_months: months });
   const interest = total - principal;
+
+  function addFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const accepted: File[] = [];
+    const errs: string[] = [];
+    Array.from(list).forEach((f) => {
+      if (f.size > MAX_SIZE) errs.push(`${f.name}: máx ${MAX_SIZE_MB} MB`);
+      else accepted.push(f);
+    });
+    setFileError(errs.length ? errs.join(" · ") : null);
+    if (accepted.length) setFiles((prev) => [...prev, ...accepted]);
+  }
+
+  function removeFile(idx: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function fileIcon(f: File) {
+    if (f.type.startsWith("image/")) return <ImageIcon className="w-4 h-4" />;
+    if (f.type.includes("pdf")) return <FileText className="w-4 h-4 text-red-500" />;
+    return <FileIcon className="w-4 h-4" />;
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -89,9 +137,42 @@ export function LoanDialog({ open, onClose, loan }: Props) {
     };
 
     startTransition(async () => {
-      const result = loan ? await updateLoan(loan.id, input) : await createLoan(input);
-      if (result && "error" in result) setError(result.error ?? "Erro inesperado");
-      else onClose();
+      // Cria/atualiza o empréstimo. savedIdRef evita recriar caso o upload
+      // do comprovante falhe e o usuário tente enviar novamente.
+      let loanId = savedIdRef.current;
+
+      if (loanId) {
+        if (loan) {
+          const result = await updateLoan(loanId, input);
+          if (result && "error" in result) {
+            setError(result.error ?? "Erro inesperado");
+            return;
+          }
+        }
+      } else {
+        const result = await createLoan(input);
+        if (result && "error" in result) {
+          setError(result.error ?? "Erro inesperado");
+          return;
+        }
+        loanId = (result as { id?: string }).id ?? null;
+        savedIdRef.current = loanId;
+      }
+
+      // Sobe os comprovantes anexados (se houver)
+      if (loanId && files.length > 0) {
+        const upload = new FormData();
+        files.forEach((f) => upload.append("files", f));
+        const up = await uploadLoanAttachments(loanId, upload);
+        if (up && "error" in up) {
+          setError(
+            `Empréstimo salvo, mas falha ao anexar o comprovante: ${up.error}. Tente enviar de novo.`
+          );
+          return;
+        }
+      }
+
+      onClose();
     });
   }
 
@@ -285,6 +366,96 @@ export function LoanDialog({ open, onClose, loan }: Props) {
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
             />
+          </div>
+
+          {/* Comprovante (print do PIX / transferência) */}
+          <div className="space-y-1.5">
+            <Label>Comprovante</Label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => cameraRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+              >
+                <Camera className="w-4 h-4" />
+                Câmera
+              </button>
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => fileRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+              >
+                <Paperclip className="w-4 h-4" />
+                Anexar arquivo
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,.pdf,application/pdf"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            {fileError && (
+              <p className="text-[11px] text-red-600 dark:text-red-400">{fileError}</p>
+            )}
+
+            {files.length === 0 ? (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                Print do PIX/transferência, foto ou PDF · até {MAX_SIZE_MB} MB cada
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {files.map((f, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700"
+                  >
+                    <div className="w-7 h-7 rounded-md bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 flex-shrink-0">
+                      {fileIcon(f)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                        {f.name}
+                      </p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                        {f.size < 1024 * 1024
+                          ? `${(f.size / 1024).toFixed(0)} kB`
+                          : `${(f.size / 1024 / 1024).toFixed(1)} MB`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(idx)}
+                      disabled={isPending}
+                      title="Remover"
+                      className="p-1.5 text-slate-400 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {error && (
