@@ -15,6 +15,7 @@ import {
   Building2,
   FileText,
   Receipt,
+  Calendar,
   CheckCircle2,
   Clock,
   Loader2,
@@ -408,53 +409,41 @@ function OrderRow({
   const isClient = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
 
-  // Counterpart label — só "Interno" para serviço; "Consumo interno" só faz
-  // sentido em entrega (está consumindo material). Ícone já indica o tipo.
-  const counterpart = isClient
-    ? (o.client_name ?? "Cliente")
-    : isMaterial ? "Consumo interno" : "Interno";
+  // Título do card = descrição do serviço. Em entrega de material (que
+  // normalmente não tem descrição) cai pros materiais; por último, o tipo.
+  const materialsSummary = o.service_order_items
+    .slice(0, 2)
+    .map((it) =>
+      `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""} ${it.description ?? ""}`.trim()
+    )
+    .filter(Boolean)
+    .join(" · ");
+  const moreItems =
+    o.service_order_items.length > 2 ? ` +${o.service_order_items.length - 2}` : "";
 
-  // ── Linha primária (O QUE foi feito) ──────────────────────────────────────
-  // Serviço: só a descrição do serviço (o item sintético "1 ud × R$ X" é lixo
-  // visual). Entrega: lista de materiais com qty + unidade.
-  let primaryInfo: string | null = null;
-  if (isMaterial) {
-    const itemsStr = o.service_order_items
-      .slice(0, 2)
-      .map((it) => {
-        const qty = it.quantity.toString().replace(".", ",");
-        const desc = it.description ?? "";
-        return `${qty} ${it.unit ?? ""} ${desc}`.trim();
-      })
-      .filter(Boolean)
-      .join(" · ");
-    const more = o.service_order_items.length > 2
-      ? ` +${o.service_order_items.length - 2}`
-      : "";
-    primaryInfo = itemsStr ? itemsStr + more : null;
-  } else {
-    primaryInfo = o.service_description?.trim() || null;
-  }
+  const title =
+    o.service_description?.trim() ||
+    (isMaterial && materialsSummary ? materialsSummary + moreItems : "") ||
+    (isClient ? o.client_name?.trim() : "") ||
+    (isMaterial ? "Entrega de material" : "Prestação de serviço");
 
-  // ── Linha secundária (ONDE + máquina + data) ──────────────────────────────
-  const parts: string[] = [];
-  if (o.delivery_address?.trim()) parts.push(`📍 ${o.delivery_address}`);
-  if (o.machines) {
-    parts.push(`🚛 ${o.machines.name}${o.machines.plate ? ` (${o.machines.plate})` : ""}`);
-  }
-  if (o.delivery_date) parts.push(`📅 ${formatDate(o.delivery_date)}`);
-  const secondaryInfo = parts.join(" · ");
+  const dateStr = formatDate(o.delivery_date ?? o.issue_date);
 
   const canAdvance = o.status === "pendente" || o.status === "em_andamento";
   const nextStatus: ServiceOrderStatus =
     o.status === "pendente" ? "em_andamento" : "entregue";
 
   return (
-    <div className="relative px-3 sm:px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors group">
-      <div className="flex items-start gap-3 min-w-0">
-        {/* Type icon */}
+    <div className="relative px-3 sm:px-4 py-3.5 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+      {/* Corpo tocável — abre a OS para ver/editar */}
+      <button
+        type="button"
+        onClick={() => onEdit(o)}
+        className="w-full flex items-start gap-3 text-left"
+      >
+        {/* Ícone do tipo (verde = cliente, âmbar = interno) */}
         <div
-          className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+          className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
             isClient
               ? "bg-emerald-50 dark:bg-emerald-950/40"
               : "bg-amber-50 dark:bg-amber-950/40"
@@ -462,73 +451,48 @@ function OrderRow({
         >
           {isMaterial ? (
             <Truck
-              className={`w-4 h-4 ${
+              className={`w-5 h-5 ${
                 isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
               }`}
             />
           ) : (
             <Wrench
-              className={`w-4 h-4 ${
+              className={`w-5 h-5 ${
                 isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
               }`}
             />
           )}
         </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0 space-y-0.5">
-          {/* counterpart + #N */}
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tabular-nums flex-shrink-0">
-              #{o.order_number}
+        {/* Título (descrição do serviço) + data + status */}
+        <div className="flex-1 min-w-0">
+          <p className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-snug line-clamp-2 break-words">
+            {title}
+          </p>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+              <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+              {dateStr}
             </span>
-            <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex-1 min-w-0">
-              {counterpart}
-            </p>
+            <span
+              className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE[o.status]}`}
+            >
+              {osStatusLabel(o.status, o.type)}
+            </span>
             {o.transaction_id && (
               <span
                 title="Lançamento financeiro gerado"
-                className="text-emerald-500 dark:text-emerald-400 flex-shrink-0"
+                className="inline-flex items-center text-emerald-500 dark:text-emerald-400"
               >
-                <Receipt className="w-3 h-3" />
+                <Receipt className="w-3.5 h-3.5" />
               </span>
             )}
           </div>
-
-          {/* Primary: o que foi feito (descrição do serviço OU itens) */}
-          {primaryInfo && (
-            <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
-              {primaryInfo}
-            </p>
-          )}
-
-          {/* Secondary: local + máquina + data, separados por · */}
-          {secondaryInfo && (
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
-              {secondaryInfo}
-            </p>
-          )}
         </div>
+      </button>
 
-        {/* Amount + status (always visible on right) */}
-        <div className="text-right flex-shrink-0 space-y-1">
-          <p
-            className={`text-sm font-semibold tabular-nums whitespace-nowrap ${
-              isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"
-            }`}
-          >
-            {formatBRL(o.total_amount)}
-          </p>
-          <span
-            className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLE[o.status]}`}
-          >
-            {osStatusLabel(o.status, o.type)}
-          </span>
-        </div>
-      </div>
-
-      {/* Actions row — full width, separate line on mobile; hover only on desktop */}
-      <div className="flex items-center justify-end gap-0.5 mt-1.5 sm:mt-0 sm:absolute sm:top-2.5 sm:right-3 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity">
+      {/* Ações — alvos grandes p/ toque no celular */}
+      <div className="flex items-center justify-end gap-1 mt-2">
         {canAdvance && (
           <button
             onClick={() => onStatus(o, nextStatus)}
@@ -539,12 +503,12 @@ function OrderRow({
                   ? "Marcar como finalizado"
                   : "Marcar como entregue"
             }
-            className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
           >
             {nextStatus === "em_andamento" ? (
-              <Loader2 className="w-4 h-4" />
+              <Loader2 className="w-5 h-5" />
             ) : (
-              <CheckCircle2 className="w-4 h-4" />
+              <CheckCircle2 className="w-5 h-5" />
             )}
           </button>
         )}
@@ -552,31 +516,31 @@ function OrderRow({
           <button
             onClick={() => onGenerateTransaction(o)}
             title="Gerar lançamento financeiro"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
           >
-            <Receipt className="w-4 h-4" />
+            <Receipt className="w-5 h-5" />
           </button>
         )}
         <button
           onClick={() => window.open(`/imprimir/os/${o.id}`, "_blank")}
           title="Imprimir orçamento / comprovante"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
+          className="p-2 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
         >
-          <Printer className="w-4 h-4" />
+          <Printer className="w-5 h-5" />
         </button>
         <button
           onClick={() => onEdit(o)}
           title="Editar"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
+          className="p-2 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
         >
-          <Pencil className="w-4 h-4" />
+          <Pencil className="w-5 h-5" />
         </button>
         <button
           onClick={() => onDelete(o.id)}
           title="Excluir"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-5 h-5" />
         </button>
       </div>
     </div>
