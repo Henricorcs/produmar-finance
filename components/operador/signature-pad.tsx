@@ -1,34 +1,99 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Eraser } from "lucide-react";
+import { Eraser, PenLine, Check, X } from "lucide-react";
 
 interface Props {
-  /** Recebe o PNG (data-URL) a cada traço concluído, ou null quando limpo/vazio. */
+  /** Recebe o PNG (data-URL) confirmado, ou null quando não há assinatura. */
   onChange: (dataUrl: string | null) => void;
 }
 
 /**
- * Pad de assinatura simples (sem dependências). Funciona com dedo (touch),
- * caneta e mouse via Pointer Events. O fundo é sempre branco para imprimir bem.
+ * Campo de assinatura: mostra um botão "Assinar". Ao tocar, abre uma tela
+ * cheia preta com o quadro branco para assinar (dedo/caneta/mouse) e os
+ * botões "Limpar" e "OK". Sem dependências externas.
  */
 export function SignaturePad({ onChange }: Props) {
+  const [value, setValue] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  function confirm(dataUrl: string | null) {
+    setValue(dataUrl);
+    onChange(dataUrl);
+    setOpen(false);
+  }
+
+  return (
+    <>
+      {value ? (
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={value}
+            alt="Assinatura"
+            className="h-16 flex-1 min-w-0 object-contain rounded-lg border border-slate-200 dark:border-slate-700 bg-white"
+          />
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="text-xs font-medium text-produmar-600 dark:text-produmar-400 hover:underline px-2 py-1 flex-shrink-0"
+          >
+            Refazer
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-produmar-400 hover:text-produmar-600 dark:hover:text-produmar-400 transition-colors font-medium"
+        >
+          <PenLine className="w-4 h-4" />
+          Assinar
+        </button>
+      )}
+
+      {open && <SignatureOverlay onCancel={() => setOpen(false)} onConfirm={confirm} />}
+    </>
+  );
+}
+
+// ── Tela cheia de assinatura ──────────────────────────────────────────────────
+
+function SignatureOverlay({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: (dataUrl: string | null) => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const hasInk = useRef(false);
   const [empty, setEmpty] = useState(true);
 
-  // Fundo branco + estilo do traço
+  // Dimensiona o canvas para o tamanho exibido + fundo branco
   useEffect(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(rect.width));
+    canvas.height = Math.max(1, Math.round(rect.height));
+    const ctx = canvas.getContext("2d")!;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.lineWidth = 2.5;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.strokeStyle = "#0f172a";
+  }, []);
+
+  // Trava o scroll do fundo enquanto a tela está aberta
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, []);
 
   function point(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -65,9 +130,7 @@ export function SignaturePad({ onChange }: Props) {
   }
 
   function end() {
-    if (!drawing.current) return;
     drawing.current = false;
-    if (hasInk.current) onChange(canvasRef.current!.toDataURL("image/png"));
   }
 
   function clear() {
@@ -77,35 +140,70 @@ export function SignaturePad({ onChange }: Props) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     hasInk.current = false;
     setEmpty(true);
-    onChange(null);
+  }
+
+  function ok() {
+    onConfirm(hasInk.current ? canvasRef.current!.toDataURL("image/png") : null);
   }
 
   return (
-    <div className="relative rounded-xl border border-slate-300 dark:border-slate-600 bg-white overflow-hidden">
-      <canvas
-        ref={canvasRef}
-        width={600}
-        height={200}
-        className="block w-full h-40 touch-none cursor-crosshair"
-        onPointerDown={start}
-        onPointerMove={move}
-        onPointerUp={end}
-        onPointerCancel={end}
-        onPointerLeave={end}
-      />
-      {empty && (
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-slate-300 select-none">
-          Assine aqui com o dedo
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={clear}
-        className="absolute top-1.5 right-1.5 flex items-center gap-1 text-[11px] font-medium text-slate-500 bg-white/90 border border-slate-200 rounded-md px-2 py-1 hover:bg-slate-50 transition-colors"
+    <div className="fixed inset-0 z-[80] bg-black flex flex-col">
+      {/* Topo */}
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
-        <Eraser className="w-3 h-3" />
-        Limpar
-      </button>
+        <span className="text-sm text-white/80">Assine no quadro branco</span>
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Cancelar"
+          className="p-2 -mr-2 text-white/70 hover:text-white"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Quadro de assinatura */}
+      <div className="relative flex-1 px-3 min-h-0">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full bg-white rounded-2xl touch-none cursor-crosshair"
+          onPointerDown={start}
+          onPointerMove={move}
+          onPointerUp={end}
+          onPointerCancel={end}
+          onPointerLeave={end}
+        />
+        {empty && (
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-300 select-none">
+            Assine aqui
+          </span>
+        )}
+      </div>
+
+      {/* Ações */}
+      <div
+        className="flex gap-3 p-4"
+        style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+      >
+        <button
+          type="button"
+          onClick={clear}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl border border-white/30 text-white font-medium active:bg-white/10 transition-colors"
+        >
+          <Eraser className="w-4 h-4" />
+          Limpar
+        </button>
+        <button
+          type="button"
+          onClick={ok}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors"
+        >
+          <Check className="w-4 h-4" />
+          OK
+        </button>
+      </div>
     </div>
   );
 }

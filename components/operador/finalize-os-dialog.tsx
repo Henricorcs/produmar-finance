@@ -145,7 +145,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               <Label>Assinatura de quem recebeu</Label>
               <SignaturePad onChange={setSignature} />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Assine no quadro acima com o dedo (opcional).
+                Toque em “Assinar” para abrir o quadro em tela cheia (opcional).
               </p>
             </div>
 
