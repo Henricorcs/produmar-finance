@@ -332,8 +332,16 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
           <div className="border-t border-slate-200 pt-5 mt-4">
             {order.received_by ? (
               <div className="text-xs">
+                {order.signature && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={order.signature}
+                    alt="Assinatura"
+                    className="h-16 object-contain mb-1"
+                  />
+                )}
                 <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">
-                  Recebido por
+                  {order.signature ? "Assinatura — recebido por" : "Recebido por"}
                 </p>
                 <p className="font-semibold text-slate-700 text-sm">{order.received_by}</p>
                 <p className="text-slate-400 mt-0.5">Data: {formatDate(order.delivery_date)}</p>

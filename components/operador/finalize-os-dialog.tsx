@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SignaturePad } from "./signature-pad";
 import { finalizeServiceOrder } from "@/app/(app)/operacoes/actions";
 import type { ServiceOrder } from "@/lib/types";
 
@@ -26,10 +27,12 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   const [receivedBy, setReceivedBy] = useState("");
   const [error, setError]           = useState<string | null>(null);
   const [done, setDone]             = useState(false);
+  const [signature, setSignature]   = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleClose() {
     setReceivedBy("");
+    setSignature(null);
     setError(null);
     setDone(false);
     onClose();
@@ -43,7 +46,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
     }
     setError(null);
     startTransition(async () => {
-      const result = await finalizeServiceOrder(order.id, receivedBy);
+      const result = await finalizeServiceOrder(order.id, receivedBy, signature);
       if ("error" in result) {
         setError(result.error ?? "Erro ao finalizar");
       } else {
@@ -77,6 +80,14 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                   Recebido por: <span className="font-medium">{receivedBy.toUpperCase()}</span>
                 </p>
               </div>
+              {signature && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={signature}
+                  alt="Assinatura"
+                  className="h-16 object-contain rounded-md border border-slate-200 dark:border-slate-700 bg-white"
+                />
+              )}
             </div>
 
             <Button
@@ -128,6 +139,14 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                 autoComplete="off"
                 autoFocus
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Assinatura de quem recebeu</Label>
+              <SignaturePad onChange={setSignature} />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Assine no quadro acima com o dedo (opcional).
+              </p>
             </div>
 
             {error && (

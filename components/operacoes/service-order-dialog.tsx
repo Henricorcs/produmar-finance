@@ -1002,7 +1002,7 @@ export function ServiceOrderDialog({
 
             {/* Notes */}
             <div className="space-y-1.5">
-              <Label htmlFor="notes">Observações</Label>
+              <Label htmlFor="notes">Serviço</Label>
               <Textarea
                 id="notes"
                 value={notes}

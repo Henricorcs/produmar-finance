@@ -195,6 +195,9 @@ export interface ServiceOrder {
   total_amount: number;
   transaction_id: string | null;
 
+  /** Assinatura digital (PNG data-URL) capturada na finalização. */
+  signature: string | null;
+
   notes: string | null;
   created_by: string | null;
   created_at: string;

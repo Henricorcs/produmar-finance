@@ -435,7 +435,11 @@ export async function generateTransactionFromOrder(
 // FINALIZAR OS (usado pelo painel do operador)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function finalizeServiceOrder(id: string, receivedBy: string) {
+export async function finalizeServiceOrder(
+  id: string,
+  receivedBy: string,
+  signature?: string | null
+) {
   const supabase = createClient();
 
   const trimmed = receivedBy.trim();
@@ -460,6 +464,16 @@ export async function finalizeServiceOrder(id: string, receivedBy: string) {
     .eq("id", id);
 
   if (error) return { error: error.message };
+
+  // Assinatura (best-effort): não quebra a finalização caso a coluna ainda
+  // não exista (migration 010 não aplicada no Supabase).
+  if (signature) {
+    const { error: sigErr } = await supabase
+      .from("service_orders")
+      .update({ signature })
+      .eq("id", id);
+    if (sigErr) console.error("Falha ao salvar assinatura:", sigErr.message);
+  }
 
   revalidatePath("/operador");
   revalidatePath("/operacoes");
