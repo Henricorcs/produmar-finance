@@ -14,17 +14,17 @@ interface Props {
   onCreated: (p: Product) => void;
 }
 
-const UNITS = ["m³", "tonelada", "ud", "h", "km"];
+const UNITS = ["carrada", "m³", "tonelada", "ud", "saco", "kg", "h", "km"];
 
 export function QuickCreateProductDialog({ open, onClose, onCreated }: Props) {
   const [name, setName]   = useState("");
-  const [unit, setUnit]   = useState("m³");
+  const [unit, setUnit]   = useState("carrada");
   const [price, setPrice] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (open) { setName(""); setUnit("m³"); setPrice(""); setError(null); }
+    if (open) { setName(""); setUnit("carrada"); setPrice(""); setError(null); }
   }, [open]);
 
   function handleSubmit(e: React.FormEvent) {

@@ -107,7 +107,7 @@ interface ItemDraft {
 }
 
 function emptyItem(): ItemDraft {
-  return { product_id: "", description: "", quantity: "1", unit: "m³", unit_price: "" };
+  return { product_id: "", description: "", quantity: "1", unit: "carrada", unit_price: "" };
 }
 
 function todayStr(): string {
@@ -207,7 +207,7 @@ export function ServiceOrderDialog({
               product_id: it.product_id ?? "",
               description: it.description ?? "",
               quantity: formatQty(it.quantity),
-              unit: it.unit ?? "m³",
+              unit: it.unit ?? "carrada",
               unit_price: formatBRLInput(it.unit_price),
             }))
           : [emptyItem()]
@@ -286,7 +286,7 @@ export function ServiceOrderDialog({
     const product = localProducts.find((p) => p.id === productId);
     setItem(idx, {
       product_id: productId,
-      unit: product?.unit ?? "m³",
+      unit: product?.unit ?? "carrada",
       unit_price:
         product?.default_price != null && !items[idx].unit_price
           ? formatBRLInput(product.default_price)
@@ -644,6 +644,12 @@ export function ServiceOrderDialog({
                 </div>
 
                 <div className="space-y-2">
+                  {/* Sugestões rápidas de unidade (carrada é o padrão) */}
+                  <datalist id="os-units">
+                    {["carrada", "m³", "tonelada", "ud", "saco", "kg", "h", "km"].map((u) => (
+                      <option key={u} value={u} />
+                    ))}
+                  </datalist>
                   {items.map((it, idx) => {
                     const lineTotal = parseQty(it.quantity) * parseBRLToNumber(it.unit_price);
                     return (
@@ -703,7 +709,8 @@ export function ServiceOrderDialog({
                             <Input
                               value={it.unit}
                               onChange={(e) => setItem(idx, { unit: e.target.value })}
-                              placeholder="m³"
+                              placeholder="carrada"
+                              list="os-units"
                               autoComplete="off"
                               className="h-9 text-sm"
                             />
