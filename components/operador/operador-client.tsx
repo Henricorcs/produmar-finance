@@ -4,11 +4,10 @@ import { useState, useTransition } from "react";
 import {
   Truck,
   Wrench,
-  User,
-  Building2,
   Loader2,
   CheckCircle2,
   ClipboardList,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -170,123 +169,87 @@ function OSCard({
   const isClient   = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
 
-  // Para serviço: só mostra service_description. Para entrega: lista de itens.
-  let primaryInfo: string | null = null;
-  if (isMaterial) {
-    const itemsStr = o.service_order_items
-      .slice(0, 3)
-      .map((it) => `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""} ${it.description ?? ""}`.trim())
-      .filter(Boolean)
-      .join(" · ");
-    const more = o.service_order_items.length > 3 ? ` +${o.service_order_items.length - 3}` : "";
-    primaryInfo = itemsStr ? itemsStr + more : null;
-  } else {
-    primaryInfo = o.service_description?.trim() || null;
-  }
+  // Título = descrição do serviço. Fallback: resumo dos materiais → tipo.
+  const materialsSummary = o.service_order_items
+    .slice(0, 3)
+    .map((it) =>
+      `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""} ${it.description ?? ""}`.trim()
+    )
+    .filter(Boolean)
+    .join(" · ");
+  const moreItems =
+    o.service_order_items.length > 3 ? ` +${o.service_order_items.length - 3}` : "";
+
+  const title =
+    o.service_description?.trim() ||
+    (isMaterial && materialsSummary ? materialsSummary + moreItems : "") ||
+    (isClient ? o.client_name?.trim() : "") ||
+    (isMaterial ? "Entrega de material" : "Prestação de serviço");
+
+  const dateStr = o.delivery_date
+    ? new Date(o.delivery_date + "T12:00:00").toLocaleDateString("pt-BR")
+    : new Date(o.issue_date + "T12:00:00").toLocaleDateString("pt-BR");
 
   return (
     <div
-      className={`rounded-xl border p-4 space-y-3 ${
+      className={`rounded-2xl border p-4 space-y-4 ${
         o.status === "em_andamento"
           ? "border-produmar-200 dark:border-produmar-800/60 bg-produmar-50/40 dark:bg-produmar-950/20"
           : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
       }`}
     >
-      {/* Top row */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <div
-            className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-              isClient
-                ? "bg-emerald-100 dark:bg-emerald-950/50"
-                : "bg-amber-100 dark:bg-amber-950/50"
-            }`}
-          >
-            {isMaterial ? (
-              <Truck
-                className={`w-4 h-4 ${
-                  isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
-                }`}
-              />
-            ) : (
-              <Wrench
-                className={`w-4 h-4 ${
-                  isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
-                }`}
-              />
-            )}
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-slate-400 tabular-nums">
-                #{o.order_number}
-              </span>
-              <span
-                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_STYLE[o.status]}`}
-              >
-                {osStatusLabel(o.status, o.type)}
-              </span>
-            </div>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight">
-              {isClient
-                ? (o.client_name ?? "Cliente")
-                : isMaterial ? "Consumo interno" : "Interno"}
-            </p>
-          </div>
-        </div>
-        <p
-          className={`text-base font-bold tabular-nums flex-shrink-0 ${
+      {/* Título + data + status */}
+      <div className="flex items-start gap-3">
+        {/* Ícone maior */}
+        <div
+          className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
             isClient
-              ? "text-emerald-600 dark:text-emerald-400"
-              : "text-amber-700 dark:text-amber-400"
+              ? "bg-emerald-100 dark:bg-emerald-950/50"
+              : "bg-amber-100 dark:bg-amber-950/50"
           }`}
         >
-          {formatBRL(o.total_amount)}
-        </p>
+          {isMaterial ? (
+            <Truck className={`w-6 h-6 ${isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`} />
+          ) : (
+            <Wrench className={`w-6 h-6 ${isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`} />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          {/* Descrição do serviço — título principal */}
+          <p className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-snug line-clamp-2 break-words">
+            {title}
+          </p>
+          {/* Data + status */}
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+              <Calendar className="w-4 h-4 flex-shrink-0" />
+              {dateStr}
+            </span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE[o.status]}`}>
+              {osStatusLabel(o.status, o.type)}
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* Details */}
-      <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400 pl-11">
-        {primaryInfo && (
-          <p>{isMaterial ? "📦" : "🔧"} {primaryInfo}</p>
-        )}
-        {o.delivery_address && (
-          <p>📍 {o.delivery_address}</p>
-        )}
-        {o.machines && (
-          <p>
-            🚛 {o.machines.name}
-            {o.machines.plate ? ` (${o.machines.plate})` : ""}
-          </p>
-        )}
-        {o.delivery_date && (
-          <p>
-            📅 {isMaterial ? "Entrega" : "Serviço"}:{" "}
-            {new Date(o.delivery_date + "T12:00:00").toLocaleDateString("pt-BR")}
-          </p>
-        )}
-        {o.notes && <p className="italic opacity-75">💬 {o.notes.slice(0, 60)}</p>}
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-2 pl-11">
+      {/* Botões de ação — altura grande p/ toque fácil */}
+      <div className="flex gap-3">
         {o.status === "pendente" && (
           <Button
-            size="sm"
             variant="outline"
-            className="flex-1 border-produmar-200 text-produmar-700 hover:bg-produmar-50"
+            className="flex-1 h-12 text-sm font-semibold border-produmar-200 text-produmar-700 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-produmar-950/30"
             onClick={() => onIniciar(o)}
           >
-            <Loader2 className="w-3.5 h-3.5" />
+            <Loader2 className="w-4 h-4" />
             Iniciar
           </Button>
         )}
         <Button
-          size="sm"
-          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+          className="flex-1 h-12 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
           onClick={() => onFinalizar(o)}
         >
-          <CheckCircle2 className="w-3.5 h-3.5" />
+          <CheckCircle2 className="w-4 h-4" />
           Finalizar OS
         </Button>
       </div>
