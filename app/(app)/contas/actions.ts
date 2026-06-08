@@ -44,6 +44,7 @@ function parsePayload(formData: FormData): TransactionPayload | { error: string 
 function revalidate() {
   revalidatePath("/contas");
   revalidatePath("/dashboard");
+  revalidatePath("/estoque");
 }
 
 // ── Attachment helpers ───────────────────────────────────────────────────────
