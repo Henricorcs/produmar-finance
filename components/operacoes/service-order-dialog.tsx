@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect, useMemo } from "react";
 import {
   Plus, X, Truck, Wrench, User, Building2,
-  Clock, Gauge, DollarSign, Fuel,
+  Clock, Gauge, DollarSign, Fuel, Boxes,
 } from "lucide-react";
 import {
   Dialog,
@@ -37,6 +37,7 @@ import type {
   Machine,
   PickupLocation,
   Product,
+  ProductStockBalance,
   ServiceFreightType,
   ServiceOrder,
   ServiceOrderItem,
@@ -51,6 +52,7 @@ interface Props {
   machines: Machine[];
   products: Product[];
   pickupLocations: PickupLocation[];
+  stockBalances?: ProductStockBalance[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -116,6 +118,10 @@ function todayStr(): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+function fmtNum(n: number): string {
+  return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+}
+
 export function ServiceOrderDialog({
   open,
   onClose,
@@ -123,6 +129,7 @@ export function ServiceOrderDialog({
   machines,
   products,
   pickupLocations,
+  stockBalances = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -176,6 +183,15 @@ export function ServiceOrderDialog({
   useEffect(() => setLocalMachines(machines),     [machines]);
   useEffect(() => setLocalProducts(products),     [products]);
   useEffect(() => setLocalLocations(pickupLocations), [pickupLocations]);
+
+  // Saldo de estoque por produto (para avisar quando faltar material)
+  const stockMap = useMemo(() => {
+    const m = new Map<string, { quantity: number; unit: string }>();
+    for (const b of stockBalances) {
+      m.set(b.product_id, { quantity: Number(b.current_quantity), unit: b.unit });
+    }
+    return m;
+  }, [stockBalances]);
 
   // Hydrate / reset
   useEffect(() => {
@@ -755,6 +771,26 @@ export function ServiceOrderDialog({
                             </p>
                           </div>
                         </div>
+
+                        {/* Saldo de estoque do material */}
+                        {it.product_id && stockMap.has(it.product_id) && (() => {
+                          const bal = stockMap.get(it.product_id)!;
+                          const insufficient = parseQty(it.quantity) > bal.quantity;
+                          return (
+                            <p
+                              className={`flex items-center gap-1 text-[11px] ${
+                                insufficient
+                                  ? "text-red-600 dark:text-red-400 font-medium"
+                                  : "text-slate-500 dark:text-slate-400"
+                              }`}
+                            >
+                              <Boxes className="w-3 h-3 flex-shrink-0" />
+                              {insufficient
+                                ? `Estoque insuficiente — disponível: ${fmtNum(bal.quantity)} ${bal.unit}`
+                                : `Em estoque: ${fmtNum(bal.quantity)} ${bal.unit}`}
+                            </p>
+                          );
+                        })()}
                       </div>
                     );
                   })}

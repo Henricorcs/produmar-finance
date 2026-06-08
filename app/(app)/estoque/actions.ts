@@ -159,6 +159,56 @@ export async function createMaterialPurchase(input: MaterialPurchaseInput) {
   return { ok: true, purchaseId: purchase.id };
 }
 
+export async function payMaterialPurchase(purchaseId: string, amount: number) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!(amount > 0)) return { error: "Informe um valor maior que zero" };
+
+  const { data: p } = await supabase
+    .from("material_purchases")
+    .select("total_amount, amount_paid, transaction_id")
+    .eq("id", purchaseId)
+    .maybeSingle();
+  if (!p) return { error: "Compra não encontrada" };
+
+  const total = Number(p.total_amount);
+  const remainingBefore = Math.round((total - Number(p.amount_paid)) * 100) / 100;
+  if (remainingBefore <= 0) return { error: "Esta compra já está quitada" };
+
+  const pay = Math.min(remainingBefore, amount);
+  const newPaid = Math.round((Number(p.amount_paid) + pay) * 100) / 100;
+  const remainingAfter = Math.round((total - newPaid) * 100) / 100;
+
+  const { error: upErr } = await supabase
+    .from("material_purchases")
+    .update({ amount_paid: newPaid })
+    .eq("id", purchaseId);
+  if (upErr) return { error: upErr.message };
+
+  // Mantém a conta a pagar em sincronia: reduz o saldo, quita quando zera.
+  if (p.transaction_id) {
+    const today = new Date().toISOString().split("T")[0];
+    if (remainingAfter > 0) {
+      await supabase
+        .from("transactions")
+        .update({ amount: remainingAfter, status: "pendente", paid_date: null })
+        .eq("id", p.transaction_id);
+    } else {
+      await supabase
+        .from("transactions")
+        .update({ status: "pago", paid_date: today })
+        .eq("id", p.transaction_id);
+    }
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
 export async function deleteMaterialPurchase(id: string) {
   const supabase = createClient();
 

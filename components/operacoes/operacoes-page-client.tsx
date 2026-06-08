@@ -37,6 +37,7 @@ import type {
   Machine,
   PickupLocation,
   Product,
+  ProductStockBalance,
   ServiceOrder,
   ServiceOrderItem,
   ServiceOrderStatus,
@@ -59,6 +60,7 @@ interface Props {
   pickupLocations: PickupLocation[];
   categories: Category[];
   costCenters: CostCenter[];
+  stockBalances: ProductStockBalance[];
   month: string;
   initialFilter?: string;
 }
@@ -142,6 +144,7 @@ export function OperacoesPageClient({
   pickupLocations,
   categories,
   costCenters,
+  stockBalances,
   month,
   initialFilter = "",
 }: Props) {
@@ -392,6 +395,7 @@ export function OperacoesPageClient({
         machines={machines}
         products={products}
         pickupLocations={pickupLocations}
+        stockBalances={stockBalances}
       />
     </div>
   );

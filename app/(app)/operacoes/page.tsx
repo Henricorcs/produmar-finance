@@ -6,6 +6,7 @@ import type {
   Machine,
   PickupLocation,
   Product,
+  ProductStockBalance,
   ServiceOrder,
   ServiceOrderItem,
 } from "@/lib/types";
@@ -34,7 +35,7 @@ export default async function OperacoesPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [ordersRes, machinesRes, productsRes, locationsRes, categoriesRes, costCentersRes] =
+  const [ordersRes, machinesRes, productsRes, locationsRes, categoriesRes, costCentersRes, stockBalanceRes] =
     await Promise.all([
       supabase
         .from("service_orders")
@@ -51,6 +52,7 @@ export default async function OperacoesPage({
       supabase.from("pickup_locations").select("*").eq("active", true).order("name"),
       supabase.from("categories").select("*").order("name"),
       supabase.from("cost_centers").select("*").eq("active", true).order("name"),
+      supabase.from("product_stock_balance").select("*"),
     ]);
 
   return (
@@ -61,6 +63,7 @@ export default async function OperacoesPage({
       pickupLocations={(locationsRes.data as PickupLocation[]) ?? []}
       categories={(categoriesRes.data as Category[]) ?? []}
       costCenters={(costCentersRes.data as CostCenter[]) ?? []}
+      stockBalances={(stockBalanceRes.data as ProductStockBalance[]) ?? []}
       month={month}
       initialFilter={searchParams.filter ?? ""}
     />

@@ -1,15 +1,18 @@
-﻿import { createClient } from "@/lib/supabase/server";
+﻿import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { CashflowChart } from "@/components/dashboard/cashflow-chart";
 import { CashflowProjection } from "@/components/dashboard/cashflow-projection";
 import { ExpenseBreakdown } from "@/components/dashboard/expense-breakdown";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
-import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock, Banknote } from "lucide-react";
+import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock, Banknote, Boxes, AlertTriangle } from "lucide-react";
+import { formatBRLCompact } from "@/lib/utils";
 import type {
   DashboardKPIs,
   ExpenseByCategory,
   CashflowMonth,
   CashflowProjectionDay,
+  ProductStockBalance,
   Transaction,
 } from "@/lib/types";
 
@@ -23,7 +26,7 @@ export default async function DashboardPage() {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [kpisRes, expensesRes, cashflowRes, projectionRes, billsRes, profileRes] = await Promise.all([
+  const [kpisRes, expensesRes, cashflowRes, projectionRes, billsRes, profileRes, stockRes, purchasesRes] = await Promise.all([
     supabase.from("v_dashboard_kpis").select("*").single(),
     supabase.from("v_expenses_by_category").select("*"),
     supabase.from("v_cashflow_6m").select("*"),
@@ -38,6 +41,8 @@ export default async function DashboardPage() {
     user
       ? supabase.from("profiles").select("full_name").eq("id", user.id).single()
       : Promise.resolve({ data: null }),
+    supabase.from("product_stock_balance").select("*"),
+    supabase.from("material_purchases").select("total_amount, amount_paid"),
   ]);
 
   const kpis = (kpisRes.data as DashboardKPIs | null) ?? {
@@ -56,6 +61,29 @@ export default async function DashboardPage() {
   const cashflow = (cashflowRes.data as CashflowMonth[]) ?? [];
   const projection = (projectionRes.data as CashflowProjectionDay[]) ?? [];
   const bills = (billsRes.data as Transaction[]) ?? [];
+
+  // ── Resumo de estoque ──────────────────────────────────────────────────────
+  const stockBalances = (stockRes.data as ProductStockBalance[]) ?? [];
+  const stockValue = stockBalances.reduce(
+    (s, b) => s + Number(b.current_quantity) * Number(b.avg_unit_cost ?? 0),
+    0
+  );
+  const noStockCount = stockBalances.filter((b) => Number(b.current_quantity) <= 0).length;
+  const purchases = (purchasesRes.data as { total_amount: number; amount_paid: number }[]) ?? [];
+  const owedJazidas = purchases.reduce(
+    (s, p) => s + Math.max(0, Number(p.total_amount) - Number(p.amount_paid)),
+    0
+  );
+  const stockCards = [
+    { label: "Em estoque", value: formatBRLCompact(stockValue), color: "text-emerald-700 dark:text-emerald-400", icon: Boxes },
+    { label: "Devendo jazidas", value: formatBRLCompact(owedJazidas), color: "text-amber-700 dark:text-amber-400", icon: Wallet },
+    {
+      label: "Sem saldo",
+      value: String(noStockCount),
+      color: noStockCount > 0 ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-200",
+      icon: AlertTriangle,
+    },
+  ];
   const firstName =
     (profileRes.data as { full_name?: string } | null)?.full_name?.split(" ")[0] ?? "";
 
@@ -125,6 +153,43 @@ export default async function DashboardPage() {
           icon={Clock}
           href="/contas?filter=a-pagar"
         />
+      </div>
+
+      {/* Estoque */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-2">
+            <Boxes className="w-4 h-4" /> Estoque
+          </h2>
+          <Link
+            href="/estoque"
+            className="text-xs text-produmar-600 dark:text-produmar-400 font-medium"
+          >
+            Ver tudo →
+          </Link>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {stockCards.map((c) => {
+            const Icon = c.icon;
+            return (
+              <Link
+                key={c.label}
+                href="/estoque"
+                className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-4 transition-all hover:shadow-md hover:-translate-y-0.5 min-w-0"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
+                    {c.label}
+                  </span>
+                  <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" />
+                </div>
+                <p className={`mt-2 text-xl sm:text-2xl font-medium tabular-nums truncate ${c.color}`}>
+                  {c.value}
+                </p>
+              </Link>
+            );
+          })}
+        </div>
       </div>
 
       {/* Gráfico */}

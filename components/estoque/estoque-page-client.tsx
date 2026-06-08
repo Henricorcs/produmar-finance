@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { formatBRL, formatBRLCompact, formatDate } from "@/lib/utils";
 import { PurchaseDialog } from "./purchase-dialog";
 import { AdjustmentDialog } from "./adjustment-dialog";
+import { PaymentDialog } from "./payment-dialog";
 import {
   deleteMaterialPurchase,
   deleteStockMovement,
@@ -69,6 +70,7 @@ export function EstoquePageClient({
   const [tab, setTab] = useState<Tab>("saldo");
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [payTarget, setPayTarget] = useState<PurchaseRow | null>(null);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const stockValue = useMemo(
@@ -172,7 +174,11 @@ export function EstoquePageClient({
         <SaldoTab balance={balance} onAdjust={() => setAdjustOpen(true)} />
       )}
       {tab === "compras" && (
-        <ComprasTab purchases={purchases} onNew={() => setPurchaseOpen(true)} />
+        <ComprasTab
+          purchases={purchases}
+          onNew={() => setPurchaseOpen(true)}
+          onPay={setPayTarget}
+        />
       )}
       {tab === "movimentacoes" && (
         <MovimentacoesTab movements={movements} onAdjust={() => setAdjustOpen(true)} />
@@ -189,6 +195,16 @@ export function EstoquePageClient({
         onClose={() => setAdjustOpen(false)}
         products={products}
       />
+      {payTarget && (
+        <PaymentDialog
+          open={!!payTarget}
+          onClose={() => setPayTarget(null)}
+          purchaseId={payTarget.id}
+          purchaseNumber={payTarget.purchase_number}
+          jazidaName={payTarget.pickup_locations?.name ?? "Jazida"}
+          remaining={Number(payTarget.total_amount) - Number(payTarget.amount_paid)}
+        />
+      )}
     </div>
   );
 }
@@ -307,9 +323,11 @@ function SaldoTab({
 function ComprasTab({
   purchases,
   onNew,
+  onPay,
 }: {
   purchases: PurchaseRow[];
   onNew: () => void;
+  onPay: (p: PurchaseRow) => void;
 }) {
   const [isPending, startTransition] = useTransition();
 
@@ -400,14 +418,26 @@ function ComprasTab({
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => handleDelete(p)}
-                disabled={isPending}
-                className="p-1.5 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
-                title="Excluir compra"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                {owed > 0 && !settled && (
+                  <button
+                    onClick={() => onPay(p)}
+                    className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                    title="Registrar pagamento"
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                    Pagar
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(p)}
+                  disabled={isPending}
+                  className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                  title="Excluir compra"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         );
