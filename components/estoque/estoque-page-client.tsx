@@ -15,7 +15,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatBRL, formatDate } from "@/lib/utils";
+import { formatBRL, formatBRLCompact, formatDate } from "@/lib/utils";
 import { PurchaseDialog } from "./purchase-dialog";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import {
@@ -99,9 +99,9 @@ export function EstoquePageClient({
     icon: React.ComponentType<{ className?: string }>;
     count: number;
   }[] = [
-    { value: "saldo", label: "Estoque", icon: Boxes, count: itemsInStock },
+    { value: "saldo", label: "Saldo", icon: Boxes, count: itemsInStock },
     { value: "compras", label: "Compras", icon: ShoppingCart, count: purchases.length },
-    { value: "movimentacoes", label: "Movimentações", icon: ArrowDownUp, count: movements.length },
+    { value: "movimentacoes", label: "Movim.", icon: ArrowDownUp, count: movements.length },
   ];
 
   return (
@@ -123,23 +123,23 @@ export function EstoquePageClient({
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2">
         <KpiCard
           icon={Package}
-          label="Materiais em estoque"
+          label="Materiais"
           value={String(itemsInStock)}
           tone="produmar"
         />
         <KpiCard
           icon={Boxes}
-          label="Valor estimado em estoque"
-          value={formatBRL(stockValue)}
+          label="Em estoque"
+          value={formatBRLCompact(stockValue)}
           tone="emerald"
         />
         <KpiCard
           icon={Wallet}
-          label="Devendo às jazidas"
-          value={formatBRL(owedTotal)}
+          label="Devendo"
+          value={formatBRLCompact(owedTotal)}
           tone="amber"
         />
       </div>
@@ -152,15 +152,17 @@ export function EstoquePageClient({
             <button
               key={t.value}
               onClick={() => setTab(t.value)}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 px-1 py-1.5 rounded-md transition-colors ${
                 tab === t.value
                   ? "bg-white dark:bg-slate-700 text-produmar-700 dark:text-produmar-400 shadow-sm"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
-              {t.label}
-              <span className="text-[10px] opacity-60">({t.count})</span>
+              <Icon className="w-4 h-4" />
+              <span className="text-[11px] font-medium leading-none flex items-center gap-1">
+                {t.label}
+                <span className="opacity-50">{t.count}</span>
+              </span>
             </button>
           );
         })}
@@ -209,16 +211,14 @@ function KpiCard({
     amber: "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
   }[tone];
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 flex items-center gap-3">
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tones}`}>
-        <Icon className="w-5 h-5" />
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 flex flex-col items-center text-center gap-1">
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${tones}`}>
+        <Icon className="w-4 h-4" />
       </div>
-      <div className="min-w-0">
-        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{label}</p>
-        <p className="text-lg font-bold text-slate-800 dark:text-slate-100 tabular-nums truncate">
-          {value}
-        </p>
-      </div>
+      <p className="text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums leading-none">
+        {value}
+      </p>
+      <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{label}</p>
     </div>
   );
 }
