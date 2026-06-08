@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 type ServiceOrderWithDetails = ServiceOrder & {
   machines: { name: string; plate: string | null } | null;
   pickup_locations: { name: string } | null;
-  service_order_items: ServiceOrderItem[];
+  service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
 };
 
 export default async function OperacoesPage({
