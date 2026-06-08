@@ -30,8 +30,13 @@ const Dialog = ({
     if (!open) return;
     if (typeof window === "undefined") return;
 
-    // Empurra uma entrada de histórico ao abrir (sem alterar a URL)
-    window.history.pushState({ __dialog: true }, "");
+    // Empurra uma entrada de histórico ao abrir (sem alterar a URL).
+    // IMPORTANTE: preserva o state interno do Next.js App Router (árvore de
+    // rotas guardada em window.history.state). Se sobrescrevermos com um
+    // objeto cru, o router perde a referência da rota e, quando um Server
+    // Action chama revalidatePath, o refresh joga o usuário de volta para a
+    // rota inicial (/ → /dashboard).
+    window.history.pushState({ ...window.history.state, __dialog: true }, "");
     let poppedFromBack = false;
 
     const handlePopState = () => {
@@ -44,8 +49,10 @@ const Dialog = ({
     return () => {
       window.removeEventListener("popstate", handlePopState);
       // Se fechou por outro caminho (X, overlay, ESC, programático),
-      // remove a entrada de histórico que adicionamos
-      if (!poppedFromBack) {
+      // remove a entrada de histórico que adicionamos — mas só se ela ainda
+      // for o topo da pilha. Sem essa checagem, um back() poderia pular para
+      // antes da página e levar o usuário para fora da rota atual.
+      if (!poppedFromBack && window.history.state?.__dialog) {
         window.history.back();
       }
     };

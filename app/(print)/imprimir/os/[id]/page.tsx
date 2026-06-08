@@ -13,7 +13,7 @@ type PrintOrder = ServiceOrder & {
     tracking_type?: "hourmeter" | "km";
   } | null;
   pickup_locations: { name: string; address: string | null } | null;
-  service_order_items: ServiceOrderItem[];
+  service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
 };
 
 interface Props {
@@ -32,7 +32,7 @@ export default async function ImprimirOSPage({ params }: Props) {
   const { data: order, error } = await supabase
     .from("service_orders")
     .select(
-      `*, machines(name, plate, type, tracking_type), pickup_locations(name, address), service_order_items(*)`
+      `*, machines(name, plate, type, tracking_type), pickup_locations(name, address), service_order_items(*, products(name))`
     )
     .eq("id", params.id)
     .single<PrintOrder>();

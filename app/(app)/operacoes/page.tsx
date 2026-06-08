@@ -39,7 +39,7 @@ export default async function OperacoesPage({
       supabase
         .from("service_orders")
         .select(
-          "*, machines(name, plate), pickup_locations(name), service_order_items(*)"
+          "*, machines(name, plate), pickup_locations(name), service_order_items(*, products(name))"
         )
         .or(
           `and(delivery_date.gte.${startDate},delivery_date.lte.${endDate}),and(delivery_date.is.null,issue_date.gte.${startDate},issue_date.lte.${endDate})`

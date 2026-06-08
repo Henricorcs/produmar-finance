@@ -356,7 +356,13 @@ export async function updateServiceOrderStatus(
   status: ServiceOrderStatus
 ) {
   const supabase = createClient();
-  const { error } = await supabase.from("service_orders").update({ status }).eq("id", id);
+  const patch: Record<string, unknown> = { status };
+  // Ao marcar como entregue/finalizada, registra a data real de entrega
+  // (sobrescreve a previsão). Demais transições não mexem na data.
+  if (status === "entregue") {
+    patch.delivery_date = new Date().toISOString().split("T")[0];
+  }
+  const { error } = await supabase.from("service_orders").update(patch).eq("id", id);
   if (error) return { error: error.message };
   revalidate();
   return { ok: true };
@@ -445,13 +451,8 @@ export async function finalizeServiceOrder(
   const trimmed = receivedBy.trim();
   if (!trimmed) return { error: "Informe o nome de quem recebeu" };
 
-  // Preserva delivery_date se já estiver preenchido
-  const { data: existing } = await supabase
-    .from("service_orders")
-    .select("delivery_date")
-    .eq("id", id)
-    .single();
-
+  // Ao finalizar, a data de entrega passa a ser a data real (hoje),
+  // sobrescrevendo a previsão informada no cadastro.
   const today = new Date().toISOString().split("T")[0];
 
   const { error } = await supabase
@@ -459,7 +460,7 @@ export async function finalizeServiceOrder(
     .update({
       status: "entregue",
       received_by: trimmed.toUpperCase(),
-      delivery_date: existing?.delivery_date ?? today,
+      delivery_date: today,
     })
     .eq("id", id);
 

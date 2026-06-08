@@ -12,7 +12,7 @@ type PrintOrder = ServiceOrder & {
     tracking_type?: "hourmeter" | "km";
   } | null;
   pickup_locations: { name: string; address: string | null } | null;
-  service_order_items: ServiceOrderItem[];
+  service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
 };
 
 interface Props {
@@ -120,7 +120,13 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
           <div className="grid grid-cols-4 gap-0 border border-slate-200 rounded-lg overflow-hidden text-xs">
             {[
               { label: "Emissão",   value: formatDate(order.issue_date) },
-              { label: "Entrega",   value: formatDate(order.delivery_date) },
+              {
+                label:
+                  order.status === "entregue"
+                    ? (isMaterial ? "Entregue em" : "Concluído em")
+                    : "Previsão",
+                value: formatDate(order.delivery_date),
+              },
               { label: "Tipo",      value: isMaterial ? "Entrega de material" : "Prestação de serviço" },
               { label: "Status",    value: osStatusLabel(order.status, order.type) },
             ].map((f) => (
@@ -157,6 +163,18 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
               </p>
             )}
           </div>
+
+          {/* Serviço — texto livre informado na OS (campo "Serviço") */}
+          {order.notes && (
+            <div className="rounded-lg border-2 border-produmar-200 bg-produmar-50 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-produmar-600 mb-1">
+                Serviço
+              </p>
+              <p className="text-sm font-semibold text-slate-800 whitespace-pre-line">
+                {order.notes}
+              </p>
+            </div>
+          )}
 
           {/* Machine + Pickup */}
           {(order.machines || order.pickup_locations) && (
@@ -288,7 +306,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                     }`}
                   >
                     <td className="px-3 py-2 font-medium text-slate-700">
-                      {it.description ?? "—"}
+                      {it.products?.name ?? it.description ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                       {it.quantity.toString().replace(".", ",")}
@@ -319,14 +337,6 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
               </div>
             </div>
           </div>
-
-          {/* Notes */}
-          {order.notes && (
-            <div className="text-xs border-t border-slate-100 pt-4">
-              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Observações</p>
-              <p className="text-slate-600">{order.notes}</p>
-            </div>
-          )}
 
           {/* Signature / Received by */}
           <div className="border-t border-slate-200 pt-5 mt-4">

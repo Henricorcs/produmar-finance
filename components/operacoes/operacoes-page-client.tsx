@@ -42,10 +42,14 @@ import type {
   ServiceOrderStatus,
 } from "@/lib/types";
 
+type ServiceOrderItemWithProduct = ServiceOrderItem & {
+  products: { name: string } | null;
+};
+
 type ServiceOrderWithDetails = ServiceOrder & {
   machines: { name: string; plate: string | null } | null;
   pickup_locations: { name: string } | null;
-  service_order_items: ServiceOrderItem[];
+  service_order_items: ServiceOrderItemWithProduct[];
 };
 
 interface Props {
@@ -106,7 +110,9 @@ function exportCSV(orders: ServiceOrderWithDetails[], fileLabel: string) {
     o.pickup_locations?.name ?? "",
     o.delivery_address ?? "",
     o.service_order_items
-      .map((it) => `${it.quantity} ${it.unit ?? ""} ${it.description ?? ""}`.trim())
+      .map((it) =>
+        `${it.quantity} ${it.unit ?? ""} ${it.products?.name ?? it.description ?? ""}`.trim()
+      )
       .join(" | "),
     o.total_amount.toFixed(2).replace(".", ","),
     osStatusLabel(o.status, o.type),
@@ -409,25 +415,54 @@ function OrderRow({
   const isClient = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
 
-  // Título do card = descrição do serviço. Em entrega de material (que
-  // normalmente não tem descrição) cai pros materiais; por último, o tipo.
+  // Resumo dos materiais — usa o nome do produto cadastrado; cai na descrição
+  // livre do item só quando não há produto vinculado.
   const materialsSummary = o.service_order_items
     .slice(0, 2)
     .map((it) =>
-      `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""} ${it.description ?? ""}`.trim()
+      `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""} ${
+        it.products?.name ?? it.description ?? ""
+      }`.trim()
     )
     .filter(Boolean)
     .join(" · ");
   const moreItems =
     o.service_order_items.length > 2 ? ` +${o.service_order_items.length - 2}` : "";
+  const materialsLine = materialsSummary ? materialsSummary + moreItems : "";
 
-  const title =
-    o.service_description?.trim() ||
-    (isMaterial && materialsSummary ? materialsSummary + moreItems : "") ||
-    (isClient ? o.client_name?.trim() : "") ||
-    (isMaterial ? "Entrega de material" : "Prestação de serviço");
+  // Campo "Serviço" (free-text salvo em notes) — ex: "FRETE".
+  const serviceText = o.notes?.trim() ?? "";
+
+  // Título e subtítulo do card:
+  // • Entrega de material → título é o serviço (ex: FRETE); material vira subtítulo.
+  // • Prestação de serviço → título é a descrição do serviço; serviço (notes) vira subtítulo.
+  let title: string;
+  let subtitle = "";
+  if (isMaterial) {
+    title =
+      serviceText ||
+      materialsLine ||
+      (isClient ? o.client_name?.trim() ?? "" : "") ||
+      "Entrega de material";
+    subtitle = title === serviceText ? materialsLine : "";
+  } else {
+    title =
+      o.service_description?.trim() ||
+      serviceText ||
+      (isClient ? o.client_name?.trim() ?? "" : "") ||
+      "Prestação de serviço";
+    subtitle = serviceText && serviceText !== title ? serviceText : "";
+  }
 
   const dateStr = formatDate(o.delivery_date ?? o.issue_date);
+  // Prefixo do contexto da data: entregue → data real; em aberto (entrega de
+  // material) → previsão. Prestação usa "Data do serviço", sem prefixo.
+  const datePrefix =
+    o.status === "entregue"
+      ? (isMaterial ? "Entregue em " : "Concluído em ")
+      : o.delivery_date && isMaterial
+        ? "Previsão "
+        : "";
 
   const canAdvance = o.status === "pendente" || o.status === "em_andamento";
   const nextStatus: ServiceOrderStatus =
@@ -469,10 +504,15 @@ function OrderRow({
           <p className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-snug line-clamp-2 break-words">
             {title}
           </p>
+          {subtitle && (
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-snug line-clamp-1 mt-0.5 break-words">
+              {subtitle}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
               <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-              {dateStr}
+              {datePrefix}{dateStr}
             </span>
             <span
               className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE[o.status]}`}

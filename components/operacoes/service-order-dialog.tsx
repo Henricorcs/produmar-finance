@@ -323,22 +323,44 @@ export function ServiceOrderDialog({
 
     if (type === "prestacao_servico") {
       if (useHourBasedPricing) {
-        if (hoursWorked <= 0) {
-          setError("Informe horímetro inicial e final válidos");
-          return;
+        const isInterno = freightType === "interno";
+        if (isInterno) {
+          // consumo interno: só exige horímetro inicial; o final será preenchido
+          // ao fechar a OS. O horímetro inicial e a taxa ficam nas colunas
+          // próprias (hourmeter_start / hourly_rate); o item é só um placeholder
+          // com total 0 até o fechamento recalcular horas × valor.
+          const start = parseFloat(hourmeterStart.replace(",", "."));
+          if (!hourmeterStart.trim() || isNaN(start)) {
+            setError("Informe o horímetro inicial");
+            return;
+          }
+          itemsPayload = [{
+            product_id: null,
+            description: serviceDescription?.trim()
+              ? serviceDescription.trim().toUpperCase()
+              : "CONSUMO INTERNO — AGUARDANDO FECHAMENTO",
+            quantity: 1,
+            unit: "ud",
+            unit_price: 0,
+          }];
+        } else {
+          if (hoursWorked <= 0) {
+            setError("Informe horímetro inicial e final válidos");
+            return;
+          }
+          const rate = parseBRLToNumber(hourlyRate);
+          if (rate <= 0) {
+            setError("Informe o valor da hora");
+            return;
+          }
+          itemsPayload = [{
+            product_id: null,
+            description: `PRESTAÇÃO DE SERVIÇO — ${hoursWorked.toFixed(2).replace(".", ",")}H × R$ ${hourlyRate}/H`,
+            quantity: Number(hoursWorked.toFixed(2)),
+            unit: "h",
+            unit_price: rate,
+          }];
         }
-        const rate = parseBRLToNumber(hourlyRate);
-        if (rate <= 0) {
-          setError("Informe o valor da hora");
-          return;
-        }
-        itemsPayload = [{
-          product_id: null,
-          description: `PRESTAÇÃO DE SERVIÇO — ${hoursWorked.toFixed(2).replace(".", ",")}H × R$ ${hourlyRate}/H`,
-          quantity: Number(hoursWorked.toFixed(2)),
-          unit: "h",
-          unit_price: rate,
-        }];
       } else {
         const amount = parseBRLToNumber(flatServiceAmount);
         if (amount <= 0) {
@@ -790,7 +812,7 @@ export function ServiceOrderDialog({
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-[10px] text-slate-500">Horímetro inicial</Label>
+                          <Label className="text-[10px] text-slate-500">Horímetro inicial *</Label>
                           <Input
                             value={hourmeterStart}
                             onChange={(e) => setHourmeterStart(sanitizeDecimal(e.target.value))}
@@ -800,17 +822,25 @@ export function ServiceOrderDialog({
                             className="h-9 text-sm tabular-nums"
                           />
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-[10px] text-slate-500">Horímetro final</Label>
-                          <Input
-                            value={hourmeterEnd}
-                            onChange={(e) => setHourmeterEnd(sanitizeDecimal(e.target.value))}
-                            placeholder="0,0"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            className="h-9 text-sm tabular-nums"
-                          />
-                        </div>
+                        {freightType !== "interno" ? (
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-slate-500">Horímetro final</Label>
+                            <Input
+                              value={hourmeterEnd}
+                              onChange={(e) => setHourmeterEnd(sanitizeDecimal(e.target.value))}
+                              placeholder="0,0"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              className="h-9 text-sm tabular-nums"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-end pb-1">
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight">
+                              Horímetro final será preenchido pelo técnico ao fechar a OS
+                            </p>
+                          </div>
+                        )}
                         {hoursWorked > 0 && (
                           <p className="col-span-2 text-[11px] text-slate-500 tabular-nums">
                             Horas trabalhadas:{" "}
@@ -831,8 +861,11 @@ export function ServiceOrderDialog({
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
                           <DollarSign className="w-3.5 h-3.5" />
-                          Valor por hora *
+                          Valor por hora{freightType !== "interno" ? " *" : ""}
                         </Label>
+                        {freightType === "interno" && (
+                          <span className="text-[10px] text-slate-400">opcional</span>
+                        )}
                       </div>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
@@ -935,15 +968,21 @@ export function ServiceOrderDialog({
               <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                 Total {type === "prestacao_servico" ? "do serviço" : "da OS"}
               </span>
-              <span
-                className={`text-lg font-bold tabular-nums ${
-                  isClient
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-amber-700 dark:text-amber-400"
-                }`}
-              >
-                {formatBRL(total)}
-              </span>
+              {freightType === "interno" && useHourBasedPricing && total === 0 ? (
+                <span className="text-sm font-medium text-slate-400 dark:text-slate-500 italic">
+                  A calcular ao fechar
+                </span>
+              ) : (
+                <span
+                  className={`text-lg font-bold tabular-nums ${
+                    isClient
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-amber-700 dark:text-amber-400"
+                  }`}
+                >
+                  {formatBRL(total)}
+                </span>
+              )}
             </div>
 
             {/* Dates + status */}
@@ -958,7 +997,7 @@ export function ServiceOrderDialog({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="delivery_date">
-                  Data {type === "prestacao_servico" ? "do serviço" : "de entrega"} *
+                  {type === "prestacao_servico" ? "Data do serviço" : "Previsão de entrega"} *
                 </Label>
                 <Input
                   id="delivery_date"
