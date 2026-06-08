@@ -417,7 +417,7 @@ export async function generateTransactionFromOrder(
       description: description.toUpperCase(),
       amount: order.total_amount,
       due_date: dueDate,
-      status: "pendente",
+      status: order.status === "entregue" ? "recebido" : "pendente",
       category_id: options.category_id || null,
       cost_center_id: options.cost_center_id || null,
       notes: order.notes,
