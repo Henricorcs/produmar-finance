@@ -31,7 +31,8 @@ interface Props {
 }
 
 function sanitizeDecimal(raw: string): string {
-  const cleaned = raw.replace(/[^\d,]/g, "");
+  // Converte ponto em vírgula (teclados de celular costumam enviar ".").
+  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
   const parts = cleaned.split(",");
   if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
   if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);

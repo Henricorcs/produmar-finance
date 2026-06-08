@@ -69,7 +69,8 @@ export default async function DashboardPage() {
     0
   );
   const noStockCount = stockBalances.filter((b) => Number(b.current_quantity) <= 0).length;
-  const purchases = (purchasesRes.data as { total_amount: number; amount_paid: number }[]) ?? [];
+  const purchases =
+    (purchasesRes.data as { total_amount: number; amount_paid: number }[]) ?? [];
   const owedJazidas = purchases.reduce(
     (s, p) => s + Math.max(0, Number(p.total_amount) - Number(p.amount_paid)),
     0

@@ -92,8 +92,9 @@ function parseQty(s: string): number {
 }
 
 function sanitizeDecimal(raw: string): string {
-  // dígitos + uma única vírgula, máx 2 casas
-  const cleaned = raw.replace(/[^\d,]/g, "");
+  // dígitos + uma única vírgula, máx 2 casas.
+  // Converte ponto em vírgula (teclados de celular costumam enviar ".").
+  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
   const parts = cleaned.split(",");
   if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
   if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
@@ -352,9 +353,9 @@ export function ServiceOrderDialog({
           }
           itemsPayload = [{
             product_id: null,
-            description: serviceDescription?.trim()
-              ? serviceDescription.trim().toUpperCase()
-              : "CONSUMO INTERNO — AGUARDANDO FECHAMENTO",
+            // Descrição genérica: a descrição real fica em service_description
+            // (evita duplicar o texto na impressão/cartão).
+            description: "CONSUMO INTERNO — AGUARDANDO FECHAMENTO",
             quantity: 1,
             unit: "ud",
             unit_price: 0,
@@ -387,9 +388,8 @@ export function ServiceOrderDialog({
         }
         itemsPayload = [{
           product_id: null,
-          description: serviceDescription?.trim()
-            ? serviceDescription.trim().toUpperCase()
-            : "PRESTAÇÃO DE SERVIÇO",
+          // Descrição genérica: a descrição real fica em service_description.
+          description: "PRESTAÇÃO DE SERVIÇO",
           quantity: 1,
           unit: "ud",
           unit_price: amount,
@@ -1075,18 +1075,22 @@ export function ServiceOrderDialog({
               </div>
             )}
 
-            {/* Notes */}
-            <div className="space-y-1.5">
-              <Label htmlFor="notes">Serviço</Label>
-              <Textarea
-                id="notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value.toUpperCase())}
-                placeholder="observações opcionais..."
-                rows={2}
-                className="uppercase placeholder:normal-case placeholder:lowercase"
-              />
-            </div>
+            {/* Serviço / observação — só na entrega de material (vira o título
+                do cartão, ex.: "FRETE"). Na prestação de serviço a "Descrição
+                do serviço" já cobre, então não duplicamos o campo. */}
+            {type === "entrega_material" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="notes">Serviço</Label>
+                <Textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value.toUpperCase())}
+                  placeholder="ex: FRETE, ENTREGA..."
+                  rows={2}
+                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                />
+              </div>
+            )}
 
             {error && (
               <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
