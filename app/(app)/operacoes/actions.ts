@@ -17,6 +17,7 @@ function revalidate() {
   revalidatePath("/configuracoes");
   revalidatePath("/dashboard");
   revalidatePath("/contas");
+  revalidatePath("/estoque");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,6 +145,8 @@ export async function deleteProduct(id: string) {
 export async function createPickupLocation(input: {
   name: string;
   address?: string | null;
+  document?: string | null;
+  phone?: string | null;
   notes?: string | null;
 }): Promise<{ error: string } | { ok: true; location: PickupLocation }> {
   const supabase = createClient();
@@ -155,6 +158,8 @@ export async function createPickupLocation(input: {
     .insert({
       name: name.toUpperCase(),
       address: input.address?.trim() ? input.address.trim().toUpperCase() : null,
+      document: input.document?.trim() ? input.document.trim() : null,
+      phone: input.phone?.trim() ? input.phone.trim() : null,
       notes: input.notes?.trim() ? input.notes.trim() : null,
     })
     .select()
@@ -167,12 +172,14 @@ export async function createPickupLocation(input: {
 
 export async function updatePickupLocation(
   id: string,
-  input: Partial<Pick<PickupLocation, "name" | "address" | "notes" | "active">>
+  input: Partial<Pick<PickupLocation, "name" | "address" | "document" | "phone" | "notes" | "active">>
 ) {
   const supabase = createClient();
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name.trim().toUpperCase();
   if (input.address !== undefined) patch.address = input.address?.toString().trim().toUpperCase() || null;
+  if (input.document !== undefined) patch.document = input.document?.toString().trim() || null;
+  if (input.phone !== undefined) patch.phone = input.phone?.toString().trim() || null;
   if (input.notes !== undefined) patch.notes = input.notes?.toString().trim() || null;
   if (input.active !== undefined) patch.active = input.active;
 

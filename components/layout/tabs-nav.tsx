@@ -11,6 +11,7 @@ import {
   Settings,
   Truck,
   HandCoins,
+  Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,7 @@ const tabs = [
   { href: "/para-onde-foi", label: "Para onde foi", short: "Despesas", icon: GitFork },
   { href: "/contas",        label: "Contas",        short: "Contas",   icon: CalendarClock },
   { href: "/operacoes",     label: "Operações",     short: "OS",       icon: Truck },
+  { href: "/estoque",       label: "Estoque",       short: "Estoque",  icon: Boxes },
   { href: "/emprestimos",   label: "Empréstimos",   short: "Empr.",    icon: HandCoins },
   { href: "/notas-fiscais", label: "Notas fiscais", short: "Notas",    icon: FileText },
   { href: "/relatorios",    label: "Relatórios",    short: "Relat.",   icon: BarChart3 },

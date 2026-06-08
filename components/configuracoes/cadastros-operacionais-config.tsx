@@ -31,7 +31,7 @@ export function CadastrosOperacionaisConfig({ machines, products, pickupLocation
   const tabs: { value: Tab; label: string; icon: React.ComponentType<{ className?: string }>; count: number }[] = [
     { value: "machines",  label: "Máquinas", icon: Truck,   count: machines.length },
     { value: "products",  label: "Produtos", icon: Package, count: products.length },
-    { value: "locations", label: "Locais",   icon: MapPin,  count: pickupLocations.length },
+    { value: "locations", label: "Jazidas",  icon: MapPin,  count: pickupLocations.length },
   ];
 
   return (
@@ -362,32 +362,37 @@ function ProductsList({ products }: { products: Product[] }) {
 function LocationsList({ locations }: { locations: PickupLocation[] }) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [name, setName]       = useState("");
-  const [address, setAddress] = useState("");
+  const [name, setName]           = useState("");
+  const [address, setAddress]     = useState("");
+  const [docNumber, setDocNumber] = useState("");
+  const [phone, setPhone]         = useState("");
 
   function reset() {
-    setName(""); setAddress(""); setEditingId(null); setShowForm(false);
+    setName(""); setAddress(""); setDocNumber(""); setPhone("");
+    setEditingId(null); setShowForm(false);
   }
 
   function startEdit(l: PickupLocation) {
     setEditingId(l.id);
     setName(l.name);
     setAddress(l.address ?? "");
+    setDocNumber(l.document ?? "");
+    setPhone(l.phone ?? "");
     setShowForm(true);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (editingId) {
-      await updatePickupLocation(editingId, { name, address });
+      await updatePickupLocation(editingId, { name, address, document: docNumber, phone });
     } else {
-      await createPickupLocation({ name, address });
+      await createPickupLocation({ name, address, document: docNumber, phone });
     }
     reset();
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Remover o local "${name}"?`)) return;
+    if (!confirm(`Remover a jazida "${name}"?`)) return;
     await deletePickupLocation(id);
   }
 
@@ -400,7 +405,7 @@ function LocationsList({ locations }: { locations: PickupLocation[] }) {
       <div className="divide-y divide-slate-100 dark:divide-slate-800">
         {locations.length === 0 && (
           <p className="text-xs text-slate-400 dark:text-slate-500 py-3">
-            Nenhum local cadastrado.
+            Nenhuma jazida cadastrada.
           </p>
         )}
         {locations.map((l) => (
@@ -412,7 +417,11 @@ function LocationsList({ locations }: { locations: PickupLocation[] }) {
               <p className={`text-sm font-medium truncate ${l.active ? "text-slate-800 dark:text-slate-200" : "text-slate-400 line-through"}`}>
                 {l.name}
               </p>
-              {l.address && <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{l.address}</p>}
+              {(l.address || l.document || l.phone) && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  {[l.address, l.document, l.phone].filter(Boolean).join(" · ")}
+                </p>
+              )}
             </div>
             <button
               onClick={() => handleToggleActive(l)}
@@ -437,7 +446,7 @@ function LocationsList({ locations }: { locations: PickupLocation[] }) {
       {!showForm ? (
         <Button variant="outline" size="sm" className="w-full" onClick={() => setShowForm(true)}>
           <Plus className="w-4 h-4" />
-          Novo local
+          Nova jazida
         </Button>
       ) : (
         <form onSubmit={submit} className="space-y-2 p-3 rounded-xl bg-produmar-50/30 dark:bg-slate-800/40 border border-produmar-100 dark:border-slate-700">
@@ -454,6 +463,20 @@ function LocationsList({ locations }: { locations: PickupLocation[] }) {
             placeholder="endereço (opcional)"
             className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
           />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              value={docNumber}
+              onChange={(e) => setDocNumber(e.target.value)}
+              placeholder="CNPJ/CPF (opcional)"
+              className="h-9 text-sm"
+            />
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="telefone (opcional)"
+              className="h-9 text-sm"
+            />
+          </div>
           <div className="flex gap-2">
             <button type="button" onClick={reset} className="flex-1 h-9 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50">
               <X className="w-3 h-3 inline mr-1" /> Cancelar

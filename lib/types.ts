@@ -158,6 +158,8 @@ export interface PickupLocation {
   id: string;
   name: string;
   address: string | null;
+  document: string | null;   // CNPJ/CPF da jazida (fornecedor)
+  phone: string | null;
   notes: string | null;
   active: boolean;
   created_at: string;
@@ -282,4 +284,61 @@ export interface LoanAttachment {
   storage_path: string;
   created_by: string | null;
   created_at: string;
+}
+
+// ── Estoque (Jazidas, Compras de material, Movimentações) ──────────────────────
+
+export type StockMovementType = "entrada" | "saida" | "ajuste";
+
+export interface MaterialPurchase {
+  id: string;
+  purchase_number: number;
+  location_id: string | null;
+  purchase_date: string;
+  total_amount: number;
+  amount_paid: number;
+  transaction_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MaterialPurchaseItem {
+  id: string;
+  purchase_id: string;
+  product_id: string | null;
+  quantity: number;
+  unit: string | null;
+  unit_price: number;
+  total: number;
+  created_at: string;
+}
+
+export interface StockMovement {
+  id: string;
+  product_id: string;
+  location_id: string | null;
+  type: StockMovementType;
+  quantity: number;
+  unit: string | null;
+  unit_cost: number | null;
+  movement_date: string;
+  purchase_id: string | null;
+  service_order_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Linha da view product_stock_balance (saldo atual por material). */
+export interface ProductStockBalance {
+  product_id: string;
+  name: string;
+  unit: string;
+  current_quantity: number;
+  total_in: number;
+  total_out: number;
+  total_purchased_value: number;
+  avg_unit_cost: number | null;
 }
