@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 type OrderWithDetails = ServiceOrder & {
   machines: { name: string; plate: string | null } | null;
   pickup_locations: { name: string } | null;
-  service_order_items: ServiceOrderItem[];
+  service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
 };
 
 export default async function OperadorPage() {
@@ -24,7 +24,7 @@ export default async function OperadorPage() {
   const { data: orders } = await supabase
     .from("service_orders")
     .select(
-      `*, machines(name, plate), pickup_locations(name), service_order_items(*)`
+      `*, machines(name, plate), pickup_locations(name), service_order_items(*, products(name))`
     )
     .in("status", ["pendente", "em_andamento"])
     .order("created_at", { ascending: false });

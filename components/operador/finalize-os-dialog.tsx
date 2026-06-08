@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, Printer } from "lucide-react";
+import { CheckCircle2, Printer, Clock, Package, MapPin, Navigation } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,24 +14,64 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SignaturePad } from "./signature-pad";
 import { finalizeServiceOrder } from "@/app/(app)/operacoes/actions";
-import type { ServiceOrder } from "@/lib/types";
+import { formatBRL } from "@/lib/utils";
+import type { ServiceOrder, ServiceOrderItem } from "@/lib/types";
+
+type OrderDetails = ServiceOrder & {
+  machines: { name: string; plate: string | null } | null;
+  pickup_locations?: { name: string } | null;
+  service_order_items?: (ServiceOrderItem & { products: { name: string } | null })[];
+};
 
 interface Props {
-  order: ServiceOrder & { machines: { name: string; plate: string | null } | null };
+  order: OrderDetails;
   open: boolean;
   onClose: () => void;
   onFinalized: (orderId: string) => void;
 }
 
+function sanitizeDecimal(raw: string): string {
+  const cleaned = raw.replace(/[^\d,]/g, "");
+  const parts = cleaned.split(",");
+  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
+  if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
+  return cleaned;
+}
+
 export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
-  const [receivedBy, setReceivedBy] = useState("");
-  const [error, setError]           = useState<string | null>(null);
-  const [done, setDone]             = useState(false);
-  const [signature, setSignature]   = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [receivedBy, setReceivedBy]   = useState("");
+  const [hourmeterEnd, setHourmeterEnd] = useState("");
+  const [error, setError]             = useState<string | null>(null);
+  const [done, setDone]               = useState(false);
+  const [signature, setSignature]     = useState<string | null>(null);
+  const [isPending, startTransition]  = useTransition();
+
+  // Serviço por horímetro ainda em aberto (ex.: consumo interno lançado só com
+  // o horímetro inicial). O técnico informa o final ao fechar.
+  const needsHourmeter =
+    order.type === "prestacao_servico" &&
+    order.hourmeter_start != null &&
+    order.hourmeter_end == null;
+
+  const startNum = order.hourmeter_start ?? 0;
+  const endNum = parseFloat(hourmeterEnd.replace(",", "."));
+  const hours = !isNaN(endNum) && endNum > startNum ? endNum - startNum : 0;
+  const rate = order.hourly_rate ?? 0;
+  const previewTotal = hours * rate;
+
+  const materials = (order.service_order_items ?? [])
+    .filter((it) => it.product_id || it.description)
+    .map(
+      (it) =>
+        `${Number(it.quantity).toLocaleString("pt-BR", {
+          maximumFractionDigits: 3,
+        })} ${it.unit ?? ""} ${it.products?.name ?? it.description ?? ""}`.trim()
+    )
+    .filter(Boolean);
 
   function handleClose() {
     setReceivedBy("");
+    setHourmeterEnd("");
     setSignature(null);
     setError(null);
     setDone(false);
@@ -44,9 +84,22 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
       setError("Informe o nome de quem recebeu");
       return;
     }
+    if (needsHourmeter) {
+      if (!hourmeterEnd.trim() || isNaN(endNum)) {
+        setError("Informe o horímetro final");
+        return;
+      }
+      if (endNum <= startNum) {
+        setError("O horímetro final deve ser maior que o inicial");
+        return;
+      }
+    }
     setError(null);
     startTransition(async () => {
-      const result = await finalizeServiceOrder(order.id, receivedBy, signature);
+      const result = await finalizeServiceOrder(order.id, receivedBy, {
+        signature,
+        hourmeterEnd: needsHourmeter ? endNum : null,
+      });
       if ("error" in result) {
         setError(result.error ?? "Erro ao finalizar");
       } else {
@@ -91,7 +144,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
             </div>
 
             <Button
-              className="w-full gap-2"
+              className="w-full gap-2 h-12"
               onClick={() => window.open(`/imprimir/os/${order.id}`, "_blank")}
             >
               <Printer className="w-4 h-4" />
@@ -105,17 +158,21 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         ) : (
           /* ── Form ──────────────────────────────────────────────── */
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 text-sm space-y-1">
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 text-sm space-y-2">
               <p className="text-xs text-slate-400 dark:text-slate-500 uppercase font-semibold">
-                Resumo da OS
+                Resumo
               </p>
               <p className="font-medium text-slate-700 dark:text-slate-200">
                 OS #{order.order_number} —{" "}
                 {order.type === "entrega_material" ? "Entrega de material" : "Prestação de serviço"}
               </p>
               {order.client_name && (
-                <p className="text-slate-500 dark:text-slate-400">
-                  Cliente: {order.client_name}
+                <p className="text-slate-500 dark:text-slate-400">Cliente: {order.client_name}</p>
+              )}
+              {materials.length > 0 && (
+                <p className="text-slate-500 dark:text-slate-400 flex items-start gap-1.5">
+                  <Package className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{materials.join(" · ")}</span>
                 </p>
               )}
               {order.machines && (
@@ -124,7 +181,57 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                   {order.machines.plate ? ` (${order.machines.plate})` : ""}
                 </p>
               )}
+              {order.pickup_locations && (
+                <p className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 flex-shrink-0" />
+                  Retirada: {order.pickup_locations.name}
+                </p>
+              )}
+              {order.delivery_address && (
+                <p className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Navigation className="w-4 h-4 flex-shrink-0" />
+                  {order.delivery_address}
+                </p>
+              )}
             </div>
+
+            {/* Horímetro final (serviço por hora em aberto) */}
+            {needsHourmeter && (
+              <div className="rounded-xl border border-produmar-200 dark:border-produmar-800/60 bg-produmar-50/50 dark:bg-produmar-950/20 p-4 space-y-2">
+                <Label className="flex items-center gap-1.5 text-produmar-700 dark:text-produmar-400">
+                  <Clock className="w-4 h-4" />
+                  Horímetro final <span className="text-red-500">*</span>
+                </Label>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Horímetro inicial:{" "}
+                  <span className="font-semibold tabular-nums">
+                    {startNum.toString().replace(".", ",")} h
+                  </span>
+                </p>
+                <Input
+                  value={hourmeterEnd}
+                  onChange={(e) => setHourmeterEnd(sanitizeDecimal(e.target.value))}
+                  placeholder="ex: 1250,5"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  className="h-12 text-lg tabular-nums"
+                />
+                {hours > 0 && (
+                  <p className="text-sm text-slate-600 dark:text-slate-300 tabular-nums">
+                    {hours.toFixed(2).replace(".", ",")} h trabalhadas
+                    {rate > 0 && (
+                      <>
+                        {" "}
+                        × {formatBRL(rate)} ={" "}
+                        <span className="font-bold text-produmar-700 dark:text-produmar-400">
+                          {formatBRL(previewTotal)}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label htmlFor="received_by_input">
@@ -135,7 +242,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                 value={receivedBy}
                 onChange={(e) => setReceivedBy(e.target.value)}
                 placeholder="ex: JOÃO DA SILVA"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                className="h-12 uppercase placeholder:normal-case placeholder:lowercase"
                 autoComplete="off"
                 autoFocus
               />
@@ -159,7 +266,11 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               <Button type="button" variant="outline" onClick={handleClose} disabled={isPending}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isPending} className="bg-emerald-600 hover:bg-emerald-700">
+              <Button
+                type="submit"
+                disabled={isPending}
+                className="bg-emerald-600 hover:bg-emerald-700 h-12"
+              >
                 {isPending ? "Finalizando..." : "Finalizar OS"}
               </Button>
             </DialogFooter>

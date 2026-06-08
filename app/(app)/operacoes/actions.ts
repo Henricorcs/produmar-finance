@@ -451,34 +451,77 @@ export async function generateTransactionFromOrder(
 export async function finalizeServiceOrder(
   id: string,
   receivedBy: string,
-  signature?: string | null
+  options: { signature?: string | null; hourmeterEnd?: number | null } = {}
 ) {
   const supabase = createClient();
 
   const trimmed = receivedBy.trim();
   if (!trimmed) return { error: "Informe o nome de quem recebeu" };
 
+  // Busca a OS para saber se é prestação de serviço por horímetro a fechar.
+  const { data: order, error: fetchErr } = await supabase
+    .from("service_orders")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (fetchErr || !order) return { error: "OS não encontrada" };
+
   // Ao finalizar, a data de entrega passa a ser a data real (hoje),
   // sobrescrevendo a previsão informada no cadastro.
   const today = new Date().toISOString().split("T")[0];
+  const patch: Record<string, unknown> = {
+    status: "entregue",
+    received_by: trimmed.toUpperCase(),
+    delivery_date: today,
+  };
+
+  // Fechamento de serviço por horímetro (ex.: consumo interno lançado só com
+  // o horímetro inicial). O técnico informa o final → recalcula horas × valor.
+  const end = options.hourmeterEnd;
+  const isHourmeterService =
+    order.type === "prestacao_servico" && order.hourmeter_start != null;
+
+  if (end != null && isHourmeterService) {
+    if (end <= order.hourmeter_start)
+      return { error: "O horímetro final deve ser maior que o inicial" };
+
+    patch.hourmeter_end = end;
+
+    const hours = Number((end - order.hourmeter_start).toFixed(2));
+    const rate = order.hourly_rate ?? 0;
+    const hoursLabel = hours.toFixed(2).replace(".", ",");
+    const rateLabel = rate.toFixed(2).replace(".", ",");
+
+    // Substitui os itens por um único item de serviço calculado.
+    // O trigger recalcula o total_amount da OS automaticamente.
+    await supabase.from("service_order_items").delete().eq("service_order_id", id);
+    const { error: itErr } = await supabase.from("service_order_items").insert({
+      service_order_id: id,
+      product_id: null,
+      description:
+        rate > 0
+          ? `PRESTAÇÃO DE SERVIÇO — ${hoursLabel}H × R$ ${rateLabel}/H`
+          : `PRESTAÇÃO DE SERVIÇO — ${hoursLabel}H`,
+      quantity: hours,
+      unit: "h",
+      unit_price: rate,
+    });
+    if (itErr) return { error: itErr.message };
+  }
 
   const { error } = await supabase
     .from("service_orders")
-    .update({
-      status: "entregue",
-      received_by: trimmed.toUpperCase(),
-      delivery_date: today,
-    })
+    .update(patch)
     .eq("id", id);
 
   if (error) return { error: error.message };
 
   // Assinatura (best-effort): não quebra a finalização caso a coluna ainda
   // não exista (migration 010 não aplicada no Supabase).
-  if (signature) {
+  if (options.signature) {
     const { error: sigErr } = await supabase
       .from("service_orders")
-      .update({ signature })
+      .update({ signature: options.signature })
       .eq("id", id);
     if (sigErr) console.error("Falha ao salvar assinatura:", sigErr.message);
   }
@@ -486,5 +529,6 @@ export async function finalizeServiceOrder(
   revalidatePath("/operador");
   revalidatePath("/operacoes");
   revalidatePath("/dashboard");
+  revalidatePath("/contas");
   return { ok: true };
 }
