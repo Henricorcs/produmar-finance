@@ -6,7 +6,7 @@ import { CashflowProjection } from "@/components/dashboard/cashflow-projection";
 import { ExpenseBreakdown } from "@/components/dashboard/expense-breakdown";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock, Banknote, Boxes, AlertTriangle } from "lucide-react";
-import { formatBRLCompact } from "@/lib/utils";
+import { formatBRL } from "@/lib/utils";
 import type {
   DashboardKPIs,
   ExpenseByCategory,
@@ -76,8 +76,8 @@ export default async function DashboardPage() {
     0
   );
   const stockCards = [
-    { label: "Em estoque", value: formatBRLCompact(stockValue), color: "text-emerald-700 dark:text-emerald-400", icon: Boxes },
-    { label: "Devendo jazidas", value: formatBRLCompact(owedJazidas), color: "text-amber-700 dark:text-amber-400", icon: Wallet },
+    { label: "Em estoque", value: formatBRL(stockValue), color: "text-emerald-700 dark:text-emerald-400", icon: Boxes },
+    { label: "Devendo jazidas", value: formatBRL(owedJazidas), color: "text-amber-700 dark:text-amber-400", icon: Wallet },
     {
       label: "Sem saldo",
       value: String(noStockCount),

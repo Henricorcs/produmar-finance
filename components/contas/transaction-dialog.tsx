@@ -312,6 +312,8 @@ export function TransactionDialog({
                 emptyMessage="Nenhuma categoria encontrada"
                 onCreateNew={() => setCatDialogOpen(true)}
                 createNewLabel="Criar nova categoria"
+                autoFocusSearch={false}
+                suggestOnType
               />
             </div>
 
@@ -329,6 +331,8 @@ export function TransactionDialog({
                 emptyMessage="Nenhum centro de custo encontrado"
                 onCreateNew={() => setCCDialogOpen(true)}
                 createNewLabel="Criar novo centro de custo"
+                autoFocusSearch={false}
+                suggestOnType
               />
             </div>
 

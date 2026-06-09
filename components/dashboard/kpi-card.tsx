@@ -1,6 +1,6 @@
 ﻿import Link from "next/link";
 import { TrendingUp, TrendingDown, LucideIcon, ArrowRight } from "lucide-react";
-import { cn, formatBRL, formatBRLCompact } from "@/lib/utils";
+import { cn, formatBRL } from "@/lib/utils";
 
 interface KpiCardProps {
   label: string;
@@ -63,16 +63,8 @@ export function KpiCard({
           wide ? "text-3xl lg:text-2xl" : "text-2xl"
         )}
       >
-        {wide ? (
-          // Card em destaque: valor cheio em qualquer tela
-          formatBRL(value)
-        ) : (
-          <>
-            {/* Compacto no mobile p/ não estourar o card de 2 colunas; cheio no desktop */}
-            <span className="sm:hidden">{formatBRLCompact(value)}</span>
-            <span className="hidden sm:inline">{formatBRL(value)}</span>
-          </>
-        )}
+        {/* Valor cheio em qualquer tela (sem abreviar com "k") */}
+        {formatBRL(value)}
       </div>
 
       <div className={cn("mt-1.5 flex items-center justify-between gap-1 text-xs", captionColor)}>

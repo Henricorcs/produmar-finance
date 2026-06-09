@@ -17,6 +17,10 @@ interface Props<T> {
   onCreateNew?: () => void;
   createNewLabel?: string;
   clearable?: boolean;
+  /** Foca a busca (abre o teclado) ao abrir. Default: true. */
+  autoFocusSearch?: boolean;
+  /** Só mostra a lista depois que o usuário digita algo. Default: false. */
+  suggestOnType?: boolean;
 }
 
 export function SearchableSelect<T>({
@@ -32,6 +36,8 @@ export function SearchableSelect<T>({
   onCreateNew,
   createNewLabel = "Criar novo",
   clearable = true,
+  autoFocusSearch = true,
+  suggestOnType = false,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -53,19 +59,24 @@ export function SearchableSelect<T>({
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
-  // Auto-focus search when opening
+  // Auto-focus search when opening (abre o teclado). Desligável p/ que o teclado
+  // só apareça quando o usuário tocar no campo de busca.
   useEffect(() => {
-    if (open) {
+    if (open && autoFocusSearch) {
       // small delay for the input to render
       const t = setTimeout(() => inputRef.current?.focus(), 10);
       return () => clearTimeout(t);
     }
-  }, [open]);
+  }, [open, autoFocusSearch]);
 
-  const filtered = query.trim()
+  const hasQuery = query.trim().length > 0;
+  // Com suggestOnType, a lista só aparece depois de digitar algo.
+  const filtered = hasQuery
     ? items.filter((i) =>
         getLabel(i).toLowerCase().includes(query.trim().toLowerCase())
       )
+    : suggestOnType
+    ? []
     : items;
 
   function selectItem(item: T) {
@@ -127,7 +138,11 @@ export function SearchableSelect<T>({
 
           {/* Items list */}
           <div className="max-h-60 overflow-y-auto py-1">
-            {filtered.length === 0 ? (
+            {suggestOnType && !hasQuery ? (
+              <div className="px-3 py-4 text-xs text-slate-400 dark:text-slate-500 text-center">
+                Digite para buscar…
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="px-3 py-4 text-xs text-slate-400 dark:text-slate-500 text-center">
                 {emptyMessage}
               </div>
