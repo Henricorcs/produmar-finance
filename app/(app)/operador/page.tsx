@@ -24,7 +24,7 @@ export default async function OperadorPage() {
   const { data: orders } = await supabase
     .from("service_orders")
     .select(
-      `*, machines(name, plate), pickup_locations(name), service_order_items(*, products(name))`
+      `*, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`
     )
     .in("status", ["pendente", "em_andamento"])
     .order("created_at", { ascending: false });

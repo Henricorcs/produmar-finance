@@ -24,7 +24,7 @@ import { osStatusLabel } from "@/lib/utils";
 import type { ServiceOrder, ServiceOrderItem, ServiceOrderStatus } from "@/lib/types";
 
 type OrderWithDetails = ServiceOrder & {
-  machines: { name: string; plate: string | null } | null;
+  machines: { name: string; plate: string | null; tracking_type?: string | null } | null;
   pickup_locations: { name: string } | null;
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
 };

@@ -451,7 +451,11 @@ export async function generateTransactionFromOrder(
 export async function finalizeServiceOrder(
   id: string,
   receivedBy: string,
-  options: { signature?: string | null; hourmeterEnd?: number | null } = {}
+  options: {
+    signature?: string | null;
+    hourmeterStart?: number | null;
+    hourmeterEnd?: number | null;
+  } = {}
 ) {
   const supabase = createClient();
 
@@ -475,19 +479,20 @@ export async function finalizeServiceOrder(
     delivery_date: today,
   };
 
-  // Fechamento de serviço por horímetro (ex.: consumo interno lançado só com
-  // o horímetro inicial). O técnico informa o final → recalcula horas × valor.
+  // Fechamento de serviço por horímetro. O técnico informa o horímetro final
+  // (e o inicial, quando não foi informado no cadastro) → recalcula horas ×
+  // valor. O inicial vem das options quando o técnico o digitou ao fechar.
   const end = options.hourmeterEnd;
-  const isHourmeterService =
-    order.type === "prestacao_servico" && order.hourmeter_start != null;
+  const start = options.hourmeterStart ?? order.hourmeter_start;
 
-  if (end != null && isHourmeterService) {
-    if (end <= order.hourmeter_start)
+  if (order.type === "prestacao_servico" && end != null && start != null) {
+    if (end <= start)
       return { error: "O horímetro final deve ser maior que o inicial" };
 
+    patch.hourmeter_start = start;
     patch.hourmeter_end = end;
 
-    const hours = Number((end - order.hourmeter_start).toFixed(2));
+    const hours = Number((end - start).toFixed(2));
     const rate = order.hourly_rate ?? 0;
     const hoursLabel = hours.toFixed(2).replace(".", ",");
     const rateLabel = rate.toFixed(2).replace(".", ",");

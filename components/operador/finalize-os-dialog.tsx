@@ -18,7 +18,7 @@ import { formatBRL } from "@/lib/utils";
 import type { ServiceOrder, ServiceOrderItem } from "@/lib/types";
 
 type OrderDetails = ServiceOrder & {
-  machines: { name: string; plate: string | null } | null;
+  machines: { name: string; plate: string | null; tracking_type?: string | null } | null;
   pickup_locations?: { name: string } | null;
   service_order_items?: (ServiceOrderItem & { products: { name: string } | null })[];
 };
@@ -42,20 +42,26 @@ function formatHourmeter(raw: string): string {
 
 export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   const [receivedBy, setReceivedBy]   = useState("");
+  const [hourmeterStart, setHourmeterStart] = useState("");
   const [hourmeterEnd, setHourmeterEnd] = useState("");
   const [error, setError]             = useState<string | null>(null);
   const [done, setDone]               = useState(false);
   const [signature, setSignature]     = useState<string | null>(null);
   const [isPending, startTransition]  = useTransition();
 
-  // Serviço por horímetro ainda em aberto (ex.: consumo interno lançado só com
-  // o horímetro inicial). O técnico informa o final ao fechar.
-  const needsHourmeter =
+  // Serviço por horímetro ainda em aberto. O técnico informa o horímetro final
+  // ao fechar; quando o inicial não foi informado no cadastro, ele informa os
+  // dois (inicial e final). Detecta pela máquina (tracking por horímetro).
+  const isHourmeterService =
     order.type === "prestacao_servico" &&
-    order.hourmeter_start != null &&
-    order.hourmeter_end == null;
+    order.machine_id != null &&
+    order.machines?.tracking_type !== "km";
+  const needsHourmeter = isHourmeterService && order.hourmeter_end == null;
+  const needsStart = needsHourmeter && order.hourmeter_start == null;
 
-  const startNum = order.hourmeter_start ?? 0;
+  const startNum = needsStart
+    ? parseFloat(hourmeterStart.replace(",", "."))
+    : order.hourmeter_start ?? 0;
   const endNum = parseFloat(hourmeterEnd.replace(",", "."));
   const hours = !isNaN(endNum) && endNum > startNum ? endNum - startNum : 0;
   const rate = order.hourly_rate ?? 0;
@@ -73,6 +79,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
 
   function handleClose() {
     setReceivedBy("");
+    setHourmeterStart("");
     setHourmeterEnd("");
     setSignature(null);
     setError(null);
@@ -87,6 +94,10 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
       return;
     }
     if (needsHourmeter) {
+      if (needsStart && (!hourmeterStart.trim() || isNaN(startNum))) {
+        setError("Informe o horímetro inicial");
+        return;
+      }
       if (!hourmeterEnd.trim() || isNaN(endNum)) {
         setError("Informe o horímetro final");
         return;
@@ -100,6 +111,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
     startTransition(async () => {
       const result = await finalizeServiceOrder(order.id, receivedBy, {
         signature,
+        hourmeterStart: needsStart ? startNum : null,
         hourmeterEnd: needsHourmeter ? endNum : null,
       });
       if ("error" in result) {
@@ -197,19 +209,44 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               )}
             </div>
 
-            {/* Horímetro final (serviço por hora em aberto) */}
+            {/* Horímetro (serviço por hora em aberto) */}
             {needsHourmeter && (
               <div className="rounded-xl border border-produmar-200 dark:border-produmar-800/60 bg-produmar-50/50 dark:bg-produmar-950/20 p-4 space-y-2">
                 <Label className="flex items-center gap-1.5 text-produmar-700 dark:text-produmar-400">
                   <Clock className="w-4 h-4" />
+                  Horímetro
+                </Label>
+                {needsStart ? (
+                  <>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      O horímetro inicial não foi informado no cadastro — informe
+                      o inicial e o final.
+                    </p>
+                    <div>
+                      <Label className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Horímetro inicial <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        value={hourmeterStart}
+                        onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
+                        placeholder="ex: 1230,0"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        className="h-12 text-lg tabular-nums"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Horímetro inicial:{" "}
+                    <span className="font-semibold tabular-nums">
+                      {startNum.toString().replace(".", ",")} h
+                    </span>
+                  </p>
+                )}
+                <Label className="text-[11px] text-slate-500 dark:text-slate-400">
                   Horímetro final <span className="text-red-500">*</span>
                 </Label>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Horímetro inicial:{" "}
-                  <span className="font-semibold tabular-nums">
-                    {startNum.toString().replace(".", ",")} h
-                  </span>
-                </p>
                 <Input
                   value={hourmeterEnd}
                   onChange={(e) => setHourmeterEnd(formatHourmeter(e.target.value))}

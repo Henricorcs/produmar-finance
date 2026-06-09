@@ -351,41 +351,37 @@ export function ServiceOrderDialog({
     if (type === "prestacao_servico") {
       if (useHourBasedPricing) {
         const isInterno = freightType === "interno";
-        if (isInterno) {
-          // consumo interno: só exige horímetro inicial; o final será preenchido
-          // ao fechar a OS. O horímetro inicial e a taxa ficam nas colunas
-          // próprias (hourmeter_start / hourly_rate); o item é só um placeholder
-          // com total 0 até o fechamento recalcular horas × valor.
-          const start = parseFloat(hourmeterStart.replace(",", "."));
-          if (!hourmeterStart.trim() || isNaN(start)) {
-            setError("Informe o horímetro inicial");
-            return;
-          }
-          itemsPayload = [{
-            product_id: null,
-            // Descrição genérica: a descrição real fica em service_description
-            // (evita duplicar o texto na impressão/cartão).
-            description: "CONSUMO INTERNO — AGUARDANDO FECHAMENTO",
-            quantity: 1,
-            unit: "ud",
-            unit_price: 0,
-          }];
-        } else {
-          if (hoursWorked <= 0) {
-            setError("Informe horímetro inicial e final válidos");
-            return;
-          }
-          const rate = parseBRLToNumber(hourlyRate);
-          if (rate <= 0) {
-            setError("Informe o valor da hora");
-            return;
-          }
+        const rate = parseBRLToNumber(hourlyRate);
+        // Valor da hora é obrigatório para cliente; opcional no consumo interno.
+        if (!isInterno && rate <= 0) {
+          setError("Informe o valor da hora");
+          return;
+        }
+        if (hoursWorked > 0) {
+          // OS já com horímetro inicial E final (ex.: edição de OS já fechada)
+          // → item calculado direto.
           itemsPayload = [{
             product_id: null,
             description: `PRESTAÇÃO DE SERVIÇO — ${hoursWorked.toFixed(2).replace(".", ",")}H × R$ ${hourlyRate}/H`,
             quantity: Number(hoursWorked.toFixed(2)),
             unit: "h",
             unit_price: rate,
+          }];
+        } else {
+          // Horímetro final (e o inicial, quando não informado aqui) será
+          // preenchido pelo técnico ao fechar a OS. O inicial e a taxa ficam nas
+          // colunas próprias (hourmeter_start / hourly_rate); o item é só um
+          // placeholder com total 0 até o fechamento recalcular horas × valor.
+          itemsPayload = [{
+            product_id: null,
+            // Descrição genérica: a descrição real fica em service_description
+            // (evita duplicar o texto na impressão/cartão).
+            description: isInterno
+              ? "CONSUMO INTERNO — AGUARDANDO FECHAMENTO"
+              : "PRESTAÇÃO DE SERVIÇO — AGUARDANDO FECHAMENTO",
+            quantity: 1,
+            unit: "ud",
+            unit_price: 0,
           }];
         }
       } else {
@@ -887,7 +883,7 @@ export function ServiceOrderDialog({
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-[10px] text-slate-500">Horímetro inicial *</Label>
+                          <Label className="text-[10px] text-slate-500">Horímetro inicial</Label>
                           <Input
                             value={hourmeterStart}
                             onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
@@ -897,7 +893,7 @@ export function ServiceOrderDialog({
                             className="h-9 text-sm tabular-nums"
                           />
                         </div>
-                        {freightType !== "interno" ? (
+                        {order?.hourmeter_end != null ? (
                           <div className="space-y-1">
                             <Label className="text-[10px] text-slate-500">Horímetro final</Label>
                             <Input
@@ -912,7 +908,8 @@ export function ServiceOrderDialog({
                         ) : (
                           <div className="flex items-end pb-1">
                             <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight">
-                              Horímetro final será preenchido pelo técnico ao fechar a OS
+                              Horímetro final será preenchido pelo técnico ao fechar a OS.
+                              Se deixar o inicial em branco, o técnico informa os dois.
                             </p>
                           </div>
                         )}
@@ -1043,7 +1040,7 @@ export function ServiceOrderDialog({
               <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                 Total {type === "prestacao_servico" ? "do serviço" : "da OS"}
               </span>
-              {freightType === "interno" && useHourBasedPricing && total === 0 ? (
+              {useHourBasedPricing && total === 0 ? (
                 <span className="text-sm font-medium text-slate-400 dark:text-slate-500 italic">
                   A calcular ao fechar
                 </span>
