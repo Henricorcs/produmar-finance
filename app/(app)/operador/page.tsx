@@ -29,10 +29,35 @@ export default async function OperadorPage() {
     .in("status", ["pendente", "em_andamento"])
     .order("created_at", { ascending: false });
 
+  // Máquinas ativas — para o técnico escolher ao lançar um serviço
+  const { data: machines } = await supabase
+    .from("machines")
+    .select("id, name, plate")
+    .eq("active", true)
+    .order("name");
+
+  // Clientes recentes — chips de toque rápido (evita digitação)
+  const { data: clientRows } = await supabase
+    .from("service_orders")
+    .select("client_name")
+    .eq("freight_type", "cliente")
+    .not("client_name", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  const recentClients = Array.from(
+    new Set(
+      (clientRows ?? [])
+        .map((r) => (r.client_name ?? "").trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 12);
+
   return (
     <OperadorClient
       orders={(orders as OrderWithDetails[]) ?? []}
       operadorName={user.user_metadata?.name ?? user.email ?? "Operador"}
+      machines={machines ?? []}
+      recentClients={recentClients}
     />
   );
 }

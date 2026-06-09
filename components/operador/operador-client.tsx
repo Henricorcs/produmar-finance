@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Truck,
   Wrench,
@@ -15,10 +16,12 @@ import {
   Package,
   Clock,
   PlayCircle,
+  PlusCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FinalizeOSDialog } from "./finalize-os-dialog";
+import { LancarServicoDialog } from "./lancar-servico-dialog";
 import { updateServiceOrderStatus } from "@/app/(app)/operacoes/actions";
 import { osStatusLabel } from "@/lib/utils";
 import type { ServiceOrder, ServiceOrderItem, ServiceOrderStatus } from "@/lib/types";
@@ -32,6 +35,8 @@ type OrderWithDetails = ServiceOrder & {
 interface Props {
   orders: OrderWithDetails[];
   operadorName: string;
+  machines: { id: string; name: string; plate: string | null }[];
+  recentClients: string[];
 }
 
 const STATUS_STYLE: Record<ServiceOrderStatus, string> = {
@@ -45,10 +50,20 @@ function fmtQty(n: number): string {
   return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 }
 
-export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
+export function OperadorClient({
+  orders: initialOrders,
+  operadorName,
+  machines,
+  recentClients,
+}: Props) {
+  const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
   const [finalizeTarget, setFinalizeTarget] = useState<OrderWithDetails | null>(null);
+  const [lancarOpen, setLancarOpen] = useState(false);
   const [, startTransition] = useTransition();
+
+  // Reconcilia o estado local com os dados do servidor (após revalidação/refresh).
+  useEffect(() => setOrders(initialOrders), [initialOrders]);
 
   const pending     = orders.filter((o) => o.status === "pendente");
   const emAndamento = orders.filter((o) => o.status === "em_andamento");
@@ -77,6 +92,16 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
           Olá, {operadorName.split(" ")[0]}! Veja abaixo o que precisa ser feito.
         </p>
       </div>
+
+      {/* Botão grande: técnico lança o próprio serviço */}
+      <button
+        type="button"
+        onClick={() => setLancarOpen(true)}
+        className="w-full flex items-center justify-center gap-3 rounded-2xl bg-produmar-600 hover:bg-produmar-700 active:scale-[0.99] text-white font-bold text-xl h-20 shadow-lg shadow-produmar-600/25 transition-all"
+      >
+        <PlusCircle className="w-8 h-8" />
+        Lançar serviço
+      </button>
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3">
@@ -158,6 +183,16 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
           onFinalized={handleFinalized}
         />
       )}
+
+      {/* Lançar serviço (técnico) */}
+      <LancarServicoDialog
+        open={lancarOpen}
+        onClose={() => setLancarOpen(false)}
+        machines={machines}
+        recentClients={recentClients}
+        operadorName={operadorName}
+        onCreated={() => router.refresh()}
+      />
     </div>
   );
 }
