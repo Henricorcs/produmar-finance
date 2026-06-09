@@ -101,6 +101,16 @@ function sanitizeDecimal(raw: string): string {
   return cleaned;
 }
 
+// Horímetro/hodômetro: vírgula automática na última casa (1 decimal).
+// O usuário digita só números e a última posição é sempre o decimal.
+// ex: "8310" → "831,0" ; "83105" → "8310,5"
+function formatHourmeter(raw: string): string {
+  const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
+  if (!digits) return "";
+  const padded = digits.padStart(2, "0");
+  return padded.slice(0, -1) + "," + padded.slice(-1);
+}
+
 interface ItemDraft {
   product_id: string;
   description: string;
@@ -772,6 +782,35 @@ export function ServiceOrderDialog({
                           </div>
                         </div>
 
+                        {/* Atalhos de fração — só quando a unidade é carrada */}
+                        {it.unit.toLowerCase().includes("carrada") && (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {[
+                              { label: "½ carrada", value: 0.5 },
+                              { label: "1 carrada", value: 1 },
+                              { label: "1½ carrada", value: 1.5 },
+                              { label: "2 carradas", value: 2 },
+                              { label: "3 carradas", value: 3 },
+                            ].map((opt) => {
+                              const active = parseQty(it.quantity) === opt.value;
+                              return (
+                                <button
+                                  key={opt.label}
+                                  type="button"
+                                  onClick={() => setItem(idx, { quantity: formatQty(opt.value) })}
+                                  className={`px-2.5 h-7 rounded-full text-[11px] font-medium border transition-colors ${
+                                    active
+                                      ? "bg-produmar-600 border-produmar-600 text-white"
+                                      : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
                         {/* Saldo de estoque do material */}
                         {it.product_id && stockMap.has(it.product_id) && (() => {
                           const bal = stockMap.get(it.product_id)!;
@@ -851,7 +890,7 @@ export function ServiceOrderDialog({
                           <Label className="text-[10px] text-slate-500">Horímetro inicial *</Label>
                           <Input
                             value={hourmeterStart}
-                            onChange={(e) => setHourmeterStart(sanitizeDecimal(e.target.value))}
+                            onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
                             placeholder="0,0"
                             inputMode="decimal"
                             autoComplete="off"
@@ -863,7 +902,7 @@ export function ServiceOrderDialog({
                             <Label className="text-[10px] text-slate-500">Horímetro final</Label>
                             <Input
                               value={hourmeterEnd}
-                              onChange={(e) => setHourmeterEnd(sanitizeDecimal(e.target.value))}
+                              onChange={(e) => setHourmeterEnd(formatHourmeter(e.target.value))}
                               placeholder="0,0"
                               inputMode="decimal"
                               autoComplete="off"

@@ -30,13 +30,14 @@ interface Props {
   onFinalized: (orderId: string) => void;
 }
 
-function sanitizeDecimal(raw: string): string {
-  // Converte ponto em vírgula (teclados de celular costumam enviar ".").
-  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
-  const parts = cleaned.split(",");
-  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
-  if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
-  return cleaned;
+// Horímetro: vírgula automática na última casa (1 decimal).
+// O usuário digita só números e a última posição é sempre o decimal.
+// ex: "8310" → "831,0" ; "83105" → "8310,5"
+function formatHourmeter(raw: string): string {
+  const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
+  if (!digits) return "";
+  const padded = digits.padStart(2, "0");
+  return padded.slice(0, -1) + "," + padded.slice(-1);
 }
 
 export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
@@ -211,7 +212,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                 </p>
                 <Input
                   value={hourmeterEnd}
-                  onChange={(e) => setHourmeterEnd(sanitizeDecimal(e.target.value))}
+                  onChange={(e) => setHourmeterEnd(formatHourmeter(e.target.value))}
                   placeholder="ex: 1250,5"
                   inputMode="decimal"
                   autoComplete="off"
