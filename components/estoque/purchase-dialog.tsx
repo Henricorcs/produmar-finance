@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { Plus, X, Mountain, Package, Wallet } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Plus, X, Mountain, Package, Wallet, Camera, Paperclip } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { QuickCreateProductDialog } from "@/components/operacoes/quick-create-product-dialog";
 import { QuickCreateLocationDialog } from "@/components/operacoes/quick-create-location-dialog";
-import { createMaterialPurchase } from "@/app/(app)/estoque/actions";
+import {
+  createMaterialPurchase,
+  uploadPurchaseAttachment,
+} from "@/app/(app)/estoque/actions";
 import { formatBRL } from "@/lib/utils";
 import type { PickupLocation, Product } from "@/lib/types";
 
@@ -82,6 +85,12 @@ export function PurchaseDialog({ open, onClose, products, jazidas }: Props) {
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Nota fiscal (foto/arquivo)
+  const [notaFile, setNotaFile] = useState<File | null>(null);
+  const [notaPreview, setNotaPreview] = useState<string | null>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [localProducts, setLocalProducts] = useState<Product[]>(products);
   const [localJazidas, setLocalJazidas] = useState<PickupLocation[]>(jazidas);
   const [prdDialogOpen, setPrdDialogOpen] = useState(false);
@@ -100,7 +109,20 @@ export function PurchaseDialog({ open, onClose, products, jazidas }: Props) {
     setDueDate(todayStr());
     setNotes("");
     setError(null);
+    setNotaFile(null);
+    setNotaPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
   }, [open]);
+
+  function pickNota(file: File | null) {
+    setNotaPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file && file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+    });
+    setNotaFile(file);
+  }
 
   const total = useMemo(
     () =>
@@ -174,8 +196,21 @@ export function PurchaseDialog({ open, onClose, products, jazidas }: Props) {
         notes,
         items: payloadItems,
       });
-      if (r && "error" in r) setError(r.error ?? "Erro ao salvar");
-      else onClose();
+      if (r && "error" in r) {
+        setError(r.error ?? "Erro ao salvar");
+        return;
+      }
+      // Anexa a nota fiscal, se houver foto
+      if (notaFile && "purchaseId" in r && r.purchaseId) {
+        const fd = new FormData();
+        fd.append("file", notaFile);
+        const up = await uploadPurchaseAttachment(r.purchaseId, fd);
+        if (up && "error" in up) {
+          setError(`Compra salva, mas a nota não subiu: ${up.error}`);
+          return;
+        }
+      }
+      onClose();
     });
   }
 
@@ -393,6 +428,74 @@ export function PurchaseDialog({ open, onClose, products, jazidas }: Props) {
                   </p>
                 )
               )}
+            </div>
+
+            {/* Nota fiscal (foto/arquivo) */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5" /> Nota fiscal (opcional)
+              </Label>
+              {notaFile ? (
+                <div className="flex items-center gap-3 p-2 rounded-lg border border-produmar-100 dark:border-produmar-900/30 bg-produmar-50/50 dark:bg-produmar-900/20">
+                  <div className="w-12 h-12 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+                    {notaPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={notaPreview} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <Paperclip className="w-5 h-5 text-slate-500" />
+                    )}
+                  </div>
+                  <span className="flex-1 min-w-0 text-xs text-slate-700 dark:text-slate-200 truncate">
+                    {notaFile.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => pickNota(null)}
+                    className="p-1 text-slate-400 hover:text-red-500"
+                    title="Remover"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => cameraRef.current?.click()}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <Camera className="w-3.5 h-3.5" /> Câmera
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <Paperclip className="w-3.5 h-3.5" /> Arquivo
+                  </button>
+                </div>
+              )}
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  pickNota(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
+              />
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,.pdf,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  pickNota(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
+              />
             </div>
 
             {/* Observações */}

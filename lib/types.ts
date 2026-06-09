@@ -298,6 +298,8 @@ export interface MaterialPurchase {
   total_amount: number;
   amount_paid: number;
   transaction_id: string | null;
+  attachment_path: string | null;
+  attachment_name: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;

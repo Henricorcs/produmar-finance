@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function EstoquePage() {
   const supabase = createClient();
 
-  const [balanceRes, productsRes, locationsRes, purchasesRes, movementsRes] =
+  const [balanceRes, productsRes, locationsRes, purchasesRes, movementsRes, purchaseItemsRes] =
     await Promise.all([
       supabase
         .from("product_stock_balance")
@@ -33,6 +33,11 @@ export default async function EstoquePage() {
         .order("movement_date", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(200),
+      supabase
+        .from("material_purchase_items")
+        .select(
+          "*, products(id, name, unit), material_purchases(id, location_id, total_amount, amount_paid, pickup_locations(name))"
+        ),
     ]);
 
   return (
@@ -42,6 +47,7 @@ export default async function EstoquePage() {
       jazidas={(locationsRes.data as PickupLocation[]) ?? []}
       purchases={purchasesRes.data ?? []}
       movements={movementsRes.data ?? []}
+      purchaseItems={purchaseItemsRes.data ?? []}
     />
   );
 }

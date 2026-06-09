@@ -13,15 +13,18 @@ import {
   SlidersHorizontal,
   Mountain,
   Wallet,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBRL, formatBRLCompact, formatDate } from "@/lib/utils";
 import { PurchaseDialog } from "./purchase-dialog";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import { PaymentDialog } from "./payment-dialog";
+import { MaterialDetailDialog } from "./material-detail-dialog";
 import {
   deleteMaterialPurchase,
   deleteStockMovement,
+  getPurchaseAttachmentUrl,
 } from "@/app/(app)/estoque/actions";
 import type {
   MaterialPurchase,
@@ -46,15 +49,46 @@ export type MovementRow = StockMovement & {
   pickup_locations: { name: string } | null;
 };
 
+export type PurchaseItemRow = {
+  quantity: number;
+  unit: string | null;
+  total: number;
+  products: { id: string; name: string; unit: string } | null;
+  material_purchases: {
+    id: string;
+    location_id: string | null;
+    total_amount: number;
+    amount_paid: number;
+    pickup_locations: { name: string } | null;
+  } | null;
+};
+
+/** Quanto de cada material veio de cada jazida (com saldo devedor da jazida). */
+export type MaterialByJazida = {
+  name: string;
+  qty: number;
+  value: number;
+  debt: number;
+};
+
+/** Agregação de uma jazida: materiais comprados, valor total e saldo devedor. */
+type JazidaAgg = {
+  name: string;
+  materials: { name: string; unit: string; qty: number; value: number }[];
+  totalValue: number;
+  debt: number;
+};
+
 interface Props {
   balance: ProductStockBalance[];
   products: Product[];
   jazidas: PickupLocation[];
   purchases: PurchaseRow[];
   movements: MovementRow[];
+  purchaseItems: PurchaseItemRow[];
 }
 
-type Tab = "saldo" | "compras" | "movimentacoes";
+type Tab = "saldo" | "jazidas" | "compras" | "movimentacoes";
 
 function fmtQty(n: number): string {
   return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
@@ -66,11 +100,90 @@ export function EstoquePageClient({
   jazidas,
   purchases,
   movements,
+  purchaseItems,
 }: Props) {
   const [tab, setTab] = useState<Tab>("saldo");
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<PurchaseRow | null>(null);
+  const [detailProductId, setDetailProductId] = useState<string | null>(null);
+
+  // ── Agregações por jazida e por material ────────────────────────────────────
+  const { jazidaList, byMaterial, debtByJazida } = useMemo(() => {
+    const seenPurchases = new Map<string, { loc: string; debt: number }>();
+    const jazMap = new Map<
+      string,
+      Map<string, { name: string; unit: string; qty: number; value: number }>
+    >();
+    const matMap = new Map<string, Map<string, { qty: number; value: number }>>();
+
+    for (const it of purchaseItems) {
+      const prod = it.products;
+      const mp = it.material_purchases;
+      if (!prod || !mp) continue;
+      const loc = mp.pickup_locations?.name ?? "Sem jazida";
+      const qty = Number(it.quantity);
+      const value = Number(it.total);
+
+      if (!jazMap.has(loc)) jazMap.set(loc, new Map());
+      const pm = jazMap.get(loc)!;
+      const ex = pm.get(prod.id) ?? { name: prod.name, unit: prod.unit, qty: 0, value: 0 };
+      ex.qty += qty;
+      ex.value += value;
+      pm.set(prod.id, ex);
+
+      if (!matMap.has(prod.id)) matMap.set(prod.id, new Map());
+      const jm = matMap.get(prod.id)!;
+      const ex2 = jm.get(loc) ?? { qty: 0, value: 0 };
+      ex2.qty += qty;
+      ex2.value += value;
+      jm.set(loc, ex2);
+
+      if (!seenPurchases.has(mp.id)) {
+        seenPurchases.set(mp.id, {
+          loc,
+          debt: Math.max(0, Number(mp.total_amount) - Number(mp.amount_paid)),
+        });
+      }
+    }
+
+    const debtByJazida = new Map<string, number>();
+    for (const { loc, debt } of seenPurchases.values()) {
+      debtByJazida.set(loc, (debtByJazida.get(loc) ?? 0) + debt);
+    }
+
+    const jazidaList = Array.from(jazMap.entries())
+      .map(([loc, pm]) => {
+        const materials = Array.from(pm.values()).sort((a, b) => a.name.localeCompare(b.name));
+        return {
+          name: loc,
+          materials,
+          totalValue: materials.reduce((s, m) => s + m.value, 0),
+          debt: debtByJazida.get(loc) ?? 0,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return { jazidaList, byMaterial: matMap, debtByJazida };
+  }, [purchaseItems]);
+
+  // Detalhe do material selecionado (qtd/valor/dívida por jazida)
+  const detailMaterial = useMemo(() => {
+    if (!detailProductId) return null;
+    const bal = balance.find((b) => b.product_id === detailProductId) ?? null;
+    const jm = byMaterial.get(detailProductId);
+    const jazidasArr: MaterialByJazida[] = jm
+      ? Array.from(jm.entries())
+          .map(([name, v]) => ({
+            name,
+            qty: v.qty,
+            value: v.value,
+            debt: debtByJazida.get(name) ?? 0,
+          }))
+          .sort((a, b) => b.qty - a.qty)
+      : [];
+    return { balance: bal, jazidas: jazidasArr };
+  }, [detailProductId, balance, byMaterial, debtByJazida]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const stockValue = useMemo(
@@ -102,6 +215,7 @@ export function EstoquePageClient({
     count: number;
   }[] = [
     { value: "saldo", label: "Saldo", icon: Boxes, count: itemsInStock },
+    { value: "jazidas", label: "Jazidas", icon: Mountain, count: jazidaList.length },
     { value: "compras", label: "Compras", icon: ShoppingCart, count: purchases.length },
     { value: "movimentacoes", label: "Movim.", icon: ArrowDownUp, count: movements.length },
   ];
@@ -171,7 +285,14 @@ export function EstoquePageClient({
       </div>
 
       {tab === "saldo" && (
-        <SaldoTab balance={balance} onAdjust={() => setAdjustOpen(true)} />
+        <SaldoTab
+          balance={balance}
+          onAdjust={() => setAdjustOpen(true)}
+          onMaterialClick={(id) => setDetailProductId(id)}
+        />
+      )}
+      {tab === "jazidas" && (
+        <JazidasTab jazidas={jazidaList} onNew={() => setPurchaseOpen(true)} />
       )}
       {tab === "compras" && (
         <ComprasTab
@@ -205,6 +326,12 @@ export function EstoquePageClient({
           remaining={Number(payTarget.total_amount) - Number(payTarget.amount_paid)}
         />
       )}
+      <MaterialDetailDialog
+        open={!!detailProductId}
+        onClose={() => setDetailProductId(null)}
+        material={detailMaterial?.balance ?? null}
+        jazidas={detailMaterial?.jazidas ?? []}
+      />
     </div>
   );
 }
@@ -243,9 +370,11 @@ function KpiCard({
 function SaldoTab({
   balance,
   onAdjust,
+  onMaterialClick,
 }: {
   balance: ProductStockBalance[];
   onAdjust: () => void;
+  onMaterialClick: (productId: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -267,9 +396,11 @@ function SaldoTab({
           {balance.map((b) => {
             const low = Number(b.current_quantity) <= 0;
             return (
-              <div
+              <button
                 key={b.product_id}
-                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
+                type="button"
+                onClick={() => onMaterialClick(b.product_id)}
+                className="text-left rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-produmar-200 dark:hover:border-produmar-800"
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
@@ -310,11 +441,84 @@ function SaldoTab({
                     </span>
                   )}
                 </div>
-              </div>
+                <p className="mt-2 text-[10px] text-produmar-600 dark:text-produmar-400 font-medium">
+                  Ver por jazida →
+                </p>
+              </button>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Aba: Jazidas (materiais por jazida) ───────────────────────────────────────
+function JazidasTab({ jazidas, onNew }: { jazidas: JazidaAgg[]; onNew: () => void }) {
+  if (jazidas.length === 0) {
+    return (
+      <EmptyState
+        icon={Mountain}
+        text="Nenhuma compra por jazida ainda."
+        hint="Lance uma compra para ver os materiais agrupados por jazida."
+        action={
+          <Button size="sm" onClick={onNew}>
+            <Plus className="w-4 h-4" /> Nova compra
+          </Button>
+        }
+      />
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {jazidas.map((j) => (
+        <div
+          key={j.name}
+          className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-produmar-50 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
+              <Mountain className="w-4 h-4 text-produmar-600 dark:text-produmar-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                  {j.name}
+                </p>
+                {j.debt > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 flex-shrink-0">
+                    devendo {formatBRL(j.debt)}
+                  </span>
+                )}
+              </div>
+              <ul className="mt-2 space-y-1">
+                {j.materials.map((m) => (
+                  <li
+                    key={m.name}
+                    className="flex items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="text-slate-700 dark:text-slate-200 truncate">
+                      <span className="font-semibold tabular-nums">
+                        {fmtQty(m.qty)} {m.unit}
+                      </span>{" "}
+                      · {m.name}
+                    </span>
+                    <span className="text-xs text-slate-400 tabular-nums flex-shrink-0">
+                      {formatBRL(m.value)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Total comprado</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+                  {formatBRL(j.totalValue)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -341,6 +545,12 @@ function ComprasTab({
     startTransition(async () => {
       await deleteMaterialPurchase(p.id);
     });
+  }
+
+  async function openNota(path: string) {
+    const r = await getPurchaseAttachmentUrl(path);
+    if ("url" in r) window.open(r.url, "_blank", "noopener,noreferrer");
+    else alert(r.error ?? "Erro ao abrir a nota");
   }
 
   if (purchases.length === 0) {
@@ -417,6 +627,15 @@ function ComprasTab({
                     </span>
                   )}
                 </div>
+                {p.attachment_path && (
+                  <button
+                    type="button"
+                    onClick={() => openNota(p.attachment_path!)}
+                    className="mt-1.5 inline-flex items-center gap-1 text-xs text-produmar-600 dark:text-produmar-400 font-medium"
+                  >
+                    <FileText className="w-3.5 h-3.5" /> Ver nota fiscal
+                  </button>
+                )}
               </div>
               <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                 {owed > 0 && !settled && (

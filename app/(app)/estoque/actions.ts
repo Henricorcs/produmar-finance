@@ -1,8 +1,11 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { MaterialPurchase } from "@/lib/types";
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function revalidate() {
   revalidatePath("/estoque");
@@ -209,18 +212,71 @@ export async function payMaterialPurchase(purchaseId: string, amount: number) {
   return { ok: true };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTA FISCAL (anexo da compra)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function uploadPurchaseAttachment(
+  purchaseId: string,
+  formData: FormData
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0)
+    return { error: "Arquivo inválido" };
+  if (file.size > MAX_FILE_SIZE) return { error: "Arquivo maior que 10 MB" };
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `purchases/${purchaseId}/${randomUUID()}_${safeName}`;
+
+  const { error: upErr } = await supabase.storage
+    .from("attachments")
+    .upload(path, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+  if (upErr) return { error: upErr.message };
+
+  const { error } = await supabase
+    .from("material_purchases")
+    .update({ attachment_path: path, attachment_name: file.name })
+    .eq("id", purchaseId);
+  if (error) return { error: error.message };
+
+  revalidate();
+  return { ok: true };
+}
+
+/** Gera uma URL assinada (1h) para abrir a nota fiscal anexada. */
+export async function getPurchaseAttachmentUrl(storagePath: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase.storage
+    .from("attachments")
+    .createSignedUrl(storagePath, 60 * 60);
+  if (error || !data) return { error: error?.message ?? "Erro ao abrir anexo" };
+  return { url: data.signedUrl };
+}
+
 export async function deleteMaterialPurchase(id: string) {
   const supabase = createClient();
 
-  // remove a conta a pagar vinculada (se houver)
+  // remove a conta a pagar vinculada (se houver) e o anexo do storage
   const { data: purchase } = await supabase
     .from("material_purchases")
-    .select("transaction_id")
+    .select("transaction_id, attachment_path")
     .eq("id", id)
     .maybeSingle();
 
   if (purchase?.transaction_id) {
     await supabase.from("transactions").delete().eq("id", purchase.transaction_id);
+  }
+  if (purchase?.attachment_path) {
+    await supabase.storage.from("attachments").remove([purchase.attachment_path]);
   }
 
   // a exclusão da compra remove itens e entradas de estoque por cascade
