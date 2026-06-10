@@ -126,7 +126,7 @@ export interface CashflowProjectionDay {
 
 // ── Operações (Ordens de Serviço) ────────────────────────────────────────────
 
-export type ServiceOrderType    = "entrega_material" | "prestacao_servico";
+export type ServiceOrderType    = "entrega_material" | "prestacao_servico" | "frete";
 export type ServiceFreightType  = "cliente" | "interno";
 export type ServiceOrderStatus  = "pendente" | "em_andamento" | "entregue" | "cancelado";
 export type MachineTrackingType = "hourmeter" | "km";

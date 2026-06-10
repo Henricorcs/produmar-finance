@@ -106,7 +106,11 @@ function exportCSV(orders: ServiceOrderWithDetails[], fileLabel: string) {
     `#${o.order_number}`,
     o.issue_date,
     o.delivery_date ?? "",
-    o.type === "entrega_material" ? "Entrega de material" : "Prestação de serviço",
+    o.type === "entrega_material"
+      ? "Entrega de material"
+      : o.type === "frete"
+        ? "Frete"
+        : "Prestação de serviço",
     osBillingLabel(o.billing_mode),
     o.freight_type === "cliente" ? "Cliente" : "Interno",
     o.client_name ?? "",
@@ -420,6 +424,7 @@ function OrderRow({
 }) {
   const isClient = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
+  const isFrete = o.type === "frete";
 
   // Resumo dos materiais — usa o nome do produto cadastrado; cai na descrição
   // livre do item só quando não há produto vinculado.
@@ -440,16 +445,17 @@ function OrderRow({
   const serviceText = o.notes?.trim() ?? "";
 
   // Título e subtítulo do card:
-  // • Entrega de material → título é o serviço (ex: FRETE); material vira subtítulo.
+  // • Entrega de material / frete → título é o serviço (ex: FRETE DE AREIA);
+  //   itens viram subtítulo.
   // • Prestação de serviço → título é a descrição do serviço; serviço (notes) vira subtítulo.
   let title: string;
   let subtitle = "";
-  if (isMaterial) {
+  if (isMaterial || isFrete) {
     title =
       serviceText ||
       materialsLine ||
       (isClient ? o.client_name?.trim() ?? "" : "") ||
-      "Entrega de material";
+      (isFrete ? "Frete" : "Entrega de material");
     subtitle = title === serviceText ? materialsLine : "";
   } else {
     title =
@@ -465,7 +471,7 @@ function OrderRow({
   // material) → previsão. Prestação usa "Data do serviço", sem prefixo.
   const datePrefix =
     o.status === "entregue"
-      ? (isMaterial ? "Entregue em " : "Concluído em ")
+      ? (isMaterial || isFrete ? "Entregue em " : "Concluído em ")
       : o.delivery_date && isMaterial
         ? "Previsão "
         : "";
@@ -490,7 +496,7 @@ function OrderRow({
               : "bg-amber-50 dark:bg-amber-950/40"
           }`}
         >
-          {isMaterial ? (
+          {isMaterial || isFrete ? (
             <Truck
               className={`w-5 h-5 ${
                 isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
@@ -525,7 +531,7 @@ function OrderRow({
             >
               {osStatusLabel(o.status, o.type)}
             </span>
-            {isMaterial && o.billing_mode && (
+            {o.billing_mode && (
               <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-800">
                 {osBillingLabel(o.billing_mode)}
               </span>

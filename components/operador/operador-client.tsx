@@ -120,8 +120,7 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
     // Viagem e diária começam anotando km + hora; km e OS antigas são 1 toque,
     // mas a hora de início é registrada do mesmo jeito (relógio do celular).
     const needsStartData =
-      o.type === "entrega_material" &&
-      (o.billing_mode === "viagem" || o.billing_mode === "diaria");
+      o.billing_mode === "viagem" || o.billing_mode === "diaria";
     if (needsStartData) {
       setStartTarget(o);
       return;
@@ -296,7 +295,7 @@ function InfoRow({
 
 // ── Instrução curta por modo/status ──────────────────────────────────────────
 function instruction(o: OrderWithDetails): string {
-  const mode = o.type === "entrega_material" ? o.billing_mode : null;
+  const mode = o.billing_mode; // só OS de frete têm modo de cobrança
   if (o.status === "pendente") {
     if (mode === "viagem") return "Vai sair? Toque em INICIAR e anote o km e a hora.";
     if (mode === "diaria") return "Vai começar? Toque em INICIAR e anote o km e a hora.";
@@ -323,10 +322,12 @@ function OSCard({
 }) {
   const isClient   = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
-  const billing    = isMaterial && o.billing_mode ? BILLING_BADGE[o.billing_mode] : null;
+  const isFrete    = o.type === "frete";
+  // Frete (ou OS antiga de entrega com cobrança) tem badge do modo
+  const billing    = o.billing_mode ? BILLING_BADGE[o.billing_mode] : null;
   // Contador de viagens no cartão (modo "por viagem" em andamento)
   const showTripCounter =
-    o.status === "em_andamento" && isMaterial && o.billing_mode === "viagem";
+    o.status === "em_andamento" && o.billing_mode === "viagem";
   const tripsDone = o.trips_count ?? 0;
   // Horário de cada viagem marcada (log do "+1 VIAGEM")
   const tripTimes = (o.service_order_trips ?? [])
@@ -339,7 +340,7 @@ function OSCard({
     o.notes?.trim() ||
     o.service_description?.trim() ||
     (isClient ? o.client_name?.trim() : "") ||
-    (isMaterial ? "Entrega de material" : "Prestação de serviço");
+    (isMaterial ? "Entrega de material" : isFrete ? "Frete" : "Prestação de serviço");
 
   const materials = o.service_order_items
     .filter((it) => !it.is_freight && (it.product_id || it.description))
@@ -363,7 +364,7 @@ function OSCard({
   const startInfo = (() => {
     if (o.status !== "em_andamento") return null;
     const parts: string[] = [];
-    if (isMaterial && o.km_start != null) parts.push(`${fmtKm(o.km_start)} km`);
+    if ((isMaterial || isFrete) && o.km_start != null) parts.push(`${fmtKm(o.km_start)} km`);
     if (o.start_time) parts.push(`às ${o.start_time.slice(0, 5)}`);
     return parts.length > 0 ? parts.join(" ") : null;
   })();
@@ -385,7 +386,7 @@ function OSCard({
               : "bg-amber-100 dark:bg-amber-950/50"
           }`}
         >
-          {isMaterial ? (
+          {isMaterial || isFrete ? (
             <Truck className={`w-7 h-7 ${isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`} />
           ) : (
             <Wrench className={`w-7 h-7 ${isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`} />
@@ -433,7 +434,7 @@ function OSCard({
           </InfoRow>
         )}
 
-        {isMaterial && materials.length > 0 && (
+        {(isMaterial || isFrete) && materials.length > 0 && (
           <InfoRow icon={Package} label="Material">
             <ul className="space-y-0.5">
               {materials.map((m, i) => (
@@ -443,7 +444,7 @@ function OSCard({
           </InfoRow>
         )}
 
-        {!isMaterial && o.service_description && (
+        {!isMaterial && !isFrete && o.service_description && (
           <InfoRow icon={Wrench} label="Serviço">
             {o.service_description}
           </InfoRow>
@@ -456,22 +457,25 @@ function OSCard({
           </InfoRow>
         )}
 
-        {isMaterial && o.pickup_locations && (
+        {(isMaterial || isFrete) && o.pickup_locations && (
           <InfoRow icon={MapPin} label="Retirar em">
             {o.pickup_locations.name}
           </InfoRow>
         )}
 
         {o.delivery_address && (
-          <InfoRow icon={Navigation} label={isMaterial ? "Entregar em" : "Local do serviço"}>
+          <InfoRow
+            icon={Navigation}
+            label={isMaterial || isFrete ? "Entregar em" : "Local do serviço"}
+          >
             {o.delivery_address}
           </InfoRow>
         )}
 
         {startInfo && (
           <InfoRow
-            icon={isMaterial && o.km_start != null ? Gauge : Clock}
-            label={isMaterial ? "Saída" : "Início"}
+            icon={(isMaterial || isFrete) && o.km_start != null ? Gauge : Clock}
+            label={isMaterial || isFrete ? "Saída" : "Início"}
           >
             <span className="tabular-nums">{startInfo}</span>
           </InfoRow>

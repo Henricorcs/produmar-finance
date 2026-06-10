@@ -63,8 +63,9 @@ function fmtKm(n: number): string {
 }
 
 export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
-  // Modo de cobrança do frete (entrega de material): viagem | km | diaria.
-  const billingMode = order.type === "entrega_material" ? order.billing_mode : null;
+  // Modo de cobrança do frete (OS de frete; cobre também OS antigas de
+  // entrega de material que usavam cobrança): viagem | km | diaria.
+  const billingMode = order.type !== "prestacao_servico" ? order.billing_mode : null;
   // No modo "km" o técnico informa os dois KMs ao fechar; nos demais, o KM de
   // saída veio do Iniciar — se faltar (OS antiga/iniciada pelo escritório),
   // pedimos os dois aqui também.
@@ -264,7 +265,11 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               </p>
               <p className="font-medium text-slate-700 dark:text-slate-200">
                 OS #{order.order_number} —{" "}
-                {order.type === "entrega_material" ? "Entrega de material" : "Prestação de serviço"}
+                {order.type === "entrega_material"
+                  ? "Entrega de material"
+                  : order.type === "frete"
+                    ? "Frete"
+                    : "Prestação de serviço"}
               </p>
               {order.client_name && (
                 <p className="text-slate-500 dark:text-slate-400">Cliente: {order.client_name}</p>

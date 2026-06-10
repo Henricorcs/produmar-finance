@@ -264,24 +264,25 @@ function sanitizeOrder(input: ServiceOrderInput) {
     service_cost: input.service_cost ?? null,
     fuel_cost: input.fuel_cost ?? null,
     received_by: input.received_by?.trim() ? input.received_by.trim().toUpperCase() : null,
-    billing_mode: input.type === "entrega_material" ? input.billing_mode ?? null : null,
-    freight_value: input.type === "entrega_material" ? input.freight_value ?? null : null,
-    trips_count: input.type === "entrega_material" ? input.trips_count ?? null : null,
+    billing_mode: input.type === "frete" ? input.billing_mode ?? null : null,
+    freight_value: input.type === "frete" ? input.freight_value ?? null : null,
+    trips_count: input.type === "frete" ? input.trips_count ?? null : null,
     start_time: input.start_time || null,
     notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
   };
 }
 
 function validate(input: ServiceOrderInput): string | null {
-  if (!["entrega_material", "prestacao_servico"].includes(input.type))
+  if (!["entrega_material", "prestacao_servico", "frete"].includes(input.type))
     return "Tipo inválido";
   if (!["cliente", "interno"].includes(input.freight_type))
     return "Tipo de frete inválido";
   if (input.freight_type === "cliente" && !input.client_name?.trim())
     return "Nome do cliente obrigatório";
 
-  const billingMode =
-    input.type === "entrega_material" ? input.billing_mode ?? null : null;
+  const billingMode = input.type === "frete" ? input.billing_mode ?? null : null;
+  if (input.type === "frete" && !billingMode)
+    return "Escolha como o frete é cobrado";
   if (billingMode && !["viagem", "km", "diaria"].includes(billingMode))
     return "Modo de cobrança inválido";
   // Valor do frete: obrigatório para cliente; opcional no consumo interno
@@ -295,9 +296,8 @@ function validate(input: ServiceOrderInput): string | null {
     return `Informe o valor ${label}`;
   }
 
-  // Com modo de cobrança o frete é a cobrança — a lista de materiais pode
-  // ficar vazia (ex.: frete de material do próprio cliente).
-  if ((!input.items || input.items.length === 0) && !billingMode)
+  // No frete a cobrança é o próprio item de frete — a lista pode ficar vazia.
+  if ((!input.items || input.items.length === 0) && input.type !== "frete")
     return "Adicione ao menos um item";
   for (const it of input.items) {
     if (!(it.quantity > 0)) return "Quantidade deve ser maior que zero";
@@ -588,10 +588,12 @@ export async function finalizeServiceOrder(
   // fluxos, não só nos modos de cobrança.
   if (options.endTime?.trim()) patch.end_time = options.endTime.trim();
 
-  // ── Fechamento de entrega de material com modo de cobrança ────────────────
+  // ── Fechamento de OS de frete com modo de cobrança ────────────────────────
   // viagem: viagens × valor · km: km rodado × R$/km · diária: valor fixo.
   // O item de frete (is_freight) é recriado aqui para refletir o cálculo final.
-  const mode = order.type === "entrega_material" ? order.billing_mode : null;
+  // Keyed no billing_mode (não no type) para cobrir OS antigas de entrega de
+  // material que usavam cobrança antes do tipo "frete" existir.
+  const mode = order.type !== "prestacao_servico" ? order.billing_mode : null;
   if (mode) {
     if (!options.signature)
       return { error: "A assinatura de quem recebeu é obrigatória" };

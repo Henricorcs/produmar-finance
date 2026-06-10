@@ -43,6 +43,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
 
   const items = order.service_order_items ?? [];
   const isMaterial = order.type === "entrega_material";
+  const isFrete    = order.type === "frete";
   const isClient   = order.freight_type === "cliente";
 
   const hourmeterDiff =
@@ -111,7 +112,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
             </div>
             <div className="text-right">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                {isMaterial ? "Ordem de Entrega" : "Ordem de Serviço"}
+                {isMaterial ? "Ordem de Entrega" : isFrete ? "Ordem de Frete" : "Ordem de Serviço"}
               </p>
               <p className="text-3xl font-black text-produmar-700 tabular-nums mt-0.5">
                 #{String(order.order_number).padStart(4, "0")}
@@ -130,11 +131,18 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
               {
                 label:
                   order.status === "entregue"
-                    ? (isMaterial ? "Entregue em" : "Concluído em")
+                    ? (isMaterial || isFrete ? "Entregue em" : "Concluído em")
                     : "Previsão",
                 value: formatDate(order.delivery_date),
               },
-              { label: "Tipo",      value: isMaterial ? "Entrega de material" : "Prestação de serviço" },
+              {
+                label: "Tipo",
+                value: isMaterial
+                  ? "Entrega de material"
+                  : isFrete
+                    ? "Frete"
+                    : "Prestação de serviço",
+              },
               ...(order.billing_mode
                 ? [{ label: "Cobrança", value: osBillingLabel(order.billing_mode) }]
                 : []),
@@ -377,7 +385,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
           {/* Items table */}
           <div>
             <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">
-              {isMaterial ? "Materiais" : "Itens / Serviços"}
+              {isMaterial ? "Materiais" : isFrete ? "Frete" : "Itens / Serviços"}
             </p>
             <table className="w-full text-xs border-collapse">
               <thead>

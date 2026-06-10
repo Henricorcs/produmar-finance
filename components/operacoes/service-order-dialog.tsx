@@ -306,11 +306,10 @@ export function ServiceOrderDialog({
     return e - s;
   }, [kmStart, kmEnd]);
 
-  // Frete da entrega de material: diária soma direto (valor fixo); viagem/km
-  // só quando o fechamento (nº de viagens / km rodado) já é conhecido — senão
-  // fica pendente.
+  // Frete: diária soma direto (valor fixo); viagem/km só quando o fechamento
+  // (nº de viagens / km rodado) já é conhecido — senão fica pendente.
   const freightPreview = useMemo(() => {
-    if (type !== "entrega_material" || !billingMode) return { value: 0, pending: false };
+    if (type !== "frete" || !billingMode) return { value: 0, pending: false };
     const rate = parseBRLToNumber(freightValue);
     if (billingMode === "diaria") return { value: rate, pending: false };
     if (billingMode === "km") {
@@ -436,15 +435,13 @@ export function ServiceOrderDialog({
           unit_price: amount,
         }];
       }
-    } else {
-      // OS novas exigem o modo de cobrança; OS antigas (criadas antes do
-      // recurso) podem ser editadas sem ele — escolher um modo é opcional.
-      if (!billingMode && !order) {
+    } else if (type === "frete") {
+      if (!billingMode) {
         setError("Escolha como o frete é cobrado: por viagem, por km ou por diária");
         return;
       }
       const rate = parseBRLToNumber(freightValue);
-      if (billingMode && isClient && rate <= 0) {
+      if (isClient && rate <= 0) {
         setError(
           billingMode === "viagem"
             ? "Informe o valor da viagem"
@@ -455,6 +452,8 @@ export function ServiceOrderDialog({
         return;
       }
 
+      // Materiais de OS antigas convertidas para frete ficam preservados
+      // (não aparecem na tela, mas continuam somando no total).
       itemsPayload = items
         .filter((it) => it.product_id || it.description.trim())
         .map((it) => ({
@@ -507,9 +506,19 @@ export function ServiceOrderDialog({
           });
         }
       }
+    } else {
+      // Entrega de material: só materiais (a cobrança de frete é o tipo "Frete").
+      itemsPayload = items
+        .filter((it) => it.product_id || it.description.trim())
+        .map((it) => ({
+          product_id: it.product_id || null,
+          description: it.description,
+          quantity: parseQty(it.quantity),
+          unit: it.unit,
+          unit_price: parseBRLToNumber(it.unit_price),
+        }));
 
-      // Sem modo de cobrança (OS antiga) vale a regra original.
-      if (!billingMode && itemsPayload.length === 0) {
+      if (itemsPayload.length === 0) {
         setError("Adicione ao menos um item");
         return;
       }
@@ -526,7 +535,10 @@ export function ServiceOrderDialog({
       pickup_location_id: pickupLocationId || null,
       delivery_address: deliveryAddress,
       service_description: serviceDescription,
-      delivery_date: deliveryDate || null,
+      // Frete não tem previsão de entrega — a data real entra no fechamento.
+      // Na edição preserva a data já gravada (hidratada no estado).
+      delivery_date:
+        type === "frete" && !order ? null : deliveryDate || null,
       hourmeter_start:
         type === "prestacao_servico" && useHourBasedPricing && hourmeterStart.trim()
           ? parseFloat(hourmeterStart.replace(",", "."))
@@ -550,14 +562,13 @@ export function ServiceOrderDialog({
           ? parseBRLToNumber(fuelCost)
           : null,
       received_by: receivedBy.trim() || null,
-      billing_mode:
-        type === "entrega_material" && billingMode ? billingMode : null,
+      billing_mode: type === "frete" && billingMode ? billingMode : null,
       freight_value:
-        type === "entrega_material" && billingMode && freightValue.trim()
+        type === "frete" && billingMode && freightValue.trim()
           ? parseBRLToNumber(freightValue)
           : null,
       trips_count: (() => {
-        if (type !== "entrega_material" || billingMode !== "viagem") return null;
+        if (type !== "frete" || billingMode !== "viagem") return null;
         const t = parseInt(tripsCount, 10);
         return !isNaN(t) && t >= 1 ? t : null;
       })(),
@@ -595,16 +606,17 @@ export function ServiceOrderDialog({
             {/* Type toggle */}
             <div className="space-y-1.5">
               <Label>Tipo *</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {([
                   { v: "entrega_material",  label: "Entrega de material",  icon: Truck },
+                  { v: "frete",             label: "Frete",                icon: Route },
                   { v: "prestacao_servico", label: "Prestação de serviço", icon: Wrench },
                 ] as const).map(({ v, label, icon: Icon }) => (
                   <button
                     key={v}
                     type="button"
                     onClick={() => setType(v)}
-                    className={`flex items-center justify-center gap-2 py-2.5 text-sm rounded-lg border font-medium transition-colors ${
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 text-sm rounded-lg border font-medium transition-colors ${
                       type === v
                         ? "bg-produmar-50 border-produmar-300 text-produmar-700 dark:bg-produmar-900/30 dark:border-produmar-600 dark:text-produmar-400"
                         : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -617,8 +629,8 @@ export function ServiceOrderDialog({
               </div>
             </div>
 
-            {/* Cobrança do frete (só entrega de material) */}
-            {type === "entrega_material" && (
+            {/* Cobrança do frete (só tipo frete) */}
+            {type === "frete" && (
               <div className="space-y-1.5">
                 <Label>Como é cobrado? *</Label>
                 <div className="grid grid-cols-3 gap-2">
@@ -744,8 +756,8 @@ export function ServiceOrderDialog({
                   { v: "cliente", label: "Cliente externo", icon: User },
                   {
                     v: "interno",
-                    // "Consumo interno" só faz sentido em entrega; para serviço é só "Interno"
-                    label: type === "prestacao_servico" ? "Interno" : "Consumo interno",
+                    // "Consumo interno" só faz sentido em entrega; frete e serviço são só "Interno"
+                    label: type === "entrega_material" ? "Consumo interno" : "Interno",
                     icon: Building2,
                   },
                 ] as const).map(({ v, label, icon: Icon }) => (
@@ -845,7 +857,7 @@ export function ServiceOrderDialog({
             </div>
 
             {/* Locations */}
-            {type === "entrega_material" ? (
+            {type !== "prestacao_servico" ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Local de retirada</Label>
@@ -1269,7 +1281,12 @@ export function ServiceOrderDialog({
             {/* Total */}
             <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
               <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                Total {type === "prestacao_servico" ? "do serviço" : "da OS"}
+                Total{" "}
+                {type === "prestacao_servico"
+                  ? "do serviço"
+                  : type === "frete"
+                    ? "do frete"
+                    : "da OS"}
               </span>
               {useHourBasedPricing && total === 0 ? (
                 <span className="text-sm font-medium text-slate-400 dark:text-slate-500 italic">
@@ -1297,8 +1314,8 @@ export function ServiceOrderDialog({
               )}
             </div>
 
-            {/* Dates + status */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Dates + status — frete não tem previsão de entrega */}
+            <div className={`grid grid-cols-1 gap-3 ${type === "frete" ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
               <div className="space-y-1.5">
                 <Label className="text-xs">Data do lançamento</Label>
                 <div className="h-10 px-3 flex items-center text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 tabular-nums">
@@ -1307,17 +1324,19 @@ export function ServiceOrderDialog({
                     : new Date().toLocaleDateString("pt-BR")}
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="delivery_date">
-                  {type === "prestacao_servico" ? "Data do serviço" : "Previsão de entrega"} *
-                </Label>
-                <Input
-                  id="delivery_date"
-                  type="date"
-                  value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                />
-              </div>
+              {type !== "frete" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="delivery_date">
+                    {type === "prestacao_servico" ? "Data do serviço" : "Previsão de entrega"} *
+                  </Label>
+                  <Input
+                    id="delivery_date"
+                    type="date"
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                  />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>Status</Label>
                 <Select value={status} onValueChange={(v) => setStatus(v as ServiceOrderStatus)}>
@@ -1351,17 +1370,17 @@ export function ServiceOrderDialog({
               </div>
             )}
 
-            {/* Serviço / observação — só na entrega de material (vira o título
-                do cartão, ex.: "FRETE"). Na prestação de serviço a "Descrição
-                do serviço" já cobre, então não duplicamos o campo. */}
-            {type === "entrega_material" && (
+            {/* Serviço / observação — entrega e frete (vira o título do
+                cartão, ex.: "FRETE DE AREIA"). Na prestação de serviço a
+                "Descrição do serviço" já cobre, então não duplicamos o campo. */}
+            {type !== "prestacao_servico" && (
               <div className="space-y-1.5">
                 <Label htmlFor="notes">Serviço</Label>
                 <Textarea
                   id="notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value.toUpperCase())}
-                  placeholder="ex: FRETE, ENTREGA..."
+                  placeholder={type === "frete" ? "ex: FRETE DE AREIA PARA OBRA..." : "ex: FRETE, ENTREGA..."}
                   rows={2}
                   className="uppercase placeholder:normal-case placeholder:lowercase"
                 />
