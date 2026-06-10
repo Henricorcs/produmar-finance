@@ -19,25 +19,34 @@ import {
   Gauge,
   Route,
   CalendarDays,
+  Minus,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FinalizeOSDialog } from "./finalize-os-dialog";
 import { StartOSDialog } from "./start-os-dialog";
-import { updateServiceOrderStatus } from "@/app/(app)/operacoes/actions";
+import { registerTrip, startServiceOrder } from "@/app/(app)/operacoes/actions";
 import { osStatusLabel } from "@/lib/utils";
 import type {
   ServiceBillingMode,
   ServiceOrder,
   ServiceOrderItem,
   ServiceOrderStatus,
+  ServiceOrderTrip,
 } from "@/lib/types";
 
 type OrderWithDetails = ServiceOrder & {
   machines: { name: string; plate: string | null; tracking_type?: string | null } | null;
   pickup_locations: { name: string } | null;
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
+  service_order_trips?: ServiceOrderTrip[];
 };
+
+function nowHHMM(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
 interface Props {
   orders: OrderWithDetails[];
@@ -108,7 +117,8 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
   }
 
   async function handleIniciar(o: OrderWithDetails) {
-    // Viagem e diária começam anotando km + hora; km e OS antigas são 1 toque.
+    // Viagem e diária começam anotando km + hora; km e OS antigas são 1 toque,
+    // mas a hora de início é registrada do mesmo jeito (relógio do celular).
     const needsStartData =
       o.type === "entrega_material" &&
       (o.billing_mode === "viagem" || o.billing_mode === "diaria");
@@ -116,11 +126,38 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
       setStartTarget(o);
       return;
     }
+    const startTime = nowHHMM();
     startTransition(async () => {
-      await updateServiceOrderStatus(o.id, "em_andamento");
+      await startServiceOrder(o.id, { startTime });
       setOrders((prev) =>
-        prev.map((x) => (x.id === o.id ? { ...x, status: "em_andamento" } : x))
+        prev.map((x) =>
+          x.id === o.id ? { ...x, status: "em_andamento", start_time: startTime } : x
+        )
       );
+    });
+  }
+
+  // Modo "por viagem": o técnico marca cada viagem feita no próprio cartão.
+  // Atualização otimista + reconciliação com o valor gravado no banco; a hora
+  // de cada viagem vai para o log (service_order_trips).
+  function handleTrip(o: OrderWithDetails, delta: 1 | -1) {
+    setOrders((prev) =>
+      prev.map((x) =>
+        x.id === o.id
+          ? { ...x, trips_count: Math.max(0, (x.trips_count ?? 0) + delta) }
+          : x
+      )
+    );
+    startTransition(async () => {
+      const result = await registerTrip(o.id, delta, delta === 1 ? nowHHMM() : null);
+      if ("trips" in result && result.trips != null) {
+        const trips = result.trips;
+        setOrders((prev) =>
+          prev.map((x) => (x.id === o.id ? { ...x, trips_count: trips } : x))
+        );
+      }
+      // Recarrega para trazer o log de horários das viagens
+      router.refresh();
     });
   }
 
@@ -181,6 +218,7 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
                 order={o}
                 onIniciar={handleIniciar}
                 onFinalizar={setFinalizeTarget}
+                onTrip={handleTrip}
               />
             ))}
           </div>
@@ -201,6 +239,7 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
                 order={o}
                 onIniciar={handleIniciar}
                 onFinalizar={setFinalizeTarget}
+                onTrip={handleTrip}
               />
             ))}
           </div>
@@ -264,9 +303,9 @@ function instruction(o: OrderWithDetails): string {
     if (mode === "km")     return "Toque em INICIAR quando sair. Os km você anota no final.";
     return "Toque em INICIAR quando começar este serviço.";
   }
-  if (mode === "viagem") return "Chegou? Toque em FINALIZAR: anote o km e peça a assinatura.";
+  if (mode === "viagem") return "Fez uma viagem? Toque em +1 VIAGEM. Terminou tudo? FINALIZAR.";
   if (mode === "km")     return "Terminou? Toque em FINALIZAR: anote os km e peça a assinatura.";
-  if (mode === "diaria") return "Fim do dia? Toque em FINALIZAR: km, viagens e assinatura.";
+  if (mode === "diaria") return "Fim do dia? Toque em FINALIZAR: anote o km e peça a assinatura.";
   return "Terminou? Toque em FINALIZAR para encerrar.";
 }
 
@@ -275,14 +314,25 @@ function OSCard({
   order: o,
   onIniciar,
   onFinalizar,
+  onTrip,
 }: {
   order: OrderWithDetails;
   onIniciar: (o: OrderWithDetails) => void;
   onFinalizar: (o: OrderWithDetails) => void;
+  onTrip: (o: OrderWithDetails, delta: 1 | -1) => void;
 }) {
   const isClient   = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
   const billing    = isMaterial && o.billing_mode ? BILLING_BADGE[o.billing_mode] : null;
+  // Contador de viagens no cartão (modo "por viagem" em andamento)
+  const showTripCounter =
+    o.status === "em_andamento" && isMaterial && o.billing_mode === "viagem";
+  const tripsDone = o.trips_count ?? 0;
+  // Horário de cada viagem marcada (log do "+1 VIAGEM")
+  const tripTimes = (o.service_order_trips ?? [])
+    .filter((t) => t.trip_time)
+    .sort((a, b) => a.trip_number - b.trip_number)
+    .map((t) => t.trip_time!.slice(0, 5));
 
   // Título: serviço (notes) → descrição → cliente → tipo
   const title =
@@ -308,9 +358,15 @@ function OSCard({
   const isHourmeter =
     o.type === "prestacao_servico" && o.hourmeter_start != null;
 
-  // Saída anotada no Iniciar (viagem/diária em andamento)
-  const showStartInfo =
-    o.status === "em_andamento" && isMaterial && o.km_start != null;
+  // Saída/início anotado no Iniciar — km (quando houver) e hora, em todos os
+  // modos: agora a hora é registrada mesmo no início de 1 toque.
+  const startInfo = (() => {
+    if (o.status !== "em_andamento") return null;
+    const parts: string[] = [];
+    if (isMaterial && o.km_start != null) parts.push(`${fmtKm(o.km_start)} km`);
+    if (o.start_time) parts.push(`às ${o.start_time.slice(0, 5)}`);
+    return parts.length > 0 ? parts.join(" ") : null;
+  })();
 
   return (
     <div
@@ -412,12 +468,12 @@ function OSCard({
           </InfoRow>
         )}
 
-        {showStartInfo && (
-          <InfoRow icon={Gauge} label="Saída">
-            <span className="tabular-nums">
-              {fmtKm(o.km_start!)} km
-              {o.start_time ? ` às ${o.start_time.slice(0, 5)}` : ""}
-            </span>
+        {startInfo && (
+          <InfoRow
+            icon={isMaterial && o.km_start != null ? Gauge : Clock}
+            label={isMaterial ? "Saída" : "Início"}
+          >
+            <span className="tabular-nums">{startInfo}</span>
           </InfoRow>
         )}
 
@@ -429,6 +485,47 @@ function OSCard({
           </InfoRow>
         )}
       </div>
+
+      {/* Contador de viagens (modo "por viagem" em andamento) */}
+      {showTripCounter && (
+        <div className="rounded-xl border-2 border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/20 p-3 space-y-2">
+          <p className="text-sm font-bold text-sky-700 dark:text-sky-300 text-center uppercase tracking-wide">
+            Viagens feitas
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onTrip(o, -1)}
+              disabled={tripsDone === 0}
+              aria-label="Tirar uma viagem"
+              className="w-14 h-14 rounded-2xl border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 active:bg-slate-100 dark:active:bg-slate-700 disabled:opacity-40 flex-shrink-0"
+            >
+              <Minus className="w-7 h-7" />
+            </button>
+            <div className="text-center min-w-[3.5rem]">
+              <p className="text-4xl font-black tabular-nums text-sky-800 dark:text-sky-200">
+                {tripsDone}
+              </p>
+              <p className="text-xs text-slate-400">
+                {tripsDone === 1 ? "viagem" : "viagens"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onTrip(o, 1)}
+              className="flex-1 h-14 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            >
+              <Plus className="w-6 h-6" />
+              +1 VIAGEM
+            </button>
+          </div>
+          {tripTimes.length > 0 && (
+            <p className="text-xs text-center text-slate-500 dark:text-slate-400 tabular-nums">
+              Horários: {tripTimes.join(" · ")}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Instrução curta */}
       <p className="text-sm font-medium text-slate-500 dark:text-slate-400 text-center">

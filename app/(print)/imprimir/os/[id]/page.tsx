@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { OrcamentoPrint } from "@/components/operacoes/orcamento-print";
-import type { ServiceOrder, ServiceOrderItem } from "@/lib/types";
+import type { ServiceOrder, ServiceOrderItem, ServiceOrderTrip } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,7 @@ type PrintOrder = ServiceOrder & {
   } | null;
   pickup_locations: { name: string; address: string | null } | null;
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
+  service_order_trips?: ServiceOrderTrip[];
 };
 
 interface Props {
@@ -44,6 +45,14 @@ export default async function ImprimirOSPage({ params }: Props) {
       </div>
     );
   }
+
+  // Log de horários das viagens (best-effort: não quebra a impressão caso a
+  // tabela ainda não exista — migration 016 não aplicada no Supabase).
+  const { data: trips } = await supabase
+    .from("service_order_trips")
+    .select("*")
+    .eq("service_order_id", order.id);
+  order.service_order_trips = (trips as ServiceOrderTrip[] | null) ?? [];
 
   return <OrcamentoPrint order={order} />;
 }

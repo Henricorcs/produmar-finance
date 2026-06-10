@@ -198,11 +198,11 @@ export interface ServiceOrder {
 
   /** Cobrança do frete (entrega de material). */
   billing_mode: ServiceBillingMode | null;
-  /** Valor da viagem | valor do km | valor por viagem na diária. */
+  /** Valor da viagem | valor do km | valor da diária (fixo). */
   freight_value: number | null;
-  /** Nº de viagens feitas (diária, preenchido no fechamento). */
+  /** Nº de viagens feitas (modo viagem — o técnico marca durante a OS). */
   trips_count: number | null;
-  /** Hora de saída/início (HH:MM, viagem e diária). */
+  /** Hora de saída/início (HH:MM, gravada ao iniciar pelo técnico). */
   start_time: string | null;
   /** Hora de chegada/fim (HH:MM, gravada ao finalizar). */
   end_time: string | null;
@@ -230,6 +230,15 @@ export interface ServiceOrderItem {
   total: number;
   /** Linha de frete (viagem/km/diária) — não é material, não mexe no estoque. */
   is_freight: boolean;
+  created_at: string;
+}
+
+/** Viagem marcada pelo técnico no modo "por viagem" — guarda o horário de cada uma. */
+export interface ServiceOrderTrip {
+  id: string;
+  service_order_id: string;
+  trip_number: number;
+  trip_time: string | null; // HH:MM:SS (relógio do celular do técnico)
   created_at: string;
 }
 

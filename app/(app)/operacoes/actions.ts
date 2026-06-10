@@ -291,7 +291,7 @@ function validate(input: ServiceOrderInput): string | null {
     input.freight_type === "cliente" &&
     !(input.freight_value != null && input.freight_value > 0)
   ) {
-    const label = { viagem: "da viagem", km: "do km", diaria: "por viagem na diária" }[billingMode];
+    const label = { viagem: "da viagem", km: "do km", diaria: "da diária" }[billingMode];
     return `Informe o valor ${label}`;
   }
 
@@ -425,6 +425,57 @@ export async function startServiceOrder(
   return { ok: true };
 }
 
+/**
+ * Registro de viagem pelo técnico (modo "por viagem"): cada viagem concluída
+ * incrementa o contador da OS em andamento e grava o horário no log
+ * (service_order_trips). O frete (viagens × valor) é calculado no fechamento.
+ */
+export async function registerTrip(
+  id: string,
+  delta: 1 | -1 = 1,
+  tripTime?: string | null
+) {
+  const supabase = createClient();
+  const { data: order, error: fetchErr } = await supabase
+    .from("service_orders")
+    .select("trips_count")
+    .eq("id", id)
+    .single();
+  if (fetchErr || !order) return { error: "OS não encontrada" };
+
+  const trips = Math.max(0, (order.trips_count ?? 0) + delta);
+  const { error } = await supabase
+    .from("service_orders")
+    .update({ trips_count: trips })
+    .eq("id", id);
+  if (error) return { error: error.message };
+
+  // Log de horários (best-effort): não quebra a marcação caso a tabela ainda
+  // não exista (migration 016 não aplicada no Supabase).
+  if (delta === 1) {
+    const { error: logErr } = await supabase.from("service_order_trips").insert({
+      service_order_id: id,
+      trip_number: trips,
+      trip_time: tripTime?.trim() || null,
+    });
+    if (logErr) console.error("Falha ao gravar horário da viagem:", logErr.message);
+  } else {
+    const { data: last } = await supabase
+      .from("service_order_trips")
+      .select("id")
+      .eq("service_order_id", id)
+      .order("trip_number", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (last) await supabase.from("service_order_trips").delete().eq("id", last.id);
+  }
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  return { ok: true, trips };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LINK: gerar lançamento financeiro a partir de uma OS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -533,8 +584,12 @@ export async function finalizeServiceOrder(
     delivery_date: today,
   };
 
+  // Hora de fechamento (relógio do celular do técnico) — gravada em todos os
+  // fluxos, não só nos modos de cobrança.
+  if (options.endTime?.trim()) patch.end_time = options.endTime.trim();
+
   // ── Fechamento de entrega de material com modo de cobrança ────────────────
-  // viagem: valor fixo · km: km rodado × R$/km · diária: viagens × valor.
+  // viagem: viagens × valor · km: km rodado × R$/km · diária: valor fixo.
   // O item de frete (is_freight) é recriado aqui para refletir o cálculo final.
   const mode = order.type === "entrega_material" ? order.billing_mode : null;
   if (mode) {
@@ -549,21 +604,30 @@ export async function finalizeServiceOrder(
     if (kmStart != null && kmEnd <= kmStart)
       return { error: "O km de chegada deve ser maior que o km de saída" };
 
-    const trips = options.tripsCount ?? null;
-    if (mode === "diaria" && !(trips != null && trips >= 1))
+    // No modo viagem o contador vem das viagens marcadas pelo técnico durante
+    // a OS (ou da correção feita no fechamento).
+    const trips = options.tripsCount ?? order.trips_count ?? null;
+    if (mode === "viagem" && !(trips != null && trips >= 1))
       return { error: "Informe quantas viagens foram feitas" };
 
     if (options.kmStart != null) patch.km_start = options.kmStart;
     patch.km_end = kmEnd;
-    if (mode === "diaria") patch.trips_count = trips;
-    if (options.endTime?.trim()) patch.end_time = options.endTime.trim();
+    if (mode === "viagem") patch.trips_count = trips;
 
     const rate = order.freight_value ?? 0;
     const rateLabel = rate.toFixed(2).replace(".", ",");
     let freight: { description: string; quantity: number; unit: string; unit_price: number };
 
     if (mode === "viagem") {
-      freight = { description: "FRETE — VIAGEM", quantity: 1, unit: "viagem", unit_price: rate };
+      const tripsLabel = `${trips} ${trips === 1 ? "VIAGEM" : "VIAGENS"}`;
+      freight = {
+        description: rate > 0
+          ? `FRETE — ${tripsLabel} × R$ ${rateLabel}/VIAGEM`
+          : `FRETE — ${tripsLabel}`,
+        quantity: trips as number,
+        unit: "viagem",
+        unit_price: rate,
+      };
     } else if (mode === "km") {
       const km = Number((kmEnd - (kmStart as number)).toFixed(1));
       const kmLabel = km.toFixed(1).replace(".", ",");
@@ -576,14 +640,7 @@ export async function finalizeServiceOrder(
         unit_price: rate,
       };
     } else {
-      freight = {
-        description: rate > 0
-          ? `FRETE — DIÁRIA: ${trips} VIAGENS × R$ ${rateLabel}/VIAGEM`
-          : `FRETE — DIÁRIA: ${trips} VIAGENS`,
-        quantity: trips as number,
-        unit: "viagem",
-        unit_price: rate,
-      };
+      freight = { description: "FRETE — DIÁRIA", quantity: 1, unit: "diária", unit_price: rate };
     }
 
     // Substitui só a linha de frete — os materiais ficam intactos.

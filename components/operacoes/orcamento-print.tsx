@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { osBillingLabel, osStatusLabel } from "@/lib/utils";
-import type { ServiceOrder, ServiceOrderItem } from "@/lib/types";
+import type { ServiceOrder, ServiceOrderItem, ServiceOrderTrip } from "@/lib/types";
 
 type PrintOrder = ServiceOrder & {
   machines: {
@@ -13,6 +13,7 @@ type PrintOrder = ServiceOrder & {
   } | null;
   pickup_locations: { name: string; address: string | null } | null;
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
+  service_order_trips?: ServiceOrderTrip[];
 };
 
 interface Props {
@@ -50,6 +51,12 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
     order.hourmeter_end   != null
       ? (order.hourmeter_end - order.hourmeter_start).toFixed(1).replace(".", ",")
       : null;
+
+  // Horário de cada viagem marcada pelo técnico (modo "por viagem")
+  const tripTimes = (order.service_order_trips ?? [])
+    .filter((t) => t.trip_time)
+    .sort((a, b) => a.trip_number - b.trip_number)
+    .map((t) => t.trip_time!.slice(0, 5));
 
   return (
     <>
@@ -289,7 +296,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                         ? "Valor da viagem"
                         : order.billing_mode === "km"
                           ? "Valor do km"
-                          : "Valor por viagem"}
+                          : "Valor da diária"}
                     </p>
                     <p className="font-bold text-produmar-700 tabular-nums">
                       R$ {formatBRL(order.freight_value)}
@@ -312,11 +319,44 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                     </p>
                   </div>
                 )}
-                {order.billing_mode === "diaria" && order.trips_count != null && (
+                {order.billing_mode === "viagem" && order.trips_count != null && (
                   <div>
                     <p className="text-slate-400">Viagens</p>
                     <p className="font-semibold text-slate-700 tabular-nums">
                       {order.trips_count}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {tripTimes.length > 0 && (
+                <p className="mt-2 text-slate-500 tabular-nums">
+                  <span className="text-slate-400">Horário de cada viagem: </span>
+                  {tripTimes.join(" · ")}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Horários (OS sem modo de cobrança — início/fim registrados pelo técnico) */}
+          {!order.billing_mode && (order.start_time || order.end_time) && (
+            <div className="border border-slate-200 rounded-lg p-3 text-xs">
+              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">
+                Horários
+              </p>
+              <div className="grid grid-cols-4 gap-3">
+                {order.start_time && (
+                  <div>
+                    <p className="text-slate-400">Início</p>
+                    <p className="font-semibold text-slate-700 tabular-nums">
+                      {order.start_time.slice(0, 5)}
+                    </p>
+                  </div>
+                )}
+                {order.end_time && (
+                  <div>
+                    <p className="text-slate-400">Fim</p>
+                    <p className="font-semibold text-slate-700 tabular-nums">
+                      {order.end_time.slice(0, 5)}
                     </p>
                   </div>
                 )}

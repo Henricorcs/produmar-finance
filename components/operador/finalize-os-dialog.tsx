@@ -18,12 +18,13 @@ import { Label } from "@/components/ui/label";
 import { SignaturePad } from "./signature-pad";
 import { finalizeServiceOrder } from "@/app/(app)/operacoes/actions";
 import { formatBRL } from "@/lib/utils";
-import type { ServiceOrder, ServiceOrderItem } from "@/lib/types";
+import type { ServiceOrder, ServiceOrderItem, ServiceOrderTrip } from "@/lib/types";
 
 type OrderDetails = ServiceOrder & {
   machines: { name: string; plate: string | null; tracking_type?: string | null } | null;
   pickup_locations?: { name: string } | null;
   service_order_items?: (ServiceOrderItem & { products: { name: string } | null })[];
+  service_order_trips?: ServiceOrderTrip[];
 };
 
 interface Props {
@@ -76,7 +77,9 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
     order.km_start != null ? order.km_start.toString().replace(".", ",") : ""
   );
   const [kmEnd, setKmEnd]     = useState("");
-  const [trips, setTrips]     = useState(0);
+  // Viagens já marcadas pelo técnico durante a OS (modo "por viagem") — aqui
+  // ele só confere e corrige se precisar.
+  const [trips, setTrips]     = useState(order.trips_count ?? 0);
   const [error, setError]             = useState<string | null>(null);
   const [done, setDone]               = useState(false);
   const [signature, setSignature]     = useState<string | null>(null);
@@ -110,11 +113,11 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   const freightRate = order.freight_value ?? 0;
   const freightPreview =
     billingMode === "viagem"
-      ? freightRate
+      ? trips * freightRate
       : billingMode === "km"
         ? kmDelta * freightRate
         : billingMode === "diaria"
-          ? trips * freightRate
+          ? freightRate
           : 0;
   const materialsTotal = (order.service_order_items ?? [])
     .filter((it) => !it.is_freight)
@@ -136,7 +139,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
     setHourmeterEnd("");
     setKmStart(order.km_start != null ? order.km_start.toString().replace(".", ",") : "");
     setKmEnd("");
-    setTrips(0);
+    setTrips(order.trips_count ?? 0);
     setSignature(null);
     setError(null);
     setDone(false);
@@ -176,7 +179,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         setError("O KM de chegada tem que ser maior que o KM de saída");
         return;
       }
-      if (billingMode === "diaria" && trips < 1) {
+      if (billingMode === "viagem" && trips < 1) {
         setError("Conte quantas viagens você fez — toque no botão +");
         return;
       }
@@ -193,8 +196,9 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         hourmeterEnd: needsHourmeter ? endNum : null,
         kmStart: billingMode && showKmStartInput ? ksNum : null,
         kmEnd: billingMode ? keNum : null,
-        tripsCount: billingMode === "diaria" ? trips : null,
-        endTime: billingMode ? nowHHMM() : null,
+        tripsCount: billingMode === "viagem" ? trips : null,
+        // Hora de fechamento sempre registrada (relógio do celular)
+        endTime: nowHHMM(),
       });
       if ("error" in result) {
         setError(result.error ?? "Erro ao finalizar");
@@ -345,12 +349,24 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                   />
                 </div>
 
-                {/* Nº de viagens (diária) — botões grandes − / + */}
-                {billingMode === "diaria" && (
+                {/* Nº de viagens (por viagem) — botões grandes − / + */}
+                {billingMode === "viagem" && (
                   <div className="space-y-1.5">
                     <Label className="text-sm text-slate-600 dark:text-slate-300">
                       Quantas viagens você fez? <span className="text-red-500">*</span>
                     </Label>
+                    {(order.trips_count ?? 0) > 0 && (
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                        Já contamos as viagens que você marcou — confira e corrija se precisar.
+                        {(() => {
+                          const times = (order.service_order_trips ?? [])
+                            .filter((t) => t.trip_time)
+                            .sort((a, b) => a.trip_number - b.trip_number)
+                            .map((t) => t.trip_time!.slice(0, 5));
+                          return times.length > 0 ? ` Horários: ${times.join(" · ")}.` : "";
+                        })()}
+                      </p>
+                    )}
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
@@ -395,7 +411,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                     )}
                   </p>
                 )}
-                {billingMode === "diaria" && trips > 0 && freightRate > 0 && (
+                {billingMode === "viagem" && trips > 0 && freightRate > 0 && (
                   <p className="text-base text-slate-600 dark:text-slate-300 tabular-nums">
                     {trips} {trips === 1 ? "viagem" : "viagens"} × {formatBRL(freightRate)} ={" "}
                     <span className="font-bold text-produmar-700 dark:text-produmar-400">
@@ -403,9 +419,9 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                     </span>
                   </p>
                 )}
-                {billingMode === "viagem" && freightRate > 0 && (
+                {billingMode === "diaria" && freightRate > 0 && (
                   <p className="text-base text-slate-600 dark:text-slate-300 tabular-nums">
-                    Valor da viagem:{" "}
+                    Valor da diária:{" "}
                     <span className="font-bold text-produmar-700 dark:text-produmar-400">
                       {formatBRL(freightRate)}
                     </span>

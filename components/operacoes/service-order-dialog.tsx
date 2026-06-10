@@ -306,12 +306,13 @@ export function ServiceOrderDialog({
     return e - s;
   }, [kmStart, kmEnd]);
 
-  // Frete da entrega de material: viagem soma direto; km/diária só quando o
-  // fechamento (km rodado / nº de viagens) já é conhecido — senão fica pendente.
+  // Frete da entrega de material: diária soma direto (valor fixo); viagem/km
+  // só quando o fechamento (nº de viagens / km rodado) já é conhecido — senão
+  // fica pendente.
   const freightPreview = useMemo(() => {
     if (type !== "entrega_material" || !billingMode) return { value: 0, pending: false };
     const rate = parseBRLToNumber(freightValue);
-    if (billingMode === "viagem") return { value: rate, pending: false };
+    if (billingMode === "diaria") return { value: rate, pending: false };
     if (billingMode === "km") {
       return kmDelta > 0
         ? { value: kmDelta * rate, pending: false }
@@ -449,7 +450,7 @@ export function ServiceOrderDialog({
             ? "Informe o valor da viagem"
             : billingMode === "km"
               ? "Informe o valor do km"
-              : "Informe o valor por viagem na diária"
+              : "Informe o valor da diária"
         );
         return;
       }
@@ -464,16 +465,16 @@ export function ServiceOrderDialog({
           unit_price: parseBRLToNumber(it.unit_price),
         }));
 
-      // Linha de frete (is_freight): viagem tem valor fechado e entra já no
-      // cadastro; km/diária entram quando o fechamento é conhecido (edição de
+      // Linha de frete (is_freight): diária tem valor fechado e entra já no
+      // cadastro; viagem/km entram quando o fechamento é conhecido (edição de
       // OS finalizada) — senão o técnico fecha e o sistema calcula.
       const rateLabel = rate.toFixed(2).replace(".", ",");
-      if (billingMode === "viagem") {
+      if (billingMode === "diaria") {
         itemsPayload.push({
           product_id: null,
-          description: "FRETE — VIAGEM",
+          description: "FRETE — DIÁRIA",
           quantity: 1,
-          unit: "viagem",
+          unit: "diária",
           unit_price: rate,
           is_freight: true,
         });
@@ -490,14 +491,15 @@ export function ServiceOrderDialog({
           unit_price: rate,
           is_freight: true,
         });
-      } else if (billingMode === "diaria") {
+      } else if (billingMode === "viagem") {
         const trips = parseInt(tripsCount, 10);
         if (!isNaN(trips) && trips >= 1) {
+          const tripsLabel = `${trips} ${trips === 1 ? "VIAGEM" : "VIAGENS"}`;
           itemsPayload.push({
             product_id: null,
             description: rate > 0
-              ? `FRETE — DIÁRIA: ${trips} VIAGENS × R$ ${rateLabel}/VIAGEM`
-              : `FRETE — DIÁRIA: ${trips} VIAGENS`,
+              ? `FRETE — ${tripsLabel} × R$ ${rateLabel}/VIAGEM`
+              : `FRETE — ${tripsLabel}`,
             quantity: trips,
             unit: "viagem",
             unit_price: rate,
@@ -555,7 +557,7 @@ export function ServiceOrderDialog({
           ? parseBRLToNumber(freightValue)
           : null,
       trips_count: (() => {
-        if (type !== "entrega_material" || billingMode !== "diaria") return null;
+        if (type !== "entrega_material" || billingMode !== "viagem") return null;
         const t = parseInt(tripsCount, 10);
         return !isNaN(t) && t >= 1 ? t : null;
       })(),
@@ -650,7 +652,7 @@ export function ServiceOrderDialog({
                           ? "Valor da viagem"
                           : billingMode === "km"
                             ? "Valor do km"
-                            : "Valor por viagem na diária"}
+                            : "Valor da diária"}
                         {isClient ? " *" : ""}
                       </Label>
                       {!isClient && (
@@ -670,10 +672,10 @@ export function ServiceOrderDialog({
                     </div>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400">
                       {billingMode === "viagem"
-                        ? "Valor fechado da viagem. O técnico anota o km e a hora na saída e o km na chegada."
+                        ? "Total = nº de viagens × valor. O técnico marca cada viagem que fizer e o sistema soma no fechamento."
                         : billingMode === "km"
                           ? "Total = km rodado × valor do km. O técnico anota o km inicial e o final ao fechar."
-                          : "Total = nº de viagens × valor. O técnico anota o km, a hora de início e quantas viagens fez."}
+                          : "Valor fechado da diária. O técnico anota o km e a hora na saída e o km no fim do dia."}
                     </p>
 
                     {/* Fechamento (edição/correção pelo escritório) */}
@@ -705,7 +707,7 @@ export function ServiceOrderDialog({
                               className="h-9 text-sm tabular-nums"
                             />
                           </div>
-                          {billingMode === "diaria" && (
+                          {billingMode === "viagem" && (
                             <div className="space-y-1">
                               <Label className="text-[10px] text-slate-500">Nº de viagens</Label>
                               <Input
@@ -1288,7 +1290,7 @@ export function ServiceOrderDialog({
                     <p className="text-[10px] text-amber-600 dark:text-amber-400">
                       {billingMode === "km"
                         ? "+ frete por km no fechamento"
-                        : "+ frete da diária no fechamento"}
+                        : "+ frete das viagens no fechamento"}
                     </p>
                   )}
                 </div>
