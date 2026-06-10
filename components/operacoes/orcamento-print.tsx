@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { osStatusLabel } from "@/lib/utils";
+import { osBillingLabel, osStatusLabel } from "@/lib/utils";
 import type { ServiceOrder, ServiceOrderItem } from "@/lib/types";
 
 type PrintOrder = ServiceOrder & {
@@ -117,7 +117,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
         <div className="px-10 py-6 space-y-5">
 
           {/* Info bar */}
-          <div className="grid grid-cols-4 gap-0 border border-slate-200 rounded-lg overflow-hidden text-xs">
+          <div className={`grid ${order.billing_mode ? "grid-cols-5" : "grid-cols-4"} gap-0 border border-slate-200 rounded-lg overflow-hidden text-xs`}>
             {[
               { label: "Emissão",   value: formatDate(order.issue_date) },
               {
@@ -128,6 +128,9 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                 value: formatDate(order.delivery_date),
               },
               { label: "Tipo",      value: isMaterial ? "Entrega de material" : "Prestação de serviço" },
+              ...(order.billing_mode
+                ? [{ label: "Cobrança", value: osBillingLabel(order.billing_mode) }]
+                : []),
               { label: "Status",    value: osStatusLabel(order.status, order.type) },
             ].map((f) => (
               <div key={f.label} className="px-3 py-2.5 border-r last:border-r-0 border-slate-200">
@@ -265,6 +268,55 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                     <p className="text-slate-400">Total rodado</p>
                     <p className="font-bold text-produmar-700 tabular-nums">
                       {(order.km_end - order.km_start).toFixed(1).replace(".", ",")} km
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Frete (viagem / km / diária) */}
+          {order.billing_mode && (
+            <div className="border border-slate-200 rounded-lg p-3 text-xs">
+              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">
+                Frete — {osBillingLabel(order.billing_mode)}
+              </p>
+              <div className="grid grid-cols-4 gap-3">
+                {order.freight_value != null && (
+                  <div>
+                    <p className="text-slate-400">
+                      {order.billing_mode === "viagem"
+                        ? "Valor da viagem"
+                        : order.billing_mode === "km"
+                          ? "Valor do km"
+                          : "Valor por viagem"}
+                    </p>
+                    <p className="font-bold text-produmar-700 tabular-nums">
+                      R$ {formatBRL(order.freight_value)}
+                    </p>
+                  </div>
+                )}
+                {order.start_time && (
+                  <div>
+                    <p className="text-slate-400">Hora de saída</p>
+                    <p className="font-semibold text-slate-700 tabular-nums">
+                      {order.start_time.slice(0, 5)}
+                    </p>
+                  </div>
+                )}
+                {order.end_time && (
+                  <div>
+                    <p className="text-slate-400">Hora de chegada</p>
+                    <p className="font-semibold text-slate-700 tabular-nums">
+                      {order.end_time.slice(0, 5)}
+                    </p>
+                  </div>
+                )}
+                {order.billing_mode === "diaria" && order.trips_count != null && (
+                  <div>
+                    <p className="text-slate-400">Viagens</p>
+                    <p className="font-semibold text-slate-700 tabular-nums">
+                      {order.trips_count}
                     </p>
                   </div>
                 )}

@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Loan, ServiceOrderStatus, ServiceOrderType } from "./types";
+import type { Loan, ServiceBillingMode, ServiceOrderStatus, ServiceOrderType } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -69,6 +69,17 @@ export function osStatusLabel(
     cancelado:    "Cancelado",
   };
   return map[status];
+}
+
+/** Rótulo do modo de cobrança do frete (entrega de material). */
+export function osBillingLabel(mode?: ServiceBillingMode | null): string {
+  if (!mode) return "";
+  const map: Record<ServiceBillingMode, string> = {
+    viagem: "Por viagem",
+    km:     "Por km",
+    diaria: "Por diária",
+  };
+  return map[mode];
 }
 
 export function formatDueLabel(date: string | Date): {

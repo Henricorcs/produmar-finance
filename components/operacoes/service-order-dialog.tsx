@@ -4,6 +4,7 @@ import { useState, useTransition, useEffect, useMemo } from "react";
 import {
   Plus, X, Truck, Wrench, User, Building2,
   Clock, Gauge, DollarSign, Fuel, Boxes,
+  Route, CalendarDays,
 } from "lucide-react";
 import {
   Dialog,
@@ -38,6 +39,7 @@ import type {
   PickupLocation,
   Product,
   ProductStockBalance,
+  ServiceBillingMode,
   ServiceFreightType,
   ServiceOrder,
   ServiceOrderItem,
@@ -180,6 +182,11 @@ export function ServiceOrderDialog({
   // entrega_material
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
 
+  // entrega_material — cobrança do frete
+  const [billingMode, setBillingMode]   = useState<ServiceBillingMode | "">("");
+  const [freightValue, setFreightValue] = useState(""); // BRL formatted
+  const [tripsCount, setTripsCount]     = useState(""); // nº de viagens (diária)
+
   // Local lists for optimistic insertion
   const [localMachines, setLocalMachines]     = useState<Machine[]>(machines);
   const [localProducts, setLocalProducts]     = useState<Product[]>(products);
@@ -228,9 +235,15 @@ export function ServiceOrderDialog({
       setFuelCost(order.fuel_cost != null ? formatBRLInput(order.fuel_cost) : "");
       setReceivedBy(order.received_by ?? "");
       setNotes(order.notes ?? "");
+      setBillingMode(order.billing_mode ?? "");
+      setFreightValue(order.freight_value != null ? formatBRLInput(order.freight_value) : "");
+      setTripsCount(order.trips_count?.toString() ?? "");
+      // A linha de frete (is_freight) é gerenciada pelos campos de cobrança —
+      // só os materiais entram na lista de itens editáveis.
+      const materialItems = (order.service_order_items ?? []).filter((it) => !it.is_freight);
       setItems(
-        (order.service_order_items ?? []).length > 0
-          ? order.service_order_items!.map((it) => ({
+        materialItems.length > 0
+          ? materialItems.map((it) => ({
               product_id: it.product_id ?? "",
               description: it.description ?? "",
               quantity: formatQty(it.quantity),
@@ -262,6 +275,7 @@ export function ServiceOrderDialog({
       setHourlyRate(""); setFlatServiceAmount("");
       setServiceCost(""); setFuelCost("");
       setReceivedBy(""); setNotes("");
+      setBillingMode(""); setFreightValue(""); setTripsCount("");
       setItems([emptyItem()]);
     }
     setError(null);
@@ -292,13 +306,33 @@ export function ServiceOrderDialog({
     return e - s;
   }, [kmStart, kmEnd]);
 
+  // Frete da entrega de material: viagem soma direto; km/diária só quando o
+  // fechamento (km rodado / nº de viagens) já é conhecido — senão fica pendente.
+  const freightPreview = useMemo(() => {
+    if (type !== "entrega_material" || !billingMode) return { value: 0, pending: false };
+    const rate = parseBRLToNumber(freightValue);
+    if (billingMode === "viagem") return { value: rate, pending: false };
+    if (billingMode === "km") {
+      return kmDelta > 0
+        ? { value: kmDelta * rate, pending: false }
+        : { value: 0, pending: true };
+    }
+    const trips = parseInt(tripsCount, 10);
+    return !isNaN(trips) && trips >= 1
+      ? { value: trips * rate, pending: false }
+      : { value: 0, pending: true };
+  }, [type, billingMode, freightValue, kmDelta, tripsCount]);
+
   const total = useMemo(() => {
     if (type === "prestacao_servico") {
       if (useHourBasedPricing) return hoursWorked * parseBRLToNumber(hourlyRate);
       return parseBRLToNumber(flatServiceAmount);
     }
-    return items.reduce((s, it) => s + parseQty(it.quantity) * parseBRLToNumber(it.unit_price), 0);
-  }, [type, useHourBasedPricing, hoursWorked, hourlyRate, flatServiceAmount, items]);
+    const materials = items.reduce(
+      (s, it) => s + parseQty(it.quantity) * parseBRLToNumber(it.unit_price), 0
+    );
+    return materials + freightPreview.value;
+  }, [type, useHourBasedPricing, hoursWorked, hourlyRate, flatServiceAmount, items, freightPreview]);
 
   // Lucro estimado = total - custos internos (apenas para visualização)
   const internalCosts = parseBRLToNumber(serviceCost) + parseBRLToNumber(fuelCost);
@@ -402,6 +436,24 @@ export function ServiceOrderDialog({
         }];
       }
     } else {
+      // OS novas exigem o modo de cobrança; OS antigas (criadas antes do
+      // recurso) podem ser editadas sem ele — escolher um modo é opcional.
+      if (!billingMode && !order) {
+        setError("Escolha como o frete é cobrado: por viagem, por km ou por diária");
+        return;
+      }
+      const rate = parseBRLToNumber(freightValue);
+      if (billingMode && isClient && rate <= 0) {
+        setError(
+          billingMode === "viagem"
+            ? "Informe o valor da viagem"
+            : billingMode === "km"
+              ? "Informe o valor do km"
+              : "Informe o valor por viagem na diária"
+        );
+        return;
+      }
+
       itemsPayload = items
         .filter((it) => it.product_id || it.description.trim())
         .map((it) => ({
@@ -411,7 +463,51 @@ export function ServiceOrderDialog({
           unit: it.unit,
           unit_price: parseBRLToNumber(it.unit_price),
         }));
-      if (itemsPayload.length === 0) {
+
+      // Linha de frete (is_freight): viagem tem valor fechado e entra já no
+      // cadastro; km/diária entram quando o fechamento é conhecido (edição de
+      // OS finalizada) — senão o técnico fecha e o sistema calcula.
+      const rateLabel = rate.toFixed(2).replace(".", ",");
+      if (billingMode === "viagem") {
+        itemsPayload.push({
+          product_id: null,
+          description: "FRETE — VIAGEM",
+          quantity: 1,
+          unit: "viagem",
+          unit_price: rate,
+          is_freight: true,
+        });
+      } else if (billingMode === "km" && kmDelta > 0) {
+        const km = Number(kmDelta.toFixed(1));
+        const kmLabel = km.toFixed(1).replace(".", ",");
+        itemsPayload.push({
+          product_id: null,
+          description: rate > 0
+            ? `FRETE — ${kmLabel} KM × R$ ${rateLabel}/KM`
+            : `FRETE — ${kmLabel} KM`,
+          quantity: km,
+          unit: "km",
+          unit_price: rate,
+          is_freight: true,
+        });
+      } else if (billingMode === "diaria") {
+        const trips = parseInt(tripsCount, 10);
+        if (!isNaN(trips) && trips >= 1) {
+          itemsPayload.push({
+            product_id: null,
+            description: rate > 0
+              ? `FRETE — DIÁRIA: ${trips} VIAGENS × R$ ${rateLabel}/VIAGEM`
+              : `FRETE — DIÁRIA: ${trips} VIAGENS`,
+            quantity: trips,
+            unit: "viagem",
+            unit_price: rate,
+            is_freight: true,
+          });
+        }
+      }
+
+      // Sem modo de cobrança (OS antiga) vale a regra original.
+      if (!billingMode && itemsPayload.length === 0) {
         setError("Adicione ao menos um item");
         return;
       }
@@ -452,6 +548,20 @@ export function ServiceOrderDialog({
           ? parseBRLToNumber(fuelCost)
           : null,
       received_by: receivedBy.trim() || null,
+      billing_mode:
+        type === "entrega_material" && billingMode ? billingMode : null,
+      freight_value:
+        type === "entrega_material" && billingMode && freightValue.trim()
+          ? parseBRLToNumber(freightValue)
+          : null,
+      trips_count: (() => {
+        if (type !== "entrega_material" || billingMode !== "diaria") return null;
+        const t = parseInt(tripsCount, 10);
+        return !isNaN(t) && t >= 1 ? t : null;
+      })(),
+      // Preserva a hora de saída registrada pelo técnico (a edição do
+      // escritório não mexe nesse campo).
+      start_time: order?.start_time ?? null,
       notes,
       items: itemsPayload,
     };
@@ -482,7 +592,7 @@ export function ServiceOrderDialog({
 
             {/* Type toggle */}
             <div className="space-y-1.5">
-              <Label>O que é? *</Label>
+              <Label>Tipo *</Label>
               <div className="grid grid-cols-2 gap-2">
                 {([
                   { v: "entrega_material",  label: "Entrega de material",  icon: Truck },
@@ -504,6 +614,125 @@ export function ServiceOrderDialog({
                 ))}
               </div>
             </div>
+
+            {/* Cobrança do frete (só entrega de material) */}
+            {type === "entrega_material" && (
+              <div className="space-y-1.5">
+                <Label>Como é cobrado? *</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { v: "viagem", label: "Por viagem", icon: Route },
+                    { v: "km",     label: "Por km",     icon: Gauge },
+                    { v: "diaria", label: "Por diária", icon: CalendarDays },
+                  ] as const).map(({ v, label, icon: Icon }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setBillingMode(v)}
+                      className={`flex flex-col items-center justify-center gap-1 py-2.5 text-sm rounded-lg border font-medium transition-colors ${
+                        billingMode === v
+                          ? "bg-produmar-50 border-produmar-300 text-produmar-700 dark:bg-produmar-900/30 dark:border-produmar-600 dark:text-produmar-400"
+                          : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {billingMode && (
+                  <div className="rounded-xl border border-produmar-100 dark:border-produmar-900/40 bg-produmar-50/40 dark:bg-produmar-950/20 p-3 space-y-2 !mt-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
+                        <DollarSign className="w-3.5 h-3.5" />
+                        {billingMode === "viagem"
+                          ? "Valor da viagem"
+                          : billingMode === "km"
+                            ? "Valor do km"
+                            : "Valor por viagem na diária"}
+                        {isClient ? " *" : ""}
+                      </Label>
+                      {!isClient && (
+                        <span className="text-[10px] text-slate-400">opcional</span>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
+                      <Input
+                        value={freightValue}
+                        onChange={(e) => setFreightValue(formatBRLInput(e.target.value))}
+                        placeholder="0,00"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        className="pl-9 tabular-nums"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {billingMode === "viagem"
+                        ? "Valor fechado da viagem. O técnico anota o km e a hora na saída e o km na chegada."
+                        : billingMode === "km"
+                          ? "Total = km rodado × valor do km. O técnico anota o km inicial e o final ao fechar."
+                          : "Total = nº de viagens × valor. O técnico anota o km, a hora de início e quantas viagens fez."}
+                    </p>
+
+                    {/* Fechamento (edição/correção pelo escritório) */}
+                    {order && (order.status === "entregue" || order.km_start != null || order.km_end != null) && (
+                      <div className="pt-1 space-y-2">
+                        <p className="text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500">
+                          Fechamento (preenchido pelo técnico)
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-slate-500">KM inicial</Label>
+                            <Input
+                              value={kmStart}
+                              onChange={(e) => setKmStart(sanitizeDecimal(e.target.value))}
+                              placeholder="0,0"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              className="h-9 text-sm tabular-nums"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-slate-500">KM final</Label>
+                            <Input
+                              value={kmEnd}
+                              onChange={(e) => setKmEnd(sanitizeDecimal(e.target.value))}
+                              placeholder="0,0"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              className="h-9 text-sm tabular-nums"
+                            />
+                          </div>
+                          {billingMode === "diaria" && (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-slate-500">Nº de viagens</Label>
+                              <Input
+                                value={tripsCount}
+                                onChange={(e) => setTripsCount(e.target.value.replace(/\D/g, ""))}
+                                placeholder="0"
+                                inputMode="numeric"
+                                autoComplete="off"
+                                className="h-9 text-sm tabular-nums"
+                              />
+                            </div>
+                          )}
+                        </div>
+                        {kmDelta > 0 && (
+                          <p className="text-[11px] text-slate-500 tabular-nums">
+                            Total rodado:{" "}
+                            <span className="font-semibold text-slate-700 dark:text-slate-200">
+                              {kmDelta.toFixed(1).replace(".", ",")} km
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Freight type */}
             <div className="space-y-1.5">
@@ -1045,15 +1274,24 @@ export function ServiceOrderDialog({
                   A calcular ao fechar
                 </span>
               ) : (
-                <span
-                  className={`text-lg font-bold tabular-nums ${
-                    isClient
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-amber-700 dark:text-amber-400"
-                  }`}
-                >
-                  {formatBRL(total)}
-                </span>
+                <div className="text-right">
+                  <span
+                    className={`text-lg font-bold tabular-nums ${
+                      isClient
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-amber-700 dark:text-amber-400"
+                    }`}
+                  >
+                    {formatBRL(total)}
+                  </span>
+                  {freightPreview.pending && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                      {billingMode === "km"
+                        ? "+ frete por km no fechamento"
+                        : "+ frete da diária no fechamento"}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 

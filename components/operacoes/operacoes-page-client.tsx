@@ -30,7 +30,7 @@ import {
   generateTransactionFromOrder,
   updateServiceOrderStatus,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatBRLCompact, formatDate, osStatusLabel } from "@/lib/utils";
+import { formatBRL, formatBRLCompact, formatDate, osBillingLabel, osStatusLabel } from "@/lib/utils";
 import type {
   Category,
   CostCenter,
@@ -91,6 +91,7 @@ function exportCSV(orders: ServiceOrderWithDetails[], fileLabel: string) {
     "Lançado",
     "Entrega",
     "Tipo",
+    "Cobrança",
     "Para",
     "Cliente",
     "Máquina",
@@ -106,6 +107,7 @@ function exportCSV(orders: ServiceOrderWithDetails[], fileLabel: string) {
     o.issue_date,
     o.delivery_date ?? "",
     o.type === "entrega_material" ? "Entrega de material" : "Prestação de serviço",
+    osBillingLabel(o.billing_mode),
     o.freight_type === "cliente" ? "Cliente" : "Interno",
     o.client_name ?? "",
     o.machines?.name ?? "",
@@ -523,6 +525,11 @@ function OrderRow({
             >
               {osStatusLabel(o.status, o.type)}
             </span>
+            {isMaterial && o.billing_mode && (
+              <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-800">
+                {osBillingLabel(o.billing_mode)}
+              </span>
+            )}
             {o.transaction_id && (
               <span
                 title="Lançamento financeiro gerado"

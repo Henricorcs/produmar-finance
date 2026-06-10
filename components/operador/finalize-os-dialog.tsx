@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, Printer, Clock, Package, MapPin, Navigation } from "lucide-react";
+import {
+  CheckCircle2, Printer, Clock, Package, MapPin, Navigation,
+  Gauge, Minus, Plus, Route, CalendarDays,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -40,10 +43,40 @@ function formatHourmeter(raw: string): string {
   return padded.slice(0, -1) + "," + padded.slice(-1);
 }
 
+// KM do veículo: dígitos + uma vírgula com 1 casa no máximo.
+function sanitizeKm(raw: string): string {
+  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
+  const parts = cleaned.split(",");
+  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
+  if (parts[1]?.length > 1) return parts[0] + "," + parts[1].slice(0, 1);
+  return cleaned;
+}
+
+function nowHHMM(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function fmtKm(n: number): string {
+  return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+}
+
 export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
+  // Modo de cobrança do frete (entrega de material): viagem | km | diaria.
+  const billingMode = order.type === "entrega_material" ? order.billing_mode : null;
+  // No modo "km" o técnico informa os dois KMs ao fechar; nos demais, o KM de
+  // saída veio do Iniciar — se faltar (OS antiga/iniciada pelo escritório),
+  // pedimos os dois aqui também.
+  const showKmStartInput = billingMode === "km" || (!!billingMode && order.km_start == null);
+
   const [receivedBy, setReceivedBy]   = useState("");
   const [hourmeterStart, setHourmeterStart] = useState("");
   const [hourmeterEnd, setHourmeterEnd] = useState("");
+  const [kmStart, setKmStart] = useState(
+    order.km_start != null ? order.km_start.toString().replace(".", ",") : ""
+  );
+  const [kmEnd, setKmEnd]     = useState("");
+  const [trips, setTrips]     = useState(0);
   const [error, setError]             = useState<string | null>(null);
   const [done, setDone]               = useState(false);
   const [signature, setSignature]     = useState<string | null>(null);
@@ -67,8 +100,28 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   const rate = order.hourly_rate ?? 0;
   const previewTotal = hours * rate;
 
+  // ── Frete (viagem/km/diária) ───────────────────────────────────────────────
+  const ksNum = showKmStartInput
+    ? parseFloat(kmStart.replace(",", "."))
+    : order.km_start ?? NaN;
+  const keNum = parseFloat(kmEnd.replace(",", "."));
+  const kmDelta = !isNaN(ksNum) && !isNaN(keNum) && keNum > ksNum ? keNum - ksNum : 0;
+
+  const freightRate = order.freight_value ?? 0;
+  const freightPreview =
+    billingMode === "viagem"
+      ? freightRate
+      : billingMode === "km"
+        ? kmDelta * freightRate
+        : billingMode === "diaria"
+          ? trips * freightRate
+          : 0;
+  const materialsTotal = (order.service_order_items ?? [])
+    .filter((it) => !it.is_freight)
+    .reduce((s, it) => s + Number(it.total), 0);
+
   const materials = (order.service_order_items ?? [])
-    .filter((it) => it.product_id || it.description)
+    .filter((it) => !it.is_freight && (it.product_id || it.description))
     .map(
       (it) =>
         `${Number(it.quantity).toLocaleString("pt-BR", {
@@ -81,6 +134,9 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
     setReceivedBy("");
     setHourmeterStart("");
     setHourmeterEnd("");
+    setKmStart(order.km_start != null ? order.km_start.toString().replace(".", ",") : "");
+    setKmEnd("");
+    setTrips(0);
     setSignature(null);
     setError(null);
     setDone(false);
@@ -90,7 +146,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!receivedBy.trim()) {
-      setError("Informe o nome de quem recebeu");
+      setError("Escreva o nome de quem recebeu");
       return;
     }
     if (needsHourmeter) {
@@ -107,12 +163,38 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         return;
       }
     }
+    if (billingMode) {
+      if (showKmStartInput && (!kmStart.trim() || isNaN(ksNum))) {
+        setError(billingMode === "km" ? "Anote o KM inicial" : "Anote o KM de saída");
+        return;
+      }
+      if (!kmEnd.trim() || isNaN(keNum)) {
+        setError("Anote o KM de chegada");
+        return;
+      }
+      if (!isNaN(ksNum) && keNum <= ksNum) {
+        setError("O KM de chegada tem que ser maior que o KM de saída");
+        return;
+      }
+      if (billingMode === "diaria" && trips < 1) {
+        setError("Conte quantas viagens você fez — toque no botão +");
+        return;
+      }
+      if (!signature) {
+        setError("Peça para quem recebeu assinar no quadro");
+        return;
+      }
+    }
     setError(null);
     startTransition(async () => {
       const result = await finalizeServiceOrder(order.id, receivedBy, {
         signature,
         hourmeterStart: needsStart ? startNum : null,
         hourmeterEnd: needsHourmeter ? endNum : null,
+        kmStart: billingMode && showKmStartInput ? ksNum : null,
+        kmEnd: billingMode ? keNum : null,
+        tripsCount: billingMode === "diaria" ? trips : null,
+        endTime: billingMode ? nowHHMM() : null,
       });
       if ("error" in result) {
         setError(result.error ?? "Erro ao finalizar");
@@ -127,7 +209,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">
+          <DialogTitle className="text-xl dark:text-slate-100">
             Finalizar OS #{order.order_number}
           </DialogTitle>
         </DialogHeader>
@@ -209,6 +291,135 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               )}
             </div>
 
+            {/* ── Frete: viagem / km / diária ─────────────────────── */}
+            {billingMode && (
+              <div className="rounded-xl border border-produmar-200 dark:border-produmar-800/60 bg-produmar-50/50 dark:bg-produmar-950/20 p-4 space-y-3">
+                <Label className="flex items-center gap-2 text-base font-semibold text-produmar-700 dark:text-produmar-400">
+                  {billingMode === "viagem" ? (
+                    <><Route className="w-5 h-5" />Chegou? Anote o KM</>
+                  ) : billingMode === "km" ? (
+                    <><Gauge className="w-5 h-5" />Anote os KMs</>
+                  ) : (
+                    <><CalendarDays className="w-5 h-5" />Fim da diária</>
+                  )}
+                </Label>
+
+                {/* Referência da saída (quando o técnico já anotou no Iniciar) */}
+                {!showKmStartInput && order.km_start != null && (
+                  <p className="text-base text-slate-600 dark:text-slate-300 tabular-nums">
+                    Saída:{" "}
+                    <span className="font-bold">{fmtKm(order.km_start)} km</span>
+                    {order.start_time ? ` às ${order.start_time.slice(0, 5)}` : ""}
+                  </p>
+                )}
+
+                {showKmStartInput && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-slate-600 dark:text-slate-300">
+                      {billingMode === "km" ? "KM inicial" : "KM de saída"}{" "}
+                      <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      value={kmStart}
+                      onChange={(e) => setKmStart(sanitizeKm(e.target.value))}
+                      placeholder="ex: 154300"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      className="h-14 text-2xl text-center font-bold tabular-nums"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-slate-600 dark:text-slate-300">
+                    {billingMode === "km" ? "KM final" : "KM de chegada"}{" "}
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    value={kmEnd}
+                    onChange={(e) => setKmEnd(sanitizeKm(e.target.value))}
+                    placeholder="ex: 154350"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="h-14 text-2xl text-center font-bold tabular-nums"
+                  />
+                </div>
+
+                {/* Nº de viagens (diária) — botões grandes − / + */}
+                {billingMode === "diaria" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-slate-600 dark:text-slate-300">
+                      Quantas viagens você fez? <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setTrips((t) => Math.max(0, t - 1))}
+                        aria-label="Menos uma viagem"
+                        className="w-16 h-16 rounded-2xl border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 active:bg-slate-100 dark:active:bg-slate-700 disabled:opacity-40"
+                        disabled={trips === 0}
+                      >
+                        <Minus className="w-8 h-8" />
+                      </button>
+                      <div className="flex-1 text-center">
+                        <p className="text-4xl font-black tabular-nums text-slate-800 dark:text-slate-100">
+                          {trips}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {trips === 1 ? "viagem" : "viagens"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTrips((t) => t + 1)}
+                        aria-label="Mais uma viagem"
+                        className="w-16 h-16 rounded-2xl bg-produmar-600 hover:bg-produmar-700 flex items-center justify-center text-white active:scale-95 transition-transform"
+                      >
+                        <Plus className="w-8 h-8" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Prévia do cálculo */}
+                {kmDelta > 0 && (
+                  <p className="text-base text-slate-600 dark:text-slate-300 tabular-nums">
+                    Rodou <span className="font-bold">{fmtKm(kmDelta)} km</span>
+                    {billingMode === "km" && freightRate > 0 && (
+                      <>
+                        {" "}× {formatBRL(freightRate)} ={" "}
+                        <span className="font-bold text-produmar-700 dark:text-produmar-400">
+                          {formatBRL(kmDelta * freightRate)}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                )}
+                {billingMode === "diaria" && trips > 0 && freightRate > 0 && (
+                  <p className="text-base text-slate-600 dark:text-slate-300 tabular-nums">
+                    {trips} {trips === 1 ? "viagem" : "viagens"} × {formatBRL(freightRate)} ={" "}
+                    <span className="font-bold text-produmar-700 dark:text-produmar-400">
+                      {formatBRL(trips * freightRate)}
+                    </span>
+                  </p>
+                )}
+                {billingMode === "viagem" && freightRate > 0 && (
+                  <p className="text-base text-slate-600 dark:text-slate-300 tabular-nums">
+                    Valor da viagem:{" "}
+                    <span className="font-bold text-produmar-700 dark:text-produmar-400">
+                      {formatBRL(freightRate)}
+                    </span>
+                  </p>
+                )}
+                {freightPreview > 0 && materialsTotal > 0 && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+                    Total da OS (materiais + frete):{" "}
+                    <span className="font-semibold">{formatBRL(materialsTotal + freightPreview)}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Horímetro (serviço por hora em aberto) */}
             {needsHourmeter && (
               <div className="rounded-xl border border-produmar-200 dark:border-produmar-800/60 bg-produmar-50/50 dark:bg-produmar-950/20 p-4 space-y-2">
@@ -273,7 +484,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
             )}
 
             <div className="space-y-1.5">
-              <Label htmlFor="received_by_input">
+              <Label htmlFor="received_by_input" className="text-base">
                 Nome de quem recebeu <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -281,22 +492,26 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                 value={receivedBy}
                 onChange={(e) => setReceivedBy(e.target.value)}
                 placeholder="ex: JOÃO DA SILVA"
-                className="h-12 uppercase placeholder:normal-case placeholder:lowercase"
+                className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
                 autoComplete="off"
-                autoFocus
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Assinatura de quem recebeu</Label>
+              <Label className="text-base">
+                Assinatura de quem recebeu
+                {billingMode ? <span className="text-red-500"> *</span> : null}
+              </Label>
               <SignaturePad onChange={setSignature} />
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Toque em “Assinar” para abrir o quadro em tela cheia (opcional).
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                {billingMode
+                  ? "Obrigatória: toque em “Assinar” e entregue o celular para a pessoa assinar."
+                  : "Toque em “Assinar” para abrir o quadro em tela cheia (opcional)."}
               </p>
             </div>
 
             {error && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg border border-red-100 dark:border-red-900/40">
+              <p className="text-base text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/40">
                 {error}
               </p>
             )}
@@ -308,7 +523,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               <Button
                 type="submit"
                 disabled={isPending}
-                className="bg-emerald-600 hover:bg-emerald-700 h-12"
+                className="bg-emerald-600 hover:bg-emerald-700 h-14 text-lg"
               >
                 {isPending ? "Finalizando..." : "Finalizar OS"}
               </Button>

@@ -7,6 +7,7 @@ import type {
   MachineTrackingType,
   Product,
   PickupLocation,
+  ServiceBillingMode,
   ServiceFreightType,
   ServiceOrderStatus,
   ServiceOrderType,
@@ -18,6 +19,7 @@ function revalidate() {
   revalidatePath("/dashboard");
   revalidatePath("/contas");
   revalidatePath("/estoque");
+  revalidatePath("/operador");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -207,6 +209,7 @@ export interface ServiceOrderItemInput {
   quantity: number;
   unit?: string | null;
   unit_price: number;
+  is_freight?: boolean;
 }
 
 export interface ServiceOrderInput {
@@ -229,6 +232,10 @@ export interface ServiceOrderInput {
   service_cost?: number | null;
   fuel_cost?: number | null;
   received_by?: string | null;
+  billing_mode?: ServiceBillingMode | null;
+  freight_value?: number | null;
+  trips_count?: number | null;
+  start_time?: string | null;
   notes?: string | null;
   items: ServiceOrderItemInput[];
 }
@@ -257,6 +264,10 @@ function sanitizeOrder(input: ServiceOrderInput) {
     service_cost: input.service_cost ?? null,
     fuel_cost: input.fuel_cost ?? null,
     received_by: input.received_by?.trim() ? input.received_by.trim().toUpperCase() : null,
+    billing_mode: input.type === "entrega_material" ? input.billing_mode ?? null : null,
+    freight_value: input.type === "entrega_material" ? input.freight_value ?? null : null,
+    trips_count: input.type === "entrega_material" ? input.trips_count ?? null : null,
+    start_time: input.start_time || null,
     notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
   };
 }
@@ -268,7 +279,25 @@ function validate(input: ServiceOrderInput): string | null {
     return "Tipo de frete inválido";
   if (input.freight_type === "cliente" && !input.client_name?.trim())
     return "Nome do cliente obrigatório";
-  if (!input.items || input.items.length === 0)
+
+  const billingMode =
+    input.type === "entrega_material" ? input.billing_mode ?? null : null;
+  if (billingMode && !["viagem", "km", "diaria"].includes(billingMode))
+    return "Modo de cobrança inválido";
+  // Valor do frete: obrigatório para cliente; opcional no consumo interno
+  // (mesma regra do valor da hora na prestação de serviço).
+  if (
+    billingMode &&
+    input.freight_type === "cliente" &&
+    !(input.freight_value != null && input.freight_value > 0)
+  ) {
+    const label = { viagem: "da viagem", km: "do km", diaria: "por viagem na diária" }[billingMode];
+    return `Informe o valor ${label}`;
+  }
+
+  // Com modo de cobrança o frete é a cobrança — a lista de materiais pode
+  // ficar vazia (ex.: frete de material do próprio cliente).
+  if ((!input.items || input.items.length === 0) && !billingMode)
     return "Adicione ao menos um item";
   for (const it of input.items) {
     if (!(it.quantity > 0)) return "Quantidade deve ser maior que zero";
@@ -303,6 +332,7 @@ export async function createServiceOrder(input: ServiceOrderInput) {
     quantity: it.quantity,
     unit: it.unit?.trim() || null,
     unit_price: it.unit_price,
+    is_freight: it.is_freight ?? false,
   }));
 
   if (itemRows.length > 0) {
@@ -337,6 +367,7 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
     quantity: it.quantity,
     unit: it.unit?.trim() || null,
     unit_price: it.unit_price,
+    is_freight: it.is_freight ?? false,
   }));
 
   if (itemRows.length > 0) {
@@ -369,6 +400,25 @@ export async function updateServiceOrderStatus(
   if (status === "entregue") {
     patch.delivery_date = new Date().toISOString().split("T")[0];
   }
+  const { error } = await supabase.from("service_orders").update(patch).eq("id", id);
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Início de OS pelo técnico (viagem/diária): registra o km do veículo e a
+ * hora de saída/início junto com a mudança para "em andamento".
+ */
+export async function startServiceOrder(
+  id: string,
+  options: { kmStart?: number | null; startTime?: string | null } = {}
+) {
+  const supabase = createClient();
+  const patch: Record<string, unknown> = { status: "em_andamento" };
+  if (options.kmStart != null) patch.km_start = options.kmStart;
+  if (options.startTime?.trim()) patch.start_time = options.startTime.trim();
+
   const { error } = await supabase.from("service_orders").update(patch).eq("id", id);
   if (error) return { error: error.message };
   revalidate();
@@ -455,6 +505,10 @@ export async function finalizeServiceOrder(
     signature?: string | null;
     hourmeterStart?: number | null;
     hourmeterEnd?: number | null;
+    kmStart?: number | null;
+    kmEnd?: number | null;
+    tripsCount?: number | null;
+    endTime?: string | null;
   } = {}
 ) {
   const supabase = createClient();
@@ -478,6 +532,74 @@ export async function finalizeServiceOrder(
     received_by: trimmed.toUpperCase(),
     delivery_date: today,
   };
+
+  // ── Fechamento de entrega de material com modo de cobrança ────────────────
+  // viagem: valor fixo · km: km rodado × R$/km · diária: viagens × valor.
+  // O item de frete (is_freight) é recriado aqui para refletir o cálculo final.
+  const mode = order.type === "entrega_material" ? order.billing_mode : null;
+  if (mode) {
+    if (!options.signature)
+      return { error: "A assinatura de quem recebeu é obrigatória" };
+
+    const kmStart = options.kmStart ?? order.km_start;
+    const kmEnd = options.kmEnd;
+
+    if (kmEnd == null) return { error: "Informe o km de chegada" };
+    if (mode === "km" && kmStart == null) return { error: "Informe o km inicial" };
+    if (kmStart != null && kmEnd <= kmStart)
+      return { error: "O km de chegada deve ser maior que o km de saída" };
+
+    const trips = options.tripsCount ?? null;
+    if (mode === "diaria" && !(trips != null && trips >= 1))
+      return { error: "Informe quantas viagens foram feitas" };
+
+    if (options.kmStart != null) patch.km_start = options.kmStart;
+    patch.km_end = kmEnd;
+    if (mode === "diaria") patch.trips_count = trips;
+    if (options.endTime?.trim()) patch.end_time = options.endTime.trim();
+
+    const rate = order.freight_value ?? 0;
+    const rateLabel = rate.toFixed(2).replace(".", ",");
+    let freight: { description: string; quantity: number; unit: string; unit_price: number };
+
+    if (mode === "viagem") {
+      freight = { description: "FRETE — VIAGEM", quantity: 1, unit: "viagem", unit_price: rate };
+    } else if (mode === "km") {
+      const km = Number((kmEnd - (kmStart as number)).toFixed(1));
+      const kmLabel = km.toFixed(1).replace(".", ",");
+      freight = {
+        description: rate > 0
+          ? `FRETE — ${kmLabel} KM × R$ ${rateLabel}/KM`
+          : `FRETE — ${kmLabel} KM`,
+        quantity: km,
+        unit: "km",
+        unit_price: rate,
+      };
+    } else {
+      freight = {
+        description: rate > 0
+          ? `FRETE — DIÁRIA: ${trips} VIAGENS × R$ ${rateLabel}/VIAGEM`
+          : `FRETE — DIÁRIA: ${trips} VIAGENS`,
+        quantity: trips as number,
+        unit: "viagem",
+        unit_price: rate,
+      };
+    }
+
+    // Substitui só a linha de frete — os materiais ficam intactos.
+    await supabase
+      .from("service_order_items")
+      .delete()
+      .eq("service_order_id", id)
+      .eq("is_freight", true);
+    const { error: frErr } = await supabase.from("service_order_items").insert({
+      service_order_id: id,
+      product_id: null,
+      ...freight,
+      is_freight: true,
+    });
+    if (frErr) return { error: frErr.message };
+  }
 
   // Fechamento de serviço por horímetro. O técnico informa o horímetro final
   // (e o inicial, quando não foi informado no cadastro) → recalcula horas ×

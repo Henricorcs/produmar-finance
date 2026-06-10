@@ -130,6 +130,8 @@ export type ServiceOrderType    = "entrega_material" | "prestacao_servico";
 export type ServiceFreightType  = "cliente" | "interno";
 export type ServiceOrderStatus  = "pendente" | "em_andamento" | "entregue" | "cancelado";
 export type MachineTrackingType = "hourmeter" | "km";
+/** Como o frete é cobrado na entrega de material (null = OS antiga/serviço). */
+export type ServiceBillingMode  = "viagem" | "km" | "diaria";
 
 export interface Machine {
   id: string;
@@ -194,6 +196,17 @@ export interface ServiceOrder {
   fuel_cost: number | null;
   received_by: string | null;
 
+  /** Cobrança do frete (entrega de material). */
+  billing_mode: ServiceBillingMode | null;
+  /** Valor da viagem | valor do km | valor por viagem na diária. */
+  freight_value: number | null;
+  /** Nº de viagens feitas (diária, preenchido no fechamento). */
+  trips_count: number | null;
+  /** Hora de saída/início (HH:MM, viagem e diária). */
+  start_time: string | null;
+  /** Hora de chegada/fim (HH:MM, gravada ao finalizar). */
+  end_time: string | null;
+
   total_amount: number;
   transaction_id: string | null;
 
@@ -215,6 +228,8 @@ export interface ServiceOrderItem {
   unit: string | null;
   unit_price: number;
   total: number;
+  /** Linha de frete (viagem/km/diária) — não é material, não mexe no estoque. */
+  is_freight: boolean;
   created_at: string;
 }
 
