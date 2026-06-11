@@ -203,9 +203,6 @@ export function OperadorClient({
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
           Minhas tarefas
         </h1>
-        <p className="text-base text-slate-500 dark:text-slate-400">
-          Olá, {operadorName.split(" ")[0]}! Veja abaixo o que precisa ser feito.
-        </p>
       </div>
 
       {/* Summary bar */}
@@ -602,11 +599,6 @@ function OSCard({
           )}
         </div>
       )}
-
-      {/* Instrução curta */}
-      <p className="text-sm font-medium text-slate-500 dark:text-slate-400 text-center">
-        {instruction(o)}
-      </p>
 
       {/* Botões grandes p/ toque */}
       <div className="flex gap-3">
