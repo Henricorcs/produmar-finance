@@ -248,6 +248,10 @@ export interface ServiceOrderTrip {
   received_by: string | null;
   /** Assinatura digital (PNG data-URL) colhida na entrega da viagem. */
   signature: string | null;
+  /** Localização (GPS do celular) de onde a viagem foi entregue. */
+  latitude: number | null;
+  longitude: number | null;
+  location_accuracy: number | null;
   created_at: string;
 }
 

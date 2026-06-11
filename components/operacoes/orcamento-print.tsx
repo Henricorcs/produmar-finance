@@ -322,6 +322,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                     <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-16">Viagem</th>
                     <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-14">Hora</th>
                     <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide">Recebido por</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-12">Local</th>
                     <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-36">Assinatura</th>
                   </tr>
                 </thead>
@@ -334,6 +335,25 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                       </td>
                       <td className="px-3 py-1 font-semibold text-slate-700">
                         {t.received_by ?? "—"}
+                      </td>
+                      <td className="px-3 py-1">
+                        {t.latitude != null && t.longitude != null ? (
+                          <a
+                            href={`https://maps.google.com/?q=${t.latitude},${t.longitude}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-produmar-700 underline whitespace-nowrap"
+                            title={
+                              t.location_accuracy != null
+                                ? `±${Math.round(Number(t.location_accuracy))} m`
+                                : undefined
+                            }
+                          >
+                            ver mapa
+                          </a>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-1">
                         {t.signature ? (

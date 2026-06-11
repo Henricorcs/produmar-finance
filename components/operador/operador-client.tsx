@@ -151,7 +151,13 @@ export function OperadorClient({
   // de quem recebeu, colhidos na hora). Chamado pelo TripDeliveryDialog.
   async function handleTripDelivery(
     o: OrderWithDetails,
-    data: { receivedBy: string | null; signature: string | null }
+    data: {
+      receivedBy: string | null;
+      signature: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      locationAccuracy: number | null;
+    }
   ): Promise<string | null> {
     const result = await registerTrip(o.id, 1, nowHHMM(), data);
     if ("error" in result) {

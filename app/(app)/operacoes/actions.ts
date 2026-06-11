@@ -445,7 +445,13 @@ export async function registerTrip(
   id: string,
   delta: 1 | -1 = 1,
   tripTime?: string | null,
-  options: { receivedBy?: string | null; signature?: string | null } = {}
+  options: {
+    receivedBy?: string | null;
+    signature?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locationAccuracy?: number | null;
+  } = {}
 ) {
   const supabase = createClient();
 
@@ -456,8 +462,8 @@ export async function registerTrip(
   });
   if (error || trips == null) return { error: error?.message ?? "OS não encontrada" };
 
-  // Log de horários/assinaturas (best-effort): não quebra a marcação caso a
-  // tabela/colunas ainda não existam (migrations 016/020 não aplicadas).
+  // Log de horários/assinaturas/localização (best-effort): não quebra a
+  // marcação caso a tabela/colunas ainda não existam (migrations 016/020/021).
   if (delta === 1) {
     const baseRow = {
       service_order_id: id,
@@ -470,10 +476,13 @@ export async function registerTrip(
         ? options.receivedBy.trim().toUpperCase()
         : null,
       signature: options.signature || null,
+      latitude: options.latitude ?? null,
+      longitude: options.longitude ?? null,
+      location_accuracy: options.locationAccuracy ?? null,
     });
     if (logErr) {
-      // Migration 020 ausente (colunas novas não existem): salva ao menos o
-      // horário, no formato antigo.
+      // Migrations 020/021 ausentes (colunas novas não existem): salva ao
+      // menos o horário, no formato antigo.
       const { error: legacyErr } = await supabase
         .from("service_order_trips")
         .insert(baseRow);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Loader2, PackageCheck, Clock } from "lucide-react";
+import { Loader2, PackageCheck, Clock, MapPin } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,9 @@ interface Props {
   onDeliver: (data: {
     receivedBy: string | null;
     signature: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    locationAccuracy: number | null;
   }) => Promise<string | null>;
 }
 
@@ -45,11 +48,34 @@ export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // Localização automática (GPS do celular) da entrega — capturada assim que o
+  // dialog abre. Best-effort: sem GPS, a entrega é registrada igual.
+  const [gps, setGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<"buscando" | "ok" | "erro">("buscando");
+
   useEffect(() => {
     if (open) {
       setReceivedBy("");
       setSignature(null);
       setError(null);
+      setGps(null);
+      setGpsStatus("buscando");
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        setGpsStatus("erro");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setGps({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          });
+          setGpsStatus("ok");
+        },
+        () => setGpsStatus("erro"),
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+      );
     }
   }, [open]);
 
@@ -75,6 +101,9 @@ export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
       const err = await onDeliver({
         receivedBy: receivedBy.trim() || null,
         signature: skipSignature ? null : signature,
+        latitude: gps?.lat ?? null,
+        longitude: gps?.lng ?? null,
+        locationAccuracy: gps?.accuracy ?? null,
       });
       if (err) {
         setError(err);
@@ -131,6 +160,16 @@ export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
               Toque em “Assinar” e entregue o celular para a pessoa assinar.
             </p>
           </div>
+
+          {/* Localização automática — só informativo, não bloqueia nada */}
+          <p className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+            {gpsStatus === "ok"
+              ? "Localização da entrega registrada"
+              : gpsStatus === "buscando"
+                ? "Buscando localização..."
+                : "Sem localização (GPS desligado ou sem permissão)"}
+          </p>
 
           {error && (
             <p className="text-base text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/40">
