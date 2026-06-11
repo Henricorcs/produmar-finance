@@ -215,10 +215,6 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         setError("O KM de chegada tem que ser maior que o KM de saída");
         return;
       }
-      if (billingMode === "viagem" && trips < 1) {
-        setError("Conte quantas viagens você fez — toque no botão +");
-        return;
-      }
       // Assinatura final obrigatória só para cliente externo nos modos km e
       // diária — no modo viagem cada entrega já foi assinada na hora.
       if (!isViagem && isClient && !signature) {
@@ -402,51 +398,15 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                   />
                 </div>
 
-                {/* Nº de viagens (por viagem) — botões grandes − / + */}
+                {/* Viagens contadas pelo técnico durante a OS — só exibe */}
                 {billingMode === "viagem" && (
-                  <div className="space-y-1.5">
-                    <Label className="text-sm text-slate-600 dark:text-slate-300">
-                      Quantas viagens você fez? <span className="text-red-500">*</span>
-                    </Label>
-                    {(order.trips_count ?? 0) > 0 && (
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
-                        Já contamos as viagens que você marcou — confira e corrija se precisar.
-                        {(() => {
-                          const times = (order.service_order_trips ?? [])
-                            .filter((t) => t.trip_time)
-                            .sort((a, b) => a.trip_number - b.trip_number)
-                            .map((t) => t.trip_time!.slice(0, 5));
-                          return times.length > 0 ? ` Horários: ${times.join(" · ")}.` : "";
-                        })()}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setTrips((t) => Math.max(0, t - 1))}
-                        aria-label="Menos uma viagem"
-                        className="w-16 h-16 rounded-2xl border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 active:bg-slate-100 dark:active:bg-slate-700 disabled:opacity-40"
-                        disabled={trips === 0}
-                      >
-                        <Minus className="w-8 h-8" />
-                      </button>
-                      <div className="flex-1 text-center">
-                        <p className="text-4xl font-black tabular-nums text-slate-800 dark:text-slate-100">
-                          {trips}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {trips === 1 ? "viagem" : "viagens"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setTrips((t) => t + 1)}
-                        aria-label="Mais uma viagem"
-                        className="w-16 h-16 rounded-2xl bg-produmar-600 hover:bg-produmar-700 flex items-center justify-center text-white active:scale-95 transition-transform"
-                      >
-                        <Plus className="w-8 h-8" />
-                      </button>
-                    </div>
+                  <div className="flex items-center justify-between rounded-xl bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 px-4 py-3">
+                    <span className="text-base font-semibold text-sky-700 dark:text-sky-300">
+                      Viagens entregues
+                    </span>
+                    <span className="text-3xl font-black tabular-nums text-sky-800 dark:text-sky-200">
+                      {trips}
+                    </span>
                   </div>
                 )}
 
