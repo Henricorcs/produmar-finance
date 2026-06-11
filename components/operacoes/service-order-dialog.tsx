@@ -103,14 +103,14 @@ function sanitizeDecimal(raw: string): string {
   return cleaned;
 }
 
-// Horímetro/hodômetro: vírgula automática na última casa (1 decimal).
-// O usuário digita só números e a última posição é sempre o decimal.
-// ex: "8310" → "831,0" ; "83105" → "8310,5"
-function formatHourmeter(raw: string): string {
-  const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
-  if (!digits) return "";
-  const padded = digits.padStart(2, "0");
-  return padded.slice(0, -1) + "," + padded.slice(-1);
+// Horímetro: vírgula MANUAL — digita o número como aparece no relógio e coloca
+// a vírgula se precisar (1 casa decimal). Não força o decimal automático.
+function sanitizeHourmeter(raw: string): string {
+  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
+  const parts = cleaned.split(",");
+  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
+  if (parts[1]?.length > 1) return parts[0] + "," + parts[1].slice(0, 1);
+  return cleaned;
 }
 
 interface ItemDraft {
@@ -126,7 +126,11 @@ function emptyItem(): ItemDraft {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().split("T")[0];
+  // Data local do navegador (toISOString seria UTC e erra depois das 21h BRT).
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -522,6 +526,23 @@ export function ServiceOrderDialog({
         setError("Adicione ao menos um item");
         return;
       }
+
+      // OS antiga de entrega que tinha cobrança de frete (antes do tipo "frete"
+      // existir): a UI de cobrança não aparece nesse tipo, então preservamos a
+      // linha de frete já gravada para não zerar o total ao salvar.
+      if (order?.billing_mode) {
+        const existingFreight = (order.service_order_items ?? []).find((it) => it.is_freight);
+        if (existingFreight) {
+          itemsPayload.push({
+            product_id: null,
+            description: existingFreight.description,
+            quantity: Number(existingFreight.quantity),
+            unit: existingFreight.unit,
+            unit_price: Number(existingFreight.unit_price),
+            is_freight: true,
+          });
+        }
+      }
     }
 
     const payload = {
@@ -562,13 +583,13 @@ export function ServiceOrderDialog({
           ? parseBRLToNumber(fuelCost)
           : null,
       received_by: receivedBy.trim() || null,
-      billing_mode: type === "frete" && billingMode ? billingMode : null,
+      // Keyed no billingMode (não no type): em "frete" vem da UI; em entrega
+      // legada com cobrança vem hidratado da OS — preserva nos dois casos.
+      billing_mode: billingMode || null,
       freight_value:
-        type === "frete" && billingMode && freightValue.trim()
-          ? parseBRLToNumber(freightValue)
-          : null,
+        billingMode && freightValue.trim() ? parseBRLToNumber(freightValue) : null,
       trips_count: (() => {
-        if (type !== "frete" || billingMode !== "viagem") return null;
+        if (billingMode !== "viagem") return null;
         const t = parseInt(tripsCount, 10);
         return !isNaN(t) && t >= 1 ? t : null;
       })(),
@@ -690,8 +711,10 @@ export function ServiceOrderDialog({
                           : "Valor fechado da diária. O técnico anota o km e a hora na saída e o km no fim do dia."}
                     </p>
 
-                    {/* Fechamento (edição/correção pelo escritório) */}
-                    {order && (order.status === "entregue" || order.km_start != null || order.km_end != null) && (
+                    {/* Fechamento (edição/correção pelo escritório) — sempre
+                        disponível ao editar um frete, para o escritório poder
+                        finalizar quando o técnico não fechou pelo painel. */}
+                    {order && (
                       <div className="pt-1 space-y-2">
                         <p className="text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500">
                           Fechamento (preenchido pelo técnico)
@@ -1129,7 +1152,7 @@ export function ServiceOrderDialog({
                           <Label className="text-[10px] text-slate-500">Horímetro inicial</Label>
                           <Input
                             value={hourmeterStart}
-                            onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
+                            onChange={(e) => setHourmeterStart(sanitizeHourmeter(e.target.value))}
                             placeholder="0,0"
                             inputMode="decimal"
                             autoComplete="off"
@@ -1141,7 +1164,7 @@ export function ServiceOrderDialog({
                             <Label className="text-[10px] text-slate-500">Horímetro final</Label>
                             <Input
                               value={hourmeterEnd}
-                              onChange={(e) => setHourmeterEnd(formatHourmeter(e.target.value))}
+                              onChange={(e) => setHourmeterEnd(sanitizeHourmeter(e.target.value))}
                               placeholder="0,0"
                               inputMode="decimal"
                               autoComplete="off"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   CheckCircle2, Printer, Clock, Package, MapPin, Navigation,
   Gauge, Minus, Plus, Route, CalendarDays,
@@ -34,14 +34,21 @@ interface Props {
   onFinalized: (orderId: string) => void;
 }
 
-// Horímetro: vírgula automática na última casa (1 decimal).
-// O usuário digita só números e a última posição é sempre o decimal.
-// ex: "8310" → "831,0" ; "83105" → "8310,5"
-function formatHourmeter(raw: string): string {
-  const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
-  if (!digits) return "";
-  const padded = digits.padStart(2, "0");
-  return padded.slice(0, -1) + "," + padded.slice(-1);
+// Horímetro: vírgula MANUAL — o técnico digita o número como aparece no relógio
+// e coloca a vírgula se precisar (1 casa decimal). Não força decimal automático.
+function sanitizeHourmeter(raw: string): string {
+  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
+  const parts = cleaned.split(",");
+  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
+  if (parts[1]?.length > 1) return parts[0] + "," + parts[1].slice(0, 1);
+  return cleaned;
+}
+
+function nowYYYYMMDD(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
 }
 
 // KM do veículo: dígitos + uma vírgula com 1 casa no máximo.
@@ -66,10 +73,10 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   // Modo de cobrança do frete (OS de frete; cobre também OS antigas de
   // entrega de material que usavam cobrança): viagem | km | diaria.
   const billingMode = order.type !== "prestacao_servico" ? order.billing_mode : null;
-  // No modo "km" o técnico informa os dois KMs ao fechar; nos demais, o KM de
-  // saída veio do Iniciar — se faltar (OS antiga/iniciada pelo escritório),
-  // pedimos os dois aqui também.
-  const showKmStartInput = billingMode === "km" || (!!billingMode && order.km_start == null);
+  // O km de saída é anotado no Iniciar (em todos os modos de frete). Só pedimos
+  // o km inicial aqui quando ele faltar — OS antiga ou iniciada pelo escritório.
+  const showKmStartInput = !!billingMode && order.km_start == null;
+  const isClient = order.freight_type === "cliente";
 
   const [receivedBy, setReceivedBy]   = useState("");
   const [hourmeterStart, setHourmeterStart] = useState("");
@@ -85,6 +92,31 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   const [done, setDone]               = useState(false);
   const [signature, setSignature]     = useState<string | null>(null);
   const [isPending, startTransition]  = useTransition();
+
+  // Localização automática (GPS do celular) — capturada assim que o dialog
+  // abre, sem o técnico fazer nada. Best-effort: sem GPS, finaliza igual.
+  const [gps, setGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<"buscando" | "ok" | "erro">("buscando");
+
+  useEffect(() => {
+    if (!open) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGpsStatus("erro");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGps({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+        setGpsStatus("ok");
+      },
+      () => setGpsStatus("erro"),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  }, [open]);
 
   // Serviço por horímetro ainda em aberto. O técnico informa o horímetro final
   // ao fechar; quando o inicial não foi informado no cadastro, ele informa os
@@ -184,7 +216,8 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         setError("Conte quantas viagens você fez — toque no botão +");
         return;
       }
-      if (!signature) {
+      // Assinatura obrigatória só quando é cliente externo recebendo.
+      if (isClient && !signature) {
         setError("Peça para quem recebeu assinar no quadro");
         return;
       }
@@ -198,8 +231,13 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         kmStart: billingMode && showKmStartInput ? ksNum : null,
         kmEnd: billingMode ? keNum : null,
         tripsCount: billingMode === "viagem" ? trips : null,
-        // Hora de fechamento sempre registrada (relógio do celular)
+        // Hora e data de fechamento do relógio do celular (servidor é UTC)
         endTime: nowHHMM(),
+        finishedDate: nowYYYYMMDD(),
+        // Localização automática (quando o GPS respondeu)
+        latitude: gps?.lat ?? null,
+        longitude: gps?.lng ?? null,
+        locationAccuracy: gps?.accuracy ?? null,
       });
       if ("error" in result) {
         setError(result.error ?? "Erro ao finalizar");
@@ -460,7 +498,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                       </Label>
                       <Input
                         value={hourmeterStart}
-                        onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
+                        onChange={(e) => setHourmeterStart(sanitizeHourmeter(e.target.value))}
                         placeholder="ex: 1230,0"
                         inputMode="decimal"
                         autoComplete="off"
@@ -481,7 +519,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                 </Label>
                 <Input
                   value={hourmeterEnd}
-                  onChange={(e) => setHourmeterEnd(formatHourmeter(e.target.value))}
+                  onChange={(e) => setHourmeterEnd(sanitizeHourmeter(e.target.value))}
                   placeholder="ex: 1250,5"
                   inputMode="decimal"
                   autoComplete="off"
@@ -521,15 +559,25 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
             <div className="space-y-1.5">
               <Label className="text-base">
                 Assinatura de quem recebeu
-                {billingMode ? <span className="text-red-500"> *</span> : null}
+                {billingMode && isClient ? <span className="text-red-500"> *</span> : null}
               </Label>
               <SignaturePad onChange={setSignature} />
               <p className="text-xs text-slate-400 dark:text-slate-500">
-                {billingMode
+                {billingMode && isClient
                   ? "Obrigatória: toque em “Assinar” e entregue o celular para a pessoa assinar."
                   : "Toque em “Assinar” para abrir o quadro em tela cheia (opcional)."}
               </p>
             </div>
+
+            {/* Localização automática — só informativo, não bloqueia nada */}
+            <p className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+              <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+              {gpsStatus === "ok"
+                ? "Localização registrada automaticamente"
+                : gpsStatus === "buscando"
+                  ? "Buscando localização..."
+                  : "Sem localização (GPS desligado ou sem permissão)"}
+            </p>
 
             {error && (
               <p className="text-base text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/40">

@@ -264,9 +264,11 @@ function sanitizeOrder(input: ServiceOrderInput) {
     service_cost: input.service_cost ?? null,
     fuel_cost: input.fuel_cost ?? null,
     received_by: input.received_by?.trim() ? input.received_by.trim().toUpperCase() : null,
-    billing_mode: input.type === "frete" ? input.billing_mode ?? null : null,
-    freight_value: input.type === "frete" ? input.freight_value ?? null : null,
-    trips_count: input.type === "frete" ? input.trips_count ?? null : null,
+    // Cobrança keyed no billing_mode (não no type): preserva OS antigas de
+    // entrega de material que já usavam cobrança antes do tipo "frete" existir.
+    billing_mode: input.billing_mode ?? null,
+    freight_value: input.billing_mode ? input.freight_value ?? null : null,
+    trips_count: input.billing_mode === "viagem" ? input.trips_count ?? null : null,
     start_time: input.start_time || null,
     notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
   };
@@ -358,7 +360,11 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
   if (updateErr) return { error: updateErr.message };
 
   // Substitui itens (simples e seguro): apaga e recria
-  await supabase.from("service_order_items").delete().eq("service_order_id", id);
+  const { error: delErr } = await supabase
+    .from("service_order_items")
+    .delete()
+    .eq("service_order_id", id);
+  if (delErr) return { error: delErr.message };
 
   const itemRows = input.items.map((it) => ({
     service_order_id: id,
@@ -391,14 +397,18 @@ export async function deleteServiceOrder(id: string) {
 
 export async function updateServiceOrderStatus(
   id: string,
-  status: ServiceOrderStatus
+  status: ServiceOrderStatus,
+  // Data local de quem clicou (o servidor roda em UTC na Vercel; depois das
+  // 21h BRT o ISO do servidor já está no dia seguinte).
+  finishedDate?: string | null
 ) {
   const supabase = createClient();
   const patch: Record<string, unknown> = { status };
   // Ao marcar como entregue/finalizada, registra a data real de entrega
   // (sobrescreve a previsão). Demais transições não mexem na data.
   if (status === "entregue") {
-    patch.delivery_date = new Date().toISOString().split("T")[0];
+    patch.delivery_date =
+      finishedDate?.trim() || new Date().toISOString().split("T")[0];
   }
   const { error } = await supabase.from("service_orders").update(patch).eq("id", id);
   if (error) return { error: error.message };
@@ -436,19 +446,13 @@ export async function registerTrip(
   tripTime?: string | null
 ) {
   const supabase = createClient();
-  const { data: order, error: fetchErr } = await supabase
-    .from("service_orders")
-    .select("trips_count")
-    .eq("id", id)
-    .single();
-  if (fetchErr || !order) return { error: "OS não encontrada" };
 
-  const trips = Math.max(0, (order.trips_count ?? 0) + delta);
-  const { error } = await supabase
-    .from("service_orders")
-    .update({ trips_count: trips })
-    .eq("id", id);
-  if (error) return { error: error.message };
+  // Incremento atômico no banco (evita perder viagens em toques rápidos).
+  const { data: trips, error } = await supabase.rpc("register_os_trip", {
+    p_order_id: id,
+    p_delta: delta,
+  });
+  if (error || trips == null) return { error: error?.message ?? "OS não encontrada" };
 
   // Log de horários (best-effort): não quebra a marcação caso a tabela ainda
   // não exista (migration 016 não aplicada no Supabase).
@@ -518,6 +522,13 @@ export async function generateTransactionFromOrder(
 
   const dueDate = options.due_date || order.delivery_date || order.issue_date;
 
+  // Status válido por tipo de lançamento: entrada → "recebido", saída → "pago".
+  // Só nasce baixado quando a OS já foi entregue (consumo interno = custo já
+  // incorrido); para cliente, a entrega não significa que ele já pagou, então
+  // a receita nasce pendente (a receber) e é baixada no fluxo financeiro.
+  const status =
+    type === "saida" && order.status === "entregue" ? "pago" : "pendente";
+
   const { data: tx, error: txErr } = await supabase
     .from("transactions")
     .insert({
@@ -525,7 +536,7 @@ export async function generateTransactionFromOrder(
       description: description.toUpperCase(),
       amount: order.total_amount,
       due_date: dueDate,
-      status: order.status === "entregue" ? "recebido" : "pendente",
+      status,
       category_id: options.category_id || null,
       cost_center_id: options.cost_center_id || null,
       notes: order.notes,
@@ -560,6 +571,10 @@ export async function finalizeServiceOrder(
     kmEnd?: number | null;
     tripsCount?: number | null;
     endTime?: string | null;
+    finishedDate?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locationAccuracy?: number | null;
   } = {}
 ) {
   const supabase = createClient();
@@ -576,8 +591,9 @@ export async function finalizeServiceOrder(
   if (fetchErr || !order) return { error: "OS não encontrada" };
 
   // Ao finalizar, a data de entrega passa a ser a data real (hoje),
-  // sobrescrevendo a previsão informada no cadastro.
-  const today = new Date().toISOString().split("T")[0];
+  // sobrescrevendo a previsão. Usa a data do celular do técnico (finishedDate);
+  // o fallback do servidor é UTC e erra depois das 21h (BRT).
+  const today = options.finishedDate?.trim() || new Date().toISOString().split("T")[0];
   const patch: Record<string, unknown> = {
     status: "entregue",
     received_by: trimmed.toUpperCase(),
@@ -595,7 +611,9 @@ export async function finalizeServiceOrder(
   // material que usavam cobrança antes do tipo "frete" existir.
   const mode = order.type !== "prestacao_servico" ? order.billing_mode : null;
   if (mode) {
-    if (!options.signature)
+    // Assinatura obrigatória só quando há cliente externo recebendo; em frete
+    // interno (entre obras da própria empresa) não há terceiro para assinar.
+    if (order.freight_type === "cliente" && !options.signature)
       return { error: "A assinatura de quem recebeu é obrigatória" };
 
     const kmStart = options.kmStart ?? order.km_start;
@@ -710,6 +728,20 @@ export async function finalizeServiceOrder(
       .update({ signature: options.signature })
       .eq("id", id);
     if (sigErr) console.error("Falha ao salvar assinatura:", sigErr.message);
+  }
+
+  // Localização do fechamento (best-effort): GPS desligado ou migration 018
+  // não aplicada não impedem a finalização.
+  if (options.latitude != null && options.longitude != null) {
+    const { error: locErr } = await supabase
+      .from("service_orders")
+      .update({
+        end_latitude: options.latitude,
+        end_longitude: options.longitude,
+        end_location_accuracy: options.locationAccuracy ?? null,
+      })
+      .eq("id", id);
+    if (locErr) console.error("Falha ao salvar localização:", locErr.message);
   }
 
   revalidatePath("/operador");

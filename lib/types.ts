@@ -130,7 +130,7 @@ export type ServiceOrderType    = "entrega_material" | "prestacao_servico" | "fr
 export type ServiceFreightType  = "cliente" | "interno";
 export type ServiceOrderStatus  = "pendente" | "em_andamento" | "entregue" | "cancelado";
 export type MachineTrackingType = "hourmeter" | "km";
-/** Como o frete é cobrado na entrega de material (null = OS antiga/serviço). */
+/** Como o frete é cobrado (tipo "frete"; null = entrega só de material/serviço). */
 export type ServiceBillingMode  = "viagem" | "km" | "diaria";
 
 export interface Machine {
@@ -206,6 +206,11 @@ export interface ServiceOrder {
   start_time: string | null;
   /** Hora de chegada/fim (HH:MM, gravada ao finalizar). */
   end_time: string | null;
+  /** Localização GPS capturada automaticamente ao finalizar (best-effort). */
+  end_latitude: number | null;
+  end_longitude: number | null;
+  /** Precisão do GPS em metros. */
+  end_location_accuracy: number | null;
 
   total_amount: number;
   transaction_id: string | null;

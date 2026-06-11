@@ -32,6 +32,16 @@ function formatDate(s: string | null | undefined) {
   return `${d}/${m}/${y}`;
 }
 
+function dec(n: number, places = 1) {
+  return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: places });
+}
+
+const STATUS_BADGE: Record<string, React.CSSProperties> = {
+  pendente: { background: "#fef3c7", color: "#b45309" },
+  em_andamento: { background: "#e0e7ff", color: "#4338ca" },
+  entregue: { background: "#dcfce7", color: "#15803d" },
+  cancelado: { background: "#f1f5f9", color: "#64748b" },
+};
 
 export function OrcamentoPrint({ order, autoPrint }: Props) {
   useEffect(() => {
@@ -43,40 +53,111 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
 
   const items = order.service_order_items ?? [];
   const isMaterial = order.type === "entrega_material";
-  const isFrete    = order.type === "frete";
-  const isClient   = order.freight_type === "cliente";
+  const isFrete = order.type === "frete";
+  const isClient = order.freight_type === "cliente";
+
+  const docLabel = isMaterial
+    ? "Ordem de Entrega"
+    : isFrete
+      ? "Ordem de Frete"
+      : "Ordem de Serviço";
+  const typeLabel = isMaterial
+    ? "Entrega de material"
+    : isFrete
+      ? "Frete"
+      : "Prestação de serviço";
 
   const hourmeterDiff =
-    order.type === "prestacao_servico" &&
-    order.hourmeter_start != null &&
-    order.hourmeter_end   != null
-      ? (order.hourmeter_end - order.hourmeter_start).toFixed(1).replace(".", ",")
+    order.hourmeter_start != null && order.hourmeter_end != null
+      ? order.hourmeter_end - order.hourmeter_start
+      : null;
+  const kmDiff =
+    order.km_start != null && order.km_end != null && order.km_end > order.km_start
+      ? order.km_end - order.km_start
       : null;
 
-  // Horário de cada viagem marcada pelo técnico (modo "por viagem")
   const tripTimes = (order.service_order_trips ?? [])
     .filter((t) => t.trip_time)
     .sort((a, b) => a.trip_number - b.trip_number)
     .map((t) => t.trip_time!.slice(0, 5));
 
+  // ── Métricas operacionais (só o que existe) ────────────────────────────────
+  const metrics: { label: string; value: string }[] = [];
+  if (order.type === "prestacao_servico") {
+    if (order.hourmeter_start != null)
+      metrics.push({ label: "Horímetro inicial", value: `${dec(order.hourmeter_start)} h` });
+    if (order.hourmeter_end != null)
+      metrics.push({ label: "Horímetro final", value: `${dec(order.hourmeter_end)} h` });
+    if (hourmeterDiff != null)
+      metrics.push({ label: "Horas trabalhadas", value: `${dec(hourmeterDiff)} h` });
+    if (order.hourly_rate != null)
+      metrics.push({ label: "Valor da hora", value: `R$ ${formatBRL(order.hourly_rate)}` });
+  }
+  if (order.km_start != null) metrics.push({ label: "KM inicial", value: `${dec(order.km_start)} km` });
+  if (order.km_end != null) metrics.push({ label: "KM final", value: `${dec(order.km_end)} km` });
+  if (kmDiff != null) metrics.push({ label: "KM rodado", value: `${dec(kmDiff)} km` });
+  if (order.billing_mode) {
+    if (order.freight_value != null) {
+      const lbl =
+        order.billing_mode === "viagem"
+          ? "Valor da viagem"
+          : order.billing_mode === "km"
+            ? "Valor do km"
+            : "Valor da diária";
+      metrics.push({ label: lbl, value: `R$ ${formatBRL(order.freight_value)}` });
+    }
+    if (order.billing_mode === "viagem" && order.trips_count != null)
+      metrics.push({ label: "Viagens", value: String(order.trips_count) });
+  }
+  if (order.start_time)
+    metrics.push({
+      label: isMaterial || isFrete ? "Hora de saída" : "Início",
+      value: order.start_time.slice(0, 5),
+    });
+  if (order.end_time)
+    metrics.push({
+      label: isMaterial || isFrete ? "Hora de chegada" : "Fim",
+      value: order.end_time.slice(0, 5),
+    });
+
+  // ── Barra de meta-informação (frete não tem previsão) ──────────────────────
+  const showDeliveryDate = order.status === "entregue" || !isFrete;
+  const meta: { label: string; value: string }[] = [
+    { label: "Emissão", value: formatDate(order.issue_date) },
+  ];
+  if (showDeliveryDate) {
+    meta.push({
+      label:
+        order.status === "entregue"
+          ? isMaterial || isFrete
+            ? "Entregue em"
+            : "Concluído em"
+          : "Previsão",
+      value: formatDate(order.delivery_date),
+    });
+  }
+  meta.push({ label: "Tipo", value: typeLabel });
+  if (order.billing_mode) meta.push({ label: "Cobrança", value: osBillingLabel(order.billing_mode) });
+  meta.push({ label: "Status", value: osStatusLabel(order.status, order.type) });
+
   return (
     <>
-      {/* ── Print-specific global styles ─────────────────────────────── */}
       <style>{`
         @media print {
           .no-print { display: none !important; }
-          body { background: white !important; }
-          @page { size: A4; margin: 1.5cm; }
+          html, body { background: white !important; }
+          @page { size: A4; margin: 12mm; }
+          .doc { box-shadow: none !important; margin: 0 !important; }
+          .avoid-break { break-inside: avoid; }
         }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f1f5f9; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f1f5f9; color: #0f172a; }
         .doc { background: white; }
+        table { border-collapse: collapse; }
       `}</style>
 
-      {/* ── Toolbar (hidden on print) ──────────────────────────────────── */}
+      {/* Toolbar (hidden on print) */}
       <div className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex items-center justify-between px-6 py-3 shadow-lg">
-        <span className="font-semibold text-sm">
-          Ordem de Serviço #{order.order_number}
-        </span>
+        <span className="font-semibold text-sm">{docLabel} #{order.order_number}</span>
         <div className="flex items-center gap-3">
           <button
             onClick={() => window.history.back()}
@@ -93,251 +174,142 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
         </div>
       </div>
 
-      {/* ── Document ──────────────────────────────────────────────────── */}
-      <div className="no-print pt-14" />
-      <div
-        className="doc max-w-[794px] mx-auto my-6 print:my-0 shadow-xl print:shadow-none"
-        style={{ minHeight: "1123px" }}
-      >
-        {/* Header */}
-        <div className="border-b-4 border-produmar-600 px-10 pt-8 pb-5">
-          <div className="flex items-start justify-between">
+      <div className="no-print h-14" />
+
+      {/* Document */}
+      <div className="doc max-w-[794px] mx-auto my-6 shadow-xl text-[12px] leading-relaxed text-slate-800">
+        <div className="p-8 space-y-4">
+
+          {/* ── Header ─────────────────────────────────────────────── */}
+          <div className="flex items-start justify-between border-b-2 border-produmar-600 pb-4">
             <div>
-              <h1 className="text-2xl font-extrabold text-produmar-700 tracking-tight">
+              <h1 className="text-[26px] font-black text-produmar-700 tracking-tight leading-none">
                 PRODUMAR
               </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Materiais de Construção e Serviços
+              <p className="text-[11px] text-slate-500 mt-1">
+                Materiais de Construção, Frete e Serviços
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                {isMaterial ? "Ordem de Entrega" : isFrete ? "Ordem de Frete" : "Ordem de Serviço"}
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">
+                {docLabel}
               </p>
-              <p className="text-3xl font-black text-produmar-700 tabular-nums mt-0.5">
+              <p className="text-[30px] font-black text-produmar-700 tabular-nums leading-none mt-0.5">
                 #{String(order.order_number).padStart(4, "0")}
               </p>
+              <span
+                className="inline-block mt-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide"
+                style={STATUS_BADGE[order.status]}
+              >
+                {osStatusLabel(order.status, order.type)}
+              </span>
             </div>
           </div>
-        </div>
 
-        {/* Body */}
-        <div className="px-10 py-6 space-y-5">
-
-          {/* Info bar */}
-          <div className={`grid ${order.billing_mode ? "grid-cols-5" : "grid-cols-4"} gap-0 border border-slate-200 rounded-lg overflow-hidden text-xs`}>
-            {[
-              { label: "Emissão",   value: formatDate(order.issue_date) },
-              {
-                label:
-                  order.status === "entregue"
-                    ? (isMaterial || isFrete ? "Entregue em" : "Concluído em")
-                    : "Previsão",
-                value: formatDate(order.delivery_date),
-              },
-              {
-                label: "Tipo",
-                value: isMaterial
-                  ? "Entrega de material"
-                  : isFrete
-                    ? "Frete"
-                    : "Prestação de serviço",
-              },
-              ...(order.billing_mode
-                ? [{ label: "Cobrança", value: osBillingLabel(order.billing_mode) }]
-                : []),
-              { label: "Status",    value: osStatusLabel(order.status, order.type) },
-            ].map((f) => (
-              <div key={f.label} className="px-3 py-2.5 border-r last:border-r-0 border-slate-200">
-                <p className="text-[10px] text-slate-400 uppercase font-semibold">{f.label}</p>
-                <p className="font-semibold text-slate-700 mt-0.5">{f.value}</p>
+          {/* ── Meta bar ───────────────────────────────────────────── */}
+          <div
+            className="grid border border-slate-200 rounded-lg overflow-hidden avoid-break"
+            style={{ gridTemplateColumns: `repeat(${meta.length}, minmax(0, 1fr))` }}
+          >
+            {meta.map((f, i) => (
+              <div
+                key={f.label}
+                className={`px-3 py-2 ${i < meta.length - 1 ? "border-r border-slate-200" : ""}`}
+              >
+                <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">{f.label}</p>
+                <p className="font-semibold text-slate-700 mt-0.5 text-[11px]">{f.value}</p>
               </div>
             ))}
           </div>
 
-          {/* Counterpart (client or internal) */}
-          <div className={`rounded-lg border p-4 ${
-            isClient
-              ? "bg-emerald-50 border-emerald-200"
-              : "bg-amber-50 border-amber-200"
-          }`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${
-              isClient ? "text-emerald-600" : "text-amber-600"
-            }`}>
-              {isClient ? "Dados do Cliente" : "Consumo Interno"}
-            </p>
-            {isClient ? (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                <Row label="Nome" value={order.client_name ?? "—"} />
-                <Row label="CPF/CNPJ" value={order.client_document ?? "—"} />
-                <Row label="Telefone" value={order.client_phone ?? "—"} />
-                {order.delivery_address && (
-                  <Row label="End. de entrega" value={order.delivery_address} full />
+          {/* ── Counterpart + Serviço ──────────────────────────────── */}
+          <div className="grid grid-cols-2 gap-3 avoid-break">
+            <div
+              className={`rounded-lg border p-3 ${
+                isClient ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"
+              }`}
+            >
+              <p
+                className={`text-[9px] font-bold uppercase tracking-wider mb-1.5 ${
+                  isClient ? "text-emerald-700" : "text-amber-700"
+                }`}
+              >
+                {isClient ? "Cliente" : "Consumo interno"}
+              </p>
+              {isClient ? (
+                <div className="space-y-0.5 text-[11px]">
+                  <p className="font-bold text-slate-800 text-[13px]">{order.client_name ?? "—"}</p>
+                  {order.client_document && (
+                    <p className="text-slate-600">CPF/CNPJ: {order.client_document}</p>
+                  )}
+                  {order.client_phone && <p className="text-slate-600">Tel: {order.client_phone}</p>}
+                </div>
+              ) : (
+                <p className="text-[11px] text-amber-700 font-medium">
+                  Uso interno — sem destinatário externo
+                </p>
+              )}
+            </div>
+
+            {/* Serviço (texto livre) ou descrição do serviço */}
+            {(order.notes || order.service_description) && (
+              <div className="rounded-lg border-2 border-produmar-200 bg-produmar-50/60 p-3">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-produmar-700 mb-1.5">
+                  {order.notes ? "Serviço" : "Descrição do serviço"}
+                </p>
+                <p className="text-[12px] font-semibold text-slate-800 whitespace-pre-line">
+                  {order.notes || order.service_description}
+                </p>
+                {order.notes && order.service_description && (
+                  <p className="text-[11px] text-slate-600 mt-1">{order.service_description}</p>
                 )}
               </div>
-            ) : (
-              <p className="text-sm text-amber-700 font-medium">
-                Uso interno — sem destinatário externo
-              </p>
             )}
           </div>
 
-          {/* Serviço — texto livre informado na OS (campo "Serviço") */}
-          {order.notes && (
-            <div className="rounded-lg border-2 border-produmar-200 bg-produmar-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-produmar-600 mb-1">
-                Serviço
-              </p>
-              <p className="text-sm font-semibold text-slate-800 whitespace-pre-line">
-                {order.notes}
-              </p>
-            </div>
-          )}
-
-          {/* Machine + Pickup */}
-          {(order.machines || order.pickup_locations) && (
-            <div className="grid grid-cols-2 gap-3 text-xs">
+          {/* ── Logística (máquina / retirada / entrega) ───────────── */}
+          {(order.machines || order.pickup_locations || order.delivery_address) && (
+            <div className="grid grid-cols-3 gap-3 text-[11px] avoid-break">
               {order.machines && (
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">
-                    Máquina / Veículo
-                  </p>
-                  <p className="font-semibold text-slate-700">
-                    {order.machines.name}
-                    {order.machines.plate ? ` — ${order.machines.plate}` : ""}
-                  </p>
-                  {order.machines.type && (
-                    <p className="text-slate-400 mt-0.5">{order.machines.type}</p>
-                  )}
-                </div>
+                <Field label="Máquina / Veículo">
+                  {order.machines.name}
+                  {order.machines.plate ? ` — ${order.machines.plate}` : ""}
+                </Field>
               )}
               {order.pickup_locations && (
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">
-                    Local de Retirada
-                  </p>
-                  <p className="font-semibold text-slate-700">{order.pickup_locations.name}</p>
+                <Field label="Local de retirada">
+                  {order.pickup_locations.name}
                   {order.pickup_locations.address && (
-                    <p className="text-slate-400 mt-0.5">{order.pickup_locations.address}</p>
+                    <span className="block text-slate-400 font-normal">
+                      {order.pickup_locations.address}
+                    </span>
                   )}
-                </div>
+                </Field>
+              )}
+              {order.delivery_address && (
+                <Field label={isMaterial || isFrete ? "Local de entrega" : "Local do serviço"}>
+                  {order.delivery_address}
+                </Field>
               )}
             </div>
           )}
 
-          {/* Hourmeter (prestacao_servico only) */}
-          {order.type === "prestacao_servico" &&
-            (order.hourmeter_start != null || order.hourmeter_end != null) && (
-            <div className="border border-slate-200 rounded-lg p-3 text-xs">
-              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">Horímetro</p>
-              <div className="grid grid-cols-4 gap-3">
-                <div>
-                  <p className="text-slate-400">Inicial</p>
-                  <p className="font-semibold text-slate-700 tabular-nums">
-                    {order.hourmeter_start?.toString().replace(".", ",") ?? "—"} h
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Final</p>
-                  <p className="font-semibold text-slate-700 tabular-nums">
-                    {order.hourmeter_end?.toString().replace(".", ",") ?? "—"} h
-                  </p>
-                </div>
-                {hourmeterDiff && (
-                  <div>
-                    <p className="text-slate-400">Total trabalhado</p>
-                    <p className="font-bold text-produmar-700 tabular-nums">{hourmeterDiff} h</p>
-                  </div>
-                )}
-                {order.hourly_rate != null && (
-                  <div>
-                    <p className="text-slate-400">Valor da hora</p>
-                    <p className="font-bold text-produmar-700 tabular-nums">
-                      R$ {formatBRL(order.hourly_rate)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* KM (hodômetro) */}
-          {(order.km_start != null || order.km_end != null) && (
-            <div className="border border-slate-200 rounded-lg p-3 text-xs">
-              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">Hodômetro</p>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-slate-400">KM inicial</p>
-                  <p className="font-semibold text-slate-700 tabular-nums">
-                    {order.km_start?.toString().replace(".", ",") ?? "—"} km
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-400">KM final</p>
-                  <p className="font-semibold text-slate-700 tabular-nums">
-                    {order.km_end?.toString().replace(".", ",") ?? "—"} km
-                  </p>
-                </div>
-                {order.km_start != null && order.km_end != null && order.km_end > order.km_start && (
-                  <div>
-                    <p className="text-slate-400">Total rodado</p>
-                    <p className="font-bold text-produmar-700 tabular-nums">
-                      {(order.km_end - order.km_start).toFixed(1).replace(".", ",")} km
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Frete (viagem / km / diária) */}
-          {order.billing_mode && (
-            <div className="border border-slate-200 rounded-lg p-3 text-xs">
-              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">
-                Frete — {osBillingLabel(order.billing_mode)}
+          {/* ── Métricas operacionais ──────────────────────────────── */}
+          {metrics.length > 0 && (
+            <div className="rounded-lg border border-slate-200 p-3 avoid-break">
+              <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide mb-2">
+                {isFrete ? `Frete — ${osBillingLabel(order.billing_mode)}` : "Medição"}
               </p>
-              <div className="grid grid-cols-4 gap-3">
-                {order.freight_value != null && (
-                  <div>
-                    <p className="text-slate-400">
-                      {order.billing_mode === "viagem"
-                        ? "Valor da viagem"
-                        : order.billing_mode === "km"
-                          ? "Valor do km"
-                          : "Valor da diária"}
-                    </p>
-                    <p className="font-bold text-produmar-700 tabular-nums">
-                      R$ {formatBRL(order.freight_value)}
-                    </p>
+              <div className="grid grid-cols-4 gap-y-2 gap-x-3">
+                {metrics.map((m) => (
+                  <div key={m.label}>
+                    <p className="text-[9px] text-slate-400">{m.label}</p>
+                    <p className="font-bold text-slate-700 tabular-nums text-[12px]">{m.value}</p>
                   </div>
-                )}
-                {order.start_time && (
-                  <div>
-                    <p className="text-slate-400">Hora de saída</p>
-                    <p className="font-semibold text-slate-700 tabular-nums">
-                      {order.start_time.slice(0, 5)}
-                    </p>
-                  </div>
-                )}
-                {order.end_time && (
-                  <div>
-                    <p className="text-slate-400">Hora de chegada</p>
-                    <p className="font-semibold text-slate-700 tabular-nums">
-                      {order.end_time.slice(0, 5)}
-                    </p>
-                  </div>
-                )}
-                {order.billing_mode === "viagem" && order.trips_count != null && (
-                  <div>
-                    <p className="text-slate-400">Viagens</p>
-                    <p className="font-semibold text-slate-700 tabular-nums">
-                      {order.trips_count}
-                    </p>
-                  </div>
-                )}
+                ))}
               </div>
               {tripTimes.length > 0 && (
-                <p className="mt-2 text-slate-500 tabular-nums">
+                <p className="mt-2 text-[10px] text-slate-500 tabular-nums">
                   <span className="text-slate-400">Horário de cada viagem: </span>
                   {tripTimes.join(" · ")}
                 </p>
@@ -345,77 +317,43 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
             </div>
           )}
 
-          {/* Horários (OS sem modo de cobrança — início/fim registrados pelo técnico) */}
-          {!order.billing_mode && (order.start_time || order.end_time) && (
-            <div className="border border-slate-200 rounded-lg p-3 text-xs">
-              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">
-                Horários
-              </p>
-              <div className="grid grid-cols-4 gap-3">
-                {order.start_time && (
-                  <div>
-                    <p className="text-slate-400">Início</p>
-                    <p className="font-semibold text-slate-700 tabular-nums">
-                      {order.start_time.slice(0, 5)}
-                    </p>
-                  </div>
-                )}
-                {order.end_time && (
-                  <div>
-                    <p className="text-slate-400">Fim</p>
-                    <p className="font-semibold text-slate-700 tabular-nums">
-                      {order.end_time.slice(0, 5)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Service description */}
-          {order.service_description && (
-            <div className="text-xs">
-              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">
-                Descrição do Serviço
-              </p>
-              <p className="text-slate-700">{order.service_description}</p>
-            </div>
-          )}
-
-          {/* Items table */}
-          <div>
-            <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2">
-              {isMaterial ? "Materiais" : isFrete ? "Frete" : "Itens / Serviços"}
-            </p>
-            <table className="w-full text-xs border-collapse">
+          {/* ── Itens ──────────────────────────────────────────────── */}
+          <div className="avoid-break">
+            <table className="w-full text-[11px]">
               <thead>
-                <tr className="bg-slate-100 text-slate-600">
-                  <th className="text-left px-3 py-2 rounded-tl-lg">Descrição</th>
-                  <th className="text-right px-3 py-2">Qtd</th>
-                  <th className="text-center px-3 py-2">Un.</th>
-                  <th className="text-right px-3 py-2">Vl. Unit.</th>
-                  <th className="text-right px-3 py-2 rounded-tr-lg">Subtotal</th>
+                <tr className="bg-produmar-700 text-white">
+                  <th className="text-left px-3 py-2 rounded-tl-md font-semibold">
+                    {isMaterial ? "Material" : isFrete ? "Frete" : "Item / Serviço"}
+                  </th>
+                  <th className="text-right px-3 py-2 font-semibold w-16">Qtd</th>
+                  <th className="text-center px-3 py-2 font-semibold w-16">Un.</th>
+                  <th className="text-right px-3 py-2 font-semibold w-24">Vl. unit.</th>
+                  <th className="text-right px-3 py-2 rounded-tr-md font-semibold w-28">Subtotal</th>
                 </tr>
               </thead>
               <tbody>
+                {items.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-3 text-center text-slate-400 border-b border-slate-100">
+                      Sem itens lançados
+                    </td>
+                  </tr>
+                )}
                 {items.map((it, i) => (
-                  <tr
-                    key={it.id}
-                    className={`border-b border-slate-100 ${
-                      i % 2 === 0 ? "" : "bg-slate-50/60"
-                    }`}
-                  >
-                    <td className="px-3 py-2 font-medium text-slate-700">
+                  <tr key={it.id} className={i % 2 === 0 ? "" : "bg-slate-50"}>
+                    <td className="px-3 py-2 font-medium text-slate-700 border-b border-slate-100">
                       {it.products?.name ?? it.description ?? "—"}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">
-                      {it.quantity.toString().replace(".", ",")}
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-600 border-b border-slate-100">
+                      {dec(it.quantity, 3)}
                     </td>
-                    <td className="px-3 py-2 text-center text-slate-500">{it.unit ?? ""}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                    <td className="px-3 py-2 text-center text-slate-500 border-b border-slate-100">
+                      {it.unit ?? ""}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-600 border-b border-slate-100">
                       R$ {formatBRL(it.unit_price)}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-700">
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-700 border-b border-slate-100">
                       R$ {formatBRL(it.total)}
                     </td>
                   </tr>
@@ -425,59 +363,78 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
 
             {/* Total */}
             <div className="flex justify-end mt-2">
-              <div className={`rounded-lg px-5 py-3 text-right ${
-                isClient
-                  ? "bg-emerald-600"
-                  : "bg-amber-600"
-              }`}>
-                <p className="text-[10px] text-white/80 uppercase font-semibold">Valor Total</p>
-                <p className="text-xl font-black text-white tabular-nums mt-0.5">
+              <div
+                className={`rounded-lg px-5 py-2.5 text-right ${
+                  isClient ? "bg-emerald-600" : "bg-amber-600"
+                }`}
+              >
+                <p className="text-[9px] text-white/80 uppercase font-bold tracking-wide">Valor total</p>
+                <p className="text-[20px] font-black text-white tabular-nums leading-none mt-0.5">
                   R$ {formatBRL(order.total_amount)}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Signature / Received by */}
-          <div className="border-t border-slate-200 pt-5 mt-4">
+          {/* ── GPS (informativo) ──────────────────────────────────── */}
+          {order.end_latitude != null && order.end_longitude != null && (
+            <p className="text-[10px] text-slate-500 avoid-break">
+              <span className="font-semibold text-slate-600">Local da finalização (GPS): </span>
+              {Number(order.end_latitude).toFixed(6)}, {Number(order.end_longitude).toFixed(6)}
+              {order.end_location_accuracy != null && (
+                <span className="text-slate-400"> (±{Math.round(Number(order.end_location_accuracy))} m)</span>
+              )}
+              <a
+                href={`https://maps.google.com/?q=${order.end_latitude},${order.end_longitude}`}
+                target="_blank"
+                rel="noreferrer"
+                className="no-print ml-2 text-produmar-700 underline"
+              >
+                Ver no mapa
+              </a>
+            </p>
+          )}
+
+          {/* ── Assinatura / Recebimento ───────────────────────────── */}
+          <div className="border-t border-slate-200 pt-4 avoid-break">
             {order.received_by ? (
-              <div className="text-xs">
-                {order.signature && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={order.signature}
-                    alt="Assinatura"
-                    className="h-16 object-contain mb-1"
-                  />
-                )}
-                <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">
-                  {order.signature ? "Assinatura — recebido por" : "Recebido por"}
-                </p>
-                <p className="font-semibold text-slate-700 text-sm">{order.received_by}</p>
-                <p className="text-slate-400 mt-0.5">Data: {formatDate(order.delivery_date)}</p>
+              <div className="flex items-end justify-between gap-6">
+                <div>
+                  {order.signature && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={order.signature} alt="Assinatura" className="h-14 object-contain mb-1" />
+                  )}
+                  <div className="border-t border-slate-400 w-56 pt-1">
+                    <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">
+                      Recebido por
+                    </p>
+                    <p className="font-semibold text-slate-700 text-[12px]">{order.received_by}</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400">Data: {formatDate(order.delivery_date)}</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-8 text-xs text-slate-500">
-                <div>
-                  <div className="h-10 border-b border-dashed border-slate-400 mb-1" />
-                  <p>Assinatura / Nome do recebedor</p>
+              <div className="grid grid-cols-2 gap-10 text-[10px] text-slate-500 pt-6">
+                <div className="border-t border-dashed border-slate-400 pt-1">
+                  Assinatura / Nome do recebedor
                 </div>
-                <div>
-                  <div className="h-10 border-b border-dashed border-slate-400 mb-1" />
-                  <p>Data de recebimento</p>
-                </div>
+                <div className="border-t border-dashed border-slate-400 pt-1">Data de recebimento</div>
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="border-t border-slate-100 pt-3 text-[10px] text-slate-400 text-center">
-            Documento gerado em {new Date().toLocaleDateString("pt-BR", {
-              day: "2-digit", month: "long", year: "numeric",
-              hour: "2-digit", minute: "2-digit",
-            })} — PRODUMAR — OS #{String(order.order_number).padStart(4, "0")}
+          <div className="border-t border-slate-100 pt-2 text-[9px] text-slate-400 text-center">
+            Documento gerado em{" "}
+            {new Date().toLocaleDateString("pt-BR", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            — PRODUMAR — {docLabel} #{String(order.order_number).padStart(4, "0")}
           </div>
-
         </div>
       </div>
     </>
@@ -486,19 +443,11 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function Row({
-  label,
-  value,
-  full,
-}: {
-  label: string;
-  value: string;
-  full?: boolean;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className={full ? "col-span-2" : ""}>
-      <span className="text-[10px] text-slate-400 block">{label}</span>
-      <span className="font-semibold text-slate-700">{value || "—"}</span>
+    <div className="border border-slate-200 rounded-lg p-2.5">
+      <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide mb-0.5">{label}</p>
+      <p className="font-semibold text-slate-700 leading-snug">{children}</p>
     </div>
   );
 }

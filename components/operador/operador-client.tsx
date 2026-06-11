@@ -117,17 +117,20 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
   }
 
   async function handleIniciar(o: OrderWithDetails) {
-    // Viagem e diária começam anotando km + hora; km e OS antigas são 1 toque,
-    // mas a hora de início é registrada do mesmo jeito (relógio do celular).
-    const needsStartData =
-      o.billing_mode === "viagem" || o.billing_mode === "diaria";
-    if (needsStartData) {
+    // Todo frete (viagem/km/diária) anota o km do veículo + a hora na saída —
+    // o km de chegada no fim é o que fecha o cálculo. OS sem cobrança são
+    // 1 toque, mas a hora de início é registrada do mesmo jeito.
+    if (o.billing_mode) {
       setStartTarget(o);
       return;
     }
     const startTime = nowHHMM();
     startTransition(async () => {
-      await startServiceOrder(o.id, { startTime });
+      const result = await startServiceOrder(o.id, { startTime });
+      if (result && "error" in result) {
+        alert(result.error ?? "Não foi possível iniciar. Tente de novo.");
+        return;
+      }
       setOrders((prev) =>
         prev.map((x) =>
           x.id === o.id ? { ...x, status: "em_andamento", start_time: startTime } : x
@@ -140,6 +143,7 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
   // Atualização otimista + reconciliação com o valor gravado no banco; a hora
   // de cada viagem vai para o log (service_order_trips).
   function handleTrip(o: OrderWithDetails, delta: 1 | -1) {
+    const prevTrips = o.trips_count ?? 0;
     setOrders((prev) =>
       prev.map((x) =>
         x.id === o.id
@@ -149,7 +153,15 @@ export function OperadorClient({ orders: initialOrders, operadorName }: Props) {
     );
     startTransition(async () => {
       const result = await registerTrip(o.id, delta, delta === 1 ? nowHHMM() : null);
-      if ("trips" in result && result.trips != null) {
+      if ("error" in result) {
+        // Desfaz a contagem otimista e avisa
+        setOrders((prev) =>
+          prev.map((x) => (x.id === o.id ? { ...x, trips_count: prevTrips } : x))
+        );
+        alert(result.error ?? "Não foi possível marcar a viagem. Tente de novo.");
+        return;
+      }
+      if (result.trips != null) {
         const trips = result.trips;
         setOrders((prev) =>
           prev.map((x) => (x.id === o.id ? { ...x, trips_count: trips } : x))
@@ -299,11 +311,11 @@ function instruction(o: OrderWithDetails): string {
   if (o.status === "pendente") {
     if (mode === "viagem") return "Vai sair? Toque em INICIAR e anote o km e a hora.";
     if (mode === "diaria") return "Vai começar? Toque em INICIAR e anote o km e a hora.";
-    if (mode === "km")     return "Toque em INICIAR quando sair. Os km você anota no final.";
+    if (mode === "km")     return "Vai sair? Toque em INICIAR e anote o km e a hora.";
     return "Toque em INICIAR quando começar este serviço.";
   }
   if (mode === "viagem") return "Fez uma viagem? Toque em +1 VIAGEM. Terminou tudo? FINALIZAR.";
-  if (mode === "km")     return "Terminou? Toque em FINALIZAR: anote os km e peça a assinatura.";
+  if (mode === "km")     return "Terminou? Toque em FINALIZAR: anote o km de chegada e peça a assinatura.";
   if (mode === "diaria") return "Fim do dia? Toque em FINALIZAR: anote o km e peça a assinatura.";
   return "Terminou? Toque em FINALIZAR para encerrar.";
 }

@@ -3,13 +3,13 @@
 -- ============================================================================
 -- Execute no SQL Editor do Supabase (Dashboard → SQL Editor → New Query → Run)
 -- ============================================================================
--- Conceito:
---   • billing_mode  = como o frete é cobrado: 'viagem' (valor fixo),
---                     'km' (R$/km × km rodado) ou 'diaria' (valor × nº viagens).
---                     NULL = OS antiga ou prestação de serviço (fluxo atual).
+-- Conceito (semântica atual — ver tipo "frete" na migration 017):
+--   • billing_mode  = como o frete é cobrado: 'viagem' (valor × nº de viagens),
+--                     'km' (R$/km × km rodado) ou 'diaria' (valor fixo do dia).
+--                     NULL = entrega só de material ou prestação de serviço.
 --   • freight_value = valor unitário definido por quem abre a OS:
 --                     viagem → valor da viagem; km → valor do km;
---                     diária → valor por viagem dentro da diária.
+--                     diária → valor fixo da diária.
 --   • O frete entra como ITEM da OS (is_freight = true, product_id null) —
 --     o trigger recalc_service_order_total soma no total e a baixa de
 --     estoque ignora (filtra product_id is not null).

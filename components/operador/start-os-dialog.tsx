@@ -51,6 +51,8 @@ export function StartOSDialog({ order, open, onClose, onStarted }: Props) {
   const [isPending, startTransition] = useTransition();
 
   const isDiaria = order.billing_mode === "diaria";
+  const isViagem = order.billing_mode === "viagem";
+  const startTitle = isDiaria ? "Iniciar diária" : isViagem ? "Iniciar viagem" : "Iniciar saída";
 
   // Pré-preenche a hora com agora toda vez que abre
   useEffect(() => {
@@ -93,7 +95,7 @@ export function StartOSDialog({ order, open, onClose, onStarted }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl dark:text-slate-100">
             <PlayCircle className="w-6 h-6 text-produmar-600" />
-            {isDiaria ? "Iniciar diária" : "Iniciar viagem"} — OS #{order.order_number}
+            {startTitle} — OS #{order.order_number}
           </DialogTitle>
         </DialogHeader>
 

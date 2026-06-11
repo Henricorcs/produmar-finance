@@ -41,6 +41,18 @@ function parseLocalDate(date: string | Date): Date {
   return new Date(date);
 }
 
+/**
+ * Data de hoje em YYYY-MM-DD no fuso LOCAL (do dispositivo). Evita o bug de
+ * `new Date().toISOString()`, que devolve UTC — depois das 21h (BRT) o ISO já
+ * está no dia seguinte. Use sempre que a data precisar bater com o relógio de
+ * quem está usando o app (celular do técnico, navegador do escritório).
+ */
+export function localDateISO(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
 export function formatDate(date: string | Date): string {
   return new Intl.DateTimeFormat("pt-BR").format(parseLocalDate(date));
 }

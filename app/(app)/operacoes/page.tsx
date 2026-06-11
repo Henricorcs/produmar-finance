@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { OperacoesPageClient } from "@/components/operacoes/operacoes-page-client";
 import type {
@@ -25,6 +26,20 @@ export default async function OperacoesPage({
   searchParams: { m?: string; filter?: string };
 }) {
   const supabase = createClient();
+
+  // Técnico (operador) não gerencia OS — só executa pelo painel /operador.
+  // O menu já esconde esta rota; aqui garantimos no servidor (acesso por URL).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (profile?.role === "operador") redirect("/operador");
+  }
 
   const today = new Date();
   const month =
@@ -55,10 +70,28 @@ export default async function OperacoesPage({
       supabase.from("product_stock_balance").select("*"),
     ]);
 
+  // Inclui máquinas inativas que estão em uso por alguma OS do período — senão
+  // a edição perde a máquina e, com ela, o modo de precificação (horímetro/km).
+  const activeMachines = (machinesRes.data as Machine[]) ?? [];
+  const orders = (ordersRes.data as ServiceOrderWithDetails[]) ?? [];
+  const activeIds = new Set(activeMachines.map((m) => m.id));
+  const missingIds = [
+    ...new Set(
+      orders.map((o) => o.machine_id).filter((id): id is string => !!id && !activeIds.has(id))
+    ),
+  ];
+  let machines = activeMachines;
+  if (missingIds.length > 0) {
+    const { data: extra } = await supabase.from("machines").select("*").in("id", missingIds);
+    machines = [...activeMachines, ...((extra as Machine[]) ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+  }
+
   return (
     <OperacoesPageClient
-      orders={(ordersRes.data as ServiceOrderWithDetails[]) ?? []}
-      machines={(machinesRes.data as Machine[]) ?? []}
+      orders={orders}
+      machines={machines}
       products={(productsRes.data as Product[]) ?? []}
       pickupLocations={(locationsRes.data as PickupLocation[]) ?? []}
       categories={(categoriesRes.data as Category[]) ?? []}

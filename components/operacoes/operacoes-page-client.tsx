@@ -30,7 +30,7 @@ import {
   generateTransactionFromOrder,
   updateServiceOrderStatus,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatBRLCompact, formatDate, osBillingLabel, osStatusLabel } from "@/lib/utils";
+import { formatBRL, formatBRLCompact, formatDate, localDateISO, osBillingLabel, osStatusLabel } from "@/lib/utils";
 import type {
   Category,
   CostCenter,
@@ -230,7 +230,25 @@ export function OperacoesPageClient({
   }
 
   async function handleStatusChange(o: ServiceOrderWithDetails, next: ServiceOrderStatus) {
-    await updateServiceOrderStatus(o.id, next);
+    // Não deixa o atalho ✓ "entregar" uma OS que ainda precisa de fechamento
+    // (km/viagens do frete ou horímetro do serviço) — senão ela fica entregue
+    // com a linha de frete/serviço zerada. Abre a OS para finalizar direito.
+    if (next === "entregue") {
+      const needsClosing =
+        (!!o.billing_mode && o.km_end == null) ||
+        (o.type === "prestacao_servico" &&
+          o.hourmeter_start != null &&
+          o.hourmeter_end == null);
+      if (needsClosing) {
+        alert(
+          "Esta OS precisa ser finalizada com os dados do técnico (km / viagens / horímetro). Abra a OS para preencher e finalizar."
+        );
+        openEdit(o);
+        return;
+      }
+    }
+    // Data local de quem clica (servidor é UTC e erra depois das 21h).
+    await updateServiceOrderStatus(o.id, next, next === "entregue" ? localDateISO() : null);
   }
 
   async function handleGenerateTransaction(o: ServiceOrderWithDetails) {
