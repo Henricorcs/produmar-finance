@@ -135,10 +135,6 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
                 Usar último km: {lastKm.toLocaleString("pt-BR")}
               </button>
             )}
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Copie o número que aparece no painel do veículo
-              {lastKm != null ? " ou toque no botão acima" : ""}.
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -152,9 +148,6 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
               onChange={(e) => setTime(e.target.value)}
               className="h-16 text-3xl text-center font-bold tabular-nums"
             />
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Já preenchemos com a hora de agora — só mude se precisar.
-            </p>
           </div>
 
           {error && (
