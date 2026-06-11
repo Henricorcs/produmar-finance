@@ -615,7 +615,14 @@ export function ServiceOrderDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-2xl max-h-[92vh] overflow-y-auto"
+          onInteractOutside={(e) => {
+            // Não fecha a OS quando um sub-dialog (criar carro/local/produto)
+            // está aberto — a interação com o sub-dialog dispara este evento.
+            if (mchDialogOpen || prdDialogOpen || locDialogOpen) e.preventDefault();
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="dark:text-slate-100">
               {order ? `Editar OS #${order.order_number}` : "Nova ordem de serviço"}
