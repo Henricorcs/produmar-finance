@@ -238,12 +238,16 @@ export interface ServiceOrderItem {
   created_at: string;
 }
 
-/** Viagem marcada pelo técnico no modo "por viagem" — guarda o horário de cada uma. */
+/** Viagem marcada pelo técnico no modo "por viagem" — horário e assinatura de cada entrega. */
 export interface ServiceOrderTrip {
   id: string;
   service_order_id: string;
   trip_number: number;
   trip_time: string | null; // HH:MM:SS (relógio do celular do técnico)
+  /** Quem recebeu esta entrega (assinado na hora pelo destinatário). */
+  received_by: string | null;
+  /** Assinatura digital (PNG data-URL) colhida na entrega da viagem. */
+  signature: string | null;
   created_at: string;
 }
 

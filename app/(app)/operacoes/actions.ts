@@ -436,14 +436,16 @@ export async function startServiceOrder(
 }
 
 /**
- * Registro de viagem pelo técnico (modo "por viagem"): cada viagem concluída
- * incrementa o contador da OS em andamento e grava o horário no log
- * (service_order_trips). O frete (viagens × valor) é calculado no fechamento.
+ * Registro de viagem pelo técnico (modo "por viagem"): cada entrega concluída
+ * incrementa o contador da OS em andamento e grava no log o horário e a
+ * assinatura de quem recebeu (colhida na hora pelo destinatário). O frete
+ * (viagens × valor) é calculado no fechamento.
  */
 export async function registerTrip(
   id: string,
   delta: 1 | -1 = 1,
-  tripTime?: string | null
+  tripTime?: string | null,
+  options: { receivedBy?: string | null; signature?: string | null } = {}
 ) {
   const supabase = createClient();
 
@@ -454,15 +456,30 @@ export async function registerTrip(
   });
   if (error || trips == null) return { error: error?.message ?? "OS não encontrada" };
 
-  // Log de horários (best-effort): não quebra a marcação caso a tabela ainda
-  // não exista (migration 016 não aplicada no Supabase).
+  // Log de horários/assinaturas (best-effort): não quebra a marcação caso a
+  // tabela/colunas ainda não existam (migrations 016/020 não aplicadas).
   if (delta === 1) {
-    const { error: logErr } = await supabase.from("service_order_trips").insert({
+    const baseRow = {
       service_order_id: id,
       trip_number: trips,
       trip_time: tripTime?.trim() || null,
+    };
+    const { error: logErr } = await supabase.from("service_order_trips").insert({
+      ...baseRow,
+      received_by: options.receivedBy?.trim()
+        ? options.receivedBy.trim().toUpperCase()
+        : null,
+      signature: options.signature || null,
     });
-    if (logErr) console.error("Falha ao gravar horário da viagem:", logErr.message);
+    if (logErr) {
+      // Migration 020 ausente (colunas novas não existem): salva ao menos o
+      // horário, no formato antigo.
+      const { error: legacyErr } = await supabase
+        .from("service_order_trips")
+        .insert(baseRow);
+      if (legacyErr)
+        console.error("Falha ao gravar entrega da viagem:", logErr.message);
+    }
   } else {
     const { data: last } = await supabase
       .from("service_order_trips")
@@ -579,9 +596,6 @@ export async function finalizeServiceOrder(
 ) {
   const supabase = createClient();
 
-  const trimmed = receivedBy.trim();
-  if (!trimmed) return { error: "Informe o nome de quem recebeu" };
-
   // Busca a OS para saber se é prestação de serviço por horímetro a fechar.
   const { data: order, error: fetchErr } = await supabase
     .from("service_orders")
@@ -589,6 +603,25 @@ export async function finalizeServiceOrder(
     .eq("id", id)
     .single();
   if (fetchErr || !order) return { error: "OS não encontrada" };
+
+  const mode = order.type !== "prestacao_servico" ? order.billing_mode : null;
+
+  // No modo viagem cada entrega já foi assinada na hora (service_order_trips),
+  // então o fechamento não exige nome/assinatura final — se vier vazio, usa o
+  // nome da última entrega assinada como referência no comprovante.
+  let trimmed = receivedBy.trim();
+  if (!trimmed) {
+    if (mode !== "viagem") return { error: "Informe o nome de quem recebeu" };
+    const { data: lastSigned } = await supabase
+      .from("service_order_trips")
+      .select("received_by")
+      .eq("service_order_id", id)
+      .not("received_by", "is", null)
+      .order("trip_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    trimmed = lastSigned?.received_by || "ENTREGAS ASSINADAS POR VIAGEM";
+  }
 
   // Ao finalizar, a data de entrega passa a ser a data real (hoje),
   // sobrescrevendo a previsão. Usa a data do celular do técnico (finishedDate);
@@ -609,11 +642,11 @@ export async function finalizeServiceOrder(
   // O item de frete (is_freight) é recriado aqui para refletir o cálculo final.
   // Keyed no billing_mode (não no type) para cobrir OS antigas de entrega de
   // material que usavam cobrança antes do tipo "frete" existir.
-  const mode = order.type !== "prestacao_servico" ? order.billing_mode : null;
   if (mode) {
-    // Assinatura obrigatória só quando há cliente externo recebendo; em frete
-    // interno (entre obras da própria empresa) não há terceiro para assinar.
-    if (order.freight_type === "cliente" && !options.signature)
+    // Assinatura final obrigatória só para cliente externo nos modos km e
+    // diária. No modo viagem cada entrega já foi assinada na hora; em frete
+    // interno não há terceiro para assinar.
+    if (mode !== "viagem" && order.freight_type === "cliente" && !options.signature)
       return { error: "A assinatura de quem recebeu é obrigatória" };
 
     const kmStart = options.kmStart ?? order.km_start;

@@ -23,6 +23,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onStarted: (orderId: string) => void;
+  /** Último km conhecido deste veículo (da OS mais recente com km anotado). */
+  lastKm?: number | null;
 }
 
 // KM do veículo: dígitos + uma vírgula com 1 casa no máximo.
@@ -44,7 +46,7 @@ function nowHHMM(): string {
  * Início de OS por viagem/diária: o técnico anota o KM do veículo e a hora
  * de saída/início. Campos grandes, pensados para celular e baixa visão.
  */
-export function StartOSDialog({ order, open, onClose, onStarted }: Props) {
+export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props) {
   const [km, setKm]               = useState("");
   const [time, setTime]           = useState("");
   const [error, setError]         = useState<string | null>(null);
@@ -124,8 +126,18 @@ export function StartOSDialog({ order, open, onClose, onStarted }: Props) {
               autoFocus
               className="h-16 text-3xl text-center font-bold tabular-nums"
             />
+            {lastKm != null && (
+              <button
+                type="button"
+                onClick={() => setKm(String(lastKm).replace(".", ","))}
+                className="w-full h-12 rounded-xl border-2 border-dashed border-produmar-300 dark:border-produmar-700 text-produmar-700 dark:text-produmar-300 font-semibold text-base active:bg-produmar-50 dark:active:bg-produmar-950/30 transition-colors tabular-nums"
+              >
+                Usar último km: {lastKm.toLocaleString("pt-BR")}
+              </button>
+            )}
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Copie o número que aparece no painel do veículo.
+              Copie o número que aparece no painel do veículo
+              {lastKm != null ? " ou toque no botão acima" : ""}.
             </p>
           </div>
 

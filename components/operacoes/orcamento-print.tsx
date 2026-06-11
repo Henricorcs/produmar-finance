@@ -76,10 +76,12 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
       ? order.km_end - order.km_start
       : null;
 
-  const tripTimes = (order.service_order_trips ?? [])
-    .filter((t) => t.trip_time)
-    .sort((a, b) => a.trip_number - b.trip_number)
-    .map((t) => t.trip_time!.slice(0, 5));
+  // Log das entregas do modo "por viagem": horário + quem recebeu + assinatura
+  // colhida na hora de cada entrega (migration 020).
+  const tripLog = (order.service_order_trips ?? [])
+    .filter((t) => t.trip_time || t.received_by || t.signature)
+    .sort((a, b) => a.trip_number - b.trip_number);
+  const isViagemAssinada = order.billing_mode === "viagem" && tripLog.length > 0;
 
   // ── Métricas operacionais (só o que existe) ────────────────────────────────
   const metrics: { label: string; value: string }[] = [];
@@ -308,12 +310,43 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                   </div>
                 ))}
               </div>
-              {tripTimes.length > 0 && (
-                <p className="mt-2 text-[10px] text-slate-500 tabular-nums">
-                  <span className="text-slate-400">Horário de cada viagem: </span>
-                  {tripTimes.join(" · ")}
-                </p>
-              )}
+            </div>
+          )}
+
+          {/* ── Entregas por viagem (hora + quem recebeu + assinatura) ── */}
+          {tripLog.length > 0 && (
+            <div className="rounded-lg border border-slate-200 overflow-hidden avoid-break">
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-500">
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-16">Viagem</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-14">Hora</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide">Recebido por</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-36">Assinatura</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tripLog.map((t) => (
+                    <tr key={t.id} className="border-t border-slate-100">
+                      <td className="px-3 py-1 font-bold text-slate-600 tabular-nums">{t.trip_number}ª</td>
+                      <td className="px-3 py-1 text-slate-600 tabular-nums">
+                        {t.trip_time ? t.trip_time.slice(0, 5) : "—"}
+                      </td>
+                      <td className="px-3 py-1 font-semibold text-slate-700">
+                        {t.received_by ?? "—"}
+                      </td>
+                      <td className="px-3 py-1">
+                        {t.signature ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={t.signature} alt={`Assinatura da ${t.trip_number}ª viagem`} className="h-7 object-contain" />
+                        ) : (
+                          <span className="text-[9px] font-bold text-amber-600 uppercase">Não assinada</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 
@@ -397,7 +430,17 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
 
           {/* ── Assinatura / Recebimento ───────────────────────────── */}
           <div className="border-t border-slate-200 pt-4 avoid-break">
-            {order.received_by ? (
+            {isViagemAssinada ? (
+              <div className="flex items-center justify-between text-[10px] text-slate-500">
+                <p>
+                  <span className="font-semibold text-slate-600">Recebimento: </span>
+                  cada viagem foi assinada na entrega — ver tabela de viagens acima.
+                </p>
+                {order.status === "entregue" && (
+                  <p>Data: {formatDate(order.delivery_date)}</p>
+                )}
+              </div>
+            ) : order.received_by ? (
               <div className="flex items-end justify-between gap-6">
                 <div>
                   {order.signature && (

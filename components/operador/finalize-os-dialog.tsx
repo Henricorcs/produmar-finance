@@ -77,6 +77,9 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   // o km inicial aqui quando ele faltar — OS antiga ou iniciada pelo escritório.
   const showKmStartInput = !!billingMode && order.km_start == null;
   const isClient = order.freight_type === "cliente";
+  // No modo viagem cada entrega já foi assinada na hora (dialog "Entregar
+  // viagem") — o fechamento pede só o KM final, sem nome/assinatura.
+  const isViagem = billingMode === "viagem";
 
   const [receivedBy, setReceivedBy]   = useState("");
   const [hourmeterStart, setHourmeterStart] = useState("");
@@ -181,7 +184,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!receivedBy.trim()) {
+    if (!isViagem && !receivedBy.trim()) {
       setError("Escreva o nome de quem recebeu");
       return;
     }
@@ -216,8 +219,9 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         setError("Conte quantas viagens você fez — toque no botão +");
         return;
       }
-      // Assinatura obrigatória só quando é cliente externo recebendo.
-      if (isClient && !signature) {
+      // Assinatura final obrigatória só para cliente externo nos modos km e
+      // diária — no modo viagem cada entrega já foi assinada na hora.
+      if (!isViagem && isClient && !signature) {
         setError("Peça para quem recebeu assinar no quadro");
         return;
       }
@@ -268,9 +272,15 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                 <p className="font-semibold text-slate-800 dark:text-slate-100">
                   OS #{order.order_number} finalizada!
                 </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                  Recebido por: <span className="font-medium">{receivedBy.toUpperCase()}</span>
-                </p>
+                {receivedBy.trim() ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    Recebido por: <span className="font-medium">{receivedBy.toUpperCase()}</span>
+                  </p>
+                ) : isViagem ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    {trips} {trips === 1 ? "viagem entregue e assinada" : "viagens entregues e assinadas"}
+                  </p>
+                ) : null}
               </div>
               {signature && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -542,32 +552,43 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="received_by_input" className="text-base">
-                Nome de quem recebeu <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="received_by_input"
-                value={receivedBy}
-                onChange={(e) => setReceivedBy(e.target.value)}
-                placeholder="ex: JOÃO DA SILVA"
-                className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
-                autoComplete="off"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-base">
-                Assinatura de quem recebeu
-                {billingMode && isClient ? <span className="text-red-500"> *</span> : null}
-              </Label>
-              <SignaturePad onChange={setSignature} />
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                {billingMode && isClient
-                  ? "Obrigatória: toque em “Assinar” e entregue o celular para a pessoa assinar."
-                  : "Toque em “Assinar” para abrir o quadro em tela cheia (opcional)."}
+            {/* Nome + assinatura final — dispensados no modo viagem (cada
+                entrega já foi assinada na hora pelo destinatário). */}
+            {isViagem ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5">
+                As entregas já foram assinadas em cada viagem — aqui é só
+                conferir o KM e fechar.
               </p>
-            </div>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="received_by_input" className="text-base">
+                    Nome de quem recebeu <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="received_by_input"
+                    value={receivedBy}
+                    onChange={(e) => setReceivedBy(e.target.value)}
+                    placeholder="ex: JOÃO DA SILVA"
+                    className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-base">
+                    Assinatura de quem recebeu
+                    {billingMode && isClient ? <span className="text-red-500"> *</span> : null}
+                  </Label>
+                  <SignaturePad onChange={setSignature} />
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    {billingMode && isClient
+                      ? "Obrigatória: toque em “Assinar” e entregue o celular para a pessoa assinar."
+                      : "Toque em “Assinar” para abrir o quadro em tela cheia (opcional)."}
+                  </p>
+                </div>
+              </>
+            )}
 
             {/* Localização automática — só informativo, não bloqueia nada */}
             <p className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">

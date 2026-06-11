@@ -45,10 +45,31 @@ export default async function OperadorPage() {
     }
   }
 
+  // Último km conhecido de cada veículo (facilita o Iniciar: o técnico usa o
+  // botão "Usar último km" em vez de digitar). Vem da OS mais recente daquele
+  // veículo que tenha km anotado — preferindo o km de chegada.
+  const machineIds = [...new Set(list.map((o) => o.machine_id).filter((id): id is string => !!id))];
+  const lastKmByMachine: Record<string, number> = {};
+  if (machineIds.length > 0) {
+    const { data: kmRows } = await supabase
+      .from("service_orders")
+      .select("machine_id, km_start, km_end, updated_at")
+      .in("machine_id", machineIds)
+      .or("km_end.not.is.null,km_start.not.is.null")
+      .order("updated_at", { ascending: false })
+      .limit(200);
+    for (const row of (kmRows as Pick<ServiceOrder, "machine_id" | "km_start" | "km_end">[]) ?? []) {
+      if (!row.machine_id || lastKmByMachine[row.machine_id] != null) continue;
+      const km = row.km_end ?? row.km_start;
+      if (km != null) lastKmByMachine[row.machine_id] = Number(km);
+    }
+  }
+
   return (
     <OperadorClient
       orders={list}
       operadorName={user.user_metadata?.name ?? user.email ?? "Operador"}
+      lastKmByMachine={lastKmByMachine}
     />
   );
 }
