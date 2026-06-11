@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Eraser, PenLine, Check, X } from "lucide-react";
+import { Eraser, PenLine, Check } from "lucide-react";
 
 interface Props {
   /** Recebe o PNG (data-URL) confirmado, ou null quando não há assinatura. */
@@ -148,27 +148,14 @@ function SignatureOverlay({
 
   return (
     <div className="fixed inset-0 z-[80] bg-black flex flex-col">
-      {/* Topo */}
+      {/* Quadro de assinatura — ocupa tudo até os botões */}
       <div
-        className="flex items-center justify-between px-4 py-3"
-        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+        className="relative flex-1 min-h-0"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
-        <span className="text-sm text-white/80">Assine no quadro branco</span>
-        <button
-          type="button"
-          onClick={onCancel}
-          aria-label="Cancelar"
-          className="p-2 -mr-2 text-white/70 hover:text-white"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Quadro de assinatura */}
-      <div className="relative flex-1 px-3 min-h-0">
         <canvas
           ref={canvasRef}
-          className="w-full h-full bg-white rounded-2xl touch-none cursor-crosshair"
+          className="w-full h-full bg-white touch-none cursor-crosshair"
           onPointerDown={start}
           onPointerMove={move}
           onPointerUp={end}
@@ -176,13 +163,13 @@ function SignatureOverlay({
           onPointerLeave={end}
         />
         {empty && (
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-300 select-none">
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-2xl text-slate-300 select-none">
             Assine aqui
           </span>
         )}
       </div>
 
-      {/* Ações */}
+      {/* Apenas dois botões */}
       <div
         className="flex gap-3 p-4"
         style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
@@ -190,17 +177,17 @@ function SignatureOverlay({
         <button
           type="button"
           onClick={clear}
-          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl border border-white/30 text-white font-medium active:bg-white/10 transition-colors"
+          className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl border border-white/30 text-white text-lg font-medium active:bg-white/10 transition-colors"
         >
-          <Eraser className="w-4 h-4" />
+          <Eraser className="w-5 h-5" />
           Limpar
         </button>
         <button
           type="button"
           onClick={ok}
-          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors"
+          className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-lg font-semibold transition-colors"
         >
-          <Check className="w-4 h-4" />
+          <Check className="w-5 h-5" />
           OK
         </button>
       </div>
