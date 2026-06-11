@@ -20,14 +20,20 @@ import {
   Route,
   CalendarDays,
   Minus,
-  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FinalizeOSDialog } from "./finalize-os-dialog";
 import { StartOSDialog } from "./start-os-dialog";
-import { TripDeliveryDialog } from "./trip-delivery-dialog";
-import { registerTrip, startServiceOrder } from "@/app/(app)/operacoes/actions";
+import { TripStartDialog } from "./trip-start-dialog";
+import { TripFinishDialog } from "./trip-finish-dialog";
+import {
+  startTrip,
+  finishTrip,
+  cancelOpenTrip,
+  removeLastTrip,
+  startServiceOrder,
+} from "@/app/(app)/operacoes/actions";
 import { osStatusLabel } from "@/lib/utils";
 import type {
   ServiceBillingMode,
@@ -103,7 +109,11 @@ export function OperadorClient({
   const [orders, setOrders] = useState(initialOrders);
   const [finalizeTarget, setFinalizeTarget] = useState<OrderWithDetails | null>(null);
   const [startTarget, setStartTarget] = useState<OrderWithDetails | null>(null);
-  const [tripTarget, setTripTarget] = useState<OrderWithDetails | null>(null);
+  const [tripStartTarget, setTripStartTarget] = useState<OrderWithDetails | null>(null);
+  const [tripFinishTarget, setTripFinishTarget] = useState<{
+    order: OrderWithDetails;
+    openTrip: ServiceOrderTrip;
+  } | null>(null);
   const [, startTransition] = useTransition();
 
   // Reconcilia o estado local com os dados do servidor (após revalidação/refresh).
@@ -147,11 +157,25 @@ export function OperadorClient({
     });
   }
 
-  // Modo "por viagem": cada entrega é registrada pelo dialog (nome + assinatura
-  // de quem recebeu, colhidos na hora). Chamado pelo TripDeliveryDialog.
-  async function handleTripDelivery(
+  // Modo "por viagem": cada viagem tem início e fim.
+  // Iniciar viagem (de onde) — chamado pelo TripStartDialog.
+  async function handleStartTrip(
+    o: OrderWithDetails,
+    data: { origin: string | null }
+  ): Promise<string | null> {
+    const result = await startTrip(o.id, { origin: data.origin, startTime: nowHHMM() });
+    if ("error" in result) {
+      return result.error ?? "Não foi possível iniciar a viagem. Tente de novo.";
+    }
+    router.refresh();
+    return null;
+  }
+
+  // Finalizar viagem (onde foi entregue + assinatura) — pelo TripFinishDialog.
+  async function handleFinishTrip(
     o: OrderWithDetails,
     data: {
+      destination: string | null;
       receivedBy: string | null;
       signature: string | null;
       latitude: number | null;
@@ -159,9 +183,9 @@ export function OperadorClient({
       locationAccuracy: number | null;
     }
   ): Promise<string | null> {
-    const result = await registerTrip(o.id, 1, nowHHMM(), data);
+    const result = await finishTrip(o.id, { ...data, finishTime: nowHHMM() });
     if ("error" in result) {
-      return result.error ?? "Não foi possível registrar a entrega. Tente de novo.";
+      return result.error ?? "Não foi possível finalizar a viagem. Tente de novo.";
     }
     if (result.trips != null) {
       const trips = result.trips;
@@ -169,16 +193,28 @@ export function OperadorClient({
         prev.map((x) => (x.id === o.id ? { ...x, trips_count: trips } : x))
       );
     }
-    // Recarrega para trazer o log das entregas (horário/assinatura)
     router.refresh();
     return null;
   }
 
-  // "−" corrige a contagem removendo a última entrega registrada (e a
-  // assinatura dela) — por isso pede confirmação.
-  function handleTripRemove(o: OrderWithDetails) {
+  // Cancela a viagem em andamento (não conta) — com confirmação.
+  function handleCancelTrip(o: OrderWithDetails) {
+    const ok = confirm("Cancelar a viagem em andamento?\n\nO registro dela será apagado.");
+    if (!ok) return;
+    startTransition(async () => {
+      const result = await cancelOpenTrip(o.id);
+      if ("error" in result) {
+        alert(result.error ?? "Não foi possível cancelar. Tente de novo.");
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  // "−" remove a última viagem ENTREGUE (e sua assinatura) — com confirmação.
+  function handleRemoveTrip(o: OrderWithDetails) {
     const ok = confirm(
-      "Tirar a última viagem?\n\nO registro dela (horário e assinatura) será apagado."
+      "Tirar a última viagem entregue?\n\nO registro dela (assinatura e local) será apagado."
     );
     if (!ok) return;
     const prevTrips = o.trips_count ?? 0;
@@ -190,7 +226,7 @@ export function OperadorClient({
       )
     );
     startTransition(async () => {
-      const result = await registerTrip(o.id, -1, null);
+      const result = await removeLastTrip(o.id);
       if ("error" in result) {
         setOrders((prev) =>
           prev.map((x) => (x.id === o.id ? { ...x, trips_count: prevTrips } : x))
@@ -200,6 +236,18 @@ export function OperadorClient({
       }
       router.refresh();
     });
+  }
+
+  // Antes de fechar a OS por viagem, exige que não haja viagem em andamento.
+  function handleFinalizar(o: OrderWithDetails) {
+    const openTrip = (o.service_order_trips ?? []).find((t) => !t.trip_time);
+    if (o.billing_mode === "viagem" && openTrip) {
+      alert(
+        "Há uma viagem em andamento. Finalize ou cancele essa viagem antes de fechar a OS."
+      );
+      return;
+    }
+    setFinalizeTarget(o);
   }
 
   return (
@@ -255,9 +303,13 @@ export function OperadorClient({
                 key={o.id}
                 order={o}
                 onIniciar={handleIniciar}
-                onFinalizar={setFinalizeTarget}
-                onDeliverTrip={setTripTarget}
-                onRemoveTrip={handleTripRemove}
+                onFinalizar={handleFinalizar}
+                onStartTrip={setTripStartTarget}
+                onFinishTrip={(order, openTrip) =>
+                  setTripFinishTarget({ order, openTrip })
+                }
+                onCancelTrip={handleCancelTrip}
+                onRemoveTrip={handleRemoveTrip}
               />
             ))}
           </div>
@@ -277,9 +329,13 @@ export function OperadorClient({
                 key={o.id}
                 order={o}
                 onIniciar={handleIniciar}
-                onFinalizar={setFinalizeTarget}
-                onDeliverTrip={setTripTarget}
-                onRemoveTrip={handleTripRemove}
+                onFinalizar={handleFinalizar}
+                onStartTrip={setTripStartTarget}
+                onFinishTrip={(order, openTrip) =>
+                  setTripFinishTarget({ order, openTrip })
+                }
+                onCancelTrip={handleCancelTrip}
+                onRemoveTrip={handleRemoveTrip}
               />
             ))}
           </div>
@@ -301,13 +357,24 @@ export function OperadorClient({
         />
       )}
 
-      {/* Trip delivery dialog (modo "por viagem") */}
-      {tripTarget && (
-        <TripDeliveryDialog
-          order={tripTarget}
-          open={!!tripTarget}
-          onClose={() => setTripTarget(null)}
-          onDeliver={(data) => handleTripDelivery(tripTarget, data)}
+      {/* Iniciar viagem (modo "por viagem") */}
+      {tripStartTarget && (
+        <TripStartDialog
+          order={tripStartTarget}
+          open={!!tripStartTarget}
+          onClose={() => setTripStartTarget(null)}
+          onStart={(data) => handleStartTrip(tripStartTarget, data)}
+        />
+      )}
+
+      {/* Finalizar viagem (modo "por viagem") */}
+      {tripFinishTarget && (
+        <TripFinishDialog
+          order={tripFinishTarget.order}
+          openTrip={tripFinishTarget.openTrip}
+          open={!!tripFinishTarget}
+          onClose={() => setTripFinishTarget(null)}
+          onFinish={(data) => handleFinishTrip(tripFinishTarget.order, data)}
         />
       )}
 
@@ -349,33 +416,22 @@ function InfoRow({
   );
 }
 
-// ── Instrução curta por modo/status ──────────────────────────────────────────
-function instruction(o: OrderWithDetails): string {
-  const mode = o.billing_mode; // só OS de frete têm modo de cobrança
-  if (o.status === "pendente") {
-    if (mode === "viagem") return "Vai sair? Toque em INICIAR e anote o km e a hora.";
-    if (mode === "diaria") return "Vai começar? Toque em INICIAR e anote o km e a hora.";
-    if (mode === "km")     return "Vai sair? Toque em INICIAR e anote o km e a hora.";
-    return "Toque em INICIAR quando começar este serviço.";
-  }
-  if (mode === "viagem") return "Entregou? Toque em ENTREGUEI +1 e colha a assinatura. Acabou tudo? FINALIZAR.";
-  if (mode === "km")     return "Terminou? Toque em FINALIZAR: anote o km de chegada e peça a assinatura.";
-  if (mode === "diaria") return "Fim do dia? Toque em FINALIZAR: anote o km e peça a assinatura.";
-  return "Terminou? Toque em FINALIZAR para encerrar.";
-}
-
 // ── OS Card ───────────────────────────────────────────────────────────────────
 function OSCard({
   order: o,
   onIniciar,
   onFinalizar,
-  onDeliverTrip,
+  onStartTrip,
+  onFinishTrip,
+  onCancelTrip,
   onRemoveTrip,
 }: {
   order: OrderWithDetails;
   onIniciar: (o: OrderWithDetails) => void;
   onFinalizar: (o: OrderWithDetails) => void;
-  onDeliverTrip: (o: OrderWithDetails) => void;
+  onStartTrip: (o: OrderWithDetails) => void;
+  onFinishTrip: (o: OrderWithDetails, openTrip: ServiceOrderTrip) => void;
+  onCancelTrip: (o: OrderWithDetails) => void;
   onRemoveTrip: (o: OrderWithDetails) => void;
 }) {
   const isClient   = o.freight_type === "cliente";
@@ -386,11 +442,14 @@ function OSCard({
   // Contador de viagens no cartão (modo "por viagem" em andamento)
   const showTripCounter =
     o.status === "em_andamento" && o.billing_mode === "viagem";
-  const tripsDone = o.trips_count ?? 0;
-  // Entregas registradas (log de "Entregar viagem": horário + quem recebeu)
-  const tripLog = (o.service_order_trips ?? [])
-    .filter((t) => t.trip_time || t.received_by)
+  const allTrips = (o.service_order_trips ?? [])
+    .slice()
     .sort((a, b) => a.trip_number - b.trip_number);
+  // Viagem em andamento = linha sem hora de chegada (trip_time NULL).
+  const openTrip = allTrips.find((t) => !t.trip_time) ?? null;
+  // Viagens já entregues (finalizadas).
+  const finishedTrips = allTrips.filter((t) => t.trip_time);
+  const tripsDone = o.trips_count ?? finishedTrips.length;
 
   // Título: serviço (notes) → descrição → cliente → tipo
   const title =
@@ -547,56 +606,89 @@ function OSCard({
         )}
       </div>
 
-      {/* Contador de viagens (modo "por viagem" em andamento) */}
+      {/* Viagens (modo "por viagem" em andamento): início → fim por viagem */}
       {showTripCounter && (
-        <div className="rounded-xl border-2 border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/20 p-3 space-y-2">
-          <p className="text-sm font-bold text-sky-700 dark:text-sky-300 text-center uppercase tracking-wide">
-            Viagens entregues
-          </p>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => onRemoveTrip(o)}
-              disabled={tripsDone === 0}
-              aria-label="Tirar uma viagem"
-              className="w-14 h-14 rounded-2xl border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 active:bg-slate-100 dark:active:bg-slate-700 disabled:opacity-40 flex-shrink-0"
-            >
-              <Minus className="w-7 h-7" />
-            </button>
-            <div className="text-center min-w-[3.5rem]">
-              <p className="text-4xl font-black tabular-nums text-sky-800 dark:text-sky-200">
-                {tripsDone}
-              </p>
-              <p className="text-xs text-slate-400">
-                {tripsDone === 1 ? "viagem" : "viagens"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onDeliverTrip(o)}
-              className="flex-1 h-14 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
-            >
-              <Plus className="w-6 h-6" />
-              ENTREGUEI +1
-            </button>
+        <div className="rounded-xl border-2 border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/20 p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-sky-700 dark:text-sky-300 uppercase tracking-wide">
+              Viagens entregues
+            </span>
+            <span className="text-3xl font-black tabular-nums text-sky-800 dark:text-sky-200">
+              {tripsDone}
+            </span>
           </div>
-          {tripLog.length > 0 && (
+
+          {openTrip ? (
+            // Viagem em andamento: mostra de onde saiu + botão FINALIZAR
+            <div className="space-y-2">
+              <p className="text-sm text-sky-700 dark:text-sky-300">
+                {openTrip.trip_number}ª viagem em andamento
+                {openTrip.origin ? (
+                  <> — saiu de <span className="font-semibold">{openTrip.origin}</span></>
+                ) : null}
+                {openTrip.start_time ? ` às ${openTrip.start_time.slice(0, 5)}` : ""}
+              </p>
+              <button
+                type="button"
+                onClick={() => onFinishTrip(o, openTrip)}
+                className="w-full h-14 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              >
+                <CheckCircle2 className="w-6 h-6" />
+                FINALIZAR VIAGEM
+              </button>
+              <button
+                type="button"
+                onClick={() => onCancelTrip(o)}
+                className="w-full h-10 rounded-xl text-sm text-slate-500 dark:text-slate-400 active:bg-slate-100 dark:active:bg-slate-800"
+              >
+                Cancelar viagem
+              </button>
+            </div>
+          ) : (
+            // Sem viagem aberta: botão INICIAR + correção da última entregue
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onRemoveTrip(o)}
+                disabled={tripsDone === 0}
+                aria-label="Tirar a última viagem entregue"
+                className="w-14 h-14 rounded-2xl border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 active:bg-slate-100 dark:active:bg-slate-700 disabled:opacity-40 flex-shrink-0"
+              >
+                <Minus className="w-7 h-7" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onStartTrip(o)}
+                className="flex-1 h-14 rounded-2xl bg-produmar-600 hover:bg-produmar-700 text-white text-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              >
+                <PlayCircle className="w-6 h-6" />
+                INICIAR VIAGEM
+              </button>
+            </div>
+          )}
+
+          {finishedTrips.length > 0 && (
             <ul className="space-y-0.5 pt-1">
-              {tripLog.map((t) => (
+              {finishedTrips.map((t) => (
                 <li
                   key={t.id}
-                  className="text-xs text-slate-500 dark:text-slate-400 tabular-nums flex items-center gap-1.5"
+                  className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5"
                 >
-                  <span className="font-semibold text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold text-slate-600 dark:text-slate-300 flex-shrink-0">
                     {t.trip_number}ª
                   </span>
-                  {t.trip_time && <span>{t.trip_time.slice(0, 5)}</span>}
-                  {t.received_by && <span className="truncate">· {t.received_by}</span>}
+                  <span className="truncate">
+                    {t.origin ? `${t.origin} → ` : ""}
+                    {t.destination ?? "—"}
+                  </span>
+                  {t.trip_time && (
+                    <span className="tabular-nums flex-shrink-0">{t.trip_time.slice(0, 5)}</span>
+                  )}
                   {t.signature ? (
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
                   ) : (
-                    <span className="text-amber-600 dark:text-amber-400 flex-shrink-0">
-                      · sem assinatura
+                    <span className="text-amber-600 dark:text-amber-400 flex-shrink-0 whitespace-nowrap">
+                      sem assin.
                     </span>
                   )}
                 </li>

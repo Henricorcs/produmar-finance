@@ -12,14 +12,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SignaturePad } from "./signature-pad";
-import type { ServiceOrder } from "@/lib/types";
+import type { ServiceOrder, ServiceOrderTrip } from "@/lib/types";
 
 interface Props {
   order: ServiceOrder;
+  /** Viagem em andamento sendo finalizada (de onde saiu / nº). */
+  openTrip: ServiceOrderTrip;
   open: boolean;
   onClose: () => void;
-  /** Registra a entrega; resolve com erro (string) ou null em caso de sucesso. */
-  onDeliver: (data: {
+  /** Finaliza a viagem; resolve com erro (string) ou null em caso de sucesso. */
+  onFinish: (data: {
+    destination: string | null;
     receivedBy: string | null;
     signature: string | null;
     latitude: number | null;
@@ -34,27 +37,28 @@ function nowHHMM(): string {
 }
 
 /**
- * Entrega de uma viagem (frete por viagem): a cada entrega, quem recebeu
- * escreve o nome e assina no celular do técnico. Cliente externo: nome +
- * assinatura obrigatórios (com escape "Entregar sem assinatura" confirmado);
- * frete interno: opcionais. Campos grandes para celular e baixa visão.
+ * Fim de UMA viagem (frete por viagem): o operador escreve onde foi entregue,
+ * quem recebeu assina na hora e o GPS é capturado. Cliente externo: nome +
+ * assinatura obrigatórios (com escape "Entregar sem assinatura"); frete interno:
+ * opcionais. Campos grandes para celular e baixa visão.
  */
-export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
+export function TripFinishDialog({ order, openTrip, open, onClose, onFinish }: Props) {
   const isClient = order.freight_type === "cliente";
-  const nextTrip = (order.trips_count ?? 0) + 1;
 
+  const [destination, setDestination] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
   const [signature, setSignature] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Localização automática (GPS do celular) da entrega — capturada assim que o
-  // dialog abre. Best-effort: sem GPS, a entrega é registrada igual.
+  // Localização automática (GPS do celular) da entrega — capturada ao abrir.
+  // Best-effort: sem GPS, a viagem é finalizada igual.
   const [gps, setGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<"buscando" | "ok" | "erro">("buscando");
 
   useEffect(() => {
     if (open) {
+      setDestination("");
       setReceivedBy("");
       setSignature(null);
       setError(null);
@@ -79,7 +83,11 @@ export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
     }
   }, [open]);
 
-  function deliver(skipSignature: boolean) {
+  function finish(skipSignature: boolean) {
+    if (!destination.trim()) {
+      setError("Escreva onde você entregou");
+      return;
+    }
     if (isClient && !skipSignature) {
       if (!receivedBy.trim()) {
         setError("Escreva o nome de quem recebeu");
@@ -98,7 +106,8 @@ export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
     }
     setError(null);
     startTransition(async () => {
-      const err = await onDeliver({
+      const err = await onFinish({
+        destination: destination.trim() || null,
         receivedBy: receivedBy.trim() || null,
         signature: skipSignature ? null : signature,
         latitude: gps?.lat ?? null,
@@ -119,21 +128,44 @@ export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl dark:text-slate-100">
             <PackageCheck className="w-6 h-6 text-sky-600" />
-            Entregar {nextTrip}ª viagem — OS #{order.order_number}
+            Finalizar {openTrip.trip_number}ª viagem — OS #{order.order_number}
           </DialogTitle>
         </DialogHeader>
 
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            deliver(false);
+            finish(false);
           }}
           className="space-y-5"
         >
+          {openTrip.origin && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Saiu de <span className="font-semibold">{openTrip.origin}</span>
+              {openTrip.start_time ? ` às ${openTrip.start_time.slice(0, 5)}` : ""}
+            </p>
+          )}
+
           <p className="flex items-center gap-2 text-base text-slate-600 dark:text-slate-300">
             <Clock className="w-5 h-5 text-slate-400 flex-shrink-0" />
             Hora da entrega: <span className="font-bold tabular-nums">{nowHHMM()}</span>
           </p>
+
+          <div className="space-y-2">
+            <Label htmlFor="trip_destination" className="text-base font-semibold flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-sky-600" />
+              Onde foi entregue?
+            </Label>
+            <Input
+              id="trip_destination"
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+              placeholder="ex: OBRA CENTRO"
+              className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
+              autoComplete="off"
+              autoFocus
+            />
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="trip_received_by" className="text-base font-semibold">
@@ -191,7 +223,7 @@ export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
               ) : (
                 <>
                   <PackageCheck className="w-6 h-6" />
-                  CONFIRMAR ENTREGA
+                  FINALIZAR VIAGEM
                 </>
               )}
             </Button>
@@ -200,7 +232,7 @@ export function TripDeliveryDialog({ order, open, onClose, onDeliver }: Props) {
                 type="button"
                 variant="outline"
                 className="h-12 text-base text-slate-500"
-                onClick={() => deliver(true)}
+                onClick={() => finish(true)}
                 disabled={isPending}
               >
                 Entregar sem assinatura

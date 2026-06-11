@@ -422,32 +422,84 @@ export async function updateServiceOrderStatus(
  */
 export async function startServiceOrder(
   id: string,
-  options: { kmStart?: number | null; startTime?: string | null } = {}
+  options: {
+    kmStart?: number | null;
+    startTime?: string | null;
+    // "De onde" (frete diária/km): o operador informa a origem ao iniciar.
+    origin?: string | null;
+  } = {}
 ) {
   const supabase = createClient();
   const patch: Record<string, unknown> = { status: "em_andamento" };
   if (options.kmStart != null) patch.km_start = options.kmStart;
   if (options.startTime?.trim()) patch.start_time = options.startTime.trim();
+  if (options.origin?.trim()) patch.origin_address = options.origin.trim().toUpperCase();
 
   const { error } = await supabase.from("service_orders").update(patch).eq("id", id);
-  if (error) return { error: error.message };
+  if (error) {
+    // Coluna origin_address ausente (migration 022): tenta sem ela.
+    if (patch.origin_address) {
+      delete patch.origin_address;
+      const { error: retryErr } = await supabase
+        .from("service_orders")
+        .update(patch)
+        .eq("id", id);
+      if (retryErr) return { error: retryErr.message };
+    } else {
+      return { error: error.message };
+    }
+  }
   revalidate();
   return { ok: true };
 }
 
 /**
- * Registro de viagem pelo técnico (modo "por viagem"): cada entrega concluída
- * incrementa o contador da OS em andamento e grava no log o horário e a
- * assinatura de quem recebeu (colhida na hora pelo destinatário). O frete
- * (viagens × valor) é calculado no fechamento.
+ * Início de UMA viagem (modo "por viagem"): o operador informa de onde vai sair
+ * e a hora. Cria uma viagem EM ANDAMENTO (trip_time NULL) — ainda não conta
+ * como entregue; o contador só sobe ao finalizar a viagem. Uma por OS.
  */
-export async function registerTrip(
+export async function startTrip(
   id: string,
-  delta: 1 | -1 = 1,
-  tripTime?: string | null,
+  options: { origin?: string | null; startTime?: string | null } = {}
+) {
+  const supabase = createClient();
+
+  // Próximo número de viagem = maior já registrado + 1.
+  const { data: last } = await supabase
+    .from("service_order_trips")
+    .select("trip_number")
+    .eq("service_order_id", id)
+    .order("trip_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const tripNumber = (last?.trip_number ?? 0) + 1;
+
+  const { error } = await supabase.from("service_order_trips").insert({
+    service_order_id: id,
+    trip_number: tripNumber,
+    start_time: options.startTime?.trim() || null,
+    origin: options.origin?.trim() ? options.origin.trim().toUpperCase() : null,
+    trip_time: null,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  return { ok: true, tripNumber };
+}
+
+/**
+ * Fim de UMA viagem: o operador informa onde foi entregue, quem recebeu assina
+ * e o GPS é gravado. Completa a viagem em andamento (trip_time = chegada) e só
+ * então incrementa o contador (viagens × valor é calculado no fechamento).
+ */
+export async function finishTrip(
+  id: string,
   options: {
+    destination?: string | null;
     receivedBy?: string | null;
     signature?: string | null;
+    finishTime?: string | null;
     latitude?: number | null;
     longitude?: number | null;
     locationAccuracy?: number | null;
@@ -455,23 +507,24 @@ export async function registerTrip(
 ) {
   const supabase = createClient();
 
-  // Incremento atômico no banco (evita perder viagens em toques rápidos).
-  const { data: trips, error } = await supabase.rpc("register_os_trip", {
-    p_order_id: id,
-    p_delta: delta,
-  });
-  if (error || trips == null) return { error: error?.message ?? "OS não encontrada" };
+  // Acha a viagem em andamento (trip_time NULL) mais recente.
+  const { data: open } = await supabase
+    .from("service_order_trips")
+    .select("id")
+    .eq("service_order_id", id)
+    .is("trip_time", null)
+    .order("trip_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!open) return { error: "Nenhuma viagem em andamento" };
 
-  // Log de horários/assinaturas/localização (best-effort): não quebra a
-  // marcação caso a tabela/colunas ainda não existam (migrations 016/020/021).
-  if (delta === 1) {
-    const baseRow = {
-      service_order_id: id,
-      trip_number: trips,
-      trip_time: tripTime?.trim() || null,
-    };
-    const { error: logErr } = await supabase.from("service_order_trips").insert({
-      ...baseRow,
+  const { error: updErr } = await supabase
+    .from("service_order_trips")
+    .update({
+      trip_time: options.finishTime?.trim() || null,
+      destination: options.destination?.trim()
+        ? options.destination.trim().toUpperCase()
+        : null,
       received_by: options.receivedBy?.trim()
         ? options.receivedBy.trim().toUpperCase()
         : null,
@@ -479,31 +532,60 @@ export async function registerTrip(
       latitude: options.latitude ?? null,
       longitude: options.longitude ?? null,
       location_accuracy: options.locationAccuracy ?? null,
-    });
-    if (logErr) {
-      // Migrations 020/021 ausentes (colunas novas não existem): salva ao
-      // menos o horário, no formato antigo.
-      const { error: legacyErr } = await supabase
-        .from("service_order_trips")
-        .insert(baseRow);
-      if (legacyErr)
-        console.error("Falha ao gravar entrega da viagem:", logErr.message);
-    }
-  } else {
-    const { data: last } = await supabase
-      .from("service_order_trips")
-      .select("id")
-      .eq("service_order_id", id)
-      .order("trip_number", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (last) await supabase.from("service_order_trips").delete().eq("id", last.id);
-  }
+    })
+    .eq("id", open.id);
+  if (updErr) return { error: updErr.message };
+
+  // Conta a viagem (incremento atômico).
+  const { data: trips } = await supabase.rpc("register_os_trip", {
+    p_order_id: id,
+    p_delta: 1,
+  });
 
   revalidatePath("/operador");
   revalidatePath("/operacoes");
-  return { ok: true, trips };
+  return { ok: true, trips: trips ?? null };
+}
+
+/** Cancela a viagem em andamento (apaga a linha; não mexe no contador). */
+export async function cancelOpenTrip(id: string) {
+  const supabase = createClient();
+  const { data: open } = await supabase
+    .from("service_order_trips")
+    .select("id")
+    .eq("service_order_id", id)
+    .is("trip_time", null)
+    .order("trip_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (open) await supabase.from("service_order_trips").delete().eq("id", open.id);
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  return { ok: true };
+}
+
+/** Remove a última viagem ENTREGUE (apaga a linha e abaixa o contador). */
+export async function removeLastTrip(id: string) {
+  const supabase = createClient();
+  const { data: last } = await supabase
+    .from("service_order_trips")
+    .select("id")
+    .eq("service_order_id", id)
+    .not("trip_time", "is", null)
+    .order("trip_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!last) return { error: "Nenhuma viagem entregue para remover" };
+
+  await supabase.from("service_order_trips").delete().eq("id", last.id);
+  const { data: trips } = await supabase.rpc("register_os_trip", {
+    p_order_id: id,
+    p_delta: -1,
+  });
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  return { ok: true, trips: trips ?? null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -601,6 +683,8 @@ export async function finalizeServiceOrder(
     latitude?: number | null;
     longitude?: number | null;
     locationAccuracy?: number | null;
+    // "Onde foi entregue" (frete diária/km): destino informado pelo operador.
+    destination?: string | null;
   } = {}
 ) {
   const supabase = createClient();
@@ -645,6 +729,11 @@ export async function finalizeServiceOrder(
   // Hora de fechamento (relógio do celular do técnico) — gravada em todos os
   // fluxos, não só nos modos de cobrança.
   if (options.endTime?.trim()) patch.end_time = options.endTime.trim();
+
+  // "Onde foi entregue" (frete diária/km): destino preenchido pelo operador no
+  // fechamento — no modo viagem cada viagem tem o seu próprio destino.
+  if (options.destination?.trim())
+    patch.delivery_address = options.destination.trim().toUpperCase();
 
   // ── Fechamento de OS de frete com modo de cobrança ────────────────────────
   // viagem: viagens × valor · km: km rodado × R$/km · diária: valor fixo.

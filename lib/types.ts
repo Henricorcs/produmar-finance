@@ -181,6 +181,8 @@ export interface ServiceOrder {
 
   machine_id: string | null;
   pickup_location_id: string | null;
+  /** De onde (frete diária/km): texto preenchido pelo operador ao iniciar. */
+  origin_address: string | null;
   delivery_address: string | null;
   service_description: string | null;
 
@@ -252,6 +254,12 @@ export interface ServiceOrderTrip {
   latitude: number | null;
   longitude: number | null;
   location_accuracy: number | null;
+  /** De onde a viagem saiu (texto do operador, no "Iniciar viagem"). */
+  origin: string | null;
+  /** Onde foi entregue (texto do operador, no "Finalizar viagem"). */
+  destination: string | null;
+  /** Hora de saída (HH:MM). trip_time = hora de chegada/entrega. */
+  start_time: string | null;
   created_at: string;
 }
 

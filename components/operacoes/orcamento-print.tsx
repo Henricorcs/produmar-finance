@@ -269,8 +269,11 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
             )}
           </div>
 
-          {/* ── Logística (máquina / retirada / entrega) ───────────── */}
-          {(order.machines || order.pickup_locations || order.delivery_address) && (
+          {/* ── Logística (máquina / origem / destino) ─────────────── */}
+          {(order.machines ||
+            order.pickup_locations ||
+            order.origin_address ||
+            order.delivery_address) && (
             <div className="grid grid-cols-3 gap-3 text-[11px] avoid-break">
               {order.machines && (
                 <Field label="Máquina / Veículo">
@@ -278,18 +281,30 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                   {order.machines.plate ? ` — ${order.machines.plate}` : ""}
                 </Field>
               )}
-              {order.pickup_locations && (
-                <Field label="Local de retirada">
-                  {order.pickup_locations.name}
-                  {order.pickup_locations.address && (
-                    <span className="block text-slate-400 font-normal">
-                      {order.pickup_locations.address}
-                    </span>
-                  )}
-                </Field>
+              {order.origin_address ? (
+                <Field label="De onde">{order.origin_address}</Field>
+              ) : (
+                order.pickup_locations && (
+                  <Field label="Local de retirada">
+                    {order.pickup_locations.name}
+                    {order.pickup_locations.address && (
+                      <span className="block text-slate-400 font-normal">
+                        {order.pickup_locations.address}
+                      </span>
+                    )}
+                  </Field>
+                )
               )}
               {order.delivery_address && (
-                <Field label={isMaterial || isFrete ? "Local de entrega" : "Local do serviço"}>
+                <Field
+                  label={
+                    isFrete
+                      ? "Onde foi entregue"
+                      : isMaterial
+                        ? "Local de entrega"
+                        : "Local do serviço"
+                  }
+                >
                   {order.delivery_address}
                 </Field>
               )}
@@ -313,49 +328,46 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
             </div>
           )}
 
-          {/* ── Entregas por viagem (hora + quem recebeu + assinatura) ── */}
+          {/* ── Entregas por viagem (rota + quem recebeu + assinatura) ── */}
           {tripLog.length > 0 && (
             <div className="rounded-lg border border-slate-200 overflow-hidden avoid-break">
               <table className="w-full text-[10px]">
                 <thead>
                   <tr className="bg-slate-100 text-slate-500">
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-16">Viagem</th>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-14">Hora</th>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide">Recebido por</th>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-12">Local</th>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-36">Assinatura</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-10">Nº</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide">Rota (de → para)</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-24">Recebido por</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-32">Assinatura</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tripLog.map((t) => (
-                    <tr key={t.id} className="border-t border-slate-100">
-                      <td className="px-3 py-1 font-bold text-slate-600 tabular-nums">{t.trip_number}ª</td>
-                      <td className="px-3 py-1 text-slate-600 tabular-nums">
-                        {t.trip_time ? t.trip_time.slice(0, 5) : "—"}
+                    <tr key={t.id} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-1.5 font-bold text-slate-600 tabular-nums">{t.trip_number}ª</td>
+                      <td className="px-3 py-1.5 text-slate-700">
+                        <span className="font-semibold">
+                          {t.origin ? `${t.origin} → ` : ""}
+                          {t.destination ?? "—"}
+                        </span>
+                        <span className="block text-[9px] text-slate-400 tabular-nums">
+                          {t.start_time ? `saída ${t.start_time.slice(0, 5)} · ` : ""}
+                          {t.trip_time ? `entrega ${t.trip_time.slice(0, 5)}` : ""}
+                          {t.latitude != null && t.longitude != null && (
+                            <a
+                              href={`https://maps.google.com/?q=${t.latitude},${t.longitude}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-produmar-700 underline ml-1"
+                            >
+                              ver mapa
+                            </a>
+                          )}
+                        </span>
                       </td>
-                      <td className="px-3 py-1 font-semibold text-slate-700">
+                      <td className="px-3 py-1.5 font-semibold text-slate-700">
                         {t.received_by ?? "—"}
                       </td>
-                      <td className="px-3 py-1">
-                        {t.latitude != null && t.longitude != null ? (
-                          <a
-                            href={`https://maps.google.com/?q=${t.latitude},${t.longitude}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-produmar-700 underline whitespace-nowrap"
-                            title={
-                              t.location_accuracy != null
-                                ? `±${Math.round(Number(t.location_accuracy))} m`
-                                : undefined
-                            }
-                          >
-                            ver mapa
-                          </a>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1">
+                      <td className="px-3 py-1.5">
                         {t.signature ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={t.signature} alt={`Assinatura da ${t.trip_number}ª viagem`} className="h-7 object-contain" />

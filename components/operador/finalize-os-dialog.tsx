@@ -77,11 +77,15 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   // o km inicial aqui quando ele faltar — OS antiga ou iniciada pelo escritório.
   const showKmStartInput = !!billingMode && order.km_start == null;
   const isClient = order.freight_type === "cliente";
-  // No modo viagem cada entrega já foi assinada na hora (dialog "Entregar
-  // viagem") — o fechamento pede só o KM final, sem nome/assinatura.
+  // No modo viagem cada entrega já foi assinada na hora (dialog "Finalizar
+  // viagem") — o fechamento pede só o KM final, sem nome/assinatura/destino.
   const isViagem = billingMode === "viagem";
+  // "Onde foi entregue" é da OS inteira na diária e no km (no viagem cada
+  // viagem tem o seu próprio destino).
+  const showDestination = billingMode === "diaria" || billingMode === "km";
 
   const [receivedBy, setReceivedBy]   = useState("");
+  const [destination, setDestination] = useState("");
   const [hourmeterStart, setHourmeterStart] = useState("");
   const [hourmeterEnd, setHourmeterEnd] = useState("");
   const [kmStart, setKmStart] = useState(
@@ -171,6 +175,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
 
   function handleClose() {
     setReceivedBy("");
+    setDestination("");
     setHourmeterStart("");
     setHourmeterEnd("");
     setKmStart(order.km_start != null ? order.km_start.toString().replace(".", ",") : "");
@@ -215,6 +220,10 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         setError("O KM de chegada tem que ser maior que o KM de saída");
         return;
       }
+      if (showDestination && !destination.trim()) {
+        setError("Escreva onde você entregou");
+        return;
+      }
       // Assinatura final obrigatória só para cliente externo nos modos km e
       // diária — no modo viagem cada entrega já foi assinada na hora.
       if (!isViagem && isClient && !signature) {
@@ -231,6 +240,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         kmStart: billingMode && showKmStartInput ? ksNum : null,
         kmEnd: billingMode ? keNum : null,
         tripsCount: billingMode === "viagem" ? trips : null,
+        destination: showDestination ? destination.trim() || null : null,
         // Hora e data de fechamento do relógio do celular (servidor é UTC)
         endTime: nowHHMM(),
         finishedDate: nowYYYYMMDD(),
@@ -521,6 +531,22 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               </p>
             ) : (
               <>
+                {showDestination && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="destination_input" className="text-base">
+                      Onde foi entregue? <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="destination_input"
+                      value={destination}
+                      onChange={(e) => setDestination(e.target.value)}
+                      placeholder="ex: OBRA CENTRO"
+                      className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
+                      autoComplete="off"
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <Label htmlFor="received_by_input" className="text-base">
                     Nome de quem recebeu <span className="text-red-500">*</span>
