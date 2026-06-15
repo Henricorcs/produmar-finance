@@ -857,7 +857,7 @@ export function RelatoriosClient({ transactions, orders, operators }: Props) {
                         #{o.order_number}
                       </span>
                       <span className="text-sm text-slate-700 dark:text-slate-200 truncate">
-                        {o.client_name || "—"}
+                        {o.client_name || o.service_description || "—"}
                       </span>
                     </div>
                     <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums flex-shrink-0">
