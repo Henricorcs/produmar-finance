@@ -21,12 +21,27 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  HardHat,
+  Package,
+  Truck,
+  Wrench,
 } from "lucide-react";
-import { cn, formatBRL, formatBRLCompact } from "@/lib/utils";
-import type { Transaction } from "@/lib/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn, formatBRL, formatBRLCompact, machineCategoryLabel } from "@/lib/utils";
+import type { Profile, ServiceOrder, Transaction } from "@/lib/types";
 
-type TxWithCategory = Transaction & {
+type TxWithMeta = Transaction & {
   categories: { name: string; color: string } | null;
+  cost_centers: { name: string } | null;
+};
+
+type OrderWithMachine = ServiceOrder & {
+  machines: { name: string; plate: string | null; category: string | null } | null;
 };
 
 interface CategoryLine {
@@ -37,17 +52,54 @@ interface CategoryLine {
   count: number;
 }
 
-interface Props {
-  transactions: TxWithCategory[];
+interface OperatorAgg {
+  id: string;
+  name: string;
+  total: number;
+  entregues: number;
+  emAndamento: number;
+  pendentes: number;
+  cancelados: number;
+  byType: { entrega_material: number; frete: number; prestacao_servico: number };
+  trips: number;
+  valorTotal: number;
+  valorEntregue: number;
+  orders: OrderWithMachine[];
 }
 
-type Tab = "dre" | "cashflow";
+interface Props {
+  transactions: TxWithMeta[];
+  orders: OrderWithMachine[];
+  operators: Profile[];
+}
+
+type Tab = "dre" | "cashflow" | "operadores";
+type GroupBy = "category" | "cost_center";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const PT_MONTHS = [
   "Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez",
 ];
+
+// Paleta para centro de custo (não guarda cor própria) — atribuída por posição.
+const PALETTE = [
+  "#0A4DB8","#5A97FF","#f59e0b","#10b981","#ef4444",
+  "#8b5cf6","#ec4899","#14b8a6","#f97316","#64748b",
+];
+
+const OS_TYPE_LABEL: Record<ServiceOrder["type"], string> = {
+  entrega_material: "Entrega",
+  frete: "Frete",
+  prestacao_servico: "Serviço",
+};
+
+const OS_STATUS: Record<ServiceOrder["status"], { label: string; cls: string }> = {
+  pendente:     { label: "Pendente",     cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" },
+  em_andamento: { label: "Em andamento", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" },
+  entregue:     { label: "Entregue",     cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" },
+  cancelado:    { label: "Cancelada",    cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" },
+};
 
 function currentYM(): string {
   const d = new Date();
@@ -74,6 +126,13 @@ function shiftMonth(ym: string, delta: number): string {
   const [y, m] = ym.split("-").map(Number);
   const d = new Date(y, m - 1 + delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatDateBR(s: string | null): string {
+  if (!s) return "—";
+  const [y, m, d] = s.slice(0, 10).split("-");
+  if (!y || !m || !d) return s;
+  return `${d}/${m}/${y}`;
 }
 
 // CSV with semicolon separator + UTF-8 BOM (Excel pt-BR friendly)
@@ -104,13 +163,30 @@ function downloadCSV(
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function RelatoriosClient({ transactions }: Props) {
+export function RelatoriosClient({ transactions, orders, operators }: Props) {
   const [tab, setTab] = useState<Tab>("dre");
   const [period, setPeriod] = useState(currentYM());
+  const [groupBy, setGroupBy] = useState<GroupBy>("category");
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
-  // ── DRE ─────────────────────────────────────────────────────────────────────
+  // Drill-downs (abrem ao clicar)
+  const [drill, setDrill] = useState<{
+    title: string;
+    color: string;
+    variant: "receita" | "despesa";
+    rows: TxWithMeta[];
+    total: number;
+  } | null>(null);
+  const [opDrill, setOpDrill] = useState<OperatorAgg | null>(null);
+
+  const operatorNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const op of operators) m.set(op.id, op.full_name || op.email);
+    return m;
+  }, [operators]);
+
+  // ── DRE (por categoria OU centro de custo) ───────────────────────────────────
   const dre = useMemo(() => {
     const filtered = transactions.filter((t) => t.due_date.startsWith(period));
     const rec = new Map<string, CategoryLine>();
@@ -118,15 +194,18 @@ export function RelatoriosClient({ transactions }: Props) {
 
     for (const t of filtered) {
       const map = t.type === "entrada" ? rec : dep;
-      const key = t.category_id ?? "__sem__";
+      let key: string, name: string, color: string;
+      if (groupBy === "category") {
+        key = t.category_id ?? "__sem__";
+        name = t.categories?.name ?? "Sem categoria";
+        color = t.categories?.color ?? "#94a3b8";
+      } else {
+        key = t.cost_center_id ?? "__sem__";
+        name = t.cost_centers?.name ?? "Sem centro de custo";
+        color = ""; // atribuída por posição abaixo
+      }
       if (!map.has(key)) {
-        map.set(key, {
-          id: key,
-          name: t.categories?.name ?? "Sem categoria",
-          color: t.categories?.color ?? "#94a3b8",
-          total: 0,
-          count: 0,
-        });
+        map.set(key, { id: key, name, color, total: 0, count: 0 });
       }
       const l = map.get(key)!;
       l.total += t.amount;
@@ -135,6 +214,10 @@ export function RelatoriosClient({ transactions }: Props) {
 
     const receitas = [...rec.values()].sort((a, b) => b.total - a.total);
     const despesas = [...dep.values()].sort((a, b) => b.total - a.total);
+    if (groupBy === "cost_center") {
+      receitas.forEach((l, i) => (l.color = PALETTE[i % PALETTE.length]));
+      despesas.forEach((l, i) => (l.color = PALETTE[i % PALETTE.length]));
+    }
     const totalReceitas = receitas.reduce((s, l) => s + l.total, 0);
     const totalDespesas = despesas.reduce((s, l) => s + l.total, 0);
 
@@ -145,11 +228,25 @@ export function RelatoriosClient({ transactions }: Props) {
       totalDespesas,
       resultado: totalReceitas - totalDespesas,
     };
-  }, [transactions, period]);
+  }, [transactions, period, groupBy]);
 
-  // ── Cashflow (last 12 months) ────────────────────────────────────────────────
+  function openDrill(line: CategoryLine, variant: "receita" | "despesa") {
+    const txType = variant === "receita" ? "entrada" : "saida";
+    const rows = transactions
+      .filter(
+        (t) =>
+          t.due_date.startsWith(period) &&
+          t.type === txType &&
+          (groupBy === "category"
+            ? (t.category_id ?? "__sem__") === line.id
+            : (t.cost_center_id ?? "__sem__") === line.id)
+      )
+      .sort((a, b) => b.amount - a.amount);
+    setDrill({ title: line.name, color: line.color, variant, rows, total: line.total });
+  }
+
+  // ── Cashflow (últimos 12 meses) ──────────────────────────────────────────────
   const cashflow = useMemo(() => {
-    // Build ordered map of last 12 months
     const monthMap = new Map<string, { receitas: number; despesas: number }>();
     for (let i = 11; i >= 0; i--) {
       const ym = shiftMonth(currentYM(), -i);
@@ -180,11 +277,68 @@ export function RelatoriosClient({ transactions }: Props) {
     });
   }, [transactions]);
 
+  // ── Relatório por operador ───────────────────────────────────────────────────
+  const operatorReport = useMemo(() => {
+    const filtered = orders.filter((o) =>
+      (o.delivery_date ?? o.issue_date).startsWith(period)
+    );
+    const map = new Map<string, OperatorAgg>();
+    for (const o of filtered) {
+      const key = o.assigned_to ?? "__none__";
+      if (!map.has(key)) {
+        map.set(key, {
+          id: key,
+          name:
+            key === "__none__"
+              ? "Sem operador definido"
+              : operatorNameById.get(key) ?? "Operador",
+          total: 0,
+          entregues: 0,
+          emAndamento: 0,
+          pendentes: 0,
+          cancelados: 0,
+          byType: { entrega_material: 0, frete: 0, prestacao_servico: 0 },
+          trips: 0,
+          valorTotal: 0,
+          valorEntregue: 0,
+          orders: [],
+        });
+      }
+      const a = map.get(key)!;
+      a.total += 1;
+      a.orders.push(o);
+      if (o.status === "entregue") a.entregues += 1;
+      else if (o.status === "em_andamento") a.emAndamento += 1;
+      else if (o.status === "pendente") a.pendentes += 1;
+      else if (o.status === "cancelado") a.cancelados += 1;
+      if (o.type in a.byType) a.byType[o.type] += 1;
+      a.trips += o.trips_count ?? 0;
+      a.valorTotal += o.total_amount ?? 0;
+      if (o.status === "entregue") a.valorEntregue += o.total_amount ?? 0;
+    }
+    // operador identificado primeiro; "sem operador" por último
+    return [...map.values()].sort((a, b) => {
+      if (a.id === "__none__") return 1;
+      if (b.id === "__none__") return -1;
+      return b.total - a.total;
+    });
+  }, [orders, period, operatorNameById]);
+
+  const opTotals = useMemo(
+    () => ({
+      os: operatorReport.reduce((s, o) => s + o.total, 0),
+      entregues: operatorReport.reduce((s, o) => s + o.entregues, 0),
+      valor: operatorReport.reduce((s, o) => s + o.valorEntregue, 0),
+    }),
+    [operatorReport]
+  );
+
   // ── Exports ──────────────────────────────────────────────────────────────────
   function exportDRE() {
+    const what = groupBy === "category" ? "Categoria" : "Centro de custo";
     downloadCSV(
-      `DRE_${period}.csv`,
-      ["Categoria", "Lançamentos", "Valor (R$)"],
+      `DRE_${groupBy}_${period}.csv`,
+      [what, "Lançamentos", "Valor (R$)"],
       [
         ["RECEITAS", "", ""],
         ...dre.receitas.map((l) => [l.name, l.count, l.total]),
@@ -207,6 +361,22 @@ export function RelatoriosClient({ transactions }: Props) {
     );
   }
 
+  function exportOperadores() {
+    downloadCSV(
+      `Operadores_${period}.csv`,
+      [
+        "Operador", "OS", "Entregues", "Em andamento", "Pendentes", "Canceladas",
+        "Entregas", "Fretes", "Serviços", "Viagens",
+        "Faturado entregue (R$)", "Valor total (R$)",
+      ],
+      operatorReport.map((o) => [
+        o.name, o.total, o.entregues, o.emAndamento, o.pendentes, o.cancelados,
+        o.byType.entrega_material, o.byType.frete, o.byType.prestacao_servico, o.trips,
+        o.valorEntregue, o.valorTotal,
+      ])
+    );
+  }
+
   const today = currentYM();
   const totCF = {
     receitas: cashflow.reduce((s, r) => s + r.receitas, 0),
@@ -214,6 +384,9 @@ export function RelatoriosClient({ transactions }: Props) {
     resultado: cashflow.reduce((s, r) => s + r.resultado, 0),
     acumulado: cashflow.at(-1)?.acumulado ?? 0,
   };
+
+  const exportFn =
+    tab === "dre" ? exportDRE : tab === "cashflow" ? exportCashflow : exportOperadores;
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -225,12 +398,12 @@ export function RelatoriosClient({ transactions }: Props) {
             Relatórios
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Análise financeira — DRE e fluxo de caixa
+            DRE, fluxo de caixa e desempenho por operador
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={tab === "dre" ? exportDRE : exportCashflow}
+            onClick={exportFn}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
@@ -248,7 +421,7 @@ export function RelatoriosClient({ transactions }: Props) {
 
       {/* Tab switcher */}
       <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit print:hidden">
-        {(["dre", "cashflow"] as Tab[]).map((t) => (
+        {(["dre", "cashflow", "operadores"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -259,7 +432,7 @@ export function RelatoriosClient({ transactions }: Props) {
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
             )}
           >
-            {t === "dre" ? "DRE" : "Fluxo de Caixa"}
+            {t === "dre" ? "DRE" : t === "cashflow" ? "Fluxo de Caixa" : "Operadores"}
           </button>
         ))}
       </div>
@@ -267,23 +440,25 @@ export function RelatoriosClient({ transactions }: Props) {
       {/* ══ DRE ══════════════════════════════════════════════════════════════ */}
       {tab === "dre" && (
         <div className="space-y-4">
-          {/* Period navigator */}
-          <div className="flex items-center gap-1 print:hidden">
-            <button
-              onClick={() => setPeriod(shiftMonth(period, -1))}
-              className="p-2.5 sm:p-1.5 rounded-lg hover:bg-produmar-50 dark:hover:bg-slate-800 text-produmar-600 transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm font-medium text-produmar-800 dark:text-slate-100 capitalize min-w-[180px] text-center">
-              {fullMonthLabel(period)}
-            </span>
-            <button
-              onClick={() => setPeriod(shiftMonth(period, 1))}
-              className="p-2.5 sm:p-1.5 rounded-lg hover:bg-produmar-50 dark:hover:bg-slate-800 text-produmar-600 transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+          {/* Period navigator + group toggle */}
+          <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
+            <PeriodNav period={period} onChange={setPeriod} />
+            <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+              {(["category", "cost_center"] as GroupBy[]).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setGroupBy(g)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                    groupBy === g
+                      ? "bg-white dark:bg-slate-700 text-produmar-700 dark:text-produmar-400 shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  )}
+                >
+                  {g === "category" ? "Por categoria" : "Por centro de custo"}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Print title */}
@@ -291,12 +466,18 @@ export function RelatoriosClient({ transactions }: Props) {
             <p className="text-xl font-bold text-slate-900 capitalize">
               DRE — {fullMonthLabel(period)}
             </p>
-            <p className="text-sm text-slate-500 mt-1">PRODUMAR Finance</p>
+            <p className="text-sm text-slate-500 mt-1">
+              PRODUMAR Finance · {groupBy === "category" ? "por categoria" : "por centro de custo"}
+            </p>
           </div>
+
+          <p className="text-xs text-slate-400 dark:text-slate-500 print:hidden">
+            Toque em uma linha para ver os lançamentos.
+          </p>
 
           {/* DRE card */}
           <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-            {/* ── Receitas section ── */}
+            {/* ── Receitas ── */}
             <SectionHeader
               icon={<TrendingUp className="w-4 h-4" />}
               label="RECEITAS"
@@ -311,17 +492,14 @@ export function RelatoriosClient({ transactions }: Props) {
                     key={l.id}
                     line={l}
                     sectionTotal={dre.totalReceitas}
+                    onClick={() => openDrill(l, "receita")}
                   />
                 ))}
               </div>
             )}
-            <SectionTotal
-              label="Total de Receitas"
-              value={dre.totalReceitas}
-              variant="receita"
-            />
+            <SectionTotal label="Total de Receitas" value={dre.totalReceitas} variant="receita" />
 
-            {/* ── Despesas section ── */}
+            {/* ── Despesas ── */}
             <SectionHeader
               icon={<TrendingDown className="w-4 h-4" />}
               label="DESPESAS"
@@ -336,15 +514,12 @@ export function RelatoriosClient({ transactions }: Props) {
                     key={l.id}
                     line={l}
                     sectionTotal={dre.totalDespesas}
+                    onClick={() => openDrill(l, "despesa")}
                   />
                 ))}
               </div>
             )}
-            <SectionTotal
-              label="Total de Despesas"
-              value={dre.totalDespesas}
-              variant="despesa"
-            />
+            <SectionTotal label="Total de Despesas" value={dre.totalDespesas} variant="despesa" />
 
             {/* ── Resultado ── */}
             <div
@@ -428,9 +603,7 @@ export function RelatoriosClient({ transactions }: Props) {
                   <Tooltip
                     contentStyle={{
                       background: isDark ? "#1e293b" : "white",
-                      border: isDark
-                        ? "1px solid #334155"
-                        : "1px solid #BBD4FA",
+                      border: isDark ? "1px solid #334155" : "1px solid #BBD4FA",
                       borderRadius: 8,
                       fontSize: 12,
                       color: isDark ? "#f1f5f9" : "#0f172a",
@@ -458,18 +631,8 @@ export function RelatoriosClient({ transactions }: Props) {
                     }
                     wrapperStyle={{ fontSize: 11 }}
                   />
-                  <Bar
-                    dataKey="receitas"
-                    fill="#0A4DB8"
-                    radius={[3, 3, 0, 0]}
-                    maxBarSize={22}
-                  />
-                  <Bar
-                    dataKey="despesas"
-                    fill="#5A97FF"
-                    radius={[3, 3, 0, 0]}
-                    maxBarSize={22}
-                  />
+                  <Bar dataKey="receitas" fill="#0A4DB8" radius={[3, 3, 0, 0]} maxBarSize={22} />
+                  <Bar dataKey="despesas" fill="#5A97FF" radius={[3, 3, 0, 0]} maxBarSize={22} />
                   <Line
                     type="monotone"
                     dataKey="acumulado"
@@ -514,8 +677,7 @@ export function RelatoriosClient({ transactions }: Props) {
                       key={row.month}
                       className={cn(
                         "transition-colors hover:bg-slate-50/60 dark:hover:bg-slate-800/40",
-                        row.month === today &&
-                          "bg-produmar-50/50 dark:bg-produmar-900/10"
+                        row.month === today && "bg-produmar-50/50 dark:bg-produmar-900/10"
                       )}
                     >
                       <td className="px-4 py-2.5 font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
@@ -572,11 +734,219 @@ export function RelatoriosClient({ transactions }: Props) {
           </div>
         </div>
       )}
+
+      {/* ══ OPERADORES ═══════════════════════════════════════════════════════ */}
+      {tab === "operadores" && (
+        <div className="space-y-4">
+          <div className="print:hidden">
+            <PeriodNav period={period} onChange={setPeriod} />
+          </div>
+
+          {/* Print title */}
+          <div className="hidden print:block text-center mb-6">
+            <p className="text-xl font-bold text-slate-900 capitalize">
+              Desempenho por operador — {fullMonthLabel(period)}
+            </p>
+            <p className="text-sm text-slate-500 mt-1">PRODUMAR Finance</p>
+          </div>
+
+          {/* Resumo do período */}
+          <div className="grid grid-cols-3 gap-3">
+            <SummaryStat label="Ordens de serviço" value={String(opTotals.os)} />
+            <SummaryStat label="Entregues" value={String(opTotals.entregues)} accent="emerald" />
+            <SummaryStat label="Faturado" value={formatBRL(opTotals.valor)} accent="produmar" />
+          </div>
+
+          <p className="text-xs text-slate-400 dark:text-slate-500 print:hidden">
+            Toque em um operador para ver todas as ordens dele.
+          </p>
+
+          {operatorReport.length === 0 ? (
+            <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
+              Nenhuma ordem de serviço neste período.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {operatorReport.map((op) => (
+                <OperatorCard key={op.id} op={op} onClick={() => setOpDrill(op)} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Drill-down de lançamentos (DRE) ── */}
+      {drill && (
+        <Dialog open onOpenChange={(v) => !v && setDrill(null)}>
+          <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: drill.color }}
+                />
+                <span className="truncate">{drill.title}</span>
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-slate-400 dark:text-slate-500 -mt-2">
+              {drill.variant === "receita" ? "Receitas" : "Despesas"} · {fullMonthLabel(period)} ·{" "}
+              {drill.rows.length} {drill.rows.length === 1 ? "lançamento" : "lançamentos"}
+            </p>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {drill.rows.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
+                      {t.description}
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      {formatDateBR(t.due_date)}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-sm font-semibold tabular-nums flex-shrink-0",
+                      drill.variant === "receita"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400"
+                    )}
+                  >
+                    {formatBRL(t.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between border-t-2 border-slate-200 dark:border-slate-700 pt-3 mt-1">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">TOTAL</span>
+              <span
+                className={cn(
+                  "text-base font-bold tabular-nums",
+                  drill.variant === "receita"
+                    ? "text-emerald-700 dark:text-emerald-400"
+                    : "text-red-700 dark:text-red-400"
+                )}
+              >
+                {formatBRL(drill.total)}
+              </span>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ── Drill-down de OS (operador) ── */}
+      {opDrill && (
+        <Dialog open onOpenChange={(v) => !v && setOpDrill(null)}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
+                <HardHat className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <span className="truncate">{opDrill.name}</span>
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-slate-400 dark:text-slate-500 -mt-2">
+              {fullMonthLabel(period)} · {opDrill.total}{" "}
+              {opDrill.total === 1 ? "ordem" : "ordens"} · faturado{" "}
+              {formatBRL(opDrill.valorEntregue)}
+            </p>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {opDrill.orders.map((o) => (
+                <div key={o.id} className="py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-bold text-produmar-700 dark:text-produmar-400 tabular-nums flex-shrink-0">
+                        #{o.order_number}
+                      </span>
+                      <span className="text-sm text-slate-700 dark:text-slate-200 truncate">
+                        {o.client_name || "—"}
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums flex-shrink-0">
+                      {formatBRL(o.total_amount ?? 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-produmar-50 dark:bg-slate-800 text-produmar-600 dark:text-produmar-400">
+                      {OS_TYPE_LABEL[o.type]}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                        OS_STATUS[o.status].cls
+                      )}
+                    >
+                      {OS_STATUS[o.status].label}
+                    </span>
+                    {o.machines?.name && (
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                        {o.machines.name}
+                        {o.machines.category ? ` · ${machineCategoryLabel(o.machines.category)}` : ""}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">
+                      {formatDateBR(o.delivery_date ?? o.issue_date)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+function PeriodNav({ period, onChange }: { period: string; onChange: (ym: string) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => onChange(shiftMonth(period, -1))}
+        className="p-2.5 sm:p-1.5 rounded-lg hover:bg-produmar-50 dark:hover:bg-slate-800 text-produmar-600 transition-colors"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <span className="text-sm font-medium text-produmar-800 dark:text-slate-100 capitalize min-w-[180px] text-center">
+        {fullMonthLabel(period)}
+      </span>
+      <button
+        onClick={() => onChange(shiftMonth(period, 1))}
+        className="p-2.5 sm:p-1.5 rounded-lg hover:bg-produmar-50 dark:hover:bg-slate-800 text-produmar-600 transition-colors"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: "emerald" | "produmar";
+}) {
+  return (
+    <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
+      <p className="text-[11px] text-slate-400 dark:text-slate-500">{label}</p>
+      <p
+        className={cn(
+          "text-lg font-bold tabular-nums mt-0.5",
+          accent === "emerald"
+            ? "text-emerald-600 dark:text-emerald-400"
+            : accent === "produmar"
+            ? "text-produmar-700 dark:text-produmar-400"
+            : "text-slate-800 dark:text-slate-100"
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
 
 function SectionHeader({
   icon,
@@ -672,14 +1042,20 @@ function EmptyLine({ label }: { label: string }) {
 function DRELine({
   line,
   sectionTotal,
+  onClick,
 }: {
   line: CategoryLine;
   sectionTotal: number;
+  onClick: () => void;
 }) {
   const pct = sectionTotal > 0 ? (line.total / sectionTotal) * 100 : 0;
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3">
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-produmar-50/50 dark:hover:bg-slate-800/40"
+    >
       <div
         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
         style={{ backgroundColor: line.color }}
@@ -688,6 +1064,9 @@ function DRELine({
         <div className="flex items-center justify-between gap-4 mb-1">
           <span className="text-sm text-slate-700 dark:text-slate-200 truncate">
             {line.name}
+            <span className="ml-2 text-[10px] text-slate-400 dark:text-slate-500">
+              {line.count} lanç.
+            </span>
           </span>
           <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums flex-shrink-0">
             {formatBRL(line.total)}
@@ -705,7 +1084,73 @@ function DRELine({
           </span>
         </div>
       </div>
-    </div>
+      <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0 print:hidden" />
+    </button>
+  );
+}
+
+function OperatorCard({ op, onClick }: { op: OperatorAgg; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 transition-colors hover:bg-produmar-50/40 dark:hover:bg-slate-800/40"
+    >
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-9 h-9 rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+            <HardHat className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-slate-800 dark:text-slate-100 truncate">{op.name}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              {op.total} {op.total === 1 ? "ordem" : "ordens"} no período
+            </p>
+          </div>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-bold text-produmar-700 dark:text-produmar-400 tabular-nums">
+            {formatBRL(op.valorEntregue)}
+          </p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">faturado</p>
+        </div>
+      </div>
+
+      {/* Status chips */}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        <StatusChip label="Entregues" value={op.entregues} cls="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" />
+        <StatusChip label="Em andamento" value={op.emAndamento} cls="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" />
+        <StatusChip label="Pendentes" value={op.pendentes} cls="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" />
+        {op.cancelados > 0 && (
+          <StatusChip label="Canceladas" value={op.cancelados} cls="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" />
+        )}
+      </div>
+
+      {/* Tipo + viagens */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        <span className="flex items-center gap-1">
+          <Package className="w-3.5 h-3.5" /> {op.byType.entrega_material} entregas
+        </span>
+        <span className="flex items-center gap-1">
+          <Truck className="w-3.5 h-3.5" /> {op.byType.frete} fretes
+        </span>
+        <span className="flex items-center gap-1">
+          <Wrench className="w-3.5 h-3.5" /> {op.byType.prestacao_servico} serviços
+        </span>
+        {op.trips > 0 && <span>{op.trips} viagens</span>}
+        <span className="ml-auto flex items-center gap-0.5 text-produmar-600 dark:text-produmar-400 print:hidden">
+          Ver ordens <ChevronRight className="w-3.5 h-3.5" />
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function StatusChip({ label, value, cls }: { label: string; value: number; cls: string }) {
+  return (
+    <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full", cls)}>
+      {value} {label}
+    </span>
   );
 }
 

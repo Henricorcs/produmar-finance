@@ -218,6 +218,9 @@ export function TransactionDialog({
                 placeholder="ex: conta de energia"
                 className="uppercase placeholder:normal-case placeholder:lowercase"
                 autoCapitalize="characters"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 required
               />
             </div>
@@ -313,7 +316,6 @@ export function TransactionDialog({
                 onCreateNew={() => setCatDialogOpen(true)}
                 createNewLabel="Criar nova categoria"
                 autoFocusSearch={false}
-                suggestOnType
               />
             </div>
 
@@ -332,7 +334,6 @@ export function TransactionDialog({
                 onCreateNew={() => setCCDialogOpen(true)}
                 createNewLabel="Criar novo centro de custo"
                 autoFocusSearch={false}
-                suggestOnType
               />
             </div>
 
