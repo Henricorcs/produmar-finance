@@ -77,6 +77,18 @@ export async function inviteUser(
   const fullName = String(formData.get("full_name") ?? "").trim();
   const role = String(formData.get("role") ?? "financeiro") as UserRole;
   const password = String(formData.get("password") ?? "").trim();
+  // Categorias liberadas (só faz sentido p/ operador) — enviado como JSON.
+  let allowedCategories: string[] = [];
+  try {
+    const raw = formData.get("allowed_categories");
+    if (typeof raw === "string" && raw.trim()) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) allowedCategories = parsed.map(String);
+    }
+  } catch {
+    allowedCategories = [];
+  }
+  if (role !== "operador") allowedCategories = [];
 
   if (!email) return { error: "Email obrigatório" };
   if (!password || password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };
@@ -99,7 +111,41 @@ export async function inviteUser(
     email,
     full_name: fullName || null,
     role,
+    allowed_categories: allowedCategories,
   });
+
+  revalidatePath("/configuracoes");
+  return { ok: true };
+}
+
+/** Admin atualiza as categorias de máquina liberadas para um operador. */
+export async function updateOperatorCategories(
+  targetUserId: string,
+  categories: string[]
+): Promise<{ error: string } | { ok: true }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
+
+  const clean = Array.isArray(categories)
+    ? [...new Set(categories.map((c) => String(c).trim()).filter(Boolean))]
+    : [];
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({ allowed_categories: clean })
+    .eq("id", targetUserId);
+  if (error) return { error: error.message };
 
   revalidatePath("/configuracoes");
   return { ok: true };

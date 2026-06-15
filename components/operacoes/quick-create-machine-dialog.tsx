@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createMachine } from "@/app/(app)/operacoes/actions";
-import type { Machine, MachineTrackingType } from "@/lib/types";
+import { MACHINE_CATEGORIES, type Machine, type MachineTrackingType } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -18,14 +18,14 @@ interface Props {
 export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
   const [name, setName]   = useState("");
   const [plate, setPlate] = useState("");
-  const [type, setType]   = useState("");
+  const [category, setCategory] = useState("");
   const [tracking, setTracking] = useState<MachineTrackingType>("hourmeter");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
     if (open) {
-      setName(""); setPlate(""); setType(""); setTracking("hourmeter"); setError(null);
+      setName(""); setPlate(""); setCategory(""); setTracking("hourmeter"); setError(null);
     }
   }, [open]);
 
@@ -34,7 +34,7 @@ export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
     setError(null);
     if (!name.trim()) return setError("Nome é obrigatório");
     startTransition(async () => {
-      const r = await createMachine({ name, plate, type, tracking_type: tracking });
+      const r = await createMachine({ name, plate, category, tracking_type: tracking });
       if ("error" in r) setError(r.error ?? "Erro ao criar");
       else { onCreated(r.machine); onClose(); }
     });
@@ -71,13 +71,18 @@ export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="mch_type">Tipo</Label>
-              <Input
-                id="mch_type"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                placeholder="caçamba, escavadeira..."
-              />
+              <Label htmlFor="mch_category">Categoria</Label>
+              <select
+                id="mch_category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="flex h-11 sm:h-10 w-full rounded-md border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-base sm:text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-produmar-500"
+              >
+                <option value="">selecione…</option>
+                {MACHINE_CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 

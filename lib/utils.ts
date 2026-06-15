@@ -1,6 +1,14 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Loan, ServiceBillingMode, ServiceOrderStatus, ServiceOrderType } from "./types";
+import {
+  FREIGHT_CATEGORIES,
+  MACHINE_CATEGORIES,
+  type Loan,
+  type MachineCategory,
+  type ServiceBillingMode,
+  type ServiceOrderStatus,
+  type ServiceOrderType,
+} from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -92,6 +100,17 @@ export function osBillingLabel(mode?: ServiceBillingMode | null): string {
     diaria: "Por diária",
   };
   return map[mode];
+}
+
+/** Rótulo da categoria da máquina (ex.: "caminhao" → "Caminhão"). */
+export function machineCategoryLabel(category?: string | null): string {
+  if (!category) return "";
+  return MACHINE_CATEGORIES.find((c) => c.value === category)?.label ?? category;
+}
+
+/** Esta categoria pode fazer frete / cobrança por km? (caminhão e caçamba) */
+export function isFreightCategory(category?: string | null): boolean {
+  return !!category && FREIGHT_CATEGORIES.includes(category as MachineCategory);
 }
 
 export function formatDueLabel(date: string | Date): {

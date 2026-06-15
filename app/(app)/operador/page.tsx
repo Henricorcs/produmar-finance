@@ -21,14 +21,28 @@ export default async function OperadorPage() {
 
   if (!user) redirect("/login");
 
-  // Busca OS em aberto (pendente ou em andamento)
-  const { data: orders } = await supabase
+  // Busca OS em aberto (pendente ou em andamento) ENVIADAS para este operador.
+  // Fallback: OS ainda sem dono (assigned_to NULL) aparecem para todos — assim
+  // nada se perde enquanto o escritório não passa a direcionar cada OS.
+  const select = `*, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`;
+  const assigned = await supabase
     .from("service_orders")
-    .select(
-      `*, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`
-    )
+    .select(select)
     .in("status", ["pendente", "em_andamento"])
+    .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
     .order("created_at", { ascending: false });
+
+  // Coluna assigned_to ausente (migration 023 não aplicada): mostra todas as OS
+  // abertas — assim o painel não fica vazio antes da migration rodar.
+  let orders = assigned.data;
+  if (assigned.error) {
+    const fallback = await supabase
+      .from("service_orders")
+      .select(select)
+      .in("status", ["pendente", "em_andamento"])
+      .order("created_at", { ascending: false });
+    orders = fallback.data;
+  }
 
   const list = (orders as OrderWithDetails[]) ?? [];
 

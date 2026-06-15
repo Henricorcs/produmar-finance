@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isFreightCategory } from "@/lib/utils";
 import type {
   Machine,
   MachineTrackingType,
@@ -12,6 +13,28 @@ import type {
   ServiceOrderStatus,
   ServiceOrderType,
 } from "@/lib/types";
+
+/**
+ * Regra de negócio: só caminhão e caçamba fazem frete (e cobrança por km).
+ * Valida a categoria da máquina escolhida quando a OS é do tipo "frete".
+ * Retorna uma mensagem de erro ou null. Tolerante: se a coluna `category`
+ * ainda não existe (migration 023 não aplicada) não bloqueia.
+ */
+async function freightMachineError(
+  supabase: ReturnType<typeof createClient>,
+  input: ServiceOrderInput
+): Promise<string | null> {
+  if (input.type !== "frete" || !input.machine_id) return null;
+  const { data, error } = await supabase
+    .from("machines")
+    .select("category")
+    .eq("id", input.machine_id)
+    .maybeSingle<{ category: string | null }>();
+  if (error || !data) return null; // coluna ausente / máquina não achada → não bloqueia
+  if (data.category && !isFreightCategory(data.category))
+    return "Só caminhão e caçamba podem fazer frete. Escolha um veículo de frete ou mude o tipo da OS.";
+  return null;
+}
 
 function revalidate() {
   revalidatePath("/operacoes");
@@ -30,6 +53,7 @@ export async function createMachine(input: {
   name: string;
   plate?: string | null;
   type?: string | null;
+  category?: string | null;
   tracking_type?: MachineTrackingType;
   notes?: string | null;
 }): Promise<{ error: string } | { ok: true; machine: Machine }> {
@@ -43,6 +67,7 @@ export async function createMachine(input: {
       name: name.toUpperCase(),
       plate: input.plate?.trim() ? input.plate.trim().toUpperCase() : null,
       type: input.type?.trim() ? input.type.trim() : null,
+      category: input.category?.trim() ? input.category.trim() : null,
       tracking_type: input.tracking_type ?? "hourmeter",
       notes: input.notes?.trim() ? input.notes.trim() : null,
     })
@@ -56,13 +81,14 @@ export async function createMachine(input: {
 
 export async function updateMachine(
   id: string,
-  input: Partial<Pick<Machine, "name" | "plate" | "type" | "tracking_type" | "notes" | "active">>
+  input: Partial<Pick<Machine, "name" | "plate" | "type" | "category" | "tracking_type" | "notes" | "active">>
 ) {
   const supabase = createClient();
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name.trim().toUpperCase();
   if (input.plate !== undefined) patch.plate = input.plate?.toString().trim().toUpperCase() || null;
   if (input.type !== undefined) patch.type = input.type?.toString().trim() || null;
+  if (input.category !== undefined) patch.category = input.category?.toString().trim() || null;
   if (input.tracking_type !== undefined) patch.tracking_type = input.tracking_type;
   if (input.notes !== undefined) patch.notes = input.notes?.toString().trim() || null;
   if (input.active !== undefined) patch.active = input.active;
@@ -220,6 +246,7 @@ export interface ServiceOrderInput {
   client_document?: string | null;
   client_phone?: string | null;
   machine_id?: string | null;
+  assigned_to?: string | null;
   pickup_location_id?: string | null;
   delivery_address?: string | null;
   service_description?: string | null;
@@ -250,6 +277,7 @@ function sanitizeOrder(input: ServiceOrderInput) {
     client_document: input.client_document?.trim() || null,
     client_phone: input.client_phone?.trim() || null,
     machine_id: input.machine_id || null,
+    assigned_to: input.assigned_to || null,
     pickup_location_id: input.pickup_location_id || null,
     delivery_address: input.delivery_address?.trim() ? input.delivery_address.trim().toUpperCase() : null,
     service_description: input.service_description?.trim()
@@ -315,6 +343,9 @@ export async function createServiceOrder(input: ServiceOrderInput) {
   if (err) return { error: err };
 
   const supabase = createClient();
+  const freightErr = await freightMachineError(supabase, input);
+  if (freightErr) return { error: freightErr };
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -353,6 +384,9 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
   if (err) return { error: err };
 
   const supabase = createClient();
+  const freightErr = await freightMachineError(supabase, input);
+  if (freightErr) return { error: freightErr };
+
   const { error: updateErr } = await supabase
     .from("service_orders")
     .update(sanitizeOrder(input))

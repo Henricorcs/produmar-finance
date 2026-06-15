@@ -10,6 +10,8 @@ export interface Profile {
   full_name: string | null;
   role: UserRole;
   avatar_url: string | null;
+  /** Categorias de máquina/veículo que este operador pode usar (vazio = todas). */
+  allowed_categories: string[];
   created_at: string;
   updated_at: string;
 }
@@ -133,11 +135,35 @@ export type MachineTrackingType = "hourmeter" | "km";
 /** Como o frete é cobrado (tipo "frete"; null = entrega só de material/serviço). */
 export type ServiceBillingMode  = "viagem" | "km" | "diaria";
 
+/** Categoria do veículo/máquina (controlada pela UI; coluna é texto livre). */
+export type MachineCategory =
+  | "caminhao"
+  | "cacamba"
+  | "trator"
+  | "carregadeira"
+  | "maquina"
+  | "outro";
+
+/** Lista canônica de categorias (rótulo exibido + ordem dos botões). */
+export const MACHINE_CATEGORIES: { value: MachineCategory; label: string }[] = [
+  { value: "caminhao",     label: "Caminhão" },
+  { value: "cacamba",      label: "Caçamba" },
+  { value: "trator",       label: "Trator" },
+  { value: "carregadeira", label: "Carregadeira" },
+  { value: "maquina",      label: "Máquina" },
+  { value: "outro",        label: "Outro" },
+];
+
+/** Só estas categorias fazem FRETE e cobrança POR KM (caminhão e caçamba). */
+export const FREIGHT_CATEGORIES: MachineCategory[] = ["caminhao", "cacamba"];
+
 export interface Machine {
   id: string;
   name: string;
   plate: string | null;
   type: string | null;
+  /** Categoria (caminhao, cacamba, trator, ...). Define quem pode fazer frete. */
+  category: string | null;
   tracking_type: MachineTrackingType;
   notes: string | null;
   active: boolean;
@@ -181,6 +207,8 @@ export interface ServiceOrder {
 
   machine_id: string | null;
   pickup_location_id: string | null;
+  /** Operador (técnico) para quem a OS foi enviada — aparece só no painel dele. */
+  assigned_to: string | null;
   /** De onde (frete diária/km): texto preenchido pelo operador ao iniciar. */
   origin_address: string | null;
   delivery_address: string | null;

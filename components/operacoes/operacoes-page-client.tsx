@@ -21,6 +21,7 @@ import {
   Loader2,
   Search,
   Download,
+  HardHat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +38,7 @@ import type {
   Machine,
   PickupLocation,
   Product,
+  Profile,
   ProductStockBalance,
   ServiceOrder,
   ServiceOrderItem,
@@ -56,6 +58,7 @@ type ServiceOrderWithDetails = ServiceOrder & {
 interface Props {
   orders: ServiceOrderWithDetails[];
   machines: Machine[];
+  operators: Profile[];
   products: Product[];
   pickupLocations: PickupLocation[];
   categories: Category[];
@@ -146,6 +149,7 @@ function exportCSV(orders: ServiceOrderWithDetails[], fileLabel: string) {
 export function OperacoesPageClient({
   orders,
   machines,
+  operators,
   products,
   pickupLocations,
   categories,
@@ -157,6 +161,13 @@ export function OperacoesPageClient({
   const router = useRouter();
   const pathname = usePathname();
   const [, startTransition] = useTransition();
+
+  // Nome do operador atribuído a cada OS (selo na lista).
+  const operatorNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const op of operators) m.set(op.id, op.full_name || op.email);
+    return m;
+  }, [operators]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ServiceOrderWithDetails | null>(null);
@@ -402,6 +413,7 @@ export function OperacoesPageClient({
               <OrderRow
                 key={o.id}
                 order={o}
+                operatorName={o.assigned_to ? operatorNameById.get(o.assigned_to) ?? null : null}
                 onEdit={openEdit}
                 onDelete={handleDelete}
                 onStatus={handleStatusChange}
@@ -417,6 +429,7 @@ export function OperacoesPageClient({
         onClose={() => setDialogOpen(false)}
         order={editing}
         machines={machines}
+        operators={operators}
         products={products}
         pickupLocations={pickupLocations}
         stockBalances={stockBalances}
@@ -429,12 +442,14 @@ export function OperacoesPageClient({
 
 function OrderRow({
   order: o,
+  operatorName,
   onEdit,
   onDelete,
   onStatus,
   onGenerateTransaction,
 }: {
   order: ServiceOrderWithDetails;
+  operatorName: string | null;
   onEdit: (o: ServiceOrderWithDetails) => void;
   onDelete: (id: string) => void;
   onStatus: (o: ServiceOrderWithDetails, next: ServiceOrderStatus) => void;
@@ -552,6 +567,15 @@ function OrderRow({
             {o.billing_mode && (
               <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-800">
                 {osBillingLabel(o.billing_mode)}
+              </span>
+            )}
+            {operatorName && (
+              <span
+                title={`Enviada para ${operatorName}`}
+                className="inline-flex items-center gap-1 max-w-[10rem] text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-800"
+              >
+                <HardHat className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate">{operatorName}</span>
               </span>
             )}
             {o.transaction_id && (

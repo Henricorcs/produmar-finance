@@ -15,7 +15,14 @@ import {
   updatePickupLocation,
   deletePickupLocation,
 } from "@/app/(app)/operacoes/actions";
-import type { Machine, MachineTrackingType, Product, PickupLocation } from "@/lib/types";
+import { machineCategoryLabel } from "@/lib/utils";
+import {
+  MACHINE_CATEGORIES,
+  type Machine,
+  type MachineTrackingType,
+  type Product,
+  type PickupLocation,
+} from "@/lib/types";
 
 interface Props {
   machines: Machine[];
@@ -72,11 +79,11 @@ function MachinesList({ machines }: { machines: Machine[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName]   = useState("");
   const [plate, setPlate] = useState("");
-  const [type, setType]   = useState("");
+  const [category, setCategory] = useState("");
   const [tracking, setTracking] = useState<MachineTrackingType>("hourmeter");
 
   function reset() {
-    setName(""); setPlate(""); setType(""); setTracking("hourmeter");
+    setName(""); setPlate(""); setCategory(""); setTracking("hourmeter");
     setEditingId(null); setShowForm(false);
   }
 
@@ -84,7 +91,7 @@ function MachinesList({ machines }: { machines: Machine[] }) {
     setEditingId(m.id);
     setName(m.name);
     setPlate(m.plate ?? "");
-    setType(m.type ?? "");
+    setCategory(m.category ?? "");
     setTracking(m.tracking_type ?? "hourmeter");
     setShowForm(true);
   }
@@ -92,9 +99,9 @@ function MachinesList({ machines }: { machines: Machine[] }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (editingId) {
-      await updateMachine(editingId, { name, plate, type, tracking_type: tracking });
+      await updateMachine(editingId, { name, plate, category, tracking_type: tracking });
     } else {
-      await createMachine({ name, plate, type, tracking_type: tracking });
+      await createMachine({ name, plate, category, tracking_type: tracking });
     }
     reset();
   }
@@ -127,7 +134,11 @@ function MachinesList({ machines }: { machines: Machine[] }) {
                 {m.plate && <span className="text-xs text-slate-400 ml-1.5">({m.plate})</span>}
               </p>
               <div className="flex items-center gap-1.5 mt-0.5">
-                {m.type && <span className="text-[10px] text-slate-400">{m.type}</span>}
+                {m.category && (
+                  <span className="text-[10px] font-medium text-produmar-600 dark:text-produmar-400">
+                    {machineCategoryLabel(m.category)}
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
                   {m.tracking_type === "km" ? (
                     <><Gauge className="w-2.5 h-2.5" />km</>
@@ -179,12 +190,16 @@ function MachinesList({ machines }: { machines: Machine[] }) {
               placeholder="placa"
               className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
             />
-            <Input
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              placeholder="tipo"
-              className="h-9 text-sm"
-            />
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="h-9 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-slate-800 dark:text-slate-100"
+            >
+              <option value="">categoria…</option>
+              {MACHINE_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
           </div>
           {/* Tracking type */}
           <div className="grid grid-cols-2 gap-2">

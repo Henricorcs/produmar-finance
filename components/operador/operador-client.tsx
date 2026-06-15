@@ -631,9 +631,9 @@ function OSCard({
               <button
                 type="button"
                 onClick={() => onFinishTrip(o, openTrip)}
-                className="w-full h-14 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                className="w-full min-w-0 h-14 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-base sm:text-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
               >
-                <CheckCircle2 className="w-6 h-6" />
+                <CheckCircle2 className="w-5 h-5 shrink-0" />
                 FINALIZAR VIAGEM
               </button>
               <button
@@ -659,9 +659,9 @@ function OSCard({
               <button
                 type="button"
                 onClick={() => onStartTrip(o)}
-                className="flex-1 h-14 rounded-2xl bg-produmar-600 hover:bg-produmar-700 text-white text-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                className="flex-1 min-w-0 h-14 px-2 rounded-2xl bg-produmar-600 hover:bg-produmar-700 text-white text-base sm:text-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
               >
-                <PlayCircle className="w-6 h-6" />
+                <PlayCircle className="w-5 h-5 shrink-0" />
                 INICIAR VIAGEM
               </button>
             </div>
@@ -698,23 +698,24 @@ function OSCard({
         </div>
       )}
 
-      {/* Botões grandes p/ toque */}
-      <div className="flex gap-3">
+      {/* Botões grandes p/ toque — min-w-0 deixa encolher e não estoura o card
+          em celulares estreitos; ícone shrink-0 + texto responsivo. */}
+      <div className="flex gap-2 sm:gap-3">
         {o.status === "pendente" && (
           <Button
             variant="outline"
-            className="flex-1 h-16 text-lg font-bold border-2 border-produmar-300 text-produmar-700 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-produmar-950/30"
+            className="flex-1 min-w-0 h-16 px-2 text-base sm:text-lg font-bold border-2 border-produmar-300 text-produmar-700 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-produmar-950/30"
             onClick={() => onIniciar(o)}
           >
-            <PlayCircle className="w-6 h-6" />
+            <PlayCircle className="w-5 h-5 shrink-0" />
             INICIAR
           </Button>
         )}
         <Button
-          className="flex-1 h-16 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+          className="flex-1 min-w-0 h-16 px-2 text-base sm:text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
           onClick={() => onFinalizar(o)}
         >
-          <CheckCircle2 className="w-6 h-6" />
+          <CheckCircle2 className="w-5 h-5 shrink-0" />
           FINALIZAR
         </Button>
       </div>

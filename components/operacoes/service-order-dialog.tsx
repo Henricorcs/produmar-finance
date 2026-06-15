@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect, useMemo } from "react";
 import {
   Plus, X, Truck, Wrench, User, Building2,
   Clock, Gauge, DollarSign, Fuel, Boxes,
-  Route, CalendarDays,
+  Route, CalendarDays, HardHat, AlertTriangle,
 } from "lucide-react";
 import {
   Dialog,
@@ -33,11 +33,12 @@ import {
   updateServiceOrder,
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, osStatusLabel } from "@/lib/utils";
+import { formatBRL, isFreightCategory, machineCategoryLabel, osStatusLabel } from "@/lib/utils";
 import type {
   Machine,
   PickupLocation,
   Product,
+  Profile,
   ProductStockBalance,
   ServiceBillingMode,
   ServiceFreightType,
@@ -52,6 +53,7 @@ interface Props {
   onClose: () => void;
   order?: (ServiceOrder & { service_order_items?: ServiceOrderItem[] }) | null;
   machines: Machine[];
+  operators: Profile[];
   products: Product[];
   pickupLocations: PickupLocation[];
   stockBalances?: ProductStockBalance[];
@@ -144,6 +146,7 @@ export function ServiceOrderDialog({
   onClose,
   order,
   machines,
+  operators,
   products,
   pickupLocations,
   stockBalances = [],
@@ -161,6 +164,7 @@ export function ServiceOrderDialog({
   const [clientPhone, setClientPhone]       = useState("");
 
   const [machineId, setMachineId]                   = useState("");
+  const [assignedTo, setAssignedTo]                 = useState("");
   const [pickupLocationId, setPickupLocationId]     = useState("");
   const [deliveryAddress, setDeliveryAddress]       = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
@@ -226,6 +230,7 @@ export function ServiceOrderDialog({
       setClientDocument(order.client_document ?? "");
       setClientPhone(order.client_phone ?? "");
       setMachineId(order.machine_id ?? "");
+      setAssignedTo(order.assigned_to ?? "");
       setPickupLocationId(order.pickup_location_id ?? "");
       setDeliveryAddress(order.delivery_address ?? "");
       setServiceDescription(order.service_description ?? "");
@@ -271,7 +276,7 @@ export function ServiceOrderDialog({
       setFreightType("cliente");
       setStatus("pendente");
       setClientName(""); setClientDocument(""); setClientPhone("");
-      setMachineId(""); setPickupLocationId("");
+      setMachineId(""); setAssignedTo(""); setPickupLocationId("");
       setDeliveryAddress(""); setServiceDescription("");
       setDeliveryDate(todayStr());
       setHourmeterStart(""); setHourmeterEnd("");
@@ -290,6 +295,42 @@ export function ServiceOrderDialog({
     () => localMachines.find((m) => m.id === machineId) ?? null,
     [localMachines, machineId]
   );
+
+  // Operador para quem a OS vai ser enviada (técnico).
+  const selectedOperator = useMemo(
+    () => operators.find((op) => op.id === assignedTo) ?? null,
+    [operators, assignedTo]
+  );
+
+  // Máquinas disponíveis para escolher:
+  //  • Frete → só caminhão/caçamba (regra de negócio).
+  //  • Operador selecionado com categorias liberadas → só as dele.
+  //  • A máquina já escolhida nunca some da lista (edição não a perde).
+  const availableMachines = useMemo(() => {
+    const allowed = selectedOperator?.allowed_categories ?? [];
+    const restrictByOperator = allowed.length > 0;
+    let list = localMachines.filter((m) => {
+      if (type === "frete" && !isFreightCategory(m.category)) return false;
+      if (restrictByOperator && !(m.category && allowed.includes(m.category))) return false;
+      return true;
+    });
+    if (machineId && !list.some((m) => m.id === machineId)) {
+      const cur = localMachines.find((m) => m.id === machineId);
+      if (cur) list = [cur, ...list];
+    }
+    return list;
+  }, [localMachines, type, selectedOperator, machineId]);
+
+  // Avisos quando a máquina escolhida contraria as regras (não bloqueia a UI,
+  // mas o servidor recusa frete fora de caminhão/caçamba).
+  const machineNotFreight =
+    type === "frete" && !!selectedMachine && !isFreightCategory(selectedMachine.category);
+  const machineNotInOperator =
+    !!selectedMachine &&
+    !!selectedOperator &&
+    (selectedOperator.allowed_categories?.length ?? 0) > 0 &&
+    !(selectedMachine.category && selectedOperator.allowed_categories.includes(selectedMachine.category));
+
   const machineIsKm        = selectedMachine?.tracking_type === "km";
   const machineIsHourmeter = !!selectedMachine && selectedMachine.tracking_type !== "km";
   const useHourBasedPricing =
@@ -383,6 +424,12 @@ export function ServiceOrderDialog({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    // Regra de negócio: frete só em caminhão/caçamba.
+    if (machineNotFreight) {
+      setError("Só caminhão e caçamba podem fazer frete. Troque o veículo ou o tipo da OS.");
+      return;
+    }
 
     let itemsPayload: ServiceOrderItemInput[];
 
@@ -553,6 +600,7 @@ export function ServiceOrderDialog({
       client_document: freightType === "cliente" ? clientDocument : null,
       client_phone: freightType === "cliente" ? clientPhone : null,
       machine_id: machineId || null,
+      assigned_to: assignedTo || null,
       pickup_location_id: pickupLocationId || null,
       delivery_address: deliveryAddress,
       service_description: serviceDescription,
@@ -846,11 +894,45 @@ export function ServiceOrderDialog({
               </div>
             )}
 
+            {/* Operador (enviar a OS para o técnico) */}
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <HardHat className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                Enviar para (operador)
+              </Label>
+              <SearchableSelect
+                items={operators}
+                value={assignedTo}
+                onChange={setAssignedTo}
+                getId={(op) => op.id}
+                getLabel={(op) => op.full_name || op.email}
+                renderItem={(op) => (
+                  <div className="min-w-0">
+                    <span className="truncate block">{op.full_name || op.email}</span>
+                    {op.allowed_categories?.length > 0 && (
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate block">
+                        {op.allowed_categories.map(machineCategoryLabel).join(", ")}
+                      </span>
+                    )}
+                  </div>
+                )}
+                placeholder="Ninguém (aparece para todos)"
+                searchPlaceholder="Buscar operador..."
+                emptyMessage="Nenhum operador cadastrado"
+              />
+              {selectedOperator && (selectedOperator.allowed_categories?.length ?? 0) > 0 && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-1">
+                  {selectedOperator.full_name || selectedOperator.email} opera:{" "}
+                  {selectedOperator.allowed_categories.map(machineCategoryLabel).join(", ")}
+                </p>
+              )}
+            </div>
+
             {/* Machine */}
             <div className="space-y-1.5">
               <Label>Máquina / veículo</Label>
               <SearchableSelect
-                items={localMachines}
+                items={availableMachines}
                 value={machineId}
                 onChange={setMachineId}
                 getId={(m) => m.id}
@@ -859,6 +941,11 @@ export function ServiceOrderDialog({
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <span className="truncate">
                       {m.name}{m.plate ? ` (${m.plate})` : ""}
+                      {m.category ? (
+                        <span className="text-[10px] text-slate-400 ml-1.5">
+                          {machineCategoryLabel(m.category)}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="text-[10px] text-slate-400 flex-shrink-0 flex items-center gap-0.5">
                       {m.tracking_type === "km" ? (
@@ -869,19 +956,41 @@ export function ServiceOrderDialog({
                     </span>
                   </div>
                 )}
-                placeholder="Selecione uma máquina..."
+                placeholder={type === "frete" ? "Só caminhão / caçamba..." : "Selecione uma máquina..."}
                 searchPlaceholder="Buscar máquina ou placa..."
-                emptyMessage="Nenhuma máquina encontrada"
+                emptyMessage={
+                  type === "frete"
+                    ? "Nenhum caminhão / caçamba disponível"
+                    : "Nenhuma máquina encontrada"
+                }
                 onCreateNew={() => setMchDialogOpen(true)}
                 createNewLabel="Cadastrar nova máquina"
               />
-              {selectedMachine && (
+              {selectedMachine && !machineNotFreight && !machineNotInOperator && (
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-1 flex items-center gap-1">
+                  {selectedMachine.category && (
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {machineCategoryLabel(selectedMachine.category)} ·
+                    </span>
+                  )}
                   {selectedMachine.tracking_type === "km" ? (
                     <><Gauge className="w-3 h-3" />Medido por km (hodômetro)</>
                   ) : (
                     <><Clock className="w-3 h-3" />Medido por horímetro</>
                   )}
+                </p>
+              )}
+              {machineNotFreight && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 pl-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  Frete é só para caminhão / caçamba. Troque o veículo ou o tipo da OS.
+                </p>
+              )}
+              {machineNotInOperator && !machineNotFreight && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 pl-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  Este veículo não está nas categorias de{" "}
+                  {selectedOperator?.full_name || selectedOperator?.email}.
                 </p>
               )}
             </div>

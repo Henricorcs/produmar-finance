@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { OperacoesPageClient } from "@/components/operacoes/operacoes-page-client";
 import type {
   Category,
@@ -7,6 +8,7 @@ import type {
   Machine,
   PickupLocation,
   Product,
+  Profile,
   ProductStockBalance,
   ServiceOrder,
   ServiceOrderItem,
@@ -88,10 +90,27 @@ export default async function OperacoesPage({
     );
   }
 
+  // Operadores (para direcionar a OS). Usa o service-role para listar os
+  // perfis 'operador' (a RLS de profiles só deixa o admin ver os outros).
+  // Best-effort: se a service key não estiver configurada, segue sem a lista.
+  let operators: Profile[] = [];
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("profiles")
+      .select("*")
+      .eq("role", "operador")
+      .order("full_name", { ascending: true });
+    operators = (data as Profile[]) ?? [];
+  } catch {
+    operators = [];
+  }
+
   return (
     <OperacoesPageClient
       orders={orders}
       machines={machines}
+      operators={operators}
       products={(productsRes.data as Product[]) ?? []}
       pickupLocations={(locationsRes.data as PickupLocation[]) ?? []}
       categories={(categoriesRes.data as Category[]) ?? []}
