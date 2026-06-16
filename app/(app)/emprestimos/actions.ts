@@ -115,6 +115,7 @@ async function syncAvulsoReceivable(
     principal: number;
     interest_rate: number | null;
     term_months: number | null;
+    interest_amount: number | null;
     due_date: string | null;
     loan_date: string;
   },
@@ -161,7 +162,7 @@ async function syncAvulsoReceivable(
 async function recomputeStatus(supabase: SupabaseClient, loanId: string) {
   const { data: loan } = await supabase
     .from("loans")
-    .select("principal, interest_rate, term_months, status")
+    .select("principal, interest_rate, term_months, interest_amount, status")
     .eq("id", loanId)
     .single();
   if (!loan || loan.status === "cancelado") return;
@@ -189,6 +190,7 @@ export interface LoanInput {
   principal: number;
   interest_rate?: number | null;
   term_months?: number | null;
+  interest_amount?: number | null;
   repayment_type: LoanRepaymentType;
   installments_count?: number | null;
   loan_date: string;
@@ -221,6 +223,10 @@ function sanitize(input: LoanInput) {
     term_months:
       input.term_months != null && !isNaN(input.term_months) && input.term_months > 0
         ? input.term_months
+        : null,
+    interest_amount:
+      input.interest_amount != null && !isNaN(Number(input.interest_amount)) && Number(input.interest_amount) > 0
+        ? input.interest_amount
         : null,
     repayment_type: input.repayment_type,
     installments_count:
@@ -455,7 +461,7 @@ export async function addPayment(loanId: string, input: PaymentInput) {
   const { data: loan } = await supabase
     .from("loans")
     .select(
-      "loan_number, borrower_name, principal, interest_rate, term_months, due_date, loan_date, receivable_transaction_id, repayment_type"
+      "loan_number, borrower_name, principal, interest_rate, term_months, interest_amount, due_date, loan_date, receivable_transaction_id, repayment_type"
     )
     .eq("id", loanId)
     .single();
@@ -581,7 +587,7 @@ export async function deletePayment(paymentId: string) {
     const { data: loan } = await supabase
       .from("loans")
       .select(
-        "loan_number, borrower_name, principal, interest_rate, term_months, due_date, loan_date, receivable_transaction_id"
+        "loan_number, borrower_name, principal, interest_rate, term_months, interest_amount, due_date, loan_date, receivable_transaction_id"
       )
       .eq("id", payment.loan_id)
       .single();

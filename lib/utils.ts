@@ -128,10 +128,11 @@ export function formatDueLabel(date: string | Date): {
 
 // ── Empréstimos ───────────────────────────────────────────────────────────────
 
-type LoanCalcInput = Pick<Loan, "principal" | "interest_rate" | "term_months">;
+type LoanCalcInput = Pick<Loan, "principal" | "interest_rate" | "term_months" | "interest_amount">;
 
-/** Juros simples: principal × (taxa%/100) × prazo_meses. 0 se faltar taxa ou prazo. */
+/** Juros do empréstimo: valor fixo (interest_amount) ou juros simples (rate × meses). */
 export function loanInterestAmount(loan: LoanCalcInput): number {
+  if (loan.interest_amount != null && loan.interest_amount > 0) return loan.interest_amount;
   const rate = loan.interest_rate ?? 0;
   const months = loan.term_months ?? 0;
   if (rate <= 0 || months <= 0) return 0;

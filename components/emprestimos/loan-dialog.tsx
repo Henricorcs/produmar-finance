@@ -63,8 +63,10 @@ export function LoanDialog({ open, onClose, loan }: Props) {
 
   const [repaymentType, setRepaymentType] = useState<LoanRepaymentType>("avulso");
   const [amount, setAmount] = useState("");
+  const [interestType, setInterestType] = useState<"percent" | "fixed">("percent");
   const [interestRate, setInterestRate] = useState("");
   const [termMonths, setTermMonths] = useState("");
+  const [interestAmount, setInterestAmount] = useState("");
   const [installments, setInstallments] = useState("");
 
   // Comprovantes anexados já na criação (ex.: print do PIX)
@@ -78,8 +80,17 @@ export function LoanDialog({ open, onClose, loan }: Props) {
     if (open) {
       setRepaymentType(loan?.repayment_type ?? "avulso");
       setAmount(loan?.principal ? formatBRLInput(loan.principal) : "");
-      setInterestRate(loan?.interest_rate != null ? String(loan.interest_rate) : "");
-      setTermMonths(loan?.term_months != null ? String(loan.term_months) : "");
+      if (loan?.interest_amount) {
+        setInterestType("fixed");
+        setInterestAmount(formatBRLInput(loan.interest_amount));
+        setInterestRate("");
+        setTermMonths("");
+      } else {
+        setInterestType("percent");
+        setInterestAmount("");
+        setInterestRate(loan?.interest_rate != null ? String(loan.interest_rate) : "");
+        setTermMonths(loan?.term_months != null ? String(loan.term_months) : "");
+      }
       setInstallments(loan?.installments_count != null ? String(loan.installments_count) : "");
       setError(null);
       setFiles([]);
@@ -92,7 +103,13 @@ export function LoanDialog({ open, onClose, loan }: Props) {
   const principal = parseBRL(amount);
   const rate = parseFloat(interestRate.replace(",", ".")) || 0;
   const months = parseInt(termMonths, 10) || 0;
-  const total = loanTotalDue({ principal, interest_rate: rate, term_months: months });
+  const fixedInterest = parseBRL(interestAmount);
+  const total = loanTotalDue({
+    principal,
+    interest_rate: interestType === "percent" ? rate : null,
+    term_months: interestType === "percent" ? months : null,
+    interest_amount: interestType === "fixed" ? fixedInterest : null,
+  });
   const interest = total - principal;
 
   function addFiles(list: FileList | null) {
@@ -126,8 +143,9 @@ export function LoanDialog({ open, onClose, loan }: Props) {
       borrower_document: String(fd.get("borrower_document") ?? "") || null,
       borrower_phone: String(fd.get("borrower_phone") ?? "") || null,
       principal,
-      interest_rate: rate > 0 ? rate : null,
-      term_months: months > 0 ? months : null,
+      interest_rate: interestType === "percent" && rate > 0 ? rate : null,
+      term_months: interestType === "percent" && months > 0 ? months : null,
+      interest_amount: interestType === "fixed" && fixedInterest > 0 ? fixedInterest : null,
       repayment_type: repaymentType,
       installments_count:
         repaymentType === "parcelado" ? parseInt(installments, 10) || null : null,
@@ -242,34 +260,77 @@ export function LoanDialog({ open, onClose, loan }: Props) {
             </div>
           </div>
 
-          {/* Juros + prazo */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="interest_rate">Juros (% ao mês)</Label>
-              <Input
-                id="interest_rate"
-                type="text"
-                inputMode="decimal"
-                value={interestRate}
-                onChange={(e) => setInterestRate(e.target.value.replace(/[^\d.,]/g, ""))}
-                placeholder="opcional"
-                className="tabular-nums"
-                autoComplete="off"
-              />
+          {/* Juros */}
+          <div className="space-y-2">
+            <Label>Juros</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["percent", "fixed"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setInterestType(t)}
+                  className={`py-2 text-xs rounded-lg border font-medium transition-colors ${
+                    interestType === t
+                      ? "bg-produmar-50 dark:bg-produmar-950/40 border-produmar-300 dark:border-produmar-800 text-produmar-700 dark:text-produmar-400"
+                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  {t === "percent" ? "% ao mês" : "Valor fixo (R$)"}
+                </button>
+              ))}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="term_months">Prazo (meses)</Label>
-              <Input
-                id="term_months"
-                type="number"
-                min={0}
-                value={termMonths}
-                onChange={(e) => setTermMonths(e.target.value)}
-                placeholder="ex: 6"
-                className="tabular-nums"
-                autoComplete="off"
-              />
-            </div>
+
+            {interestType === "percent" ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="interest_rate" className="text-xs text-slate-500 dark:text-slate-400">Taxa (% ao mês)</Label>
+                  <Input
+                    id="interest_rate"
+                    type="text"
+                    inputMode="decimal"
+                    value={interestRate}
+                    onChange={(e) => setInterestRate(e.target.value.replace(/[^\d.,]/g, ""))}
+                    placeholder="opcional"
+                    className="tabular-nums"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="term_months" className="text-xs text-slate-500 dark:text-slate-400">Prazo (meses)</Label>
+                  <Input
+                    id="term_months"
+                    type="number"
+                    min={0}
+                    value={termMonths}
+                    onChange={(e) => setTermMonths(e.target.value)}
+                    placeholder="ex: 6"
+                    className="tabular-nums"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="interest_fixed" className="text-xs text-slate-500 dark:text-slate-400">
+                  Valor dos juros
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none">
+                    R$
+                  </span>
+                  <Input
+                    id="interest_fixed"
+                    type="text"
+                    inputMode="decimal"
+                    value={interestAmount}
+                    onChange={(e) => setInterestAmount(formatBRLInput(e.target.value))}
+                    placeholder="0,00"
+                    className="pl-9 tabular-nums"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Prévia do total */}

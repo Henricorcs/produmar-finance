@@ -240,7 +240,7 @@ export function EmprestimosPageClient({ loans }: Props) {
                     <Badge variant={badge.variant}>{badge.label}</Badge>
                   </div>
                   <div
-                    className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    className="hidden sm:flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity flex-shrink-0"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
@@ -270,6 +270,8 @@ export function EmprestimosPageClient({ loans }: Props) {
         open={detailLive !== null}
         onClose={() => setDetail(null)}
         loan={detailLive}
+        onEdit={detailLive ? () => { setDetail(null); openEdit(detailLive); } : undefined}
+        onDelete={detailLive ? () => handleDelete(detailLive.id) : undefined}
       />
     </div>
   );

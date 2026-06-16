@@ -307,6 +307,7 @@ export interface Loan {
   principal: number;
   interest_rate: number | null;   // % ao mês (juros simples)
   term_months: number | null;
+  interest_amount: number | null; // juros fixo em R$ (alternativa a interest_rate × term_months)
 
   repayment_type: LoanRepaymentType;
   installments_count: number | null;

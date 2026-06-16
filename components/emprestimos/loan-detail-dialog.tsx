@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
-import { Trash2, CheckCircle2, Plus } from "lucide-react";
+import { Trash2, CheckCircle2, Plus, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   loan: LoanWithDetails | null;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 function formatBRLInput(raw: string): string {
@@ -44,7 +46,7 @@ function parseBRL(value: string): number {
 }
 const todayStr = () => new Date().toISOString().split("T")[0];
 
-export function LoanDetailDialog({ open, onClose, loan }: Props) {
+export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
@@ -98,17 +100,47 @@ export function LoanDetailDialog({ open, onClose, loan }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="pr-6 line-clamp-2">
             Empréstimo #{loan.loan_number} — {loan.borrower_name}
           </DialogTitle>
         </DialogHeader>
+
+        {/* Ações rápidas — visíveis só no celular */}
+        {(onEdit || onDelete) && (
+          <div className="flex gap-2 sm:hidden mb-1">
+            {onEdit && (
+              <Button type="button" variant="outline" size="sm" className="flex-1" onClick={onEdit}>
+                <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                Editar
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex-1 text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/40"
+                onClick={onDelete}
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                Excluir
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="space-y-4">
           {/* Resumo financeiro */}
           <div className="grid grid-cols-2 gap-2 text-sm">
             <SummaryItem label="Emprestado" value={formatBRL(loan.principal)} />
             <SummaryItem
-              label={`Juros${loan.interest_rate ? ` (${loan.interest_rate}%/mês)` : ""}`}
+              label={
+                loan.interest_amount
+                  ? "Juros (fixo)"
+                  : loan.interest_rate
+                    ? `Juros (${loan.interest_rate}%/mês)`
+                    : "Juros"
+              }
               value={formatBRL(interest)}
             />
             <SummaryItem label="Total a receber" value={formatBRL(total)} strong />
