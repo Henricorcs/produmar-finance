@@ -470,8 +470,10 @@ export function ServiceOrderDialog({
           }];
         }
       } else {
+        const isInterno = freightType === "interno";
         const amount = parseBRLToNumber(flatServiceAmount);
-        if (amount <= 0) {
+        // Consumo interno não cobra — o valor é opcional. Cliente exige valor.
+        if (!isInterno && amount <= 0) {
           setError(machineIsKm
             ? "Informe o valor do serviço / aluguel"
             : "Informe o valor do serviço");
@@ -480,7 +482,7 @@ export function ServiceOrderDialog({
         itemsPayload = [{
           product_id: null,
           // Descrição genérica: a descrição real fica em service_description.
-          description: "PRESTAÇÃO DE SERVIÇO",
+          description: isInterno && amount <= 0 ? "CONSUMO INTERNO" : "PRESTAÇÃO DE SERVIÇO",
           quantity: 1,
           unit: "ud",
           unit_price: amount,
@@ -1335,12 +1337,16 @@ export function ServiceOrderDialog({
                     </>
                   ) : (
                     <>
-                      <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
-                        <DollarSign className="w-3.5 h-3.5" />
-                        {machineIsKm
-                          ? "Valor do serviço / aluguel *"
-                          : "Valor do serviço *"}
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
+                          <DollarSign className="w-3.5 h-3.5" />
+                          {machineIsKm ? "Valor do serviço / aluguel" : "Valor do serviço"}
+                          {freightType !== "interno" ? " *" : ""}
+                        </Label>
+                        {freightType === "interno" && (
+                          <span className="text-[10px] text-slate-400">opcional</span>
+                        )}
+                      </div>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
                         <Input

@@ -22,14 +22,15 @@ export default async function OperadorPage() {
   if (!user) redirect("/login");
 
   // Busca OS em aberto (pendente ou em andamento) ENVIADAS para este operador.
-  // Fallback: OS ainda sem dono (assigned_to NULL) aparecem para todos — assim
-  // nada se perde enquanto o escritório não passa a direcionar cada OS.
+  // Isolamento estrito: cada operador só vê o que foi direcionado a ele — a OS
+  // de um operador NÃO aparece para outro. OS sem dono (assigned_to NULL) não
+  // aparecem em nenhum painel; o escritório precisa enviá-las a alguém.
   const select = `*, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`;
   const assigned = await supabase
     .from("service_orders")
     .select(select)
     .in("status", ["pendente", "em_andamento"])
-    .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
+    .eq("assigned_to", user.id)
     .order("created_at", { ascending: false });
 
   // Coluna assigned_to ausente (migration 023 não aplicada): mostra todas as OS

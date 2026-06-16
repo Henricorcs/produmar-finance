@@ -15,7 +15,7 @@ import { startServiceOrder } from "@/app/(app)/operacoes/actions";
 import type { ServiceOrder } from "@/lib/types";
 
 type OrderDetails = ServiceOrder & {
-  machines: { name: string; plate: string | null } | null;
+  machines: { name: string; plate: string | null; tracking_type?: string | null } | null;
 };
 
 interface Props {
@@ -47,23 +47,33 @@ function nowHHMM(): string {
  * de saída/início. Campos grandes, pensados para celular e baixa visão.
  */
 export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props) {
-  const [km, setKm]               = useState("");
+  const [reading, setReading]     = useState("");
   const [time, setTime]           = useState("");
   const [origin, setOrigin]       = useState("");
   const [error, setError]         = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const isDiaria = order.billing_mode === "diaria";
-  const isViagem = order.billing_mode === "viagem";
-  const startTitle = isDiaria ? "Iniciar diária" : isViagem ? "Iniciar viagem" : "Iniciar saída";
-  // "De onde" é da OS inteira na diária e no km; no modo viagem cada viagem
-  // tem o seu próprio "de onde" (registrado em "Iniciar viagem").
+  const isDiaria  = order.billing_mode === "diaria";
+  const isViagem  = order.billing_mode === "viagem";
+  const isService = order.type === "prestacao_servico";
+  // O que o operador anota na saída: frete é sempre km (caminhão/caçamba);
+  // serviço segue a medição da máquina (km = hodômetro, senão horímetro).
+  const tracksKm = !!order.billing_mode || order.machines?.tracking_type === "km";
+  const startTitle = isService
+    ? "Iniciar serviço"
+    : isDiaria
+      ? "Iniciar diária"
+      : isViagem
+        ? "Iniciar viagem"
+        : "Iniciar saída";
+  // "De onde" é da OS inteira na diária e no km do frete; no modo viagem cada
+  // viagem tem o seu próprio "de onde". Serviço não pergunta origem.
   const showOrigin = isDiaria || order.billing_mode === "km";
 
   // Pré-preenche a hora com agora toda vez que abre
   useEffect(() => {
     if (open) {
-      setKm("");
+      setReading("");
       setTime(nowHHMM());
       setOrigin("");
       setError(null);
@@ -72,9 +82,13 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const kmNum = parseFloat(km.replace(",", "."));
-    if (!km.trim() || isNaN(kmNum)) {
-      setError("Anote o KM que está no painel do veículo");
+    const readingNum = parseFloat(reading.replace(",", "."));
+    if (!reading.trim() || isNaN(readingNum)) {
+      setError(
+        tracksKm
+          ? "Anote o KM que está no painel do veículo"
+          : "Anote o horímetro da máquina"
+      );
       return;
     }
     if (!time.trim()) {
@@ -88,7 +102,8 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
     setError(null);
     startTransition(async () => {
       const result = await startServiceOrder(order.id, {
-        kmStart: kmNum,
+        kmStart: tracksKm ? readingNum : null,
+        hourmeterStart: tracksKm ? null : readingNum,
         startTime: time,
         origin: showOrigin ? origin.trim() || null : null,
       });
@@ -124,22 +139,25 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
 
           <div className="space-y-2">
             <Label className="text-base font-semibold flex items-center gap-2">
-              <Gauge className="w-5 h-5 text-produmar-600" />
-              KM do veículo agora
+              {tracksKm ? (
+                <><Gauge className="w-5 h-5 text-produmar-600" />KM do veículo agora</>
+              ) : (
+                <><Clock className="w-5 h-5 text-produmar-600" />Horímetro da máquina agora</>
+              )}
             </Label>
             <Input
-              value={km}
-              onChange={(e) => setKm(sanitizeKm(e.target.value))}
-              placeholder="ex: 154300"
+              value={reading}
+              onChange={(e) => setReading(sanitizeKm(e.target.value))}
+              placeholder={tracksKm ? "ex: 154300" : "ex: 1230,5"}
               inputMode="decimal"
               autoComplete="off"
               autoFocus
               className="h-16 text-3xl text-center font-bold tabular-nums"
             />
-            {lastKm != null && (
+            {tracksKm && lastKm != null && (
               <button
                 type="button"
-                onClick={() => setKm(String(lastKm).replace(".", ","))}
+                onClick={() => setReading(String(lastKm).replace(".", ","))}
                 className="w-full h-12 rounded-xl border-2 border-dashed border-produmar-300 dark:border-produmar-700 text-produmar-700 dark:text-produmar-300 font-semibold text-base active:bg-produmar-50 dark:active:bg-produmar-950/30 transition-colors tabular-nums"
               >
                 Usar último km: {lastKm.toLocaleString("pt-BR")}
@@ -150,7 +168,7 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
           <div className="space-y-2">
             <Label className="text-base font-semibold flex items-center gap-2">
               <Clock className="w-5 h-5 text-produmar-600" />
-              {isDiaria ? "Hora de início" : "Hora de saída"}
+              {isDiaria || isService ? "Hora de início" : "Hora de saída"}
             </Label>
             <Input
               type="time"

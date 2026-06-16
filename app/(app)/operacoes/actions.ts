@@ -458,6 +458,8 @@ export async function startServiceOrder(
   id: string,
   options: {
     kmStart?: number | null;
+    // Leitura inicial do horímetro (serviço em máquina medida por horímetro).
+    hourmeterStart?: number | null;
     startTime?: string | null;
     // "De onde" (frete diária/km): o operador informa a origem ao iniciar.
     origin?: string | null;
@@ -466,6 +468,7 @@ export async function startServiceOrder(
   const supabase = createClient();
   const patch: Record<string, unknown> = { status: "em_andamento" };
   if (options.kmStart != null) patch.km_start = options.kmStart;
+  if (options.hourmeterStart != null) patch.hourmeter_start = options.hourmeterStart;
   if (options.startTime?.trim()) patch.start_time = options.startTime.trim();
   if (options.origin?.trim()) patch.origin_address = options.origin.trim().toUpperCase();
 
@@ -735,19 +738,25 @@ export async function finalizeServiceOrder(
 
   // No modo viagem cada entrega já foi assinada na hora (service_order_trips),
   // então o fechamento não exige nome/assinatura final — se vier vazio, usa o
-  // nome da última entrega assinada como referência no comprovante.
+  // nome da última entrega assinada como referência no comprovante. Consumo
+  // interno também dispensa o nome (não há terceiro recebendo).
   let trimmed = receivedBy.trim();
   if (!trimmed) {
-    if (mode !== "viagem") return { error: "Informe o nome de quem recebeu" };
-    const { data: lastSigned } = await supabase
-      .from("service_order_trips")
-      .select("received_by")
-      .eq("service_order_id", id)
-      .not("received_by", "is", null)
-      .order("trip_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    trimmed = lastSigned?.received_by || "ENTREGAS ASSINADAS POR VIAGEM";
+    if (mode === "viagem") {
+      const { data: lastSigned } = await supabase
+        .from("service_order_trips")
+        .select("received_by")
+        .eq("service_order_id", id)
+        .not("received_by", "is", null)
+        .order("trip_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      trimmed = lastSigned?.received_by || "ENTREGAS ASSINADAS POR VIAGEM";
+    } else if (order.freight_type === "cliente") {
+      return { error: "Informe o nome de quem recebeu" };
+    } else {
+      trimmed = "CONSUMO INTERNO";
+    }
   }
 
   // Ao finalizar, a data de entrega passa a ser a data real (hoje),
@@ -876,6 +885,17 @@ export async function finalizeServiceOrder(
       unit_price: rate,
     });
     if (itErr) return { error: itErr.message };
+  }
+
+  // Prestação de serviço medida por hodômetro (km): registra a quilometragem
+  // rodada (controle de uso da máquina). O valor do serviço é o combinado —
+  // o km não recalcula o total, só fica gravado.
+  if (order.type === "prestacao_servico" && options.kmEnd != null) {
+    const ks = options.kmStart ?? order.km_start;
+    if (ks != null && options.kmEnd <= ks)
+      return { error: "O km final deve ser maior que o inicial" };
+    if (options.kmStart != null) patch.km_start = options.kmStart;
+    patch.km_end = options.kmEnd;
   }
 
   const { error } = await supabase

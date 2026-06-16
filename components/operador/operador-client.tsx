@@ -136,9 +136,15 @@ export function OperadorClient({
 
   async function handleIniciar(o: OrderWithDetails) {
     // Todo frete (viagem/km/diária) anota o km do veículo + a hora na saída —
-    // o km de chegada no fim é o que fecha o cálculo. OS sem cobrança são
-    // 1 toque, mas a hora de início é registrada do mesmo jeito.
-    if (o.billing_mode) {
+    // o km de chegada no fim é o que fecha o cálculo. A prestação de serviço
+    // com máquina também anota a leitura (km/horímetro) no início, salvo se já
+    // veio preenchida do escritório. OS sem máquina inicia em 1 toque.
+    const tracksKm = o.machines?.tracking_type === "km";
+    const serviceNeedsReading =
+      o.type === "prestacao_servico" &&
+      o.machine_id != null &&
+      (tracksKm ? o.km_start == null : o.hourmeter_start == null);
+    if (o.billing_mode || serviceNeedsReading) {
       setStartTarget(o);
       return;
     }
@@ -477,10 +483,14 @@ function OSCard({
 
   // Saída/início anotado no Iniciar — km (quando houver) e hora, em todos os
   // modos: agora a hora é registrada mesmo no início de 1 toque.
+  const tracksKm = o.machines?.tracking_type === "km";
   const startInfo = (() => {
     if (o.status !== "em_andamento") return null;
     const parts: string[] = [];
-    if ((isMaterial || isFrete) && o.km_start != null) parts.push(`${fmtKm(o.km_start)} km`);
+    // KM de saída: frete/entrega e também serviço medido por hodômetro.
+    if ((isMaterial || isFrete || tracksKm) && o.km_start != null) {
+      parts.push(`${fmtKm(o.km_start)} km`);
+    }
     if (o.start_time) parts.push(`às ${o.start_time.slice(0, 5)}`);
     return parts.length > 0 ? parts.join(" ") : null;
   })();
@@ -590,7 +600,7 @@ function OSCard({
 
         {startInfo && (
           <InfoRow
-            icon={(isMaterial || isFrete) && o.km_start != null ? Gauge : Clock}
+            icon={o.km_start != null ? Gauge : Clock}
             label={isMaterial || isFrete ? "Saída" : "Início"}
           >
             <span className="tabular-nums">{startInfo}</span>

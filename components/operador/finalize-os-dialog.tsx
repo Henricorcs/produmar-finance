@@ -135,6 +135,24 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   const needsHourmeter = isHourmeterService && order.hourmeter_end == null;
   const needsStart = needsHourmeter && order.hourmeter_start == null;
 
+  // Serviço medido por hodômetro (km): o operador anota o km final ao fechar
+  // (e o inicial, se não foi anotado no início). O km é controle de uso da
+  // máquina — o valor do serviço é o combinado, não muda com o km rodado.
+  const isKmService =
+    order.type === "prestacao_servico" &&
+    order.machine_id != null &&
+    order.machines?.tracking_type === "km";
+  const needsKmService = isKmService && order.km_end == null;
+  const needsKmServiceStart = needsKmService && order.km_start == null;
+  const svcKmStartNum = needsKmServiceStart
+    ? parseFloat(kmStart.replace(",", "."))
+    : order.km_start ?? NaN;
+  const svcKmEndNum = parseFloat(kmEnd.replace(",", "."));
+  const svcKmDelta =
+    !isNaN(svcKmStartNum) && !isNaN(svcKmEndNum) && svcKmEndNum > svcKmStartNum
+      ? svcKmEndNum - svcKmStartNum
+      : 0;
+
   const startNum = needsStart
     ? parseFloat(hourmeterStart.replace(",", "."))
     : order.hourmeter_start ?? 0;
@@ -189,7 +207,9 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isViagem && !receivedBy.trim()) {
+    // Nome de quem recebeu é obrigatório só para cliente externo. Consumo
+    // interno não tem terceiro para assinar/receber.
+    if (!isViagem && isClient && !receivedBy.trim()) {
       setError("Escreva o nome de quem recebeu");
       return;
     }
@@ -204,6 +224,20 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
       }
       if (endNum <= startNum) {
         setError("O horímetro final deve ser maior que o inicial");
+        return;
+      }
+    }
+    if (needsKmService) {
+      if (needsKmServiceStart && (!kmStart.trim() || isNaN(svcKmStartNum))) {
+        setError("Informe o km inicial");
+        return;
+      }
+      if (!kmEnd.trim() || isNaN(svcKmEndNum)) {
+        setError("Informe o km final");
+        return;
+      }
+      if (!isNaN(svcKmStartNum) && svcKmEndNum <= svcKmStartNum) {
+        setError("O km final deve ser maior que o inicial");
         return;
       }
     }
@@ -237,8 +271,10 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
         signature,
         hourmeterStart: needsStart ? startNum : null,
         hourmeterEnd: needsHourmeter ? endNum : null,
-        kmStart: billingMode && showKmStartInput ? ksNum : null,
-        kmEnd: billingMode ? keNum : null,
+        kmStart: billingMode && showKmStartInput
+          ? ksNum
+          : needsKmServiceStart ? svcKmStartNum : null,
+        kmEnd: billingMode ? keNum : needsKmService ? svcKmEndNum : null,
         tripsCount: billingMode === "viagem" ? trips : null,
         destination: showDestination ? destination.trim() || null : null,
         // Hora e data de fechamento do relógio do celular (servidor é UTC)
@@ -522,6 +558,55 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               </div>
             )}
 
+            {/* Hodômetro (serviço por km em aberto) — registra o km rodado */}
+            {needsKmService && (
+              <div className="rounded-xl border border-produmar-200 dark:border-produmar-800/60 bg-produmar-50/50 dark:bg-produmar-950/20 p-4 space-y-2">
+                <Label className="flex items-center gap-2 text-base font-semibold text-produmar-700 dark:text-produmar-400">
+                  <Gauge className="w-5 h-5" />
+                  Anote o KM da máquina
+                </Label>
+                {!needsKmServiceStart && order.km_start != null && (
+                  <p className="text-base text-slate-600 dark:text-slate-300 tabular-nums">
+                    KM inicial:{" "}
+                    <span className="font-bold">{fmtKm(order.km_start)} km</span>
+                  </p>
+                )}
+                {needsKmServiceStart && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-slate-600 dark:text-slate-300">
+                      KM inicial <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      value={kmStart}
+                      onChange={(e) => setKmStart(sanitizeKm(e.target.value))}
+                      placeholder="ex: 154300"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      className="h-14 text-2xl text-center font-bold tabular-nums"
+                    />
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-slate-600 dark:text-slate-300">
+                    KM final <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    value={kmEnd}
+                    onChange={(e) => setKmEnd(sanitizeKm(e.target.value))}
+                    placeholder="ex: 154350"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="h-14 text-2xl text-center font-bold tabular-nums"
+                  />
+                </div>
+                {svcKmDelta > 0 && (
+                  <p className="text-base text-slate-600 dark:text-slate-300 tabular-nums">
+                    Rodou <span className="font-bold">{fmtKm(svcKmDelta)} km</span>
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Nome + assinatura final — dispensados no modo viagem (cada
                 entrega já foi assinada na hora pelo destinatário). */}
             {isViagem ? (
@@ -549,7 +634,8 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="received_by_input" className="text-base">
-                    Nome de quem recebeu <span className="text-red-500">*</span>
+                    Nome de quem recebeu
+                    {isClient && <span className="text-red-500"> *</span>}
                   </Label>
                   <Input
                     id="received_by_input"
