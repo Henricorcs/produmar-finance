@@ -13,7 +13,6 @@ import {
   loanTotalDue,
   loanBalance,
   formatBRL,
-  formatBRLCompact,
   formatDate,
   daysUntil,
 } from "@/lib/utils";
@@ -148,8 +147,8 @@ export function EmprestimosPageClient({ loans }: Props) {
         </Button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      {/* Summary cards — empilhados no celular p/ caber o valor inteiro */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
         <SummaryCard label="Emprestado" value={totals.emprestado} tone="slate" />
         <SummaryCard label="A receber" value={totals.aReceber} tone="amber" />
         <SummaryCard label="Recebido" value={totals.recebido} tone="emerald" />
@@ -218,7 +217,7 @@ export function EmprestimosPageClient({ loans }: Props) {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                      #{loan.loan_number} {loan.borrower_name}
+                      {loan.borrower_name}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs text-slate-400">{formatDate(loan.loan_date)}</span>
@@ -304,12 +303,12 @@ function SummaryCard({
     emerald: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400",
   }[tone];
   return (
-    <div className={`rounded-xl p-3 sm:p-4 border min-w-0 ${styles}`}>
-      <p className="text-[10px] sm:text-xs font-medium truncate opacity-80 mb-1">{label}</p>
-      <p className="text-xs sm:text-base font-semibold tabular-nums truncate">
-        <span className="sm:hidden">{formatBRLCompact(value)}</span>
-        <span className="hidden sm:inline">{formatBRL(value)}</span>
-      </p>
+    // Celular: label e valor lado a lado (largura total). Desktop: empilhado.
+    <div
+      className={`rounded-xl px-4 py-3 sm:p-4 border min-w-0 flex items-center justify-between sm:block ${styles}`}
+    >
+      <p className="text-xs font-medium opacity-80 sm:mb-1">{label}</p>
+      <p className="text-base font-semibold tabular-nums">{formatBRL(value)}</p>
     </div>
   );
 }

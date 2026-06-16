@@ -458,14 +458,14 @@ export async function addPayment(loanId: string, input: PaymentInput) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
 
-  const { data: loan } = await supabase
+  const { data: loan, error: loanErr } = await supabase
     .from("loans")
     .select(
       "loan_number, borrower_name, principal, interest_rate, term_months, interest_amount, due_date, loan_date, receivable_transaction_id, repayment_type"
     )
     .eq("id", loanId)
     .single();
-  if (!loan) return { error: "Empréstimo não encontrado" };
+  if (loanErr || !loan) return { error: loanErr?.message ?? "Empréstimo não encontrado" };
 
   const recCategoryId = await loanCategoryId(supabase, "entrada");
   let txId: string | null = null;

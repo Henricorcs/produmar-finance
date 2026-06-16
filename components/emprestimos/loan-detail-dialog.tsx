@@ -101,7 +101,7 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="pr-6 line-clamp-2">
-            Empréstimo #{loan.loan_number} — {loan.borrower_name}
+            Empréstimo — {loan.borrower_name}
           </DialogTitle>
         </DialogHeader>
 

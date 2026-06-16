@@ -5,13 +5,26 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// ── Coordenação entre diálogos empilhados ────────────────────────────────────
+// Vários diálogos podem ficar abertos ao mesmo tempo (ex.: "nova categoria" por
+// cima de "lançar conta"). Todos integram com o histórico do navegador (botão
+// voltar do Android). Sem coordenação, o history.back() que limpa a entrada do
+// diálogo de cima dispararia um popstate que fecharia o de baixo junto.
+//
+// - dialogStack: pilha dos diálogos abertos; só o do TOPO reage ao "voltar".
+// - suppressPopstate: nº de popstates a ignorar, gerados pelo nosso próprio
+//   back() de limpeza (não devem fechar o diálogo de baixo).
+const dialogStack: Array<() => void> = [];
+let suppressPopstate = 0;
+
 /**
  * Wrapper sobre Radix Dialog.Root que integra com o histórico do navegador:
  * - Ao abrir, empurra uma entrada de história (sem mudar a URL)
- * - Ao usuário pressionar o botão "voltar" do navegador / Android, fecha o
- *   diálogo ao invés de navegar
+ * - Ao usuário pressionar o botão "voltar" do navegador / Android, fecha
+ *   apenas o diálogo do topo da pilha ao invés de navegar
  * - Ao fechar manualmente (X, click no overlay, ESC, programaticamente),
- *   remove a entrada que adicionamos para manter o histórico limpo
+ *   remove a entrada que adicionamos para manter o histórico limpo, sem
+ *   fechar diálogos empilhados abaixo
  */
 const Dialog = ({
   open,
@@ -37,22 +50,39 @@ const Dialog = ({
     // Action chama revalidatePath, o refresh joga o usuário de volta para a
     // rota inicial (/ → /dashboard).
     window.history.pushState({ ...window.history.state, __dialog: true }, "");
-    let poppedFromBack = false;
+    let closedByPop = false;
+
+    const close = () => {
+      closedByPop = true;
+      onOpenChangeRef.current?.(false);
+    };
+    dialogStack.push(close);
 
     const handlePopState = () => {
-      poppedFromBack = true;
-      onOpenChangeRef.current?.(false);
+      // popstate gerado pelo nosso próprio back() de limpeza: ignora um
+      if (suppressPopstate > 0) {
+        suppressPopstate--;
+        return;
+      }
+      // botão "voltar" de verdade: só o diálogo do topo fecha
+      if (dialogStack[dialogStack.length - 1] !== close) return;
+      close();
     };
 
     window.addEventListener("popstate", handlePopState);
 
     return () => {
       window.removeEventListener("popstate", handlePopState);
+      const idx = dialogStack.lastIndexOf(close);
+      if (idx !== -1) dialogStack.splice(idx, 1);
       // Se fechou por outro caminho (X, overlay, ESC, programático),
       // remove a entrada de histórico que adicionamos — mas só se ela ainda
       // for o topo da pilha. Sem essa checagem, um back() poderia pular para
       // antes da página e levar o usuário para fora da rota atual.
-      if (!poppedFromBack && window.history.state?.__dialog) {
+      if (!closedByPop && window.history.state?.__dialog) {
+        // Ainda há diálogo(s) abaixo: o popstate do nosso back() seria
+        // capturado por eles — suprime para que não fechem junto.
+        if (dialogStack.length > 0) suppressPopstate++;
         window.history.back();
       }
     };
