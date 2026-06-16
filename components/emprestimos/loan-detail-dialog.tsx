@@ -203,44 +203,46 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
 
           {/* Registrar pagamento avulso — só p/ empréstimos sem parcelas */}
           {balance > 0 && installments.length === 0 && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                 Registrar pagamento
               </p>
+              {/* Valor em linha própria — largura total para o número não cortar no celular */}
+              <div className="space-y-1">
+                <Label htmlFor="pay_amount" className="text-xs">Valor</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none">
+                    R$
+                  </span>
+                  <Input
+                    id="pay_amount"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(formatBRLInput(e.target.value))}
+                    placeholder="0,00"
+                    inputMode="decimal"
+                    className="pl-9 tabular-nums h-11 text-base"
+                  />
+                </div>
+              </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1 space-y-1">
-                  <Label htmlFor="pay_amount" className="text-xs">Valor</Label>
-                  <div className="relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">
-                      R$
-                    </span>
-                    <Input
-                      id="pay_amount"
-                      value={payAmount}
-                      onChange={(e) => setPayAmount(formatBRLInput(e.target.value))}
-                      placeholder="0,00"
-                      inputMode="decimal"
-                      className="pl-8 tabular-nums h-9"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
                   <Label htmlFor="pay_date" className="text-xs">Data</Label>
                   <Input
                     id="pay_date"
                     type="date"
                     value={payDate}
                     onChange={(e) => setPayDate(e.target.value)}
-                    className="h-9"
+                    className="h-11"
                   />
                 </div>
                 <Button
                   type="button"
                   onClick={() => handleAddPayment()}
                   disabled={isPending}
-                  className="h-9"
+                  className="h-11 px-5"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 mr-1" />
+                  Registrar
                 </Button>
               </div>
             </div>

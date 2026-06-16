@@ -113,6 +113,18 @@ export function EmprestimosPageClient({ loans }: Props) {
     setEditing(loan);
     setDialogOpen(true);
   }
+  // Abre a edição a partir do diálogo de detalhe. As duas caixas usam o
+  // histórico do navegador (botão voltar do Android): fechar o detalhe dispara
+  // um history.back() cujo popstate fecharia a edição se a abríssemos no mesmo
+  // tick. Por isso esperamos esse popstate antes de abrir a edição.
+  function openEditFromDetail(loan: Loan) {
+    const onBack = () => {
+      window.removeEventListener("popstate", onBack);
+      openEdit(loan);
+    };
+    window.addEventListener("popstate", onBack);
+    setDetail(null);
+  }
   async function handleDelete(id: string) {
     if (!confirm("Excluir este empréstimo? Os lançamentos no caixa também serão removidos.")) return;
     startTransition(async () => {
@@ -270,7 +282,7 @@ export function EmprestimosPageClient({ loans }: Props) {
         open={detailLive !== null}
         onClose={() => setDetail(null)}
         loan={detailLive}
-        onEdit={detailLive ? () => { setDetail(null); openEdit(detailLive); } : undefined}
+        onEdit={detailLive ? () => openEditFromDetail(detailLive) : undefined}
         onDelete={detailLive ? () => handleDelete(detailLive.id) : undefined}
       />
     </div>
