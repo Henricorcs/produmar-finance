@@ -626,6 +626,108 @@ export async function removeLastTrip(id: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PAUSA / RETOMADA (prestação de serviço interno que dura vários dias)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Pausa um serviço em andamento (fim do expediente): grava a hora, a leitura do
+ * veículo/máquina (km do hodômetro ou horímetro), a observação do dia (opcional)
+ * e a localização (GPS) — tudo do relógio/aparelho do técnico. Cria uma pausa
+ * EM ABERTO (resume_time null); não muda o status da OS (continua em andamento).
+ */
+export async function pauseServiceOrder(
+  id: string,
+  options: {
+    pauseDate?: string | null;
+    pauseTime?: string | null;
+    reading?: number | null;
+    notes?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locationAccuracy?: number | null;
+  } = {}
+) {
+  const supabase = createClient();
+
+  // Não abre uma nova pausa se já houver uma em andamento.
+  const { data: open } = await supabase
+    .from("service_order_pauses")
+    .select("id")
+    .eq("service_order_id", id)
+    .is("resume_time", null)
+    .limit(1)
+    .maybeSingle();
+  if (open) return { error: "Este serviço já está pausado." };
+
+  // Próximo número da pausa = maior já registrado + 1.
+  const { data: last } = await supabase
+    .from("service_order_pauses")
+    .select("pause_number")
+    .eq("service_order_id", id)
+    .order("pause_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const pauseNumber = (last?.pause_number ?? 0) + 1;
+
+  const { error } = await supabase.from("service_order_pauses").insert({
+    service_order_id: id,
+    pause_number: pauseNumber,
+    pause_date: options.pauseDate?.trim() || null,
+    pause_time: options.pauseTime?.trim() || null,
+    pause_reading: options.reading ?? null,
+    pause_notes: options.notes?.trim() ? options.notes.trim().toUpperCase() : null,
+    latitude: options.latitude ?? null,
+    longitude: options.longitude ?? null,
+    location_accuracy: options.locationAccuracy ?? null,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  return { ok: true, pauseNumber };
+}
+
+/**
+ * Retoma o serviço no dia seguinte: completa a pausa em aberto com a hora de
+ * retorno e a leitura (km/horímetro) ao voltar a trabalhar.
+ */
+export async function resumeServiceOrder(
+  id: string,
+  options: {
+    resumeDate?: string | null;
+    resumeTime?: string | null;
+    reading?: number | null;
+  } = {}
+) {
+  const supabase = createClient();
+
+  // Acha a pausa em andamento (resume_time null) mais recente.
+  const { data: open } = await supabase
+    .from("service_order_pauses")
+    .select("id")
+    .eq("service_order_id", id)
+    .is("resume_time", null)
+    .order("pause_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!open) return { error: "Este serviço não está pausado." };
+
+  const { error } = await supabase
+    .from("service_order_pauses")
+    .update({
+      resume_date: options.resumeDate?.trim() || null,
+      resume_time: options.resumeTime?.trim() || null,
+      resume_reading: options.reading ?? null,
+    })
+    .eq("id", open.id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LINK: gerar lançamento financeiro a partir de uma OS
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -2,7 +2,12 @@
 
 import { useEffect } from "react";
 import { osBillingLabel, osStatusLabel } from "@/lib/utils";
-import type { ServiceOrder, ServiceOrderItem, ServiceOrderTrip } from "@/lib/types";
+import type {
+  ServiceOrder,
+  ServiceOrderItem,
+  ServiceOrderTrip,
+  ServiceOrderPause,
+} from "@/lib/types";
 
 type PrintOrder = ServiceOrder & {
   machines: {
@@ -14,6 +19,7 @@ type PrintOrder = ServiceOrder & {
   pickup_locations: { name: string; address: string | null } | null;
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
   service_order_trips?: ServiceOrderTrip[];
+  service_order_pauses?: ServiceOrderPause[];
 };
 
 interface Props {
@@ -82,6 +88,12 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
     .filter((t) => t.trip_time || t.received_by || t.signature)
     .sort((a, b) => a.trip_number - b.trip_number);
   const isViagemAssinada = order.billing_mode === "viagem" && tripLog.length > 0;
+
+  // Diário de pausas/retomadas (serviço interno que durou vários dias).
+  const pauseLog = (order.service_order_pauses ?? [])
+    .slice()
+    .sort((a, b) => a.pause_number - b.pause_number);
+  const readingUnit = order.machines?.tracking_type === "km" ? "km" : "h";
 
   // ── Métricas operacionais (só o que existe) ────────────────────────────────
   const metrics: { label: string; value: string }[] = [];
@@ -374,6 +386,69 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                         ) : (
                           <span className="text-[9px] font-bold text-amber-600 uppercase">Não assinada</span>
                         )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── Diário de trabalho (pausas e retomadas do serviço) ───── */}
+          {pauseLog.length > 0 && (
+            <div className="rounded-lg border border-slate-200 overflow-hidden avoid-break">
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-500">
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-32">Pausa</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-32">Retomada</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide">Observação do dia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pauseLog.map((p) => (
+                    <tr key={p.id} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-1.5 text-slate-700 tabular-nums">
+                        <span className="font-semibold">
+                          {formatDate(p.pause_date)}
+                          {p.pause_time ? ` ${p.pause_time.slice(0, 5)}` : ""}
+                        </span>
+                        {p.pause_reading != null && (
+                          <span className="block text-slate-500">
+                            {dec(p.pause_reading)} {readingUnit}
+                          </span>
+                        )}
+                        {p.latitude != null && p.longitude != null && (
+                          <a
+                            href={`https://maps.google.com/?q=${p.latitude},${p.longitude}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block text-[9px] text-produmar-700 underline"
+                          >
+                            ver mapa
+                          </a>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-slate-700 tabular-nums">
+                        {p.resume_time ? (
+                          <>
+                            <span className="font-semibold">
+                              {formatDate(p.resume_date)} {p.resume_time.slice(0, 5)}
+                            </span>
+                            {p.resume_reading != null && (
+                              <span className="block text-slate-500">
+                                {dec(p.resume_reading)} {readingUnit}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-[9px] font-bold text-amber-600 uppercase">
+                            Não retomada
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-slate-700 whitespace-pre-line">
+                        {p.pause_notes ?? "—"}
                       </td>
                     </tr>
                   ))}

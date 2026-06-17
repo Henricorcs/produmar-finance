@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { OrcamentoPrint } from "@/components/operacoes/orcamento-print";
-import type { ServiceOrder, ServiceOrderItem, ServiceOrderTrip } from "@/lib/types";
+import type {
+  ServiceOrder,
+  ServiceOrderItem,
+  ServiceOrderTrip,
+  ServiceOrderPause,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +20,7 @@ type PrintOrder = ServiceOrder & {
   pickup_locations: { name: string; address: string | null } | null;
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
   service_order_trips?: ServiceOrderTrip[];
+  service_order_pauses?: ServiceOrderPause[];
 };
 
 interface Props {
@@ -53,6 +59,13 @@ export default async function ImprimirOSPage({ params }: Props) {
     .select("*")
     .eq("service_order_id", order.id);
   order.service_order_trips = (trips as ServiceOrderTrip[] | null) ?? [];
+
+  // Diário de pausas/retomadas do serviço interno (best-effort: migration 025).
+  const { data: pauses } = await supabase
+    .from("service_order_pauses")
+    .select("*")
+    .eq("service_order_id", order.id);
+  order.service_order_pauses = (pauses as ServiceOrderPause[] | null) ?? [];
 
   return <OrcamentoPrint order={order} />;
 }

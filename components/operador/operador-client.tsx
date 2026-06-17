@@ -16,6 +16,7 @@ import {
   Package,
   Clock,
   PlayCircle,
+  PauseCircle,
   Gauge,
   Route,
   CalendarDays,
@@ -27,6 +28,8 @@ import { FinalizeOSDialog } from "./finalize-os-dialog";
 import { StartOSDialog } from "./start-os-dialog";
 import { TripStartDialog } from "./trip-start-dialog";
 import { TripFinishDialog } from "./trip-finish-dialog";
+import { PauseDialog } from "./pause-dialog";
+import { ResumeDialog } from "./resume-dialog";
 import {
   startTrip,
   finishTrip,
@@ -41,6 +44,7 @@ import type {
   ServiceOrderItem,
   ServiceOrderStatus,
   ServiceOrderTrip,
+  ServiceOrderPause,
 } from "@/lib/types";
 
 type OrderWithDetails = ServiceOrder & {
@@ -48,6 +52,7 @@ type OrderWithDetails = ServiceOrder & {
   pickup_locations: { name: string } | null;
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
   service_order_trips?: ServiceOrderTrip[];
+  service_order_pauses?: ServiceOrderPause[];
 };
 
 function nowHHMM(): string {
@@ -100,6 +105,12 @@ function fmtKm(n: number): string {
   return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 }
 
+function fmtDateShort(s: string | null): string {
+  if (!s) return "";
+  const [y, m, d] = s.split("-");
+  return d && m && y ? `${d}/${m}` : s;
+}
+
 export function OperadorClient({
   orders: initialOrders,
   operadorName,
@@ -113,6 +124,11 @@ export function OperadorClient({
   const [tripFinishTarget, setTripFinishTarget] = useState<{
     order: OrderWithDetails;
     openTrip: ServiceOrderTrip;
+  } | null>(null);
+  const [pauseTarget, setPauseTarget] = useState<OrderWithDetails | null>(null);
+  const [resumeTarget, setResumeTarget] = useState<{
+    order: OrderWithDetails;
+    openPause: ServiceOrderPause;
   } | null>(null);
   const [, startTransition] = useTransition();
 
@@ -316,6 +332,10 @@ export function OperadorClient({
                 }
                 onCancelTrip={handleCancelTrip}
                 onRemoveTrip={handleRemoveTrip}
+                onPause={setPauseTarget}
+                onResume={(order, openPause) =>
+                  setResumeTarget({ order, openPause })
+                }
               />
             ))}
           </div>
@@ -342,6 +362,10 @@ export function OperadorClient({
                 }
                 onCancelTrip={handleCancelTrip}
                 onRemoveTrip={handleRemoveTrip}
+                onPause={setPauseTarget}
+                onResume={(order, openPause) =>
+                  setResumeTarget({ order, openPause })
+                }
               />
             ))}
           </div>
@@ -393,6 +417,27 @@ export function OperadorClient({
           onFinalized={handleFinalized}
         />
       )}
+
+      {/* Pausar serviço (prestação de serviço interno) */}
+      {pauseTarget && (
+        <PauseDialog
+          order={pauseTarget}
+          open={!!pauseTarget}
+          onClose={() => setPauseTarget(null)}
+          onPaused={() => router.refresh()}
+        />
+      )}
+
+      {/* Continuar serviço (retomada no dia seguinte) */}
+      {resumeTarget && (
+        <ResumeDialog
+          order={resumeTarget.order}
+          openPause={resumeTarget.openPause}
+          open={!!resumeTarget}
+          onClose={() => setResumeTarget(null)}
+          onResumed={() => router.refresh()}
+        />
+      )}
     </div>
   );
 }
@@ -431,6 +476,8 @@ function OSCard({
   onFinishTrip,
   onCancelTrip,
   onRemoveTrip,
+  onPause,
+  onResume,
 }: {
   order: OrderWithDetails;
   onIniciar: (o: OrderWithDetails) => void;
@@ -439,10 +486,23 @@ function OSCard({
   onFinishTrip: (o: OrderWithDetails, openTrip: ServiceOrderTrip) => void;
   onCancelTrip: (o: OrderWithDetails) => void;
   onRemoveTrip: (o: OrderWithDetails) => void;
+  onPause: (o: OrderWithDetails) => void;
+  onResume: (o: OrderWithDetails, openPause: ServiceOrderPause) => void;
 }) {
   const isClient   = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
   const isFrete    = o.type === "frete";
+  // Pausa/retomada — só prestação de serviço para consumo interno (serviço que
+  // pode durar vários dias). Pausa em aberto (sem retomada) = serviço pausado.
+  const isServiceInterno = o.type === "prestacao_servico" && o.freight_type === "interno";
+  const pauses = (o.service_order_pauses ?? [])
+    .slice()
+    .sort((a, b) => a.pause_number - b.pause_number);
+  const openPause = pauses.find((p) => !p.resume_time) ?? null;
+  const isPaused =
+    o.status === "em_andamento" && isServiceInterno && !!openPause;
+  const showWorkLog =
+    isServiceInterno && o.status === "em_andamento" && pauses.length > 0;
   // Frete (ou OS antiga de entrega com cobrança) tem badge do modo
   const billing    = o.billing_mode ? BILLING_BADGE[o.billing_mode] : null;
   // Contador de viagens no cartão (modo "por viagem" em andamento)
@@ -706,6 +766,99 @@ function OSCard({
             </ul>
           )}
         </div>
+      )}
+
+      {/* Diário de trabalho (serviço interno em andamento): pausas e retomadas
+          já registradas, com leitura e observação do dia. */}
+      {showWorkLog && (
+        <div
+          className={`rounded-xl border-2 p-3 space-y-2 ${
+            isPaused
+              ? "border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20"
+              : "border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {isPaused ? (
+              <PauseCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            ) : (
+              <ClipboardList className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" />
+            )}
+            <span
+              className={`text-sm font-bold uppercase tracking-wide ${
+                isPaused
+                  ? "text-amber-700 dark:text-amber-400"
+                  : "text-slate-500 dark:text-slate-400"
+              }`}
+            >
+              {isPaused ? "Serviço pausado" : "Diário de trabalho"}
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {pauses.map((p) => (
+              <li
+                key={p.id}
+                className="text-sm text-slate-600 dark:text-slate-300 border-t border-slate-200/70 dark:border-slate-700/70 pt-2 first:border-t-0 first:pt-0"
+              >
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <PauseCircle className="w-4 h-4 text-amber-500 self-center shrink-0" />
+                  <span className="font-semibold tabular-nums">
+                    {fmtDateShort(p.pause_date)} {p.pause_time?.slice(0, 5) ?? ""}
+                  </span>
+                  {p.pause_reading != null && (
+                    <span className="tabular-nums text-slate-500 dark:text-slate-400">
+                      · {fmtKm(p.pause_reading)} {tracksKm ? "km" : "h"}
+                    </span>
+                  )}
+                </div>
+                {p.pause_notes && (
+                  <p className="mt-0.5 pl-5 text-slate-700 dark:text-slate-200 break-words">
+                    {p.pause_notes}
+                  </p>
+                )}
+                {p.resume_time ? (
+                  <div className="mt-0.5 pl-5 flex items-baseline gap-1.5 flex-wrap text-produmar-700 dark:text-produmar-400">
+                    <PlayCircle className="w-4 h-4 self-center shrink-0" />
+                    <span className="font-semibold tabular-nums">
+                      Voltou {fmtDateShort(p.resume_date)} {p.resume_time.slice(0, 5)}
+                    </span>
+                    {p.resume_reading != null && (
+                      <span className="tabular-nums">
+                        · {fmtKm(p.resume_reading)} {tracksKm ? "km" : "h"}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-0.5 pl-5 text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                    Aguardando retomada
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Pausar / continuar — só prestação de serviço interno em andamento. */}
+      {isServiceInterno && o.status === "em_andamento" && (
+        openPause ? (
+          <Button
+            className="w-full h-16 px-2 text-base sm:text-lg font-bold bg-produmar-600 hover:bg-produmar-700 text-white"
+            onClick={() => onResume(o, openPause)}
+          >
+            <PlayCircle className="w-5 h-5 shrink-0" />
+            CONTINUAR SERVIÇO
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            className="w-full h-14 px-2 text-base sm:text-lg font-bold border-2 border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+            onClick={() => onPause(o)}
+          >
+            <PauseCircle className="w-5 h-5 shrink-0" />
+            PAUSAR
+          </Button>
+        )
       )}
 
       {/* Botões grandes p/ toque — min-w-0 deixa encolher e não estoura o card

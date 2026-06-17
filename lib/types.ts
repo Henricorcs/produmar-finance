@@ -268,6 +268,36 @@ export interface ServiceOrderItem {
   created_at: string;
 }
 
+/**
+ * Pausa / retomada de um serviço interno que dura vários dias. Cada par
+ * pausa→retomada é uma linha; pausa em aberto (resume_time null) indica que o
+ * serviço está pausado. Horários/datas vêm do relógio do celular do técnico.
+ */
+export interface ServiceOrderPause {
+  id: string;
+  service_order_id: string;
+  pause_number: number;
+  /** Data da pausa (YYYY-MM-DD, relógio do celular). */
+  pause_date: string | null;
+  /** Hora da pausa (HH:MM). */
+  pause_time: string | null;
+  /** Leitura do veículo/máquina ao pausar (km do hodômetro ou horímetro). */
+  pause_reading: number | null;
+  /** Observação do dia (opcional). */
+  pause_notes: string | null;
+  /** Localização (GPS) capturada automaticamente ao pausar (best-effort). */
+  latitude: number | null;
+  longitude: number | null;
+  location_accuracy: number | null;
+  /** Data da retomada (null enquanto pausado). */
+  resume_date: string | null;
+  /** Hora da retomada (HH:MM, null enquanto pausado). */
+  resume_time: string | null;
+  /** Leitura (km/horímetro) ao voltar a trabalhar. */
+  resume_reading: number | null;
+  created_at: string;
+}
+
 /** Viagem marcada pelo técnico no modo "por viagem" — horário e assinatura de cada entrega. */
 export interface ServiceOrderTrip {
   id: string;

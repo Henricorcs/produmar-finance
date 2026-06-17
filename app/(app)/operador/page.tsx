@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { OperadorClient } from "@/components/operador/operador-client";
-import type { ServiceOrder, ServiceOrderItem, ServiceOrderTrip } from "@/lib/types";
+import type {
+  ServiceOrder,
+  ServiceOrderItem,
+  ServiceOrderTrip,
+  ServiceOrderPause,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +15,7 @@ type OrderWithDetails = ServiceOrder & {
   pickup_locations: { name: string } | null;
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
   service_order_trips?: ServiceOrderTrip[];
+  service_order_pauses?: ServiceOrderPause[];
 };
 
 export default async function OperadorPage() {
@@ -57,6 +63,17 @@ export default async function OperadorPage() {
     for (const o of list) {
       o.service_order_trips =
         (trips as ServiceOrderTrip[] | null)?.filter((t) => t.service_order_id === o.id) ?? [];
+    }
+
+    // Pausas/retomadas dos serviços internos (best-effort: não quebra o painel
+    // caso a tabela ainda não exista — migration 025 não aplicada no Supabase).
+    const { data: pauses } = await supabase
+      .from("service_order_pauses")
+      .select("*")
+      .in("service_order_id", list.map((o) => o.id));
+    for (const o of list) {
+      o.service_order_pauses =
+        (pauses as ServiceOrderPause[] | null)?.filter((p) => p.service_order_id === o.id) ?? [];
     }
   }
 
