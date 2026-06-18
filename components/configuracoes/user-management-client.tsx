@@ -187,7 +187,7 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                      Nenhum marcado = vê todos.
+                      Em branco = sem veículo (ex.: serviço rápido).
                     </span>
                     <div className="flex gap-2">
                       <button
@@ -300,12 +300,13 @@ export function UserManagementClient({ users, currentUserId }: Props) {
             </div>
           </div>
 
-          {/* Categorias liberadas — só para operador */}
+          {/* Categorias liberadas — só para operador (opcional) */}
           {selectedRole === "operador" && (
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <HardHat className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 Veículos / máquinas que ele opera
+                <span className="font-normal text-slate-400 dark:text-slate-500">(opcional)</span>
               </Label>
               <div className="flex flex-wrap gap-1.5">
                 {MACHINE_CATEGORIES.map((c) => {
@@ -333,7 +334,8 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                 })}
               </div>
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                Nenhum marcado = vê todos os veículos.
+                Opcional. Deixe em branco para quem não opera veículo (ex.: só faz
+                serviço rápido). Marque só para limitar aos veículos que ele usa.
               </p>
             </div>
           )}
