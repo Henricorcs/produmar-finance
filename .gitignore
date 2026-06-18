@@ -10,3 +10,8 @@ build/
 .vscode/
 .idea/
 next-env.d.ts
+
+# Claude Code (ferramentas locais — não fazem parte do app)
+.claude/
+.agents/
+skills-lock.json
