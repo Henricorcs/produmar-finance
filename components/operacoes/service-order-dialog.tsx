@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect, useMemo } from "react";
 import {
   Plus, X, Truck, Wrench, User, Building2,
   Clock, Gauge, DollarSign, Fuel, Boxes,
-  Route, CalendarDays, HardHat, AlertTriangle,
+  Route, CalendarDays, HardHat, AlertTriangle, Zap,
 } from "lucide-react";
 import {
   Dialog,
@@ -28,9 +28,11 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { QuickCreateMachineDialog } from "./quick-create-machine-dialog";
 import { QuickCreateProductDialog } from "./quick-create-product-dialog";
 import { QuickCreateLocationDialog } from "./quick-create-location-dialog";
+import { ServiceOrderComprovantes } from "@/components/operador/service-order-comprovantes";
 import {
   createServiceOrder,
   updateServiceOrder,
+  listServiceOrderAttachments,
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
 import { formatBRL, isFreightCategory, machineCategoryLabel, osStatusLabel } from "@/lib/utils";
@@ -43,6 +45,7 @@ import type {
   ServiceBillingMode,
   ServiceFreightType,
   ServiceOrder,
+  ServiceOrderAttachment,
   ServiceOrderItem,
   ServiceOrderStatus,
   ServiceOrderType,
@@ -200,6 +203,9 @@ export function ServiceOrderDialog({
   const [localProducts, setLocalProducts]     = useState<Product[]>(products);
   const [localLocations, setLocalLocations]   = useState<PickupLocation[]>(pickupLocations);
 
+  // Comprovantes da OS (foto do recibo / PDF) — carregados ao editar.
+  const [attachments, setAttachments] = useState<ServiceOrderAttachment[]>([]);
+
   // Quick-create dialogs
   const [mchDialogOpen, setMchDialogOpen] = useState(false);
   const [prdDialogOpen, setPrdDialogOpen] = useState(false);
@@ -209,6 +215,21 @@ export function ServiceOrderDialog({
   useEffect(() => setLocalMachines(machines),     [machines]);
   useEffect(() => setLocalProducts(products),     [products]);
   useEffect(() => setLocalLocations(pickupLocations), [pickupLocations]);
+
+  // Comprovantes da OS — carrega ao abrir a edição (best-effort no servidor).
+  useEffect(() => {
+    if (!open || !order) {
+      setAttachments([]);
+      return;
+    }
+    let active = true;
+    listServiceOrderAttachments(order.id).then((res) => {
+      if (active) setAttachments((res.attachments as ServiceOrderAttachment[]) ?? []);
+    });
+    return () => {
+      active = false;
+    };
+  }, [open, order]);
 
   // Saldo de estoque por produto (para avisar quando faltar material)
   const stockMap = useMemo(() => {
@@ -261,11 +282,13 @@ export function ServiceOrderDialog({
             }))
           : [emptyItem()]
       );
-      // Para edição: se serviço sem horímetro/taxa, usar total como valor flat
+      // Para edição: serviço sem horímetro/taxa OU serviço rápido → usa o total
+      // como valor flat.
       if (
-        order.type === "prestacao_servico" &&
-        order.hourly_rate == null &&
-        order.total_amount > 0
+        (order.type === "prestacao_servico" &&
+          order.hourly_rate == null &&
+          order.total_amount > 0) ||
+        (order.type === "servico_rapido" && order.total_amount > 0)
       ) {
         setFlatServiceAmount(formatBRLInput(order.total_amount));
       } else {
@@ -335,6 +358,8 @@ export function ServiceOrderDialog({
   const machineIsHourmeter = !!selectedMachine && selectedMachine.tracking_type !== "km";
   const useHourBasedPricing =
     type === "prestacao_servico" && machineIsHourmeter;
+  // Serviço rápido: tarefa/errand interna, sem máquina/cobrança/material.
+  const isQuick = type === "servico_rapido";
 
   // ── Computed values ──────────────────────────────────────────────────────
   const hoursWorked = useMemo(() => {
@@ -373,6 +398,7 @@ export function ServiceOrderDialog({
       if (useHourBasedPricing) return hoursWorked * parseBRLToNumber(hourlyRate);
       return parseBRLToNumber(flatServiceAmount);
     }
+    if (type === "servico_rapido") return parseBRLToNumber(flatServiceAmount);
     const materials = items.reduce(
       (s, it) => s + parseQty(it.quantity) * parseBRLToNumber(it.unit_price), 0
     );
@@ -559,6 +585,17 @@ export function ServiceOrderDialog({
           });
         }
       }
+    } else if (type === "servico_rapido") {
+      // Serviço rápido: 1 item carrega a tarefa e o valor (0 se não informado).
+      // O total = valor (custo interno). O comprovante é anexado pelo operador.
+      const amount = parseBRLToNumber(flatServiceAmount);
+      itemsPayload = [{
+        product_id: null,
+        description: serviceDescription.trim() || "SERVIÇO RÁPIDO",
+        quantity: 1,
+        unit: "ud",
+        unit_price: amount,
+      }];
     } else {
       // Entrega de material: só materiais (a cobrança de frete é o tipo "Frete").
       itemsPayload = items
@@ -684,16 +721,21 @@ export function ServiceOrderDialog({
             {/* Type toggle */}
             <div className="space-y-1.5">
               <Label>Tipo *</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {([
                   { v: "entrega_material",  label: "Entrega de material",  icon: Truck },
                   { v: "frete",             label: "Frete",                icon: Route },
                   { v: "prestacao_servico", label: "Prestação de serviço", icon: Wrench },
+                  { v: "servico_rapido",    label: "Serviço rápido",       icon: Zap },
                 ] as const).map(({ v, label, icon: Icon }) => (
                   <button
                     key={v}
                     type="button"
-                    onClick={() => setType(v)}
+                    onClick={() => {
+                      setType(v);
+                      // Serviço rápido é sempre uma tarefa interna.
+                      if (v === "servico_rapido") setFreightType("interno");
+                    }}
                     className={`flex flex-col items-center justify-center gap-1 py-2.5 text-sm rounded-lg border font-medium transition-colors ${
                       type === v
                         ? "bg-produmar-50 border-produmar-300 text-produmar-700 dark:bg-produmar-900/30 dark:border-produmar-600 dark:text-produmar-400"
@@ -828,7 +870,8 @@ export function ServiceOrderDialog({
               </div>
             )}
 
-            {/* Freight type */}
+            {/* Freight type — serviço rápido é sempre interno (sem este seletor) */}
+            {!isQuick && (
             <div className="space-y-1.5">
               <Label>Para quem é? *</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -859,6 +902,7 @@ export function ServiceOrderDialog({
                 ))}
               </div>
             </div>
+            )}
 
             {/* Client info */}
             {isClient && (
@@ -930,7 +974,51 @@ export function ServiceOrderDialog({
               )}
             </div>
 
+            {/* ── SERVIÇO RÁPIDO: o que fazer + valor (opcional) ──────── */}
+            {isQuick && (
+              <div className="space-y-3 p-3 rounded-xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick_task" className="flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    O que precisa ser feito? *
+                  </Label>
+                  <Textarea
+                    id="quick_task"
+                    value={serviceDescription}
+                    onChange={(e) => setServiceDescription(e.target.value.toUpperCase())}
+                    placeholder="ex: comprar 1l de diesel no posto e levar para a oficina"
+                    rows={2}
+                    className="uppercase placeholder:normal-case placeholder:lowercase"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
+                      Valor previsto
+                    </Label>
+                    <span className="text-[10px] text-slate-400">opcional</span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
+                    <Input
+                      value={flatServiceAmount}
+                      onChange={(e) => setFlatServiceAmount(formatBRLInput(e.target.value))}
+                      placeholder="0,00"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      className="pl-9 tabular-nums"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    O funcionário pode confirmar/ajustar esse valor e anexar o comprovante ao finalizar.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Machine */}
+            {!isQuick && (
             <div className="space-y-1.5">
               <Label>Máquina / veículo</Label>
               <SearchableSelect
@@ -996,9 +1084,10 @@ export function ServiceOrderDialog({
                 </p>
               )}
             </div>
+            )}
 
-            {/* Locations */}
-            {type !== "prestacao_servico" ? (
+            {/* Locations — serviço rápido não tem local de retirada/entrega */}
+            {!isQuick && (type !== "prestacao_servico" ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Local de retirada</Label>
@@ -1039,7 +1128,7 @@ export function ServiceOrderDialog({
                   autoCapitalize="characters"
                 />
               </div>
-            )}
+            ))}
 
             {/* Service description (prestacao_servico only) */}
             {type === "prestacao_servico" && (
@@ -1472,7 +1561,11 @@ export function ServiceOrderDialog({
               {type !== "frete" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="delivery_date">
-                    {type === "prestacao_servico" ? "Data do serviço" : "Previsão de entrega"} *
+                    {type === "prestacao_servico"
+                      ? "Data do serviço"
+                      : isQuick
+                        ? "Data"
+                        : "Previsão de entrega"} *
                   </Label>
                   <Input
                     id="delivery_date"
@@ -1517,8 +1610,9 @@ export function ServiceOrderDialog({
 
             {/* Serviço / observação — entrega e frete (vira o título do
                 cartão, ex.: "FRETE DE AREIA"). Na prestação de serviço a
-                "Descrição do serviço" já cobre, então não duplicamos o campo. */}
-            {type !== "prestacao_servico" && (
+                "Descrição do serviço" já cobre, e o serviço rápido usa o campo
+                "O que precisa ser feito?", então não duplicamos aqui. */}
+            {type !== "prestacao_servico" && !isQuick && (
               <div className="space-y-1.5">
                 <Label htmlFor="notes">Serviço</Label>
                 <Textarea
@@ -1528,6 +1622,18 @@ export function ServiceOrderDialog({
                   placeholder={type === "frete" ? "ex: FRETE DE AREIA PARA OBRA..." : "ex: FRETE, ENTREGA..."}
                   rows={2}
                   className="uppercase placeholder:normal-case placeholder:lowercase"
+                />
+              </div>
+            )}
+
+            {/* Comprovantes — só ao editar (a OS já existe). Útil sobretudo no
+                serviço rápido: foto do recibo anexada pelo funcionário. */}
+            {order && (
+              <div className="pt-1">
+                <ServiceOrderComprovantes
+                  key={order.id}
+                  orderId={order.id}
+                  attachments={attachments}
                 />
               </div>
             )}

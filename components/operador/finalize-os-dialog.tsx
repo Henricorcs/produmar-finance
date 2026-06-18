@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   CheckCircle2, Printer, Clock, Package, MapPin, Navigation,
-  Gauge, Minus, Plus, Route, CalendarDays,
+  Gauge, Minus, Plus, Route, CalendarDays, DollarSign, PauseCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -15,16 +15,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { SignaturePad } from "./signature-pad";
+import { ServiceOrderComprovantes } from "./service-order-comprovantes";
 import { finalizeServiceOrder } from "@/app/(app)/operacoes/actions";
-import { formatBRL } from "@/lib/utils";
-import type { ServiceOrder, ServiceOrderItem, ServiceOrderTrip } from "@/lib/types";
+import { formatBRL, osTypeLabel } from "@/lib/utils";
+import type {
+  ServiceOrder,
+  ServiceOrderAttachment,
+  ServiceOrderItem,
+  ServiceOrderTrip,
+} from "@/lib/types";
 
 type OrderDetails = ServiceOrder & {
   machines: { name: string; plate: string | null; tracking_type?: string | null } | null;
   pickup_locations?: { name: string } | null;
   service_order_items?: (ServiceOrderItem & { products: { name: string } | null })[];
   service_order_trips?: ServiceOrderTrip[];
+  service_order_attachments?: ServiceOrderAttachment[];
 };
 
 interface Props {
@@ -32,6 +40,28 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onFinalized: (orderId: string) => void;
+  /** Serviço rápido: "ainda não terminei" abre a pausa em vez de finalizar. */
+  onPauseInstead?: (order: OrderDetails) => void;
+}
+
+// Valor em R$: formata os dígitos como moeda enquanto digita (centavos).
+function formatBRLInput(raw: string | number): string {
+  let digits: string;
+  if (typeof raw === "number") digits = String(Math.round(raw * 100));
+  else digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  const cents = parseInt(digits, 10);
+  return (cents / 100).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function parseBRLToNumber(s: string): number {
+  if (!s) return 0;
+  const cleaned = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
 }
 
 // Horímetro: vírgula MANUAL — o técnico digita o número como aparece no relógio
@@ -69,7 +99,14 @@ function fmtKm(n: number): string {
   return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 }
 
-export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
+export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseInstead }: Props) {
+  // Serviço rápido: fechamento enxuto — só "o que foi feito" + valor + comprovante.
+  const isQuick = order.type === "servico_rapido";
+  // Referência estável da lista de comprovantes (evita reset da lista otimista).
+  const quickAttachments = useMemo(
+    () => order.service_order_attachments ?? [],
+    [order.service_order_attachments]
+  );
   // Modo de cobrança do frete (OS de frete; cobre também OS antigas de
   // entrega de material que usavam cobrança): viagem | km | diaria.
   const billingMode = order.type !== "prestacao_servico" ? order.billing_mode : null;
@@ -98,6 +135,12 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
   const [error, setError]             = useState<string | null>(null);
   const [done, setDone]               = useState(false);
   const [signature, setSignature]     = useState<string | null>(null);
+  // Serviço rápido: o que foi feito + valor gasto (opcional, pré-preenchido com
+  // o valor previsto pelo escritório quando houver).
+  const [completionNotes, setCompletionNotes] = useState("");
+  const [amount, setAmount] = useState(
+    order.total_amount > 0 ? formatBRLInput(order.total_amount) : ""
+  );
   const [isPending, startTransition]  = useTransition();
 
   // Localização automática (GPS do celular) — capturada assim que o dialog
@@ -200,6 +243,8 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
     setKmEnd("");
     setTrips(order.trips_count ?? 0);
     setSignature(null);
+    setCompletionNotes("");
+    setAmount(order.total_amount > 0 ? formatBRLInput(order.total_amount) : "");
     setError(null);
     setDone(false);
     onClose();
@@ -207,6 +252,34 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // ── Serviço rápido: só "o que foi feito" (obrigatório) + valor opcional ──
+    if (isQuick) {
+      if (!completionNotes.trim()) {
+        setError("Escreva o que foi feito");
+        return;
+      }
+      setError(null);
+      const amountNum = amount.trim() ? parseBRLToNumber(amount) : null;
+      startTransition(async () => {
+        const result = await finalizeServiceOrder(order.id, "", {
+          completionNotes: completionNotes.trim(),
+          amount: amountNum,
+          endTime: nowHHMM(),
+          finishedDate: nowYYYYMMDD(),
+          latitude: gps?.lat ?? null,
+          longitude: gps?.lng ?? null,
+          locationAccuracy: gps?.accuracy ?? null,
+        });
+        if ("error" in result) {
+          setError(result.error ?? "Erro ao finalizar");
+        } else {
+          setDone(true);
+          onFinalized(order.id);
+        }
+      });
+      return;
+    }
     // Nome de quem recebeu é obrigatório só para cliente externo. Consumo
     // interno não tem terceiro para assinar/receber.
     if (!isViagem && isClient && !receivedBy.trim()) {
@@ -354,17 +427,17 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
                 Resumo
               </p>
               <p className="font-medium text-slate-700 dark:text-slate-200">
-                OS #{order.order_number} —{" "}
-                {order.type === "entrega_material"
-                  ? "Entrega de material"
-                  : order.type === "frete"
-                    ? "Frete"
-                    : "Prestação de serviço"}
+                OS #{order.order_number} — {osTypeLabel(order.type)}
               </p>
+              {isQuick && order.service_description && (
+                <p className="text-slate-500 dark:text-slate-400">
+                  Tarefa: {order.service_description}
+                </p>
+              )}
               {order.client_name && (
                 <p className="text-slate-500 dark:text-slate-400">Cliente: {order.client_name}</p>
               )}
-              {materials.length > 0 && (
+              {!isQuick && materials.length > 0 && (
                 <p className="text-slate-500 dark:text-slate-400 flex items-start gap-1.5">
                   <Package className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span>{materials.join(" · ")}</span>
@@ -607,9 +680,52 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               </div>
             )}
 
-            {/* Nome + assinatura final — dispensados no modo viagem (cada
-                entrega já foi assinada na hora pelo destinatário). */}
-            {isViagem ? (
+            {/* Serviço rápido: o que foi feito + valor gasto + comprovante. */}
+            {isQuick ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="completion_notes" className="text-base">
+                    O que foi feito? <span className="text-red-500">*</span>
+                  </Label>
+                  <Textarea
+                    id="completion_notes"
+                    value={completionNotes}
+                    onChange={(e) => setCompletionNotes(e.target.value.toUpperCase())}
+                    placeholder="ex: COMPREI 1L DE DIESEL NO POSTO E ENTREGUEI NA OFICINA"
+                    rows={3}
+                    className="text-lg uppercase placeholder:normal-case placeholder:lowercase"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="amount_input" className="text-base flex items-center gap-1.5">
+                    <DollarSign className="w-4 h-4 text-produmar-600 dark:text-produmar-400" />
+                    Valor gasto{" "}
+                    <span className="font-normal text-slate-400 dark:text-slate-500">(opcional)</span>
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base text-slate-400">
+                      R$
+                    </span>
+                    <Input
+                      id="amount_input"
+                      value={amount}
+                      onChange={(e) => setAmount(formatBRLInput(e.target.value))}
+                      placeholder="0,00"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      className="h-14 pl-10 text-lg tabular-nums"
+                    />
+                  </div>
+                </div>
+
+                <ServiceOrderComprovantes
+                  orderId={order.id}
+                  attachments={quickAttachments}
+                />
+              </>
+            ) : isViagem ? (
               <p className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5">
                 As entregas já foram assinadas em cada viagem — aqui é só
                 conferir o KM e fechar.
@@ -676,6 +792,23 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized }: Props) {
               <p className="text-base text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2.5 rounded-lg border border-red-100 dark:border-red-900/40">
                 {error}
               </p>
+            )}
+
+            {/* Serviço rápido: se ainda não terminou, pausa em vez de finalizar. */}
+            {isQuick && onPauseInstead && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={() => {
+                  handleClose();
+                  onPauseInstead(order);
+                }}
+                className="w-full h-14 text-base font-bold gap-2 border-2 border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+              >
+                <PauseCircle className="w-5 h-5 shrink-0" />
+                Ainda não terminei — pausar
+              </Button>
             )}
 
             <DialogFooter>

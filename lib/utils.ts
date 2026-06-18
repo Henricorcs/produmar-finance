@@ -75,13 +75,17 @@ export function daysUntil(date: string | Date): number {
 
 /**
  * Rótulo de status de OS — "Entregue" vira "Finalizado" quando a OS
- * é prestação de serviço (não há nada sendo entregue).
+ * é prestação de serviço ou serviço rápido (não há nada sendo entregue).
  */
 export function osStatusLabel(
   status: ServiceOrderStatus,
   type?: ServiceOrderType
 ): string {
-  if (status === "entregue" && type === "prestacao_servico") return "Finalizado";
+  if (
+    status === "entregue" &&
+    (type === "prestacao_servico" || type === "servico_rapido")
+  )
+    return "Finalizado";
   const map: Record<ServiceOrderStatus, string> = {
     pendente:     "Pendente",
     em_andamento: "Em andamento",
@@ -89,6 +93,17 @@ export function osStatusLabel(
     cancelado:    "Cancelado",
   };
   return map[status];
+}
+
+/** Rótulo do tipo de OS (rótulo exibido em cards, impressão e relatórios). */
+export function osTypeLabel(type?: ServiceOrderType | null): string {
+  const map: Record<ServiceOrderType, string> = {
+    entrega_material:  "Entrega de material",
+    frete:             "Frete",
+    prestacao_servico: "Prestação de serviço",
+    servico_rapido:    "Serviço rápido",
+  };
+  return type ? map[type] : "";
 }
 
 /** Rótulo do modo de cobrança do frete (entrega de material). */

@@ -21,6 +21,7 @@ import {
   Route,
   CalendarDays,
   Minus,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,6 +42,7 @@ import { osStatusLabel } from "@/lib/utils";
 import type {
   ServiceBillingMode,
   ServiceOrder,
+  ServiceOrderAttachment,
   ServiceOrderItem,
   ServiceOrderStatus,
   ServiceOrderTrip,
@@ -53,6 +55,7 @@ type OrderWithDetails = ServiceOrder & {
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
   service_order_trips?: ServiceOrderTrip[];
   service_order_pauses?: ServiceOrderPause[];
+  service_order_attachments?: ServiceOrderAttachment[];
 };
 
 function nowHHMM(): string {
@@ -415,6 +418,12 @@ export function OperadorClient({
           open={!!finalizeTarget}
           onClose={() => setFinalizeTarget(null)}
           onFinalized={handleFinalized}
+          onPauseInstead={() => {
+            // Usa o alvo do closure (OrderWithDetails completo) — o parâmetro do
+            // diálogo tem um tipo mais frouxo (pickup_locations opcional).
+            setPauseTarget(finalizeTarget);
+            setFinalizeTarget(null);
+          }}
         />
       )}
 
@@ -492,17 +501,21 @@ function OSCard({
   const isClient   = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
   const isFrete    = o.type === "frete";
-  // Pausa/retomada — só prestação de serviço para consumo interno (serviço que
-  // pode durar vários dias). Pausa em aberto (sem retomada) = serviço pausado.
+  // Serviço rápido: tarefa/errand de funcionário (ex.: comprar diesel).
+  const isQuick    = o.type === "servico_rapido";
+  // Pausa/retomada — prestação de serviço interno (serviço que pode durar vários
+  // dias) e serviço rápido (a tarefa pode ficar pendente). Pausa em aberto (sem
+  // retomada) = serviço pausado.
   const isServiceInterno = o.type === "prestacao_servico" && o.freight_type === "interno";
+  const isPausable = isServiceInterno || isQuick;
   const pauses = (o.service_order_pauses ?? [])
     .slice()
     .sort((a, b) => a.pause_number - b.pause_number);
   const openPause = pauses.find((p) => !p.resume_time) ?? null;
   const isPaused =
-    o.status === "em_andamento" && isServiceInterno && !!openPause;
+    o.status === "em_andamento" && isPausable && !!openPause;
   const showWorkLog =
-    isServiceInterno && o.status === "em_andamento" && pauses.length > 0;
+    isPausable && o.status === "em_andamento" && pauses.length > 0;
   // Frete (ou OS antiga de entrega com cobrança) tem badge do modo
   const billing    = o.billing_mode ? BILLING_BADGE[o.billing_mode] : null;
   // Contador de viagens no cartão (modo "por viagem" em andamento)
@@ -522,7 +535,13 @@ function OSCard({
     o.notes?.trim() ||
     o.service_description?.trim() ||
     (isClient ? o.client_name?.trim() : "") ||
-    (isMaterial ? "Entrega de material" : isFrete ? "Frete" : "Prestação de serviço");
+    (isMaterial
+      ? "Entrega de material"
+      : isFrete
+        ? "Frete"
+        : isQuick
+          ? "Serviço rápido"
+          : "Prestação de serviço");
 
   const materials = o.service_order_items
     .filter((it) => !it.is_freight && (it.product_id || it.description))
@@ -574,6 +593,8 @@ function OSCard({
         >
           {isMaterial || isFrete ? (
             <Truck className={`w-7 h-7 ${isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`} />
+          ) : isQuick ? (
+            <Zap className="w-7 h-7 text-amber-600 dark:text-amber-400" />
           ) : (
             <Wrench className={`w-7 h-7 ${isClient ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`} />
           )}
@@ -630,7 +651,7 @@ function OSCard({
           </InfoRow>
         )}
 
-        {!isMaterial && !isFrete && o.service_description && (
+        {!isMaterial && !isFrete && !isQuick && o.service_description && (
           <InfoRow icon={Wrench} label="Serviço">
             {o.service_description}
           </InfoRow>
@@ -839,8 +860,9 @@ function OSCard({
         </div>
       )}
 
-      {/* Pausar / continuar — só prestação de serviço interno em andamento. */}
-      {isServiceInterno && o.status === "em_andamento" && (
+      {/* Pausar / continuar — prestação de serviço interno e serviço rápido em
+          andamento. */}
+      {isPausable && o.status === "em_andamento" && (
         openPause ? (
           <Button
             className="w-full h-16 px-2 text-base sm:text-lg font-bold bg-produmar-600 hover:bg-produmar-700 text-white"

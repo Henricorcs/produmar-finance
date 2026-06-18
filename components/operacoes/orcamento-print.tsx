@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import { osBillingLabel, osStatusLabel } from "@/lib/utils";
+import { osBillingLabel, osStatusLabel, osTypeLabel } from "@/lib/utils";
 import type {
   ServiceOrder,
+  ServiceOrderAttachment,
   ServiceOrderItem,
   ServiceOrderTrip,
   ServiceOrderPause,
@@ -20,6 +21,7 @@ type PrintOrder = ServiceOrder & {
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
   service_order_trips?: ServiceOrderTrip[];
   service_order_pauses?: ServiceOrderPause[];
+  service_order_attachments?: ServiceOrderAttachment[];
 };
 
 interface Props {
@@ -60,18 +62,17 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
   const items = order.service_order_items ?? [];
   const isMaterial = order.type === "entrega_material";
   const isFrete = order.type === "frete";
+  const isQuick = order.type === "servico_rapido";
   const isClient = order.freight_type === "cliente";
 
   const docLabel = isMaterial
     ? "Ordem de Entrega"
     : isFrete
       ? "Ordem de Frete"
-      : "Ordem de Serviço";
-  const typeLabel = isMaterial
-    ? "Entrega de material"
-    : isFrete
-      ? "Frete"
-      : "Prestação de serviço";
+      : isQuick
+        ? "Ordem de Serviço Rápido"
+        : "Ordem de Serviço";
+  const typeLabel = osTypeLabel(order.type);
 
   const hourmeterDiff =
     order.hourmeter_start != null && order.hourmeter_end != null
@@ -277,6 +278,32 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                 {order.notes && order.service_description && (
                   <p className="text-[11px] text-slate-600 mt-1">{order.service_description}</p>
                 )}
+              </div>
+            )}
+
+            {/* O que foi feito (preenchido no fechamento — serviço rápido) */}
+            {order.completion_notes && (
+              <div className="rounded-lg border-2 border-emerald-200 bg-emerald-50/60 p-3">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">
+                  O que foi feito
+                </p>
+                <p className="text-[12px] font-semibold text-slate-800 whitespace-pre-line">
+                  {order.completion_notes}
+                </p>
+              </div>
+            )}
+
+            {/* Comprovantes anexados (nomes — os arquivos abrem no sistema) */}
+            {(order.service_order_attachments?.length ?? 0) > 0 && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  Comprovantes anexados ({order.service_order_attachments!.length})
+                </p>
+                <ul className="text-[11px] text-slate-700 list-disc pl-4 space-y-0.5">
+                  {order.service_order_attachments!.map((a) => (
+                    <li key={a.id}>{a.file_name}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>

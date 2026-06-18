@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { OperadorClient } from "@/components/operador/operador-client";
 import type {
   ServiceOrder,
+  ServiceOrderAttachment,
   ServiceOrderItem,
   ServiceOrderTrip,
   ServiceOrderPause,
@@ -16,6 +17,7 @@ type OrderWithDetails = ServiceOrder & {
   service_order_items: (ServiceOrderItem & { products: { name: string } | null })[];
   service_order_trips?: ServiceOrderTrip[];
   service_order_pauses?: ServiceOrderPause[];
+  service_order_attachments?: ServiceOrderAttachment[];
 };
 
 export default async function OperadorPage() {
@@ -74,6 +76,19 @@ export default async function OperadorPage() {
     for (const o of list) {
       o.service_order_pauses =
         (pauses as ServiceOrderPause[] | null)?.filter((p) => p.service_order_id === o.id) ?? [];
+    }
+
+    // Comprovantes anexados (best-effort: não quebra o painel caso a tabela
+    // ainda não exista — migration 026 não aplicada no Supabase).
+    const { data: attachments } = await supabase
+      .from("service_order_attachments")
+      .select("*")
+      .in("service_order_id", list.map((o) => o.id));
+    for (const o of list) {
+      o.service_order_attachments =
+        (attachments as ServiceOrderAttachment[] | null)?.filter(
+          (a) => a.service_order_id === o.id
+        ) ?? [];
     }
   }
 

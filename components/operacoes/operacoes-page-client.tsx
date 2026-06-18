@@ -31,7 +31,7 @@ import {
   generateTransactionFromOrder,
   updateServiceOrderStatus,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatBRLCompact, formatDate, localDateISO, osBillingLabel, osStatusLabel } from "@/lib/utils";
+import { formatBRL, formatBRLCompact, formatDate, localDateISO, osBillingLabel, osStatusLabel, osTypeLabel } from "@/lib/utils";
 import type {
   Category,
   CostCenter,
@@ -109,11 +109,7 @@ function exportCSV(orders: ServiceOrderWithDetails[], fileLabel: string) {
     `#${o.order_number}`,
     o.issue_date,
     o.delivery_date ?? "",
-    o.type === "entrega_material"
-      ? "Entrega de material"
-      : o.type === "frete"
-        ? "Frete"
-        : "Prestação de serviço",
+    osTypeLabel(o.type),
     osBillingLabel(o.billing_mode),
     o.freight_type === "cliente" ? "Cliente" : "Interno",
     o.client_name ?? "",
@@ -458,6 +454,7 @@ function OrderRow({
   const isClient = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
   const isFrete = o.type === "frete";
+  const isQuick = o.type === "servico_rapido";
 
   // Resumo dos materiais — usa o nome do produto cadastrado; cai na descrição
   // livre do item só quando não há produto vinculado.
@@ -495,7 +492,7 @@ function OrderRow({
       o.service_description?.trim() ||
       serviceText ||
       (isClient ? o.client_name?.trim() ?? "" : "") ||
-      "Prestação de serviço";
+      (isQuick ? "Serviço rápido" : "Prestação de serviço");
     subtitle = serviceText && serviceText !== title ? serviceText : "";
   }
 
@@ -598,7 +595,7 @@ function OrderRow({
             title={
               nextStatus === "em_andamento"
                 ? "Marcar em andamento"
-                : o.type === "prestacao_servico"
+                : o.type === "prestacao_servico" || o.type === "servico_rapido"
                   ? "Marcar como finalizado"
                   : "Marcar como entregue"
             }

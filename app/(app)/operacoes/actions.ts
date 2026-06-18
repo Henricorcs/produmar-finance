@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isFreightCategory } from "@/lib/utils";
@@ -303,7 +304,7 @@ function sanitizeOrder(input: ServiceOrderInput) {
 }
 
 function validate(input: ServiceOrderInput): string | null {
-  if (!["entrega_material", "prestacao_servico", "frete"].includes(input.type))
+  if (!["entrega_material", "prestacao_servico", "frete", "servico_rapido"].includes(input.type))
     return "Tipo inválido";
   if (!["cliente", "interno"].includes(input.freight_type))
     return "Tipo de frete inválido";
@@ -824,6 +825,9 @@ export async function finalizeServiceOrder(
     locationAccuracy?: number | null;
     // "Onde foi entregue" (frete diária/km): destino informado pelo operador.
     destination?: string | null;
+    // Serviço rápido: "o que foi feito" + valor gasto (vira o total da OS).
+    completionNotes?: string | null;
+    amount?: number | null;
   } = {}
 ) {
   const supabase = createClient();
@@ -1000,12 +1004,37 @@ export async function finalizeServiceOrder(
     patch.km_end = options.kmEnd;
   }
 
+  // Serviço rápido: o valor gasto (quando informado) vira o total da OS. Recria
+  // o item único com o valor — o trigger recalcula o total_amount.
+  if (order.type === "servico_rapido" && options.amount != null) {
+    await supabase.from("service_order_items").delete().eq("service_order_id", id);
+    const { error: itErr } = await supabase.from("service_order_items").insert({
+      service_order_id: id,
+      product_id: null,
+      description: order.service_description?.trim() || "SERVIÇO RÁPIDO",
+      quantity: 1,
+      unit: "ud",
+      unit_price: options.amount,
+    });
+    if (itErr) return { error: itErr.message };
+  }
+
   const { error } = await supabase
     .from("service_orders")
     .update(patch)
     .eq("id", id);
 
   if (error) return { error: error.message };
+
+  // "O que foi feito" (best-effort): não quebra a finalização caso a coluna
+  // completion_notes ainda não exista (migration 026 não aplicada no Supabase).
+  if (options.completionNotes?.trim()) {
+    const { error: cnErr } = await supabase
+      .from("service_orders")
+      .update({ completion_notes: options.completionNotes.trim().toUpperCase() })
+      .eq("id", id);
+    if (cnErr) console.error("Falha ao salvar o que foi feito:", cnErr.message);
+  }
 
   // Assinatura (best-effort): não quebra a finalização caso a coluna ainda
   // não exista (migration 010 não aplicada no Supabase).
@@ -1035,5 +1064,112 @@ export async function finalizeServiceOrder(
   revalidatePath("/operacoes");
   revalidatePath("/dashboard");
   revalidatePath("/contas");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPROVANTES DA OS (anexos) — foto do recibo / PDF de um serviço rápido
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_OS_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+/** Upload de um ou mais comprovantes para o bucket 'attachments' sob service_orders/<id>/. */
+export async function uploadServiceOrderAttachments(orderId: string, formData: FormData) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { error: "Nenhum arquivo selecionado" };
+
+  const rows: Record<string, unknown>[] = [];
+  const errors: string[] = [];
+
+  for (const file of files) {
+    if (file.size > MAX_OS_FILE_SIZE) {
+      errors.push(`${file.name}: maior que 10 MB`);
+      continue;
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `service_orders/${orderId}/${randomUUID()}_${safeName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("attachments")
+      .upload(path, file, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false,
+      });
+
+    if (uploadErr) {
+      errors.push(`${file.name}: ${uploadErr.message}`);
+      continue;
+    }
+
+    rows.push({
+      service_order_id: orderId,
+      storage_path: path,
+      file_name: file.name,
+      file_size: file.size,
+      mime_type: file.type || null,
+      created_by: user.id,
+    });
+  }
+
+  if (rows.length > 0) {
+    const { error } = await supabase.from("service_order_attachments").insert(rows);
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  if (errors.length > 0) return { ok: true as const, warning: errors.join("; ") };
+  return { ok: true as const };
+}
+
+/**
+ * Lista os comprovantes de uma OS (para o escritório ver/baixar ao editar).
+ * Best-effort: se a tabela ainda não existir (migration 026 não aplicada),
+ * devolve lista vazia em vez de quebrar a tela.
+ */
+export async function listServiceOrderAttachments(orderId: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("service_order_attachments")
+    .select("*")
+    .eq("service_order_id", orderId)
+    .order("created_at", { ascending: true });
+  if (error) return { attachments: [] as Record<string, unknown>[] };
+  return { attachments: data ?? [] };
+}
+
+/** Gera uma URL assinada (1h) para abrir/baixar um comprovante. */
+export async function getServiceOrderAttachmentSignedUrl(storagePath: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase.storage
+    .from("attachments")
+    .createSignedUrl(storagePath, 60 * 60);
+  if (error) return { error: error.message };
+  return { url: data.signedUrl };
+}
+
+export async function deleteServiceOrderAttachment(id: string) {
+  const supabase = createClient();
+
+  const { data: att } = await supabase
+    .from("service_order_attachments")
+    .select("storage_path")
+    .eq("id", id)
+    .single();
+  if (!att) return { error: "Comprovante não encontrado" };
+
+  await supabase.storage.from("attachments").remove([att.storage_path]);
+
+  const { error } = await supabase.from("service_order_attachments").delete().eq("id", id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
   return { ok: true };
 }

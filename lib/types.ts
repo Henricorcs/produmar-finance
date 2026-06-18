@@ -128,7 +128,7 @@ export interface CashflowProjectionDay {
 
 // ── Operações (Ordens de Serviço) ────────────────────────────────────────────
 
-export type ServiceOrderType    = "entrega_material" | "prestacao_servico" | "frete";
+export type ServiceOrderType    = "entrega_material" | "prestacao_servico" | "frete" | "servico_rapido";
 export type ServiceFreightType  = "cliente" | "interno";
 export type ServiceOrderStatus  = "pendente" | "em_andamento" | "entregue" | "cancelado";
 export type MachineTrackingType = "hourmeter" | "km";
@@ -248,10 +248,25 @@ export interface ServiceOrder {
   /** Assinatura digital (PNG data-URL) capturada na finalização. */
   signature: string | null;
 
+  /** "O que foi feito" — preenchido pelo funcionário no fechamento (serviço rápido). */
+  completion_notes: string | null;
+
   notes: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Comprovante (foto/PDF) anexado a uma OS — ex.: recibo de um serviço rápido. */
+export interface ServiceOrderAttachment {
+  id: string;
+  service_order_id: string;
+  file_name: string;
+  file_size: number | null;
+  mime_type: string | null;
+  storage_path: string;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface ServiceOrderItem {

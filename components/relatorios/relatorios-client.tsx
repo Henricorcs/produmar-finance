@@ -25,6 +25,7 @@ import {
   Package,
   Truck,
   Wrench,
+  Zap,
 } from "lucide-react";
 import {
   Dialog,
@@ -60,7 +61,7 @@ interface OperatorAgg {
   emAndamento: number;
   pendentes: number;
   cancelados: number;
-  byType: { entrega_material: number; frete: number; prestacao_servico: number };
+  byType: { entrega_material: number; frete: number; prestacao_servico: number; servico_rapido: number };
   trips: number;
   valorTotal: number;
   valorEntregue: number;
@@ -92,6 +93,7 @@ const OS_TYPE_LABEL: Record<ServiceOrder["type"], string> = {
   entrega_material: "Entrega",
   frete: "Frete",
   prestacao_servico: "Serviço",
+  servico_rapido: "Serviço rápido",
 };
 
 const OS_STATUS: Record<ServiceOrder["status"], { label: string; cls: string }> = {
@@ -297,7 +299,7 @@ export function RelatoriosClient({ transactions, orders, operators }: Props) {
           emAndamento: 0,
           pendentes: 0,
           cancelados: 0,
-          byType: { entrega_material: 0, frete: 0, prestacao_servico: 0 },
+          byType: { entrega_material: 0, frete: 0, prestacao_servico: 0, servico_rapido: 0 },
           trips: 0,
           valorTotal: 0,
           valorEntregue: 0,
@@ -1137,6 +1139,11 @@ function OperatorCard({ op, onClick }: { op: OperatorAgg; onClick: () => void })
         <span className="flex items-center gap-1">
           <Wrench className="w-3.5 h-3.5" /> {op.byType.prestacao_servico} serviços
         </span>
+        {op.byType.servico_rapido > 0 && (
+          <span className="flex items-center gap-1">
+            <Zap className="w-3.5 h-3.5" /> {op.byType.servico_rapido} rápidos
+          </span>
+        )}
         {op.trips > 0 && <span>{op.trips} viagens</span>}
         <span className="ml-auto flex items-center gap-0.5 text-produmar-600 dark:text-produmar-400 print:hidden">
           Ver ordens <ChevronRight className="w-3.5 h-3.5" />
