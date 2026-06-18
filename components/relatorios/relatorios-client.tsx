@@ -852,7 +852,13 @@ export function RelatoriosClient({ transactions, orders, operators }: Props) {
             </p>
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {opDrill.orders.map((o) => (
-                <div key={o.id} className="py-2.5">
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => window.open(`/imprimir/os/${o.id}`, "_blank")}
+                  title="Ver detalhes da OS"
+                  className="w-full text-left py-2.5 px-2 -mx-2 rounded-lg hover:bg-produmar-50/60 dark:hover:bg-slate-800/60 active:bg-produmar-100/70 dark:active:bg-slate-800 transition-colors"
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-xs font-bold text-produmar-700 dark:text-produmar-400 tabular-nums flex-shrink-0">
@@ -862,8 +868,11 @@ export function RelatoriosClient({ transactions, orders, operators }: Props) {
                         {o.client_name || o.service_description || "—"}
                       </span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums flex-shrink-0">
-                      {formatBRL(o.total_amount ?? 0)}
+                    <span className="flex items-center gap-1 flex-shrink-0">
+                      <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
+                        {formatBRL(o.total_amount ?? 0)}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -888,7 +897,7 @@ export function RelatoriosClient({ transactions, orders, operators }: Props) {
                       {formatDateBR(o.delivery_date ?? o.issue_date)}
                     </span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </DialogContent>
