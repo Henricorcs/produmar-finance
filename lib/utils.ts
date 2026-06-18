@@ -32,6 +32,21 @@ export function formatBRLCompact(value: number): string {
 }
 
 /**
+ * Horímetro com vírgula automática: o usuário digita só os números e a última
+ * casa vira o décimo (ex.: "12305" → "1230,5"). NÃO usa separador de milhar,
+ * para o valor continuar sendo lido com `.replace(",", ".")`. Mesma ideia dos
+ * campos de R$, mas com 1 casa decimal. Use só no horímetro — o km é inteiro.
+ */
+export function formatHourmeter(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  const padded = digits.padStart(2, "0");
+  const intPart = String(parseInt(padded.slice(0, -1), 10));
+  const dec = padded.slice(-1);
+  return `${intPart},${dec}`;
+}
+
+/**
  * Converte qualquer entrada em Date no fuso local. Strings no formato
  * YYYY-MM-DD são interpretadas como data local (não UTC) para evitar
  * o bug clássico de -1 dia em fusos negativos como BRT (UTC-3).

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { pauseServiceOrder } from "@/app/(app)/operacoes/actions";
+import { formatHourmeter } from "@/lib/utils";
 import type { ServiceOrder } from "@/lib/types";
 
 type OrderDetails = ServiceOrder & {
@@ -161,7 +162,9 @@ export function PauseDialog({ order, open, onClose, onPaused }: Props) {
               </Label>
               <Input
                 value={reading}
-                onChange={(e) => setReading(sanitizeReading(e.target.value))}
+                onChange={(e) =>
+                  setReading(tracksKm ? sanitizeReading(e.target.value) : formatHourmeter(e.target.value))
+                }
                 placeholder={tracksKm ? "ex: 154300" : "ex: 1230,5"}
                 inputMode="decimal"
                 autoComplete="off"

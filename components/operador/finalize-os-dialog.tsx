@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SignaturePad } from "./signature-pad";
 import { ServiceOrderComprovantes } from "./service-order-comprovantes";
 import { finalizeServiceOrder } from "@/app/(app)/operacoes/actions";
-import { formatBRL, osTypeLabel } from "@/lib/utils";
+import { formatBRL, formatHourmeter, osTypeLabel } from "@/lib/utils";
 import type {
   ServiceOrder,
   ServiceOrderAttachment,
@@ -62,16 +62,6 @@ function parseBRLToNumber(s: string): number {
   const cleaned = s.replace(/\./g, "").replace(",", ".");
   const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
-}
-
-// Horímetro: vírgula MANUAL — o técnico digita o número como aparece no relógio
-// e coloca a vírgula se precisar (1 casa decimal). Não força decimal automático.
-function sanitizeHourmeter(raw: string): string {
-  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
-  const parts = cleaned.split(",");
-  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
-  if (parts[1]?.length > 1) return parts[0] + "," + parts[1].slice(0, 1);
-  return cleaned;
 }
 
 function nowYYYYMMDD(): string {
@@ -587,7 +577,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
                       </Label>
                       <Input
                         value={hourmeterStart}
-                        onChange={(e) => setHourmeterStart(sanitizeHourmeter(e.target.value))}
+                        onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
                         placeholder="ex: 1230,0"
                         inputMode="decimal"
                         autoComplete="off"
@@ -608,7 +598,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
                 </Label>
                 <Input
                   value={hourmeterEnd}
-                  onChange={(e) => setHourmeterEnd(sanitizeHourmeter(e.target.value))}
+                  onChange={(e) => setHourmeterEnd(formatHourmeter(e.target.value))}
                   placeholder="ex: 1250,5"
                   inputMode="decimal"
                   autoComplete="off"

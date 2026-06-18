@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { resumeServiceOrder } from "@/app/(app)/operacoes/actions";
+import { formatHourmeter } from "@/lib/utils";
 import type { ServiceOrder, ServiceOrderPause } from "@/lib/types";
 
 type OrderDetails = ServiceOrder & {
@@ -146,7 +147,9 @@ export function ResumeDialog({ order, openPause, open, onClose, onResumed }: Pro
               </Label>
               <Input
                 value={reading}
-                onChange={(e) => setReading(sanitizeReading(e.target.value))}
+                onChange={(e) =>
+                  setReading(tracksKm ? sanitizeReading(e.target.value) : formatHourmeter(e.target.value))
+                }
                 placeholder={tracksKm ? "ex: 154300" : "ex: 1230,5"}
                 inputMode="decimal"
                 autoComplete="off"

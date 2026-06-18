@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { startServiceOrder } from "@/app/(app)/operacoes/actions";
+import { formatHourmeter } from "@/lib/utils";
 import type { ServiceOrder } from "@/lib/types";
 
 type OrderDetails = ServiceOrder & {
@@ -147,7 +148,9 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
             </Label>
             <Input
               value={reading}
-              onChange={(e) => setReading(sanitizeKm(e.target.value))}
+              onChange={(e) =>
+                setReading(tracksKm ? sanitizeKm(e.target.value) : formatHourmeter(e.target.value))
+              }
               placeholder={tracksKm ? "ex: 154300" : "ex: 1230,5"}
               inputMode="decimal"
               autoComplete="off"

@@ -35,7 +35,7 @@ import {
   listServiceOrderAttachments,
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, isFreightCategory, machineCategoryLabel, osStatusLabel } from "@/lib/utils";
+import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel } from "@/lib/utils";
 import type {
   Machine,
   PickupLocation,
@@ -105,16 +105,6 @@ function sanitizeDecimal(raw: string): string {
   const parts = cleaned.split(",");
   if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
   if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
-  return cleaned;
-}
-
-// Horímetro: vírgula MANUAL — digita o número como aparece no relógio e coloca
-// a vírgula se precisar (1 casa decimal). Não força o decimal automático.
-function sanitizeHourmeter(raw: string): string {
-  const cleaned = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
-  const parts = cleaned.split(",");
-  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
-  if (parts[1]?.length > 1) return parts[0] + "," + parts[1].slice(0, 1);
   return cleaned;
 }
 
@@ -256,8 +246,8 @@ export function ServiceOrderDialog({
       setDeliveryAddress(order.delivery_address ?? "");
       setServiceDescription(order.service_description ?? "");
       setDeliveryDate(order.delivery_date ?? "");
-      setHourmeterStart(order.hourmeter_start?.toString().replace(".", ",") ?? "");
-      setHourmeterEnd(order.hourmeter_end?.toString().replace(".", ",") ?? "");
+      setHourmeterStart(order.hourmeter_start?.toFixed(1).replace(".", ",") ?? "");
+      setHourmeterEnd(order.hourmeter_end?.toFixed(1).replace(".", ",") ?? "");
       setKmStart(order.km_start?.toString().replace(".", ",") ?? "");
       setKmEnd(order.km_end?.toString().replace(".", ",") ?? "");
       setHourlyRate(order.hourly_rate != null ? formatBRLInput(order.hourly_rate) : "");
@@ -1359,7 +1349,7 @@ export function ServiceOrderDialog({
                           <Label className="text-[10px] text-slate-500">Horímetro inicial</Label>
                           <Input
                             value={hourmeterStart}
-                            onChange={(e) => setHourmeterStart(sanitizeHourmeter(e.target.value))}
+                            onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
                             placeholder="0,0"
                             inputMode="decimal"
                             autoComplete="off"
@@ -1371,7 +1361,7 @@ export function ServiceOrderDialog({
                             <Label className="text-[10px] text-slate-500">Horímetro final</Label>
                             <Input
                               value={hourmeterEnd}
-                              onChange={(e) => setHourmeterEnd(sanitizeHourmeter(e.target.value))}
+                              onChange={(e) => setHourmeterEnd(formatHourmeter(e.target.value))}
                               placeholder="0,0"
                               inputMode="decimal"
                               autoComplete="off"
