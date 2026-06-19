@@ -5,6 +5,7 @@ import { osBillingLabel, osStatusLabel, osTypeLabel } from "@/lib/utils";
 import type {
   ServiceOrder,
   ServiceOrderAttachment,
+  ServiceOrderForward,
   ServiceOrderItem,
   ServiceOrderTrip,
   ServiceOrderPause,
@@ -22,6 +23,7 @@ type PrintOrder = ServiceOrder & {
   service_order_trips?: ServiceOrderTrip[];
   service_order_pauses?: ServiceOrderPause[];
   service_order_attachments?: ServiceOrderAttachment[];
+  service_order_forwards?: ServiceOrderForward[];
 };
 
 interface Props {
@@ -172,10 +174,15 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
 
       {/* Toolbar (hidden on print) */}
       <div className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex items-center justify-between px-6 py-3 shadow-lg">
-        <span className="font-semibold text-sm">{docLabel} #{order.order_number}</span>
+        <span className="font-semibold text-sm">{docLabel}</span>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => window.history.back()}
+            onClick={() => {
+              // O comprovante abre em nova aba (window.open): fecha a aba. Se foi
+              // navegação no mesmo separador (tem histórico), volta a página.
+              if (window.history.length > 1) window.history.back();
+              else window.close();
+            }}
             className="text-sm opacity-80 hover:opacity-100 transition-opacity"
           >
             ← Voltar
@@ -206,11 +213,8 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
               </p>
             </div>
             <div className="text-right">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">
+              <p className="text-[12px] font-bold text-slate-500 uppercase tracking-[0.15em]">
                 {docLabel}
-              </p>
-              <p className="text-[30px] font-black text-produmar-700 tabular-nums leading-none mt-0.5">
-                #{String(order.order_number).padStart(4, "0")}
               </p>
               <span
                 className="inline-block mt-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide"
@@ -290,6 +294,33 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
                 <p className="text-[12px] font-semibold text-slate-800 whitespace-pre-line">
                   {order.completion_notes}
                 </p>
+              </div>
+            )}
+
+            {/* Encaminhamentos — de quem → para quem, quando e motivo. */}
+            {(order.service_order_forwards?.length ?? 0) > 0 && (
+              <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-sky-700 mb-1.5">
+                  Encaminhamentos
+                </p>
+                <ul className="text-[11px] text-slate-700 space-y-0.5">
+                  {order.service_order_forwards!.map((f) => (
+                    <li key={f.id}>
+                      <span className="font-semibold">{f.from_name ?? "—"}</span> →{" "}
+                      <span className="font-semibold">{f.to_name ?? "—"}</span>
+                      <span className="text-slate-400">
+                        {" "}· {new Date(f.created_at).toLocaleString("pt-BR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      {f.note ? <span className="text-slate-600"> — {f.note}</span> : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
@@ -610,7 +641,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
               hour: "2-digit",
               minute: "2-digit",
             })}{" "}
-            — PRODUMAR — {docLabel} #{String(order.order_number).padStart(4, "0")}
+            — PRODUMAR — {docLabel}
           </div>
         </div>
       </div>

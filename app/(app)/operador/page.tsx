@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { OperadorClient } from "@/components/operador/operador-client";
 import type {
+  Profile,
   ServiceOrder,
   ServiceOrderAttachment,
+  ServiceOrderForward,
   ServiceOrderItem,
   ServiceOrderTrip,
   ServiceOrderPause,
@@ -18,6 +21,7 @@ type OrderWithDetails = ServiceOrder & {
   service_order_trips?: ServiceOrderTrip[];
   service_order_pauses?: ServiceOrderPause[];
   service_order_attachments?: ServiceOrderAttachment[];
+  service_order_forwards?: ServiceOrderForward[];
 };
 
 export default async function OperadorPage() {
@@ -90,6 +94,19 @@ export default async function OperadorPage() {
           (a) => a.service_order_id === o.id
         ) ?? [];
     }
+
+    // Histórico de encaminhamentos (best-effort: migration 027 não aplicada).
+    const { data: forwards } = await supabase
+      .from("service_order_forwards")
+      .select("*")
+      .in("service_order_id", list.map((o) => o.id))
+      .order("created_at", { ascending: true });
+    for (const o of list) {
+      o.service_order_forwards =
+        (forwards as ServiceOrderForward[] | null)?.filter(
+          (f) => f.service_order_id === o.id
+        ) ?? [];
+    }
   }
 
   // Último km conhecido de cada veículo (facilita o Iniciar: o técnico usa o
@@ -112,11 +129,30 @@ export default async function OperadorPage() {
     }
   }
 
+  // Outros operadores (para encaminhar a OS). Usa o service-role porque a RLS
+  // de profiles só deixa o admin ver os outros. Best-effort: sem a service key,
+  // segue sem a lista (o botão de encaminhar fica sem destinos).
+  let operators: { id: string; name: string }[] = [];
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("profiles")
+      .select("*")
+      .eq("role", "operador")
+      .order("full_name", { ascending: true });
+    operators = ((data as Profile[]) ?? [])
+      .filter((p) => p.id !== user.id)
+      .map((p) => ({ id: p.id, name: p.full_name || p.email }));
+  } catch {
+    operators = [];
+  }
+
   return (
     <OperadorClient
       orders={list}
       operadorName={user.user_metadata?.name ?? user.email ?? "Operador"}
       lastKmByMachine={lastKmByMachine}
+      operators={operators}
     />
   );
 }

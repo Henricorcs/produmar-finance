@@ -22,6 +22,7 @@ import {
   CalendarDays,
   Minus,
   Zap,
+  Forward,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,6 +32,7 @@ import { TripStartDialog } from "./trip-start-dialog";
 import { TripFinishDialog } from "./trip-finish-dialog";
 import { PauseDialog } from "./pause-dialog";
 import { ResumeDialog } from "./resume-dialog";
+import { ForwardDialog } from "./forward-dialog";
 import {
   startTrip,
   finishTrip,
@@ -43,6 +45,7 @@ import type {
   ServiceBillingMode,
   ServiceOrder,
   ServiceOrderAttachment,
+  ServiceOrderForward,
   ServiceOrderItem,
   ServiceOrderStatus,
   ServiceOrderTrip,
@@ -56,6 +59,7 @@ type OrderWithDetails = ServiceOrder & {
   service_order_trips?: ServiceOrderTrip[];
   service_order_pauses?: ServiceOrderPause[];
   service_order_attachments?: ServiceOrderAttachment[];
+  service_order_forwards?: ServiceOrderForward[];
 };
 
 function nowHHMM(): string {
@@ -68,6 +72,8 @@ interface Props {
   operadorName: string;
   /** Último km conhecido de cada veículo (facilita anotar o km no Iniciar). */
   lastKmByMachine?: Record<string, number>;
+  /** Outros operadores (para encaminhar a OS). */
+  operators?: { id: string; name: string }[];
 }
 
 const STATUS_STYLE: Record<ServiceOrderStatus, string> = {
@@ -114,14 +120,26 @@ function fmtDateShort(s: string | null): string {
   return d && m && y ? `${d}/${m}` : s;
 }
 
+function fmtForwardWhen(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function OperadorClient({
   orders: initialOrders,
   operadorName,
   lastKmByMachine = {},
+  operators = [],
 }: Props) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
   const [finalizeTarget, setFinalizeTarget] = useState<OrderWithDetails | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<OrderWithDetails | null>(null);
   const [startTarget, setStartTarget] = useState<OrderWithDetails | null>(null);
   const [tripStartTarget, setTripStartTarget] = useState<OrderWithDetails | null>(null);
   const [tripFinishTarget, setTripFinishTarget] = useState<{
@@ -143,6 +161,12 @@ export function OperadorClient({
 
   function handleFinalized(orderId: string) {
     setOrders((prev) => prev.filter((o) => o.id !== orderId));
+  }
+
+  // Encaminhada: a OS passou para outro operador — sai deste painel.
+  function handleForwarded(orderId: string) {
+    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+    router.refresh();
   }
 
   function markStarted(orderId: string) {
@@ -339,6 +363,8 @@ export function OperadorClient({
                 onResume={(order, openPause) =>
                   setResumeTarget({ order, openPause })
                 }
+                onForward={setForwardTarget}
+                canForward={operators.length > 0}
               />
             ))}
           </div>
@@ -369,6 +395,8 @@ export function OperadorClient({
                 onResume={(order, openPause) =>
                   setResumeTarget({ order, openPause })
                 }
+                onForward={setForwardTarget}
+                canForward={operators.length > 0}
               />
             ))}
           </div>
@@ -447,6 +475,17 @@ export function OperadorClient({
           onResumed={() => router.refresh()}
         />
       )}
+
+      {/* Encaminhar a OS para outro operador */}
+      {forwardTarget && (
+        <ForwardDialog
+          order={forwardTarget}
+          operators={operators}
+          open={!!forwardTarget}
+          onClose={() => setForwardTarget(null)}
+          onForwarded={handleForwarded}
+        />
+      )}
     </div>
   );
 }
@@ -487,6 +526,8 @@ function OSCard({
   onRemoveTrip,
   onPause,
   onResume,
+  onForward,
+  canForward,
 }: {
   order: OrderWithDetails;
   onIniciar: (o: OrderWithDetails) => void;
@@ -497,6 +538,8 @@ function OSCard({
   onRemoveTrip: (o: OrderWithDetails) => void;
   onPause: (o: OrderWithDetails) => void;
   onResume: (o: OrderWithDetails, openPause: ServiceOrderPause) => void;
+  onForward: (o: OrderWithDetails) => void;
+  canForward: boolean;
 }) {
   const isClient   = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
@@ -508,6 +551,12 @@ function OSCard({
   // retomada) = serviço pausado.
   const isServiceInterno = o.type === "prestacao_servico" && o.freight_type === "interno";
   const isPausable = isServiceInterno || isQuick;
+  // Encaminhar (passar a OS para outro operador) — disponível no serviço rápido.
+  const canForwardThis = isQuick && o.status !== "entregue" && o.status !== "cancelado";
+  const forwards = (o.service_order_forwards ?? [])
+    .slice()
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const lastForward = forwards.length > 0 ? forwards[forwards.length - 1] : null;
   const pauses = (o.service_order_pauses ?? [])
     .slice()
     .sort((a, b) => a.pause_number - b.pause_number);
@@ -696,6 +745,39 @@ function OSCard({
           </InfoRow>
         )}
       </div>
+
+      {/* Histórico de encaminhamentos — de quem → para quem, quando e motivo. */}
+      {forwards.length > 0 && (
+        <div className="rounded-xl border-2 border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/20 p-3 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Forward className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+            <span className="text-sm font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+              {forwards.length === 1 ? "Encaminhamento" : "Encaminhamentos"}
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {forwards.map((f) => (
+              <li key={f.id} className="text-sm text-slate-600 dark:text-slate-300">
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {f.from_name ?? "—"}
+                  </span>
+                  <span className="text-slate-400">→</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {f.to_name ?? "—"}
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-500 tabular-nums">
+                    · {fmtForwardWhen(f.created_at)}
+                  </span>
+                </div>
+                {f.note && (
+                  <p className="text-slate-700 dark:text-slate-200 break-words">{f.note}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Viagens (modo "por viagem" em andamento): início → fim por viagem */}
       {showTripCounter && (
@@ -904,6 +986,18 @@ function OSCard({
           FINALIZAR
         </Button>
       </div>
+
+      {/* Encaminhar para outro operador — serviço rápido. */}
+      {canForwardThis && canForward && (
+        <Button
+          variant="outline"
+          className="w-full h-12 px-2 text-base font-bold border-2 border-sky-300 text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30"
+          onClick={() => onForward(o)}
+        >
+          <Forward className="w-5 h-5 shrink-0" />
+          ENCAMINHAR PARA OUTRO
+        </Button>
+      )}
     </div>
   );
 }

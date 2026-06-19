@@ -313,6 +313,21 @@ export interface ServiceOrderPause {
   created_at: string;
 }
 
+/**
+ * Encaminhamento de uma OS de um operador para outro. Guarda quem encaminhou,
+ * para quem, quando e uma observação — o nome é snapshot (não depende de join).
+ */
+export interface ServiceOrderForward {
+  id: string;
+  service_order_id: string;
+  from_user: string | null;
+  from_name: string | null;
+  to_user: string | null;
+  to_name: string | null;
+  note: string | null;
+  created_at: string;
+}
+
 /** Viagem marcada pelo técnico no modo "por viagem" — horário e assinatura de cada entrega. */
 export interface ServiceOrderTrip {
   id: string;

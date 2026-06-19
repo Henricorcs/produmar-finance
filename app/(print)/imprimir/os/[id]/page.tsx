@@ -4,6 +4,7 @@ import { OrcamentoPrint } from "@/components/operacoes/orcamento-print";
 import type {
   ServiceOrder,
   ServiceOrderAttachment,
+  ServiceOrderForward,
   ServiceOrderItem,
   ServiceOrderTrip,
   ServiceOrderPause,
@@ -23,6 +24,7 @@ type PrintOrder = ServiceOrder & {
   service_order_trips?: ServiceOrderTrip[];
   service_order_pauses?: ServiceOrderPause[];
   service_order_attachments?: ServiceOrderAttachment[];
+  service_order_forwards?: ServiceOrderForward[];
 };
 
 interface Props {
@@ -75,6 +77,14 @@ export default async function ImprimirOSPage({ params }: Props) {
     .select("*")
     .eq("service_order_id", order.id);
   order.service_order_attachments = (attachments as ServiceOrderAttachment[] | null) ?? [];
+
+  // Encaminhamentos (best-effort: migration 027 não aplicada no Supabase).
+  const { data: forwards } = await supabase
+    .from("service_order_forwards")
+    .select("*")
+    .eq("service_order_id", order.id)
+    .order("created_at", { ascending: true });
+  order.service_order_forwards = (forwards as ServiceOrderForward[] | null) ?? [];
 
   return <OrcamentoPrint order={order} />;
 }

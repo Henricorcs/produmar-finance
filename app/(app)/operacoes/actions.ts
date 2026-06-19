@@ -729,6 +729,53 @@ export async function resumeServiceOrder(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ENCAMINHAR OS (passar a outro operador) — registra de quem, para quem e quando
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function forwardServiceOrder(
+  orderId: string,
+  toUserId: string,
+  options: { toName?: string | null; note?: string | null } = {}
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!toUserId) return { error: "Escolha para quem encaminhar." };
+  if (toUserId === user.id) return { error: "Você já é o responsável por esta OS." };
+
+  const fromName =
+    (user.user_metadata?.full_name as string | undefined)?.trim() ||
+    (user.user_metadata?.name as string | undefined)?.trim() ||
+    user.email ||
+    "Operador";
+
+  // Reatribui a OS ao novo responsável — ela passa a aparecer no painel dele.
+  const { error: updErr } = await supabase
+    .from("service_orders")
+    .update({ assigned_to: toUserId })
+    .eq("id", orderId);
+  if (updErr) return { error: updErr.message };
+
+  // Registra o encaminhamento (best-effort: não quebra se a tabela ainda não
+  // existir — migration 027 não aplicada no Supabase).
+  const { error: logErr } = await supabase.from("service_order_forwards").insert({
+    service_order_id: orderId,
+    from_user: user.id,
+    from_name: fromName,
+    to_user: toUserId,
+    to_name: options.toName?.trim() ? options.toName.trim() : null,
+    note: options.note?.trim() ? options.note.trim().toUpperCase() : null,
+  });
+  if (logErr) console.error("Falha ao registrar encaminhamento:", logErr.message);
+
+  revalidatePath("/operador");
+  revalidatePath("/operacoes");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LINK: gerar lançamento financeiro a partir de uma OS
 // ─────────────────────────────────────────────────────────────────────────────
 
