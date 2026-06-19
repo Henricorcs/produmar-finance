@@ -6,5 +6,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"]
+  // Ícones e manifest são públicos (o iOS/PWA busca sem sessão) — ficam de fora
+  // da proteção de login, senão o "Adicionar à Tela de Início" não pega a logo.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|apple-icon|icon-192|icon-512|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

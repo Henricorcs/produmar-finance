@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "PRODUMAR Finance",
   "short_name": "PRODUMAR Finance",
   "description": "Controle financeiro da PRODUMAR",
@@ -9,13 +9,13 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "/icon-192",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/icon-512",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
