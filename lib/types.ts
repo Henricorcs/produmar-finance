@@ -56,6 +56,8 @@ export interface Transaction {
   invoice_id: string | null;
   notes: string | null;
   attachment_url: string | null;
+  /** OS de origem (lançamento automático de operação) — fica fora da aba Contas. */
+  service_order_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

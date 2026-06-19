@@ -28,7 +28,6 @@ import { Card } from "@/components/ui/card";
 import { ServiceOrderDialog } from "./service-order-dialog";
 import {
   deleteServiceOrder,
-  generateTransactionFromOrder,
   updateServiceOrderStatus,
 } from "@/app/(app)/operacoes/actions";
 import { formatBRL, formatBRLCompact, formatDate, localDateISO, osBillingLabel, osStatusLabel, osTypeLabel } from "@/lib/utils";
@@ -258,29 +257,6 @@ export function OperacoesPageClient({
     await updateServiceOrderStatus(o.id, next, next === "entregue" ? localDateISO() : null);
   }
 
-  async function handleGenerateTransaction(o: ServiceOrderWithDetails) {
-    if (o.transaction_id) {
-      alert("Esta OS já possui um lançamento financeiro vinculado.");
-      return;
-    }
-    if (!o.total_amount) {
-      alert("O valor total da OS é zero. Adicione itens antes.");
-      return;
-    }
-    const confirmMsg =
-      o.freight_type === "cliente"
-        ? `Gerar uma receita a receber de ${formatBRL(o.total_amount)} (OS #${o.order_number})?`
-        : `Gerar uma despesa de ${formatBRL(o.total_amount)} (OS #${o.order_number}, consumo interno)?`;
-    if (!confirm(confirmMsg)) return;
-
-    const result = await generateTransactionFromOrder(o.id);
-    if ("error" in result) {
-      alert(result.error);
-    } else {
-      alert("Lançamento criado com sucesso!");
-    }
-  }
-
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -413,7 +389,6 @@ export function OperacoesPageClient({
                 onEdit={openEdit}
                 onDelete={handleDelete}
                 onStatus={handleStatusChange}
-                onGenerateTransaction={handleGenerateTransaction}
               />
             ))}
           </div>
@@ -442,14 +417,12 @@ function OrderRow({
   onEdit,
   onDelete,
   onStatus,
-  onGenerateTransaction,
 }: {
   order: ServiceOrderWithDetails;
   operatorName: string | null;
   onEdit: (o: ServiceOrderWithDetails) => void;
   onDelete: (id: string) => void;
   onStatus: (o: ServiceOrderWithDetails, next: ServiceOrderStatus) => void;
-  onGenerateTransaction: (o: ServiceOrderWithDetails) => void;
 }) {
   const isClient = o.freight_type === "cliente";
   const isMaterial = o.type === "entrega_material";
@@ -606,15 +579,6 @@ function OrderRow({
             ) : (
               <CheckCircle2 className="w-5 h-5" />
             )}
-          </button>
-        )}
-        {!o.transaction_id && o.total_amount > 0 && o.status !== "cancelado" && (
-          <button
-            onClick={() => onGenerateTransaction(o)}
-            title="Gerar lançamento financeiro"
-            className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
-          >
-            <Receipt className="w-5 h-5" />
           </button>
         )}
         <button

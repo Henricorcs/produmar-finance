@@ -26,6 +26,8 @@ export default async function ContasPage({
       .select(
         "*, categories(name, color), transaction_attachments(id, transaction_id, file_name, file_size, mime_type, storage_path, created_by, created_at)"
       )
+      // Lançamentos de OS contam nas finanças, mas não aparecem na lista de Contas.
+      .is("service_order_id", null)
       .gte("due_date", startDate)
       .lte("due_date", endDate)
       .order("due_date", { ascending: false }),

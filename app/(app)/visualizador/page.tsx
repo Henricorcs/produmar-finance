@@ -24,6 +24,8 @@ export default async function VisualizadorPage({
     .select(
       "*, categories(name, color), cost_centers(name), transaction_attachments(id, transaction_id, file_name, file_size, mime_type, storage_path, created_by, created_at)"
     )
+    // Lançamentos de OS contam nas finanças, mas não aparecem nesta lista.
+    .is("service_order_id", null)
     .gte("due_date", startDate)
     .lte("due_date", endDate)
     .neq("status", "cancelado")

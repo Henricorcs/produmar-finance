@@ -351,6 +351,84 @@ function validate(input: ServiceOrderInput): string | null {
   return null;
 }
 
+/**
+ * Sincroniza os lançamentos financeiros (ocultos) de uma OS. Recria do zero:
+ * a receita (cliente) e/ou os custos (consumo interno + combustível/serviço), já
+ * realizados (recebido/pago) e marcados com service_order_id — contam nas finanças
+ * (dashboard/saldo) mas NÃO aparecem na aba Contas. Só gera quando a OS está
+ * 'entregue' e não tem lançamento manual legado (transaction_id). Best-effort:
+ * se a coluna service_order_id ainda não existir (migration 027), não quebra.
+ */
+async function syncServiceOrderFinance(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string
+) {
+  await supabase.from("transactions").delete().eq("service_order_id", orderId);
+
+  const { data: o } = await supabase
+    .from("service_orders")
+    .select(
+      "order_number, freight_type, total_amount, service_cost, fuel_cost, delivery_date, issue_date, client_name, service_description, status, transaction_id, created_by"
+    )
+    .eq("id", orderId)
+    .maybeSingle<{
+      order_number: number;
+      freight_type: string;
+      total_amount: number | null;
+      service_cost: number | null;
+      fuel_cost: number | null;
+      delivery_date: string | null;
+      issue_date: string;
+      client_name: string | null;
+      service_description: string | null;
+      status: string;
+      transaction_id: string | null;
+      created_by: string | null;
+    }>();
+  if (!o) return;
+  // Só OS finalizada conta; OS com lançamento manual legado fica como está.
+  if (o.status !== "entregue" || o.transaction_id) return;
+
+  const date = o.delivery_date || o.issue_date || new Date().toISOString().split("T")[0];
+  const isClient = o.freight_type === "cliente";
+  const rows: Record<string, unknown>[] = [];
+
+  const total = Number(o.total_amount ?? 0);
+  if (total > 0) {
+    const label =
+      o.client_name?.trim() || o.service_description?.trim() || "Consumo interno";
+    rows.push({
+      type: isClient ? "entrada" : "saida",
+      status: isClient ? "recebido" : "pago",
+      amount: total,
+      description: `OS #${o.order_number} - ${label}`.toUpperCase(),
+      due_date: date,
+      paid_date: date,
+      service_order_id: orderId,
+      created_by: o.created_by,
+    });
+  }
+
+  const internalCost = Number(o.service_cost ?? 0) + Number(o.fuel_cost ?? 0);
+  if (internalCost > 0) {
+    rows.push({
+      type: "saida",
+      status: "pago",
+      amount: internalCost,
+      description: `OS #${o.order_number} - CUSTOS INTERNOS`,
+      due_date: date,
+      paid_date: date,
+      service_order_id: orderId,
+      created_by: o.created_by,
+    });
+  }
+
+  if (rows.length > 0) {
+    const { error } = await supabase.from("transactions").insert(rows);
+    if (error) console.error("Falha ao sincronizar financeiro da OS:", error.message);
+  }
+}
+
 export async function createServiceOrder(input: ServiceOrderInput) {
   const err = validate(input);
   if (err) return { error: err };
@@ -430,6 +508,7 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
     if (itemsErr) return { error: itemsErr.message };
   }
 
+  await syncServiceOrderFinance(supabase, id);
   revalidate();
   return { ok: true };
 }
@@ -459,6 +538,7 @@ export async function updateServiceOrderStatus(
   }
   const { error } = await supabase.from("service_orders").update(patch).eq("id", id);
   if (error) return { error: error.message };
+  await syncServiceOrderFinance(supabase, id);
   revalidate();
   return { ok: true };
 }
@@ -1118,6 +1198,10 @@ export async function finalizeServiceOrder(
       .eq("id", id);
     if (locErr) console.error("Falha ao salvar localização:", locErr.message);
   }
+
+  // Lança o valor da OS no financeiro (oculto da aba Contas). Roda depois dos
+  // itens (o trigger já recalculou o total_amount).
+  await syncServiceOrderFinance(supabase, id);
 
   revalidatePath("/operador");
   revalidatePath("/operacoes");
