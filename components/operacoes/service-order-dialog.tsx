@@ -934,7 +934,7 @@ export function ServiceOrderDialog({
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
                 <HardHat className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                Enviar para (operador)
+                Enviar para
               </Label>
               <SearchableSelect
                 items={operators}
@@ -945,7 +945,9 @@ export function ServiceOrderDialog({
                 renderItem={(op) => (
                   <div className="min-w-0">
                     <span className="truncate block">{op.full_name || op.email}</span>
-                    {op.allowed_categories?.length > 0 && (
+                    {/* Categorias só fazem sentido em OS com máquina — no serviço
+                        rápido (sem veículo) viram ruído, então não mostramos. */}
+                    {!isQuick && op.allowed_categories?.length > 0 && (
                       <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate block">
                         {op.allowed_categories.map(machineCategoryLabel).join(", ")}
                       </span>
@@ -956,7 +958,7 @@ export function ServiceOrderDialog({
                 searchPlaceholder="Buscar operador..."
                 emptyMessage="Nenhum operador cadastrado"
               />
-              {selectedOperator && (selectedOperator.allowed_categories?.length ?? 0) > 0 && (
+              {!isQuick && selectedOperator && (selectedOperator.allowed_categories?.length ?? 0) > 0 && (
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-1">
                   {selectedOperator.full_name || selectedOperator.email} opera:{" "}
                   {selectedOperator.allowed_categories.map(machineCategoryLabel).join(", ")}
@@ -970,7 +972,7 @@ export function ServiceOrderDialog({
                 <div className="space-y-1.5">
                   <Label htmlFor="quick_task" className="flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    O que precisa ser feito? *
+                    Serviço *
                   </Label>
                   <Textarea
                     id="quick_task"
