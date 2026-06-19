@@ -23,6 +23,7 @@ import {
   Minus,
   Zap,
   Forward,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -631,8 +632,13 @@ function OSCard({
           : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
       }`}
     >
-      {/* Cabeçalho: ícone + título + data/status */}
-      <div className="flex items-start gap-3">
+      {/* Cabeçalho: ícone + título + data/status — toque abre os detalhes da OS */}
+      <button
+        type="button"
+        onClick={() => window.open(`/imprimir/os/${o.id}`, "_blank")}
+        title="Ver detalhes da OS"
+        className="flex items-start gap-3 w-full text-left rounded-xl -m-1 p-1 active:bg-slate-100/70 dark:active:bg-slate-800/60 transition-colors"
+      >
         <div
           className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 ${
             isClient
@@ -650,9 +656,9 @@ function OSCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 leading-snug line-clamp-2 break-words">
+          <span className="block text-lg font-bold text-slate-800 dark:text-slate-100 leading-snug line-clamp-2 break-words">
             {title}
-          </p>
+          </span>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             {billing && (
               <span
@@ -671,7 +677,9 @@ function OSCard({
             </span>
           </div>
         </div>
-      </div>
+
+        <ChevronRight className="w-5 h-5 text-slate-300 dark:text-slate-600 flex-shrink-0 self-center" />
+      </button>
 
       {/* Informações operacionais */}
       <div className="space-y-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3">
