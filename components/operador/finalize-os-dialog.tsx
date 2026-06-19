@@ -255,6 +255,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
         const result = await finalizeServiceOrder(order.id, "", {
           completionNotes: completionNotes.trim(),
           amount: amountNum,
+          signature,
           endTime: nowHHMM(),
           finishedDate: nowYYYYMMDD(),
           latitude: gps?.lat ?? null,
@@ -713,6 +714,17 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
                   orderId={order.id}
                   attachments={quickAttachments}
                 />
+
+                <div className="space-y-1.5">
+                  <Label className="text-base">
+                    Assinatura{" "}
+                    <span className="font-normal text-slate-400 dark:text-slate-500">(opcional)</span>
+                  </Label>
+                  <SignaturePad onChange={setSignature} />
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    Toque em “Assinar” para abrir o quadro em tela cheia.
+                  </p>
+                </div>
               </>
             ) : isViagem ? (
               <p className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5">
