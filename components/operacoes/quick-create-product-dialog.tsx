@@ -6,15 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createProduct } from "@/app/(app)/operacoes/actions";
-import type { Product } from "@/lib/types";
+import { PRODUCT_UNITS, type Product } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreated: (p: Product) => void;
 }
-
-const UNITS = ["carrada", "m³", "tonelada", "ud", "saco", "kg", "h", "km"];
 
 export function QuickCreateProductDialog({ open, onClose, onCreated }: Props) {
   const [name, setName]   = useState("");
@@ -71,7 +69,7 @@ export function QuickCreateProductDialog({ open, onClose, onCreated }: Props) {
                 onChange={(e) => setUnit(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-produmar-500"
               >
-                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                {PRODUCT_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">

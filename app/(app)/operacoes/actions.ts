@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isFreightCategory } from "@/lib/utils";
+import { PRODUCT_UNITS } from "@/lib/types";
 import type {
   Machine,
   MachineTrackingType,
@@ -44,6 +45,11 @@ function revalidate() {
   revalidatePath("/contas");
   revalidatePath("/estoque");
   revalidatePath("/operador");
+}
+
+function normalizeProductUnit(unit?: string | null): string {
+  const value = unit?.trim() || PRODUCT_UNITS[0];
+  return PRODUCT_UNITS.includes(value as (typeof PRODUCT_UNITS)[number]) ? value : "";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,12 +127,14 @@ export async function createProduct(input: {
   const supabase = createClient();
   const name = input.name.trim();
   if (!name) return { error: "Nome obrigatório" };
+  const unit = normalizeProductUnit(input.unit);
+  if (!unit) return { error: "Unidade deve ser m³, peça ou carrada" };
 
   const { data, error } = await supabase
     .from("products")
     .insert({
       name: name.toUpperCase(),
-      unit: input.unit?.trim() || "m³",
+      unit,
       default_price:
         input.default_price !== undefined && input.default_price !== null && !isNaN(input.default_price)
           ? input.default_price
@@ -148,7 +156,11 @@ export async function updateProduct(
   const supabase = createClient();
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name.trim().toUpperCase();
-  if (input.unit !== undefined) patch.unit = input.unit?.trim() || "m³";
+  if (input.unit !== undefined) {
+    const unit = normalizeProductUnit(input.unit);
+    if (!unit) return { error: "Unidade deve ser m³, peça ou carrada" };
+    patch.unit = unit;
+  }
   if (input.default_price !== undefined) patch.default_price = input.default_price;
   if (input.notes !== undefined) patch.notes = input.notes?.toString().trim() || null;
   if (input.active !== undefined) patch.active = input.active;

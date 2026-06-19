@@ -18,6 +18,7 @@ import {
 import { machineCategoryLabel } from "@/lib/utils";
 import {
   MACHINE_CATEGORIES,
+  PRODUCT_UNITS,
   type Machine,
   type MachineTrackingType,
   type Product,
@@ -344,7 +345,7 @@ function ProductsList({ products }: { products: Product[] }) {
               onChange={(e) => setUnit(e.target.value)}
               className="h-9 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
             >
-              {["carrada", "m³", "tonelada", "ud", "saco", "kg", "h", "km"].map((u) => (
+              {PRODUCT_UNITS.map((u) => (
                 <option key={u} value={u}>{u}</option>
               ))}
             </select>

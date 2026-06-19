@@ -36,6 +36,7 @@ import {
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
 import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel } from "@/lib/utils";
+import { PRODUCT_UNITS } from "@/lib/types";
 import type {
   Machine,
   PickupLocation,
@@ -1155,7 +1156,7 @@ export function ServiceOrderDialog({
                 <div className="space-y-2">
                   {/* Sugestões rápidas de unidade (carrada é o padrão) */}
                   <datalist id="os-units">
-                    {["carrada", "m³", "tonelada", "ud", "saco", "kg", "h", "km"].map((u) => (
+                    {PRODUCT_UNITS.map((u) => (
                       <option key={u} value={u} />
                     ))}
                   </datalist>

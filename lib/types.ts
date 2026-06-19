@@ -182,6 +182,9 @@ export interface Product {
   updated_at: string;
 }
 
+export const PRODUCT_UNITS = ["m³", "peça", "carrada"] as const;
+export type ProductUnit = (typeof PRODUCT_UNITS)[number];
+
 export interface PickupLocation {
   id: string;
   name: string;

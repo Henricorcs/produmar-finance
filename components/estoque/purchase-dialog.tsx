@@ -21,7 +21,7 @@ import {
   uploadPurchaseAttachment,
 } from "@/app/(app)/estoque/actions";
 import { formatBRL } from "@/lib/utils";
-import type { PickupLocation, Product } from "@/lib/types";
+import { PRODUCT_UNITS, type PickupLocation, type Product } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -269,7 +269,7 @@ export function PurchaseDialog({ open, onClose, products, jazidas }: Props) {
               </div>
 
               <datalist id="estoque-units">
-                {["m³", "tonelada", "carrada", "ud", "saco", "kg"].map((u) => (
+                {PRODUCT_UNITS.map((u) => (
                   <option key={u} value={u} />
                 ))}
               </datalist>
