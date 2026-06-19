@@ -183,7 +183,7 @@ export function ServiceOrderComprovantes({ orderId, attachments }: Props) {
 
       {list.length === 0 ? (
         <p className="text-[10px] text-slate-400 dark:text-slate-500">
-          Foto do recibo, nota ou PDF · até {MAX_SIZE_MB} MB cada (opcional)
+          Opcional
         </p>
       ) : (
         <div className="space-y-1.5">

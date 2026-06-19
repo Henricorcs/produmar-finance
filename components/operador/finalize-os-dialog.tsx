@@ -681,9 +681,8 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
                     id="completion_notes"
                     value={completionNotes}
                     onChange={(e) => setCompletionNotes(e.target.value.toUpperCase())}
-                    placeholder="ex: COMPREI 1L DE DIESEL NO POSTO E ENTREGUEI NA OFICINA"
                     rows={3}
-                    className="text-lg uppercase placeholder:normal-case placeholder:lowercase"
+                    className="text-lg uppercase"
                     autoFocus
                   />
                 </div>
