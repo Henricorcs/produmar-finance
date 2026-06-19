@@ -1391,18 +1391,17 @@ export function ServiceOrderDialog({
                   </div>
                 )}
 
-                {/* Valor da hora OU valor flat */}
+                {/* Valor da hora OU valor flat — só cliente externo. O serviço
+                    interno não cobra horas; conta só os custos internos. */}
+                {isClient && (
                 <div className="rounded-xl border border-produmar-100 dark:border-produmar-900/40 bg-produmar-50/40 dark:bg-produmar-950/20 p-3 space-y-2">
                   {useHourBasedPricing ? (
                     <>
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
                           <DollarSign className="w-3.5 h-3.5" />
-                          Valor por hora{freightType !== "interno" ? " *" : ""}
+                          Valor por hora *
                         </Label>
-                        {freightType === "interno" && (
-                          <span className="text-[10px] text-slate-400">opcional</span>
-                        )}
                       </div>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
@@ -1421,12 +1420,8 @@ export function ServiceOrderDialog({
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
                           <DollarSign className="w-3.5 h-3.5" />
-                          {machineIsKm ? "Valor do serviço / aluguel" : "Valor do serviço"}
-                          {freightType !== "interno" ? " *" : ""}
+                          {machineIsKm ? "Valor do serviço / aluguel" : "Valor do serviço"} *
                         </Label>
-                        {freightType === "interno" && (
-                          <span className="text-[10px] text-slate-400">opcional</span>
-                        )}
                       </div>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
@@ -1447,6 +1442,7 @@ export function ServiceOrderDialog({
                     </>
                   )}
                 </div>
+                )}
 
                 {/* Custos internos */}
                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
