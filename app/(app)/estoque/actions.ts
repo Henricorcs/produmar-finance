@@ -345,3 +345,82 @@ export async function deleteStockMovement(id: string) {
   revalidate();
   return { ok: true };
 }
+
+// ── Relatório da jazida ──────────────────────────────────────────────────────
+
+export interface JazidaDeliveryRow {
+  id: string;
+  order_number: number;
+  type: string;
+  freight_type: string;
+  status: string;
+  client_name: string | null;
+  delivery_address: string | null;
+  service_description: string | null;
+  delivery_date: string | null;
+  issue_date: string;
+  total_amount: number;
+  items: { quantity: number; unit: string | null; name: string }[];
+}
+
+/**
+ * Ordens de serviço que retiraram material desta jazida (pickup_location_id):
+ * onde foi entregue, quando e qual OS. Usado no relatório da jazida (estoque).
+ */
+export async function getJazidaDeliveries(
+  locationId: string
+): Promise<{ deliveries: JazidaDeliveryRow[] }> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("service_orders")
+    .select(
+      "id, order_number, type, freight_type, status, client_name, delivery_address, service_description, delivery_date, issue_date, total_amount, service_order_items(quantity, unit, description, is_freight, products(name))"
+    )
+    .eq("pickup_location_id", locationId)
+    .order("delivery_date", { ascending: false, nullsFirst: false })
+    .order("order_number", { ascending: false });
+
+  type Raw = {
+    id: string;
+    order_number: number;
+    type: string;
+    freight_type: string;
+    status: string;
+    client_name: string | null;
+    delivery_address: string | null;
+    service_description: string | null;
+    delivery_date: string | null;
+    issue_date: string;
+    total_amount: number;
+    service_order_items: {
+      quantity: number;
+      unit: string | null;
+      description: string | null;
+      is_freight: boolean;
+      products: { name: string } | null;
+    }[];
+  };
+
+  const deliveries: JazidaDeliveryRow[] = ((data as Raw[] | null) ?? []).map((o) => ({
+    id: o.id,
+    order_number: o.order_number,
+    type: o.type,
+    freight_type: o.freight_type,
+    status: o.status,
+    client_name: o.client_name,
+    delivery_address: o.delivery_address,
+    service_description: o.service_description,
+    delivery_date: o.delivery_date,
+    issue_date: o.issue_date,
+    total_amount: Number(o.total_amount ?? 0),
+    items: (o.service_order_items ?? [])
+      .filter((it) => !it.is_freight && (it.products?.name || it.description))
+      .map((it) => ({
+        quantity: Number(it.quantity),
+        unit: it.unit,
+        name: it.products?.name ?? it.description ?? "",
+      })),
+  }));
+
+  return { deliveries };
+}

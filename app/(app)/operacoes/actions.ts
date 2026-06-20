@@ -389,6 +389,14 @@ async function syncServiceOrderFinance(
   // Só OS finalizada conta; OS com lançamento manual legado fica como está.
   if (o.status !== "entregue" || o.transaction_id) return;
 
+  // Centro de custo "Ordens de Serviço" — agrupa as OS no "Para onde foi".
+  const { data: cc } = await supabase
+    .from("cost_centers")
+    .select("id")
+    .eq("name", "Ordens de Serviço")
+    .maybeSingle<{ id: string }>();
+  const costCenterId = cc?.id ?? null;
+
   const date = o.delivery_date || o.issue_date || new Date().toISOString().split("T")[0];
   const isClient = o.freight_type === "cliente";
   const rows: Record<string, unknown>[] = [];
@@ -404,6 +412,7 @@ async function syncServiceOrderFinance(
       description: `OS #${o.order_number} - ${label}`.toUpperCase(),
       due_date: date,
       paid_date: date,
+      cost_center_id: costCenterId,
       service_order_id: orderId,
       created_by: o.created_by,
     });
@@ -418,6 +427,7 @@ async function syncServiceOrderFinance(
       description: `OS #${o.order_number} - CUSTOS INTERNOS`,
       due_date: date,
       paid_date: date,
+      cost_center_id: costCenterId,
       service_order_id: orderId,
       created_by: o.created_by,
     });

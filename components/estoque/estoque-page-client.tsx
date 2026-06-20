@@ -14,6 +14,7 @@ import {
   Mountain,
   Wallet,
   FileText,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBRL, formatBRLCompact, formatDate } from "@/lib/utils";
@@ -21,6 +22,7 @@ import { PurchaseDialog } from "./purchase-dialog";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import { PaymentDialog } from "./payment-dialog";
 import { MaterialDetailDialog } from "./material-detail-dialog";
+import { JazidaReportDialog, type JazidaReportTarget } from "./jazida-report-dialog";
 import {
   deleteMaterialPurchase,
   deleteStockMovement,
@@ -73,6 +75,8 @@ export type MaterialByJazida = {
 
 /** Agregação de uma jazida: materiais comprados, valor total e saldo devedor. */
 type JazidaAgg = {
+  /** id do pickup_location (quando a jazida está cadastrada) — abre o relatório. */
+  id: string | null;
   name: string;
   materials: { name: string; unit: string; qty: number; value: number }[];
   totalValue: number;
@@ -107,6 +111,7 @@ export function EstoquePageClient({
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<PurchaseRow | null>(null);
   const [detailProductId, setDetailProductId] = useState<string | null>(null);
+  const [reportJazida, setReportJazida] = useState<JazidaReportTarget | null>(null);
 
   // ── Agregações por jazida e por material ────────────────────────────────────
   const { jazidaList, byMaterial, debtByJazida } = useMemo(() => {
@@ -152,10 +157,12 @@ export function EstoquePageClient({
       debtByJazida.set(loc, (debtByJazida.get(loc) ?? 0) + debt);
     }
 
+    const nameToId = new Map(jazidas.map((j) => [j.name, j.id]));
     const jazidaList = Array.from(jazMap.entries())
       .map(([loc, pm]) => {
         const materials = Array.from(pm.values()).sort((a, b) => a.name.localeCompare(b.name));
         return {
+          id: nameToId.get(loc) ?? null,
           name: loc,
           materials,
           totalValue: materials.reduce((s, m) => s + m.value, 0),
@@ -165,7 +172,7 @@ export function EstoquePageClient({
       .sort((a, b) => a.name.localeCompare(b.name));
 
     return { jazidaList, byMaterial: matMap, debtByJazida };
-  }, [purchaseItems]);
+  }, [purchaseItems, jazidas]);
 
   // Detalhe do material selecionado (qtd/valor/dívida por jazida)
   const detailMaterial = useMemo(() => {
@@ -292,7 +299,20 @@ export function EstoquePageClient({
         />
       )}
       {tab === "jazidas" && (
-        <JazidasTab jazidas={jazidaList} onNew={() => setPurchaseOpen(true)} />
+        <JazidasTab
+          jazidas={jazidaList}
+          onNew={() => setPurchaseOpen(true)}
+          onSelect={(j) =>
+            j.id &&
+            setReportJazida({
+              id: j.id,
+              name: j.name,
+              materials: j.materials,
+              totalValue: j.totalValue,
+              debt: j.debt,
+            })
+          }
+        />
       )}
       {tab === "compras" && (
         <ComprasTab
@@ -331,6 +351,11 @@ export function EstoquePageClient({
         onClose={() => setDetailProductId(null)}
         material={detailMaterial?.balance ?? null}
         jazidas={detailMaterial?.jazidas ?? []}
+      />
+      <JazidaReportDialog
+        open={!!reportJazida}
+        onClose={() => setReportJazida(null)}
+        jazida={reportJazida}
       />
     </div>
   );
@@ -454,7 +479,15 @@ function SaldoTab({
 }
 
 // ── Aba: Jazidas (materiais por jazida) ───────────────────────────────────────
-function JazidasTab({ jazidas, onNew }: { jazidas: JazidaAgg[]; onNew: () => void }) {
+function JazidasTab({
+  jazidas,
+  onNew,
+  onSelect,
+}: {
+  jazidas: JazidaAgg[];
+  onNew: () => void;
+  onSelect: (j: JazidaAgg) => void;
+}) {
   if (jazidas.length === 0) {
     return (
       <EmptyState
@@ -474,7 +507,21 @@ function JazidasTab({ jazidas, onNew }: { jazidas: JazidaAgg[]; onNew: () => voi
       {jazidas.map((j) => (
         <div
           key={j.name}
-          className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
+          onClick={() => j.id && onSelect(j)}
+          role={j.id ? "button" : undefined}
+          tabIndex={j.id ? 0 : undefined}
+          onKeyDown={(e) => {
+            if (j.id && (e.key === "Enter" || e.key === " ")) {
+              e.preventDefault();
+              onSelect(j);
+            }
+          }}
+          title={j.id ? "Ver relatório da jazida" : undefined}
+          className={`rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 ${
+            j.id
+              ? "cursor-pointer hover:border-produmar-300 dark:hover:border-produmar-700 active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+              : ""
+          }`}
         >
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-lg bg-produmar-50 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
@@ -485,11 +532,14 @@ function JazidasTab({ jazidas, onNew }: { jazidas: JazidaAgg[]; onNew: () => voi
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
                   {j.name}
                 </p>
-                {j.debt > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 flex-shrink-0">
-                    devendo {formatBRL(j.debt)}
-                  </span>
-                )}
+                <span className="flex items-center gap-1.5 flex-shrink-0">
+                  {j.debt > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                      devendo {formatBRL(j.debt)}
+                    </span>
+                  )}
+                  {j.id && <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />}
+                </span>
               </div>
               <ul className="mt-2 space-y-1">
                 {j.materials.map((m) => (
