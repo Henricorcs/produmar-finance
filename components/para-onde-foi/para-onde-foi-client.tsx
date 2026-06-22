@@ -15,7 +15,7 @@ import {
   Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatBRL, formatBRLCompact, formatDate } from "@/lib/utils";
+import { formatBRL, formatBRLFull, formatDate } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/badge";
 import type { Category, CostCenter, Transaction } from "@/lib/types";
 
@@ -135,7 +135,7 @@ export function ParaOndeFoiClient({ transactions, categories, costCenters, month
         <div className="min-w-0">
           <p className="text-xs text-red-600 dark:text-red-400 font-medium truncate">Total de despesas em {monthLabel}</p>
           <p className="text-xl sm:text-2xl font-bold text-red-700 dark:text-red-400 tabular-nums truncate">
-            <span className="sm:hidden">{formatBRLCompact(totalDespesas)}</span>
+            <span className="sm:hidden">{formatBRLFull(totalDespesas)}</span>
             <span className="hidden sm:inline">{formatBRL(totalDespesas)}</span>
           </p>
         </div>
@@ -169,9 +169,7 @@ export function ParaOndeFoiClient({ transactions, categories, costCenters, month
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDark ? "#1e293b" : "#f1f5f9"} />
                     <XAxis
                       type="number"
-                      tickFormatter={(v) =>
-                        v >= 1000 ? `R$ ${(v / 1000).toFixed(0)}k` : `R$ ${v}`
-                      }
+                      tickFormatter={(v) => formatBRLFull(v)}
                       tick={{ fontSize: 10, fill: "#94a3b8" }}
                       axisLine={false}
                       tickLine={false}

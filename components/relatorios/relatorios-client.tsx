@@ -33,7 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn, formatBRL, formatBRLCompact, machineCategoryLabel } from "@/lib/utils";
+import { cn, formatBRL, formatBRLFull, machineCategoryLabel } from "@/lib/utils";
 import type { Profile, ServiceOrder, Transaction } from "@/lib/types";
 
 type TxWithMeta = Transaction & {
@@ -583,7 +583,7 @@ export function RelatoriosClient({ transactions, orders, operators }: Props) {
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={cashflow}
-                  margin={{ top: 4, right: 8, left: -10, bottom: 0 }}
+                  margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
                 >
                   <CartesianGrid
                     stroke={isDark ? "#1e293b" : "#E3EEFE"}
@@ -597,10 +597,11 @@ export function RelatoriosClient({ transactions, orders, operators }: Props) {
                     axisLine={false}
                   />
                   <YAxis
+                    width={64}
                     tick={{ fill: isDark ? "#64748b" : "#94a3b8", fontSize: 10 }}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={formatBRLCompact}
+                    tickFormatter={formatBRLFull}
                   />
                   <Tooltip
                     contentStyle={{

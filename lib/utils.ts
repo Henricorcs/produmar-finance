@@ -21,14 +21,18 @@ export function formatBRL(value: number): string {
   }).format(value);
 }
 
-export function formatBRLCompact(value: number): string {
-  if (Math.abs(value) >= 1_000_000) {
-    return `R$ ${(value / 1_000_000).toFixed(1).replace(".", ",")}M`;
-  }
-  if (Math.abs(value) >= 1_000) {
-    return `R$ ${(value / 1_000).toFixed(1).replace(".", ",")}k`;
-  }
-  return formatBRL(value);
+/**
+ * Valor cheio em reais, sem abreviar com "k"/"M" e sem centavos
+ * (ex.: 144917,64 → "R$ 144.918"). Usado nos cards de resumo e nos eixos
+ * dos gráficos, onde o espaço é curto mas o número precisa ser lido por
+ * inteiro. Listas, diálogos e tooltips continuam com `formatBRL` (com centavos).
+ */
+export function formatBRLFull(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 /**

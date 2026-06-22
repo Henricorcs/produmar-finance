@@ -18,7 +18,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { TransactionDialog } from "./transaction-dialog";
 import { deleteTransaction, markTransactionPaid } from "@/app/(app)/contas/actions";
-import { formatBRL, formatBRLCompact, formatDate } from "@/lib/utils";
+import { formatBRL, formatBRLFull, formatDate } from "@/lib/utils";
 import type { Category, CostCenter, Transaction, TransactionAttachment } from "@/lib/types";
 
 type TransactionWithCategory = Transaction & {
@@ -140,8 +140,8 @@ export function ContasPageClient({
             <ArrowDownCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-emerald-600 dark:text-emerald-400 font-medium truncate">Recebido</p>
           </div>
-          <p className="text-xs sm:text-base font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
-            <span className="sm:hidden">{formatBRLCompact(totalReceitas)}</span>
+          <p className="text-sm sm:text-base font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
+            <span className="sm:hidden">{formatBRLFull(totalReceitas)}</span>
             <span className="hidden sm:inline">{formatBRL(totalReceitas)}</span>
           </p>
         </div>
@@ -150,8 +150,8 @@ export function ContasPageClient({
             <ArrowUpCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-600 dark:text-red-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-red-600 dark:text-red-400 font-medium truncate">Pago</p>
           </div>
-          <p className="text-xs sm:text-base font-semibold text-red-700 dark:text-red-400 tabular-nums truncate">
-            <span className="sm:hidden">{formatBRLCompact(totalDespesas)}</span>
+          <p className="text-sm sm:text-base font-semibold text-red-700 dark:text-red-400 tabular-nums truncate">
+            <span className="sm:hidden">{formatBRLFull(totalDespesas)}</span>
             <span className="hidden sm:inline">{formatBRL(totalDespesas)}</span>
           </p>
         </div>
@@ -160,8 +160,8 @@ export function ContasPageClient({
             <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-400 font-medium truncate">Pendente</p>
           </div>
-          <p className="text-xs sm:text-base font-semibold text-amber-700 dark:text-amber-400 tabular-nums truncate">
-            <span className="sm:hidden">{formatBRLCompact(totalPendente)}</span>
+          <p className="text-sm sm:text-base font-semibold text-amber-700 dark:text-amber-400 tabular-nums truncate">
+            <span className="sm:hidden">{formatBRLFull(totalPendente)}</span>
             <span className="hidden sm:inline">{formatBRL(totalPendente)}</span>
           </p>
         </div>

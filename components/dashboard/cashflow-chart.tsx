@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer,
   Tooltip, CartesianGrid,
 } from "recharts";
-import { formatBRL, formatBRLCompact } from "@/lib/utils";
+import { formatBRL, formatBRLFull } from "@/lib/utils";
 import type { CashflowMonth } from "@/lib/types";
 
 export function CashflowChart({ data }: { data: CashflowMonth[] }) {
@@ -44,7 +44,7 @@ export function CashflowChart({ data }: { data: CashflowMonth[] }) {
 
       <div className="h-[190px] sm:h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 5, right: 0, left: -10, bottom: 0 }}>
+          <BarChart data={data} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
             <CartesianGrid
               stroke={isDark ? "#1e293b" : "#E3EEFE"}
               strokeDasharray="2 3"
@@ -57,10 +57,11 @@ export function CashflowChart({ data }: { data: CashflowMonth[] }) {
               axisLine={false}
             />
             <YAxis
+              width={64}
               tick={{ fill: isDark ? "#64748b" : "#94a3b8", fontSize: 10 }}
               tickLine={false}
               axisLine={false}
-              tickFormatter={(v) => formatBRLCompact(v)}
+              tickFormatter={(v) => formatBRLFull(v)}
             />
 
             <Tooltip

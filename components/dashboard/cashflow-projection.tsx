@@ -7,7 +7,7 @@ import {
   Tooltip, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
-import { formatBRL, formatBRLCompact } from "@/lib/utils";
+import { formatBRL, formatBRLFull } from "@/lib/utils";
 import type { CashflowProjectionDay } from "@/lib/types";
 
 interface Props {
@@ -65,7 +65,7 @@ export function CashflowProjection({ data, saldoAtual }: Props) {
       {/* Chart */}
       <div className="h-[200px] sm:h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+          <AreaChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="saldoPos" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%"   stopColor="#0A4DB8" stopOpacity={0.35} />
@@ -86,10 +86,11 @@ export function CashflowProjection({ data, saldoAtual }: Props) {
               interval={Math.floor(data.length / 8)}
             />
             <YAxis
+              width={64}
               tick={{ fill: isDark ? "#64748b" : "#94a3b8", fontSize: 10 }}
               tickLine={false}
               axisLine={false}
-              tickFormatter={(v) => formatBRLCompact(v)}
+              tickFormatter={(v) => formatBRLFull(v)}
             />
             <Tooltip
               contentStyle={{
@@ -154,8 +155,8 @@ function ProjectionKpi({ label, value }: { label: string; value: number }) {
             : "text-red-700 dark:text-red-400"
         }`}
       >
-        {/* Compacto no mobile (R$ 1,2M) p/ caber em 3 colunas; valor cheio no desktop */}
-        <span className="sm:hidden">{formatBRLCompact(value)}</span>
+        {/* Valor cheio sem centavos no mobile (cabe em 3 colunas); com centavos no desktop */}
+        <span className="sm:hidden">{formatBRLFull(value)}</span>
         <span className="hidden sm:inline">{formatBRL(value)}</span>
       </div>
     </div>

@@ -30,7 +30,7 @@ import {
   deleteServiceOrder,
   updateServiceOrderStatus,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatBRLCompact, formatDate, localDateISO, osBillingLabel, osStatusLabel, osTypeLabel } from "@/lib/utils";
+import { formatBRL, formatBRLFull, formatDate, localDateISO, osBillingLabel, osStatusLabel, osTypeLabel } from "@/lib/utils";
 import type {
   Category,
   CostCenter,
@@ -291,8 +291,8 @@ export function OperacoesPageClient({
             <User className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-emerald-600 dark:text-emerald-400 font-medium truncate">Cliente</p>
           </div>
-          <p className="text-xs sm:text-base font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
-            <span className="sm:hidden">{formatBRLCompact(totalCliente)}</span>
+          <p className="text-sm sm:text-base font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums truncate">
+            <span className="sm:hidden">{formatBRLFull(totalCliente)}</span>
             <span className="hidden sm:inline">{formatBRL(totalCliente)}</span>
           </p>
         </div>
@@ -301,8 +301,8 @@ export function OperacoesPageClient({
             <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-400 font-medium truncate">Interno</p>
           </div>
-          <p className="text-xs sm:text-base font-semibold text-amber-700 dark:text-amber-400 tabular-nums truncate">
-            <span className="sm:hidden">{formatBRLCompact(totalInterno)}</span>
+          <p className="text-sm sm:text-base font-semibold text-amber-700 dark:text-amber-400 tabular-nums truncate">
+            <span className="sm:hidden">{formatBRLFull(totalInterno)}</span>
             <span className="hidden sm:inline">{formatBRL(totalInterno)}</span>
           </p>
         </div>
@@ -311,7 +311,7 @@ export function OperacoesPageClient({
             <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-produmar-600 dark:text-produmar-400 flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-produmar-600 dark:text-produmar-400 font-medium truncate">Total OS</p>
           </div>
-          <p className="text-xs sm:text-base font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
+          <p className="text-sm sm:text-base font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
             {totalCount}
           </p>
         </div>

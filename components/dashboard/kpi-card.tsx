@@ -1,6 +1,6 @@
 ﻿import Link from "next/link";
 import { TrendingUp, TrendingDown, LucideIcon, ArrowRight } from "lucide-react";
-import { cn, formatBRL } from "@/lib/utils";
+import { cn, formatBRLFull } from "@/lib/utils";
 
 interface KpiCardProps {
   label: string;
@@ -58,13 +58,13 @@ export function KpiCard({
 
       <div
         className={cn(
-          "mt-2 font-medium tracking-tight tabular-nums truncate",
+          "mt-2 font-medium tracking-tight tabular-nums",
           // wide: maior enquanto ocupa a largura toda; volta ao normal quando vira 1 de 5 colunas (lg)
           wide ? "text-3xl lg:text-2xl" : "text-2xl"
         )}
       >
-        {/* Valor cheio em qualquer tela (sem abreviar com "k") */}
-        {formatBRL(value)}
+        {/* Valor cheio em qualquer tela, sem abreviar com "k" e sem centavos p/ caber */}
+        {formatBRLFull(value)}
       </div>
 
       <div className={cn("mt-1.5 flex items-center justify-between gap-1 text-xs", captionColor)}>

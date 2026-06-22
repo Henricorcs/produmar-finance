@@ -17,7 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatBRL, formatBRLCompact, formatDate } from "@/lib/utils";
+import { formatBRL, formatBRLFull, formatDate } from "@/lib/utils";
 import { PurchaseDialog } from "./purchase-dialog";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import { PaymentDialog } from "./payment-dialog";
@@ -256,13 +256,13 @@ export function EstoquePageClient({
         <KpiCard
           icon={Boxes}
           label="Em estoque"
-          value={formatBRLCompact(stockValue)}
+          value={formatBRLFull(stockValue)}
           tone="emerald"
         />
         <KpiCard
           icon={Wallet}
           label="Devendo"
-          value={formatBRLCompact(owedTotal)}
+          value={formatBRLFull(owedTotal)}
           tone="amber"
         />
       </div>

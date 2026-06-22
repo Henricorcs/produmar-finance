@@ -6,7 +6,7 @@ import { CashflowProjection } from "@/components/dashboard/cashflow-projection";
 import { ExpenseBreakdown } from "@/components/dashboard/expense-breakdown";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock, Banknote, Boxes, AlertTriangle } from "lucide-react";
-import { formatBRL } from "@/lib/utils";
+import { formatBRLFull } from "@/lib/utils";
 import type {
   DashboardKPIs,
   ExpenseByCategory,
@@ -76,8 +76,8 @@ export default async function DashboardPage() {
     0
   );
   const stockCards = [
-    { label: "Em estoque", value: formatBRL(stockValue), color: "text-emerald-700 dark:text-emerald-400", icon: Boxes },
-    { label: "Devendo jazidas", value: formatBRL(owedJazidas), color: "text-amber-700 dark:text-amber-400", icon: Wallet },
+    { label: "Em estoque", value: formatBRLFull(stockValue), color: "text-emerald-700 dark:text-emerald-400", icon: Boxes },
+    { label: "Devendo jazidas", value: formatBRLFull(owedJazidas), color: "text-amber-700 dark:text-amber-400", icon: Wallet },
     {
       label: "Sem saldo",
       value: String(noStockCount),
@@ -184,7 +184,7 @@ export default async function DashboardPage() {
                   </span>
                   <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" />
                 </div>
-                <p className={`mt-2 text-xl sm:text-2xl font-medium tabular-nums truncate ${c.color}`}>
+                <p className={`mt-2 text-xl sm:text-2xl font-medium tabular-nums ${c.color}`}>
                   {c.value}
                 </p>
               </Link>
