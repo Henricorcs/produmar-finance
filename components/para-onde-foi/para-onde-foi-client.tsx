@@ -3,7 +3,8 @@
 import { useState, useMemo, useTransition } from "react";
 import { useTheme } from "next-themes";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronLeft, ChevronRight, TrendingDown } from "lucide-react";
+import { TrendingDown } from "lucide-react";
+import { MonthNav } from "@/components/ui/month-nav";
 import {
   BarChart,
   Bar,
@@ -109,24 +110,8 @@ export function ParaOndeFoiClient({ transactions, categories, costCenters, month
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Para onde foi</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">Análise de despesas por categoria</p>
         </div>
-        {/* Month navigator — bigger touch targets on mobile */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => navigateMonth(-1)}
-            className="p-2.5 sm:p-1.5 rounded-lg hover:bg-produmar-50 dark:hover:bg-slate-800 text-produmar-600 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-sm font-medium text-produmar-800 dark:text-slate-100 capitalize min-w-[140px] sm:min-w-[160px] text-center">
-            {monthLabel}
-          </span>
-          <button
-            onClick={() => navigateMonth(1)}
-            className="p-2.5 sm:p-1.5 rounded-lg hover:bg-produmar-50 dark:hover:bg-slate-800 text-produmar-600 transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        {/* Month navigator */}
+        <MonthNav label={monthLabel} onPrev={() => navigateMonth(-1)} onNext={() => navigateMonth(1)} />
       </div>
 
       {/* Total */}

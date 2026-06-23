@@ -53,7 +53,7 @@ export function Topbar({ profile, notifications = [] }: TopbarProps) {
             <button
               type="button"
               onClick={() => { setNotifOpen(!notifOpen); setMenuOpen(false); }}
-              className="relative w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+              className="relative w-10 h-10 sm:w-9 sm:h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
               aria-label="Notificações"
             >
               <Bell className="w-5 h-5" />
