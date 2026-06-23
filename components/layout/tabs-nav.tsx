@@ -14,14 +14,9 @@ import {
   HandCoins,
   Boxes,
   MoreHorizontal,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 const tabs = [
   { href: "/dashboard",     label: "Dashboard",     short: "Início",   icon: LayoutDashboard },
@@ -52,6 +47,21 @@ export function TabsNav() {
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
+
+  // Trava o scroll do fundo e fecha no Esc enquanto a folha está aberta.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoreOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [moreOpen]);
 
   const moreActive = moreTabs.some((t) => isActive(pathname, t.href));
 
@@ -131,45 +141,69 @@ export function TabsNav() {
         </div>
       </nav>
 
-      {/* Folha "Mais" (só no mobile; no desktop esses itens estão na barra do topo) */}
-      <Dialog open={moreOpen} onOpenChange={setMoreOpen}>
-        <DialogContent className="sm:hidden max-w-md">
-          <DialogHeader>
-            <DialogTitle>Mais</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-1">
-            {moreTabs.map((tab) => {
-              const active = isActive(pathname, tab.href);
-              const Icon = tab.icon;
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  onClick={() => setMoreOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 min-h-[52px] text-[15px] font-medium transition-colors",
-                    active
-                      ? "bg-produmar-50 dark:bg-produmar-950/40 text-produmar-700 dark:text-produmar-300"
-                      : "text-slate-700 dark:text-slate-200 active:bg-slate-100 dark:active:bg-slate-800"
-                  )}
-                >
-                  <span
+      {/* ── Folha "Mais" (só no mobile) ───────────────────────────────
+          Folha própria (sem Radix/histórico): os <Link> navegam normalmente.
+          A versão anterior usava o Dialog, cujo history.back() de limpeza
+          cancelava o router.push dos links — por isso os itens não abriam. */}
+      {moreOpen && (
+        <div className="sm:hidden fixed inset-0 z-50">
+          <button
+            type="button"
+            aria-label="Fechar"
+            onClick={() => setMoreOpen(false)}
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in-0 duration-200"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mais opções"
+            className="absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-2xl shadow-xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] animate-in slide-in-from-bottom duration-200"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-semibold text-produmar-800 dark:text-slate-100">Mais</h2>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                aria-label="Fechar"
+                className="p-2 -mr-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-1">
+              {moreTabs.map((tab) => {
+                const active = isActive(pathname, tab.href);
+                const Icon = tab.icon;
+                return (
+                  <Link
+                    key={tab.href}
+                    href={tab.href}
+                    onClick={() => setMoreOpen(false)}
                     className={cn(
-                      "flex items-center justify-center w-9 h-9 rounded-lg",
+                      "flex items-center gap-3 rounded-xl px-3 min-h-[52px] text-[15px] font-medium transition-colors",
                       active
-                        ? "bg-produmar-100 dark:bg-produmar-900/50 text-produmar-600 dark:text-produmar-300"
-                        : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                        ? "bg-produmar-50 dark:bg-produmar-950/40 text-produmar-700 dark:text-produmar-300"
+                        : "text-slate-700 dark:text-slate-200 active:bg-slate-100 dark:active:bg-slate-800"
                     )}
                   >
-                    <Icon className="w-5 h-5" />
-                  </span>
-                  {tab.label}
-                </Link>
-              );
-            })}
+                    <span
+                      className={cn(
+                        "flex items-center justify-center w-9 h-9 rounded-lg",
+                        active
+                          ? "bg-produmar-100 dark:bg-produmar-900/50 text-produmar-600 dark:text-produmar-300"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                      )}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </span>
+                    {tab.label}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </>
   );
 }
