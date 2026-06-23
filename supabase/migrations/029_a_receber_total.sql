@@ -1,8 +1,11 @@
 -- Migration 029: "a receber" passa a somar todos os meses (não só o mês atual)
 -- Renomeia a_receber_mes -> a_receber_total e count_a_receber_mes -> count_a_receber_total
 -- Execute no Supabase SQL Editor
+-- DROP necessario: create or replace view nao permite renomear colunas existentes
 
-create or replace view public.v_dashboard_kpis as
+drop view if exists public.v_dashboard_kpis;
+
+create view public.v_dashboard_kpis as
 select
   coalesce(sum(case when type = 'entrada' and status = 'recebido' and date_trunc('month', paid_date) = date_trunc('month', current_date) then amount end), 0) as receitas_mes,
   coalesce(sum(case when type = 'saida'   and status = 'pago'     and date_trunc('month', paid_date) = date_trunc('month', current_date) then amount end), 0) as despesas_mes,
