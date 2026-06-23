@@ -98,11 +98,11 @@ export interface DashboardKPIs {
   receitas_mes: number;
   despesas_mes: number;
   a_pagar_7dias: number;
-  a_receber_mes: number;
+  a_receber_total: number;
   count_receitas_mes: number;
   count_despesas_mes: number;
   count_a_pagar_7dias: number;
-  count_a_receber_mes: number;
+  count_a_receber_total: number;
 }
 
 export interface ExpenseByCategory {

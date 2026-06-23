@@ -50,11 +50,11 @@ export default async function DashboardPage() {
     receitas_mes: 0,
     despesas_mes: 0,
     a_pagar_7dias: 0,
-    a_receber_mes: 0,
+    a_receber_total: 0,
     count_receitas_mes: 0,
     count_despesas_mes: 0,
     count_a_pagar_7dias: 0,
-    count_a_receber_mes: 0,
+    count_a_receber_total: 0,
   };
 
   const expenses = (expensesRes.data as ExpenseByCategory[]) ?? [];
@@ -139,9 +139,9 @@ export default async function DashboardPage() {
           href="/para-onde-foi"
         />
         <KpiCard
-          label="A receber (mês)"
-          value={kpis.a_receber_mes}
-          caption={`${kpis.count_a_receber_mes} pendente(s)`}
+          label="A receber"
+          value={kpis.a_receber_total}
+          caption={`${kpis.count_a_receber_total} pendente(s) · todos os meses`}
           variant="info"
           icon={Banknote}
           href="/contas?filter=a-receber"
