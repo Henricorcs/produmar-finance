@@ -129,15 +129,19 @@ const DialogContent = React.forwardRef<
       // preenchimento). Fecha apenas pelo X, botão Cancelar ou Esc.
       onInteractOutside={(e) => e.preventDefault()}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%]",
-        "max-h-[90vh] overflow-y-auto",
-        "bg-white dark:bg-slate-900 rounded-xl shadow-xl p-6",
+        // ── Mobile (base): "folha" que sobe de baixo, largura total ──
+        "fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-lg max-h-[92vh] overflow-y-auto",
+        "bg-white dark:bg-slate-900 rounded-t-2xl rounded-b-none shadow-xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-        "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-        "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
-        "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+        "data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom",
         "duration-200",
+        // ── Desktop (sm+): caixa centralizada (inalterado) ──
+        "sm:left-[50%] sm:top-[50%] sm:bottom-auto sm:mx-0 sm:w-[calc(100%-2rem)] sm:translate-x-[-50%] sm:translate-y-[-50%]",
+        "sm:max-h-[90vh] sm:rounded-xl sm:p-6 sm:pb-6",
+        "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
+        "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%]",
+        "sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",
         className
       )}
       {...props}

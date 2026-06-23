@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -12,8 +13,15 @@ import {
   Truck,
   HandCoins,
   Boxes,
+  MoreHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const tabs = [
   { href: "/dashboard",     label: "Dashboard",     short: "Início",   icon: LayoutDashboard },
@@ -27,8 +35,25 @@ const tabs = [
   { href: "/configuracoes", label: "Config.",       short: "Config",   icon: Settings },
 ];
 
+// No celular, só 4 destinos ficam na barra; o resto vai para a folha "Mais".
+const PRIMARY_COUNT = 4;
+const primaryTabs = tabs.slice(0, PRIMARY_COUNT);
+const moreTabs = tabs.slice(PRIMARY_COUNT);
+
+function isActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(href + "/");
+}
+
 export function TabsNav() {
   const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  // Fecha a folha "Mais" ao navegar para outra rota.
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
+
+  const moreActive = moreTabs.some((t) => isActive(pathname, t.href));
 
   return (
     <>
@@ -37,8 +62,7 @@ export function TabsNav() {
         <div className="max-w-7xl mx-auto px-2 lg:px-4">
           <div className="flex gap-0 overflow-x-auto scrollbar-hide -mb-px">
             {tabs.map((tab) => {
-              const active =
-                pathname === tab.href || pathname.startsWith(tab.href + "/");
+              const active = isActive(pathname, tab.href);
               const Icon = tab.icon;
               return (
                 <Link
@@ -60,37 +84,92 @@ export function TabsNav() {
         </div>
       </nav>
 
-      {/* ── Mobile: fixed bottom nav ──────────────────────────────── */}
+      {/* ── Mobile: fixed bottom nav (4 itens + Mais) ─────────────── */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 pb-safe">
-        <div className="flex items-stretch h-14">
-          {tabs.map((tab) => {
-            const active =
-              pathname === tab.href || pathname.startsWith(tab.href + "/");
+        <div className="flex items-stretch h-16">
+          {primaryTabs.map((tab) => {
+            const active = isActive(pathname, tab.href);
             const Icon = tab.icon;
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
                 className={cn(
-                  "relative flex-1 flex flex-col items-center justify-center gap-0.5 px-0.5 transition-colors",
+                  "relative flex-1 flex flex-col items-center justify-center gap-1 px-0.5 transition-colors",
                   active
                     ? "text-produmar-600 dark:text-produmar-400"
                     : "text-slate-400 dark:text-slate-500 active:text-produmar-500"
                 )}
               >
-                {/* Indicador da aba ativa */}
                 {active && (
-                  <span className="absolute top-0 h-0.5 w-7 rounded-full bg-produmar-600 dark:bg-produmar-400" />
+                  <span className="absolute top-0 h-0.5 w-8 rounded-full bg-produmar-600 dark:bg-produmar-400" />
                 )}
-                <Icon className={cn("w-[22px] h-[22px] transition-transform", active && "-translate-y-px")} />
-                <span className="text-[10px] font-medium leading-none whitespace-nowrap">
-                  {tab.short}
-                </span>
+                <Icon className={cn("w-6 h-6 transition-transform", active && "-translate-y-px")} />
+                <span className="text-[11px] font-medium leading-none">{tab.short}</span>
               </Link>
             );
           })}
+
+          {/* Botão "Mais" — abre a folha com os demais destinos */}
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            aria-label="Mais opções"
+            className={cn(
+              "relative flex-1 flex flex-col items-center justify-center gap-1 px-0.5 transition-colors",
+              moreActive
+                ? "text-produmar-600 dark:text-produmar-400"
+                : "text-slate-400 dark:text-slate-500 active:text-produmar-500"
+            )}
+          >
+            {moreActive && (
+              <span className="absolute top-0 h-0.5 w-8 rounded-full bg-produmar-600 dark:bg-produmar-400" />
+            )}
+            <MoreHorizontal className="w-6 h-6" />
+            <span className="text-[11px] font-medium leading-none">Mais</span>
+          </button>
         </div>
       </nav>
+
+      {/* Folha "Mais" (só no mobile; no desktop esses itens estão na barra do topo) */}
+      <Dialog open={moreOpen} onOpenChange={setMoreOpen}>
+        <DialogContent className="sm:hidden max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mais</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-1">
+            {moreTabs.map((tab) => {
+              const active = isActive(pathname, tab.href);
+              const Icon = tab.icon;
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  onClick={() => setMoreOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 min-h-[52px] text-[15px] font-medium transition-colors",
+                    active
+                      ? "bg-produmar-50 dark:bg-produmar-950/40 text-produmar-700 dark:text-produmar-300"
+                      : "text-slate-700 dark:text-slate-200 active:bg-slate-100 dark:active:bg-slate-800"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex items-center justify-center w-9 h-9 rounded-lg",
+                      active
+                        ? "bg-produmar-100 dark:bg-produmar-900/50 text-produmar-600 dark:text-produmar-300"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                    )}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </span>
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

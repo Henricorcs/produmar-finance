@@ -572,7 +572,7 @@ function OrderRow({
                   ? "Marcar como finalizado"
                   : "Marcar como entregue"
             }
-            className="p-2 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
+            className="p-2.5 sm:p-2 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 dark:hover:bg-produmar-950/40 transition-colors"
           >
             {nextStatus === "em_andamento" ? (
               <Loader2 className="w-5 h-5" />
@@ -598,7 +598,7 @@ function OrderRow({
         <button
           onClick={() => onDelete(o.id)}
           title="Excluir"
-          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+          className="p-2.5 sm:p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
         >
           <Trash2 className="w-5 h-5" />
         </button>

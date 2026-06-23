@@ -112,6 +112,15 @@
     animation: fade-in 0.4s ease-out;
   }
 
+  /* Esconde a barra de rolagem mantendo o scroll (faixas de filtro, abas) */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   /* ── Safe-area insets (notch / barra de gestos do iPhone, modo PWA) ── */
   .pt-safe {
     padding-top: env(safe-area-inset-top);
@@ -119,10 +128,10 @@
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
-  /* Espaço inferior que limpa a nav fixa (56px) + área segura do dispositivo.
+  /* Espaço inferior que limpa a nav fixa (64px) + área segura do dispositivo.
      No desktop (sm+) a nav some, então volta ao padding normal. */
   .pb-safe-nav {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
   }
   @media (min-width: 640px) {
     .pb-safe-nav {

@@ -701,7 +701,7 @@ function ComprasTab({
                 <button
                   onClick={() => handleDelete(p)}
                   disabled={isPending}
-                  className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                  className="p-2.5 sm:p-1 text-slate-400 hover:text-red-500 transition-colors"
                   title="Excluir compra"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -782,7 +782,7 @@ function MovimentacoesTab({
                   <button
                     onClick={() => handleDelete(m)}
                     disabled={isPending}
-                    className="p-1 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
+                    className="p-2.5 sm:p-1 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
                     title="Remover ajuste"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

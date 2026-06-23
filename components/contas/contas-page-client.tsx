@@ -194,7 +194,7 @@ export function ContasPageClient({
             <button
               key={f.value}
               onClick={() => setActiveFilter(f.value)}
-              className={`px-3 py-2 sm:py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+              className={`px-3.5 py-2.5 sm:px-3 sm:py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
                 activeFilter === f.value
                   ? "bg-white dark:bg-slate-700 text-produmar-700 dark:text-produmar-400 shadow-sm"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
@@ -309,12 +309,12 @@ function TransactionRow({
       </div>
 
       {/* Actions — always visible on mobile, hover-only on desktop */}
-      <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+      <div className="flex items-center gap-1 sm:gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
         {canMarkPaid && (
           <button
             onClick={() => onMarkPaid(t)}
             title={markLabel}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+            className="p-2.5 sm:p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
           >
             <CheckCircle2 className="w-4 h-4" />
           </button>
@@ -322,14 +322,14 @@ function TransactionRow({
         <button
           onClick={() => onEdit(t)}
           title="Editar"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 transition-colors"
+          className="p-2.5 sm:p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 transition-colors"
         >
           <Pencil className="w-4 h-4" />
         </button>
         <button
           onClick={() => onDelete(t.id)}
           title="Excluir"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+          className="p-2.5 sm:p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
         >
           <Trash2 className="w-4 h-4" />
         </button>
