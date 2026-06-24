@@ -172,8 +172,13 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
         table { border-collapse: collapse; }
       `}</style>
 
-      {/* Toolbar (hidden on print) */}
-      <div className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex items-center justify-between px-6 py-3 shadow-lg">
+      {/* Toolbar (hidden on print). paddingTop respeita a área segura (notch /
+          Dynamic Island do iPhone) — sem isso o botão "Voltar" fica embaixo da
+          câmera com viewport-fit=cover. */}
+      <div
+        className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex items-center justify-between px-6 pb-3 shadow-lg"
+        style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
+      >
         <span className="font-semibold text-sm">{docLabel}</span>
         <div className="flex items-center gap-3">
           <button
@@ -196,7 +201,12 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
         </div>
       </div>
 
-      <div className="no-print h-14" />
+      {/* Espaçador: altura da toolbar + área segura, para o documento não nascer
+          escondido atrás da barra fixa. */}
+      <div
+        className="no-print"
+        style={{ height: "calc(3.5rem + env(safe-area-inset-top))" }}
+      />
 
       {/* Document */}
       <div className="doc max-w-[794px] mx-auto my-6 shadow-xl text-[12px] leading-relaxed text-slate-800">
