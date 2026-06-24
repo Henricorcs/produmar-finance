@@ -3,6 +3,7 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isFreightCategory } from "@/lib/utils";
 import { PRODUCT_UNITS } from "@/lib/types";
 import type {
@@ -363,7 +364,19 @@ async function syncServiceOrderFinance(
   supabase: ReturnType<typeof createClient>,
   orderId: string
 ) {
-  await supabase.from("transactions").delete().eq("service_order_id", orderId);
+  // Cliente de ESCRITA no financeiro: service-role (bypassa RLS). O operador que
+  // finaliza a OS NÃO tem permissão direta de escrever em transactions (RLS só
+  // libera admin/financeiro), mas o lançamento oculto da OS precisa nascer.
+  // Best-effort: sem a SUPABASE_SERVICE_ROLE_KEY cai no client do usuário —
+  // continua funcionando para admin/financeiro (operador fica sem o lançamento).
+  let writeDb: ReturnType<typeof createAdminClient>;
+  try {
+    writeDb = createAdminClient();
+  } catch {
+    writeDb = supabase as unknown as ReturnType<typeof createAdminClient>;
+  }
+
+  await writeDb.from("transactions").delete().eq("service_order_id", orderId);
 
   const { data: o } = await supabase
     .from("service_orders")
@@ -434,7 +447,7 @@ async function syncServiceOrderFinance(
   }
 
   if (rows.length > 0) {
-    const { error } = await supabase.from("transactions").insert(rows);
+    const { error } = await writeDb.from("transactions").insert(rows);
     if (error) console.error("Falha ao sincronizar financeiro da OS:", error.message);
   }
 }
