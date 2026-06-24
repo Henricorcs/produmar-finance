@@ -232,7 +232,7 @@ function TransactionRow({
               {t.categories.name}
             </span>
           )}
-          <span className="text-xs text-slate-400 dark:text-slate-500">{formatDate(t.due_date)}</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500">{formatDate(t.paid_date ?? t.due_date)}</span>
         </div>
       </div>
 
