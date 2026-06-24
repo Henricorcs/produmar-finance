@@ -59,6 +59,33 @@ export default async function OperadorPage() {
 
   const list = (orders as OrderWithDetails[]) ?? [];
 
+  // Histórico: OS que ESTE operador finalizou (somente leitura). Estrito a
+  // finalized_by = ele — gravado ao clicar FINALIZAR. Best-effort: se a coluna
+  // ainda não existe (migration 030 não aplicada), cai para as OS entregues que
+  // estavam atribuídas a ele, que é o mesmo conjunto (encaminhar reatribui antes
+  // do fechamento). Sem detalhes aninhados pesados — o toque abre o detalhe.
+  const finishedSelect = `*, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`;
+  const finished = await supabase
+    .from("service_orders")
+    .select(finishedSelect)
+    .eq("status", "entregue")
+    .eq("finalized_by", user.id)
+    .order("delivery_date", { ascending: false })
+    .limit(100);
+
+  let finishedRows = finished.data;
+  if (finished.error) {
+    const fallback = await supabase
+      .from("service_orders")
+      .select(finishedSelect)
+      .eq("status", "entregue")
+      .eq("assigned_to", user.id)
+      .order("delivery_date", { ascending: false })
+      .limit(100);
+    finishedRows = fallback.data;
+  }
+  const finalizedList = (finishedRows as OrderWithDetails[]) ?? [];
+
   // Log de horários das viagens (best-effort: não quebra o painel caso a
   // tabela ainda não exista — migration 016 não aplicada no Supabase).
   if (list.length > 0) {
@@ -150,6 +177,7 @@ export default async function OperadorPage() {
   return (
     <OperadorClient
       orders={list}
+      finalizedOrders={finalizedList}
       operadorName={user.user_metadata?.name ?? user.email ?? "Operador"}
       lastKmByMachine={lastKmByMachine}
       operators={operators}

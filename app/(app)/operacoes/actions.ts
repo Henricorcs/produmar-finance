@@ -981,6 +981,12 @@ export async function finalizeServiceOrder(
 ) {
   const supabase = createClient();
 
+  // Quem está finalizando (o operador no painel) — gravado em finalized_by para
+  // o histórico "Finalizadas" do operador.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   // Busca a OS para saber se é prestação de serviço por horímetro a fechar.
   const { data: order, error: fetchErr } = await supabase
     .from("service_orders")
@@ -1174,6 +1180,16 @@ export async function finalizeServiceOrder(
     .eq("id", id);
 
   if (error) return { error: error.message };
+
+  // Autor do fechamento (best-effort): não quebra a finalização caso a coluna
+  // finalized_by ainda não exista (migration 030 não aplicada no Supabase).
+  if (user) {
+    const { error: fbErr } = await supabase
+      .from("service_orders")
+      .update({ finalized_by: user.id })
+      .eq("id", id);
+    if (fbErr) console.error("Falha ao salvar quem finalizou a OS:", fbErr.message);
+  }
 
   // "O que foi feito" (best-effort): não quebra a finalização caso a coluna
   // completion_notes ainda não exista (migration 026 não aplicada no Supabase).

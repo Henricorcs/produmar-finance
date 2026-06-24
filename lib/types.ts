@@ -214,6 +214,9 @@ export interface ServiceOrder {
   pickup_location_id: string | null;
   /** Operador (técnico) para quem a OS foi enviada — aparece só no painel dele. */
   assigned_to: string | null;
+  /** Operador que FINALIZOU a OS (clicou FINALIZAR no painel) — usado para o
+   *  histórico "Finalizadas" do operador. Null em OS ainda não fechadas. */
+  finalized_by: string | null;
   /** De onde (frete diária/km): texto preenchido pelo operador ao iniciar. */
   origin_address: string | null;
   delivery_address: string | null;

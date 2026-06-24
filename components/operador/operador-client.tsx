@@ -24,9 +24,12 @@ import {
   Zap,
   Forward,
   ChevronRight,
+  History,
+  CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FilterTabs } from "@/components/ui/filter-tabs";
 import { FinalizeOSDialog } from "./finalize-os-dialog";
 import { StartOSDialog } from "./start-os-dialog";
 import { TripStartDialog } from "./trip-start-dialog";
@@ -70,12 +73,16 @@ function nowHHMM(): string {
 
 interface Props {
   orders: OrderWithDetails[];
+  /** OS que ESTE operador finalizou — histórico somente leitura. */
+  finalizedOrders?: OrderWithDetails[];
   operadorName: string;
   /** Último km conhecido de cada veículo (facilita anotar o km no Iniciar). */
   lastKmByMachine?: Record<string, number>;
   /** Outros operadores (para encaminhar a OS). */
   operators?: { id: string; name: string }[];
 }
+
+type OperadorView = "tarefas" | "finalizadas";
 
 const STATUS_STYLE: Record<ServiceOrderStatus, string> = {
   pendente:     "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400",
@@ -133,11 +140,13 @@ function fmtForwardWhen(iso: string): string {
 
 export function OperadorClient({
   orders: initialOrders,
+  finalizedOrders = [],
   operadorName,
   lastKmByMachine = {},
   operators = [],
 }: Props) {
   const router = useRouter();
+  const [view, setView] = useState<OperadorView>("tarefas");
   const [orders, setOrders] = useState(initialOrders);
   const [finalizeTarget, setFinalizeTarget] = useState<OrderWithDetails | null>(null);
   const [forwardTarget, setForwardTarget] = useState<OrderWithDetails | null>(null);
@@ -300,15 +309,35 @@ export function OperadorClient({
     setFinalizeTarget(o);
   }
 
+  const tasksCount = pending.length + emAndamento.length;
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
+      {/* Header + abas (Tarefas / Finalizadas) */}
+      <div className="space-y-3">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-          Minhas tarefas
+          {view === "tarefas" ? "Minhas tarefas" : "Finalizadas"}
         </h1>
+        <FilterTabs
+          tabs={[
+            { value: "tarefas", label: tasksCount > 0 ? `Tarefas (${tasksCount})` : "Tarefas" },
+            {
+              value: "finalizadas",
+              label:
+                finalizedOrders.length > 0
+                  ? `Finalizadas (${finalizedOrders.length})`
+                  : "Finalizadas",
+            },
+          ]}
+          active={view}
+          onChange={setView}
+        />
       </div>
 
+      {view === "finalizadas" ? (
+        <FinalizedList orders={finalizedOrders} />
+      ) : (
+      <>
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-200 dark:border-amber-900/50 rounded-2xl p-4">
@@ -402,6 +431,8 @@ export function OperadorClient({
             ))}
           </div>
         </section>
+      )}
+      </>
       )}
 
       {/* Start dialog (frete: viagem/km/diária) */}
@@ -1007,5 +1038,109 @@ function OSCard({
         </Button>
       )}
     </div>
+  );
+}
+
+// ── Histórico: OS finalizadas por este operador (somente leitura) ─────────────
+function FinalizedList({ orders }: { orders: OrderWithDetails[] }) {
+  if (orders.length === 0) {
+    return (
+      <Card>
+        <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+          <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+            <History className="w-8 h-8 text-slate-400 dark:text-slate-500" />
+          </div>
+          <p className="text-lg font-semibold text-slate-700 dark:text-slate-200">
+            Nada finalizado ainda
+          </p>
+          <p className="text-base text-slate-400 dark:text-slate-500 mt-1">
+            As ordens de serviço que você finalizar aparecem aqui.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {orders.map((o) => (
+        <FinalizedOSCard key={o.id} order={o} />
+      ))}
+    </div>
+  );
+}
+
+// Cartão somente leitura de uma OS finalizada. O toque abre o detalhe completo
+// (/imprimir/os/<id>) — que também é só leitura. Sem botões de ação.
+function FinalizedOSCard({ order: o }: { order: OrderWithDetails }) {
+  const isClient   = o.freight_type === "cliente";
+  const isMaterial = o.type === "entrega_material";
+  const isFrete    = o.type === "frete";
+  const isQuick    = o.type === "servico_rapido";
+
+  const title =
+    o.notes?.trim() ||
+    o.service_description?.trim() ||
+    (isClient ? o.client_name?.trim() : "") ||
+    (isMaterial
+      ? "Entrega de material"
+      : isFrete
+        ? "Frete"
+        : isQuick
+          ? "Serviço rápido"
+          : "Prestação de serviço");
+
+  const dateStr = o.delivery_date
+    ? new Date(o.delivery_date + "T12:00:00").toLocaleDateString("pt-BR")
+    : new Date(o.issue_date + "T12:00:00").toLocaleDateString("pt-BR");
+
+  return (
+    <button
+      type="button"
+      onClick={() => window.open(`/imprimir/os/${o.id}`, "_blank")}
+      title="Ver detalhes da OS"
+      className="w-full text-left rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 flex items-start gap-3 active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+    >
+      <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-100 dark:bg-emerald-950/50">
+        {isMaterial || isFrete ? (
+          <Truck className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+        ) : isQuick ? (
+          <Zap className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+        ) : (
+          <Wrench className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <span className="block text-base font-bold text-slate-800 dark:text-slate-100 leading-snug line-clamp-2 break-words">
+          {title}
+        </span>
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+            <Calendar className="w-4 h-4 flex-shrink-0" />
+            {dateStr}
+          </span>
+          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE.entregue}`}>
+            <CheckCheck className="w-3.5 h-3.5" />
+            {osStatusLabel("entregue", o.type)}
+          </span>
+        </div>
+        {isClient && o.client_name && (
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 truncate">
+            <User className="inline w-4 h-4 mr-1 -mt-0.5 text-slate-400 dark:text-slate-500" />
+            {o.client_name}
+          </p>
+        )}
+        {o.machines && (
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400 truncate">
+            <Truck className="inline w-4 h-4 mr-1 -mt-0.5 text-slate-400 dark:text-slate-500" />
+            {o.machines.name}
+            {o.machines.plate ? ` — ${o.machines.plate}` : ""}
+          </p>
+        )}
+      </div>
+
+      <ChevronRight className="w-5 h-5 text-slate-300 dark:text-slate-600 flex-shrink-0 self-center" />
+    </button>
   );
 }
