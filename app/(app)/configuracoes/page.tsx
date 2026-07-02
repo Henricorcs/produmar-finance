@@ -5,9 +5,8 @@ import { AlertConfigClient } from "@/components/configuracoes/alert-config-clien
 import { ProfileFormClient } from "@/components/configuracoes/profile-form-client";
 import { CategoriasConfig } from "@/components/configuracoes/categorias-config";
 import { UserManagementClient } from "@/components/configuracoes/user-management-client";
-import { CadastrosOperacionaisConfig } from "@/components/configuracoes/cadastros-operacionais-config";
-import { User, Bell, Building2, Tag, Users, Truck } from "lucide-react";
-import type { Profile, Category, Machine, Product, PickupLocation } from "@/lib/types";
+import { User, Bell, Building2, Tag, Users } from "lucide-react";
+import type { Profile, Category } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +16,7 @@ export default async function ConfiguracoesPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [
-    profileRes,
-    alertConfigsRes,
-    categoriesRes,
-    machinesRes,
-    productsRes,
-    locationsRes,
-  ] = await Promise.all([
+  const [profileRes, alertConfigsRes, categoriesRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user!.id).single<Profile>(),
     supabase
       .from("alert_configs")
@@ -35,17 +27,11 @@ export default async function ConfiguracoesPage() {
       .select("*")
       .order("type", { ascending: true })
       .order("name", { ascending: true }),
-    supabase.from("machines").select("*").order("name"),
-    supabase.from("products").select("*").order("name"),
-    supabase.from("pickup_locations").select("*").order("name"),
   ]);
 
   const profile = profileRes.data;
   const alertConfigs = alertConfigsRes.data ?? [];
   const categories = (categoriesRes.data as Category[]) ?? [];
-  const machines = (machinesRes.data as Machine[]) ?? [];
-  const products = (productsRes.data as Product[]) ?? [];
-  const pickupLocations = (locationsRes.data as PickupLocation[]) ?? [];
   const isAdmin = profile?.role === "admin";
 
   // Fetch all users if admin (uses service-role key to bypass RLS)
@@ -111,25 +97,6 @@ export default async function ConfiguracoesPage() {
         </CardHeader>
         <CardContent>
           <CategoriasConfig categories={categories} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Truck className="w-4 h-4 text-produmar-600" />
-            <CardTitle>Cadastros operacionais</CardTitle>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Máquinas, produtos e locais de retirada para as ordens de serviço
-          </p>
-        </CardHeader>
-        <CardContent>
-          <CadastrosOperacionaisConfig
-            machines={machines}
-            products={products}
-            pickupLocations={pickupLocations}
-          />
         </CardContent>
       </Card>
 

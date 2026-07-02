@@ -41,10 +41,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Usuário autenticado acessando login → dashboard
+  // Usuário autenticado acessando login → hub de módulos
   if (user && path.startsWith("/login")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = "/inicio";
     return NextResponse.redirect(url);
   }
 

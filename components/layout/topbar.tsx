@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Wallet, Bell, LogOut, User as UserIcon, ChevronDown, AlertTriangle, Clock } from "lucide-react";
 import { getInitials, formatBRL, formatDate } from "@/lib/utils";
 import { signOutAction } from "@/app/login/actions";
@@ -32,17 +33,19 @@ export function Topbar({ profile, notifications = [] }: TopbarProps) {
   return (
     <header className="produmar-hero text-white pt-safe">
       <div className="max-w-7xl mx-auto px-4 lg:px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+        {/* Logo leva ao hub de módulos (operador/visualizador são
+            redirecionados pelo middleware para suas telas) */}
+        <Link href="/inicio" className="flex items-center gap-2.5">
           <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center shrink-0">
             <Wallet className="w-5 h-5 text-produmar-600" />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-medium">PRODUMAR Finance</div>
+            <div className="text-sm font-medium">PRODUMAR</div>
             <div className="text-[11px] text-produmar-200 hidden sm:block">
-              Controle financeiro interno
+              Gestão interna
             </div>
           </div>
-        </div>
+        </Link>
 
         <div className="flex items-center gap-2">
           {/* Theme toggle */}

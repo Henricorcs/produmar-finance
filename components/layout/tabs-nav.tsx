@@ -3,37 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  GitFork,
-  CalendarClock,
-  FileText,
-  BarChart3,
-  Settings,
-  Truck,
-  HandCoins,
-  Boxes,
-  MoreHorizontal,
-  X,
-} from "lucide-react";
+import { LayoutGrid, MoreHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { findModuleByPath, type ModuleTab } from "@/lib/modules";
 
-const tabs = [
-  { href: "/dashboard",     label: "Dashboard",     short: "Início",   icon: LayoutDashboard },
-  { href: "/para-onde-foi", label: "Para onde foi", short: "Despesas", icon: GitFork },
-  { href: "/contas",        label: "Contas",        short: "Contas",   icon: CalendarClock },
-  { href: "/operacoes",     label: "Operações",     short: "OS",       icon: Truck },
-  { href: "/estoque",       label: "Estoque",       short: "Estoque",  icon: Boxes },
-  { href: "/emprestimos",   label: "Empréstimos",   short: "Empr.",    icon: HandCoins },
-  { href: "/notas-fiscais", label: "Notas fiscais", short: "Notas",    icon: FileText },
-  { href: "/relatorios",    label: "Relatórios",    short: "Relat.",   icon: BarChart3 },
-  { href: "/configuracoes", label: "Config.",       short: "Config",   icon: Settings },
-];
+// Item fixo que leva de volta ao hub de módulos.
+const hubTab: ModuleTab = { href: "/inicio", label: "Módulos", short: "Módulos", icon: LayoutGrid };
 
-// No celular, só 4 destinos ficam na barra; o resto vai para a folha "Mais".
-const PRIMARY_COUNT = 4;
-const primaryTabs = tabs.slice(0, PRIMARY_COUNT);
-const moreTabs = tabs.slice(PRIMARY_COUNT);
+// No celular a barra tem 5 vagas: Módulos + abas do módulo (+ "Mais" se não couber).
+const MOBILE_SLOTS = 5;
 
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
@@ -63,6 +41,18 @@ export function TabsNav() {
     };
   }, [moreOpen]);
 
+  const currentModule = findModuleByPath(pathname);
+
+  // No hub (ou rota fora de módulo) não há barra — o próprio hub é a navegação.
+  if (!currentModule) return null;
+
+  const tabs = currentModule.tabs;
+
+  // Módulos + abas + "Mais" (quando necessário) dentro das 5 vagas do celular.
+  const needsMore = tabs.length + 1 > MOBILE_SLOTS;
+  const primaryTabs = needsMore ? tabs.slice(0, MOBILE_SLOTS - 2) : tabs;
+  const moreTabs = needsMore ? tabs.slice(MOBILE_SLOTS - 2) : [];
+
   const moreActive = moreTabs.some((t) => isActive(pathname, t.href));
 
   return (
@@ -71,6 +61,13 @@ export function TabsNav() {
       <nav className="hidden sm:block bg-white dark:bg-slate-900 border-b border-produmar-100 dark:border-slate-800 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-2 lg:px-4">
           <div className="flex gap-0 overflow-x-auto scrollbar-hide -mb-px">
+            <Link
+              href={hubTab.href}
+              className="flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-produmar-600 dark:hover:text-produmar-400 hover:border-produmar-200 dark:hover:border-slate-600 border-r border-r-produmar-100/60 dark:border-r-slate-800"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              {hubTab.label}
+            </Link>
             {tabs.map((tab) => {
               const active = isActive(pathname, tab.href);
               const Icon = tab.icon;
@@ -94,9 +91,17 @@ export function TabsNav() {
         </div>
       </nav>
 
-      {/* ── Mobile: fixed bottom nav (4 itens + Mais) ─────────────── */}
+      {/* ── Mobile: fixed bottom nav (Módulos + abas + Mais) ──────── */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 pb-safe">
         <div className="flex items-stretch h-16">
+          <Link
+            href={hubTab.href}
+            className="relative flex-1 flex flex-col items-center justify-center gap-1 px-0.5 transition-colors text-slate-400 dark:text-slate-500 active:text-produmar-500"
+          >
+            <LayoutGrid className="w-6 h-6" />
+            <span className="text-[11px] font-medium leading-none">{hubTab.short}</span>
+          </Link>
+
           {primaryTabs.map((tab) => {
             const active = isActive(pathname, tab.href);
             const Icon = tab.icon;
@@ -121,23 +126,25 @@ export function TabsNav() {
           })}
 
           {/* Botão "Mais" — abre a folha com os demais destinos */}
-          <button
-            type="button"
-            onClick={() => setMoreOpen(true)}
-            aria-label="Mais opções"
-            className={cn(
-              "relative flex-1 flex flex-col items-center justify-center gap-1 px-0.5 transition-colors",
-              moreActive
-                ? "text-produmar-600 dark:text-produmar-400"
-                : "text-slate-400 dark:text-slate-500 active:text-produmar-500"
-            )}
-          >
-            {moreActive && (
-              <span className="absolute top-0 h-0.5 w-8 rounded-full bg-produmar-600 dark:bg-produmar-400" />
-            )}
-            <MoreHorizontal className="w-6 h-6" />
-            <span className="text-[11px] font-medium leading-none">Mais</span>
-          </button>
+          {moreTabs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              aria-label="Mais opções"
+              className={cn(
+                "relative flex-1 flex flex-col items-center justify-center gap-1 px-0.5 transition-colors",
+                moreActive
+                  ? "text-produmar-600 dark:text-produmar-400"
+                  : "text-slate-400 dark:text-slate-500 active:text-produmar-500"
+              )}
+            >
+              {moreActive && (
+                <span className="absolute top-0 h-0.5 w-8 rounded-full bg-produmar-600 dark:bg-produmar-400" />
+              )}
+              <MoreHorizontal className="w-6 h-6" />
+              <span className="text-[11px] font-medium leading-none">Mais</span>
+            </button>
+          )}
         </div>
       </nav>
 
@@ -145,7 +152,7 @@ export function TabsNav() {
           Folha própria (sem Radix/histórico): os <Link> navegam normalmente.
           A versão anterior usava o Dialog, cujo history.back() de limpeza
           cancelava o router.push dos links — por isso os itens não abriam. */}
-      {moreOpen && (
+      {moreOpen && moreTabs.length > 0 && (
         <div className="sm:hidden fixed inset-0 z-50">
           <button
             type="button"
