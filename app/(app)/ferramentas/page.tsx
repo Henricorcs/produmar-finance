@@ -1,35 +1,36 @@
-import { Wrench, Hammer, ArrowRightLeft, UserCheck, History } from "lucide-react";
-import { ComingSoonModule } from "@/components/modules/coming-soon-module";
+import { createClient } from "@/lib/supabase/server";
+import { FerramentasPageClient } from "@/components/ferramentas/ferramentas-page-client";
+import type { ToolWithStatus } from "@/lib/types";
+import type { LoanRow, MaintenanceRow } from "@/components/ferramentas/ferramentas-page-client";
 
-export default function FerramentasPage() {
+export const dynamic = "force-dynamic";
+
+export default async function FerramentasPage() {
+  const supabase = createClient();
+
+  const [toolsRes, loansRes, maintenanceRes] = await Promise.all([
+    supabase
+      .from("v_tool_status")
+      .select("*")
+      .order("name", { ascending: true }),
+    supabase
+      .from("tool_loans")
+      .select("*, tools(name, code)")
+      .order("checked_out_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("tool_maintenance")
+      .select("*, tools(name, code)")
+      .order("started_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(200),
+  ]);
+
   return (
-    <ComingSoonModule
-      title="Ferramentas"
-      badge="Fase 2 · Em breve"
-      description="Controle de ferramentas e equipamentos"
-      icon={Wrench}
-      features={[
-        {
-          icon: Hammer,
-          title: "Cadastro de ferramentas",
-          description: "Registre cada ferramenta com código, foto e estado",
-        },
-        {
-          icon: ArrowRightLeft,
-          title: "Retirada e devolução",
-          description: "Controle quem pegou, quando e quando devolveu",
-        },
-        {
-          icon: UserCheck,
-          title: "Quem está com o quê",
-          description: "Veja em tempo real onde cada ferramenta está",
-        },
-        {
-          icon: History,
-          title: "Manutenção",
-          description: "Histórico de conserto e conservação",
-        },
-      ]}
+    <FerramentasPageClient
+      tools={(toolsRes.data as ToolWithStatus[]) ?? []}
+      loans={(loansRes.data as LoanRow[]) ?? []}
+      maintenance={(maintenanceRes.data as MaintenanceRow[]) ?? []}
     />
   );
 }

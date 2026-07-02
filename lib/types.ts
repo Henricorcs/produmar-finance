@@ -486,3 +486,64 @@ export interface ProductStockBalance {
   total_purchased_value: number;
   avg_unit_cost: number | null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FERRAMENTAS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type ToolCondition = "otimo" | "bom" | "regular" | "ruim";
+export type ToolStatus = "disponivel" | "em_uso" | "manutencao" | "baixada";
+
+export interface Tool {
+  id: string;
+  tool_number: number;
+  name: string;
+  code: string | null;
+  condition: ToolCondition;
+  photo_path: string | null;
+  active: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ToolLoan {
+  id: string;
+  tool_id: string;
+  borrower_name: string;
+  destination: string | null;
+  checked_out_at: string;
+  expected_return_date: string | null;
+  returned_at: string | null;
+  return_condition: ToolCondition | null;
+  return_notes: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ToolMaintenance {
+  id: string;
+  tool_id: string;
+  description: string;
+  cost: number;
+  started_at: string;
+  finished_at: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Linha da view v_tool_status (ferramenta + status derivado). */
+export interface ToolWithStatus extends Tool {
+  status: ToolStatus;
+  open_loan_id: string | null;
+  current_borrower: string | null;
+  current_destination: string | null;
+  current_checked_out_at: string | null;
+  current_expected_return_date: string | null;
+  open_maintenance_id: string | null;
+  open_maintenance_description: string | null;
+  open_maintenance_started_at: string | null;
+}

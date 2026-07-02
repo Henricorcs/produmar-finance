@@ -71,12 +71,11 @@ export const APP_MODULES: AppModule[] = [
   {
     slug: "ferramentas",
     name: "Ferramentas",
-    description: "Controle de ferramentas e equipamentos",
+    description: "Cadastro, retiradas e manutenção de ferramentas",
     href: "/ferramentas",
     icon: Wrench,
     accentIcon:
       "bg-amber-50 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400",
-    comingSoon: "Fase 2",
     tabs: [{ href: "/ferramentas", label: "Ferramentas", short: "Ferram.", icon: Wrench }],
   },
   {
