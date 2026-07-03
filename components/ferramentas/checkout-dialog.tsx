@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Camera, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { checkoutTool } from "@/app/(app)/ferramentas/actions";
+import { SignaturePad } from "@/components/operador/signature-pad";
+import { checkoutTool, uploadLoanReceiverPhoto } from "@/app/(app)/ferramentas/actions";
 import type { ToolWithStatus } from "@/lib/types";
 
 interface Props {
@@ -33,6 +35,9 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId }: 
   const [destination, setDestination] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [signature, setSignature] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -41,6 +46,8 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId }: 
     setDestination("");
     setExpectedDate("");
     setNotes("");
+    setSignature(null);
+    setPhoto(null);
     setError(null);
   }, [open, presetToolId]);
 
@@ -68,9 +75,25 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId }: 
         destination,
         expected_return_date: expectedDate || null,
         notes,
+        receiver_signature: signature,
       });
-      if (r && "error" in r) setError(r.error ?? "Erro ao registrar retirada");
-      else onClose();
+      if (r && "error" in r) {
+        setError(r.error ?? "Erro ao registrar retirada");
+        return;
+      }
+
+      // foto é opcional — sobe depois de criar a retirada
+      const loanId = (r as { loanId?: string }).loanId;
+      if (photo && loanId) {
+        const fd = new FormData();
+        fd.append("file", photo);
+        const up = await uploadLoanReceiverPhoto(loanId, fd);
+        if (up && "error" in up) {
+          setError(`Retirada registrada, mas a foto falhou: ${up.error}`);
+          return;
+        }
+      }
+      onClose();
     });
   }
 
@@ -145,6 +168,51 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId }: 
               value={expectedDate}
               onChange={(e) => setExpectedDate(e.target.value)}
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Foto de quem recebeu</Label>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+            />
+            {photo ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
+                <span className="text-sm text-slate-600 dark:text-slate-300 truncate">
+                  {photo.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhoto(null);
+                    if (fileRef.current) fileRef.current.value = "";
+                  }}
+                  className="p-1 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
+                  aria-label="Remover foto"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => fileRef.current?.click()}
+              >
+                <Camera className="w-4 h-4" />
+                Tirar foto (opcional)
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Assinatura de quem recebeu</Label>
+            <SignaturePad onChange={setSignature} />
           </div>
 
           <div className="space-y-1.5">

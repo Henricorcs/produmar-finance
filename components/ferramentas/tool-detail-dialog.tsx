@@ -55,6 +55,7 @@ export function ToolDetailDialog({
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [receiverPhotoUrls, setReceiverPhotoUrls] = useState<Record<string, string>>({});
 
   // carrega a foto sob demanda (URL assinada)
   useEffect(() => {
@@ -68,6 +69,24 @@ export function ToolDetailDialog({
       cancelled = true;
     };
   }, [open, tool?.photo_path]);
+
+  // fotos de quem recebeu, uma por retirada
+  useEffect(() => {
+    setReceiverPhotoUrls({});
+    if (!open) return;
+    let cancelled = false;
+    loans.forEach((l) => {
+      if (!l.receiver_photo_path) return;
+      getToolPhotoUrl(l.receiver_photo_path).then((r) => {
+        if (!cancelled && "url" in r && r.url) {
+          setReceiverPhotoUrls((prev) => ({ ...prev, [l.id]: r.url! }));
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, loans]);
 
   if (!tool) return null;
 
@@ -123,6 +142,28 @@ export function ToolDetailDialog({
                 : " · em aberto"}
               {l.return_notes ? ` · ${l.return_notes}` : ""}
             </p>
+            {(l.receiver_signature || receiverPhotoUrls[l.id]) && (
+              <div className="flex items-center gap-2 mt-1.5">
+                {l.receiver_signature && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={l.receiver_signature}
+                    alt="Assinatura de quem recebeu"
+                    className="h-8 rounded border border-slate-200 dark:border-slate-700 bg-white"
+                  />
+                )}
+                {receiverPhotoUrls[l.id] && (
+                  <a
+                    href={receiverPhotoUrls[l.id]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
+                  >
+                    Ver foto
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ),

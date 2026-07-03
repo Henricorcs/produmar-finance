@@ -515,6 +515,8 @@ export interface ToolLoan {
   destination: string | null;
   checked_out_at: string;
   expected_return_date: string | null;
+  receiver_signature: string | null;
+  receiver_photo_path: string | null;
   returned_at: string | null;
   return_condition: ToolCondition | null;
   return_notes: string | null;

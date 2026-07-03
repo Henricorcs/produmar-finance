@@ -170,6 +170,7 @@ export async function checkoutTool(input: {
   destination?: string | null;
   expected_return_date?: string | null;
   notes?: string | null;
+  receiver_signature?: string | null;
 }) {
   const supabase = createClient();
   const {
@@ -192,16 +193,54 @@ export async function checkoutTool(input: {
   if (t.status === "manutencao") return { error: "Esta ferramenta está em manutenção" };
   if (t.status === "baixada") return { error: "Esta ferramenta está baixada" };
 
-  const { error } = await supabase.from("tool_loans").insert({
-    tool_id: input.tool_id,
-    borrower_name: borrower,
-    destination: clean(input.destination),
-    expected_return_date: input.expected_return_date || null,
-    notes: clean(input.notes),
-    created_by: user.id,
-  });
+  const { data, error } = await supabase
+    .from("tool_loans")
+    .insert({
+      tool_id: input.tool_id,
+      borrower_name: borrower,
+      destination: clean(input.destination),
+      expected_return_date: input.expected_return_date || null,
+      notes: clean(input.notes),
+      receiver_signature: input.receiver_signature || null,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
 
+  if (error || !data) return { error: error?.message ?? "Erro ao registrar retirada" };
+  revalidate();
+  return { ok: true, loanId: data.id as string };
+}
+
+/** Foto de quem recebeu a ferramenta, tirada no momento da retirada. */
+export async function uploadLoanReceiverPhoto(loanId: string, formData: FormData) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Arquivo inválido" };
+  if (file.size > MAX_FILE_SIZE) return { error: "Arquivo maior que 10 MB" };
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `tool-loans/${loanId}/${randomUUID()}_${safeName}`;
+
+  const { error: upErr } = await supabase.storage
+    .from("attachments")
+    .upload(path, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+  if (upErr) return { error: upErr.message };
+
+  const { error } = await supabase
+    .from("tool_loans")
+    .update({ receiver_photo_path: path })
+    .eq("id", loanId);
   if (error) return { error: error.message };
+
   revalidate();
   return { ok: true };
 }
