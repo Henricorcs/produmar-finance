@@ -25,7 +25,7 @@ import {
   setToolActive,
 } from "@/app/(app)/ferramentas/actions";
 import { CONDITION_LABELS, STATUS_META, fmtDateTime } from "./tool-shared";
-import type { ToolLoan, ToolMaintenance, ToolWithStatus } from "@/lib/types";
+import type { Obra, ToolLoan, ToolMaintenance, ToolWithStatus } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -34,6 +34,7 @@ interface Props {
   /** Histórico já filtrado desta ferramenta. */
   loans: ToolLoan[];
   maintenance: ToolMaintenance[];
+  obras?: Obra[];
   onEdit: (tool: ToolWithStatus) => void;
   onCheckout: (tool: ToolWithStatus) => void;
   onReturn: (tool: ToolWithStatus) => void;
@@ -47,6 +48,7 @@ export function ToolDetailDialog({
   tool,
   loans,
   maintenance,
+  obras = [],
   onEdit,
   onCheckout,
   onReturn,
@@ -56,6 +58,8 @@ export function ToolDetailDialog({
   const [isPending, startTransition] = useTransition();
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [receiverPhotoUrls, setReceiverPhotoUrls] = useState<Record<string, string>>({});
+
+  const obraNameById = new Map(obras.map((o) => [o.id, o.name]));
 
   // carrega a foto sob demanda (URL assinada)
   useEffect(() => {
@@ -132,6 +136,7 @@ export function ToolDetailDialog({
             <p className="text-sm text-slate-800 dark:text-slate-100">
               <span className="font-medium">{l.borrower_name}</span> retirou
               {l.destination ? ` · ${l.destination}` : ""}
+              {l.obra_id && obraNameById.get(l.obra_id) ? ` · Obra: ${obraNameById.get(l.obra_id)}` : ""}
             </p>
             <p className="text-[11px] text-slate-400">
               {fmtDateTime(l.checked_out_at)}
@@ -231,6 +236,10 @@ export function ToolDetailDialog({
                 label="Está com"
                 value={`${tool.current_borrower}${
                   tool.current_destination ? ` · ${tool.current_destination}` : ""
+                }${
+                  tool.current_obra_id && obraNameById.get(tool.current_obra_id)
+                    ? ` · Obra: ${obraNameById.get(tool.current_obra_id)}`
+                    : ""
                 }`}
               />
             )}

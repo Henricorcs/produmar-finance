@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { FerramentasPageClient } from "@/components/ferramentas/ferramentas-page-client";
-import type { ToolWithStatus } from "@/lib/types";
+import type { Obra, ToolWithStatus } from "@/lib/types";
 import type { LoanRow, MaintenanceRow } from "@/components/ferramentas/ferramentas-page-client";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function FerramentasPage() {
   const supabase = createClient();
 
-  const [toolsRes, loansRes, maintenanceRes] = await Promise.all([
+  const [toolsRes, loansRes, maintenanceRes, obrasRes] = await Promise.all([
     supabase
       .from("v_tool_status")
       .select("*")
@@ -24,6 +24,7 @@ export default async function FerramentasPage() {
       .order("started_at", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(200),
+    supabase.from("obras").select("*").eq("active", true).order("name"),
   ]);
 
   return (
@@ -31,6 +32,7 @@ export default async function FerramentasPage() {
       tools={(toolsRes.data as ToolWithStatus[]) ?? []}
       loans={(loansRes.data as LoanRow[]) ?? []}
       maintenance={(maintenanceRes.data as MaintenanceRow[]) ?? []}
+      obras={(obrasRes.data as Obra[]) ?? []}
     />
   );
 }

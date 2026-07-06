@@ -86,7 +86,6 @@ export const APP_MODULES: AppModule[] = [
     icon: HardHat,
     accentIcon:
       "bg-orange-50 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400",
-    comingSoon: "Fase 3",
     tabs: [{ href: "/obras", label: "Obras", short: "Obras", icon: HardHat }],
   },
 ];

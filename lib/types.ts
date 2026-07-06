@@ -58,6 +58,8 @@ export interface Transaction {
   attachment_url: string | null;
   /** OS de origem (lançamento automático de operação) — fica fora da aba Contas. */
   service_order_id: string | null;
+  /** Obra vinculada (opcional) — soma no custo total da obra. */
+  obra_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -199,6 +201,33 @@ export interface PickupLocation {
   updated_at: string;
 }
 
+export type ObraStatus = "planejamento" | "em_andamento" | "concluida" | "cancelada";
+
+export interface Obra {
+  id: string;
+  obra_number: number;
+  name: string;
+  contact_id: string | null;
+  location: string | null;
+  status: ObraStatus;
+  start_date: string | null;
+  planned_end_date: string | null;
+  actual_end_date: string | null;
+  budget: number | null;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Obra + agregados calculados pela view v_obra_summary. */
+export interface ObraSummary extends Obra {
+  total_cost: number;
+  os_count: number;
+  tools_in_use: number;
+}
+
 export interface ServiceOrder {
   id: string;
   order_number: number;
@@ -212,6 +241,8 @@ export interface ServiceOrder {
 
   machine_id: string | null;
   pickup_location_id: string | null;
+  /** Obra vinculada (opcional) — soma no custo total da obra. */
+  obra_id: string | null;
   /** Operador (técnico) para quem a OS foi enviada — aparece só no painel dele. */
   assigned_to: string | null;
   /** Operador que FINALIZOU a OS (clicou FINALIZAR no painel) — usado para o
@@ -513,6 +544,8 @@ export interface ToolLoan {
   tool_id: string;
   borrower_name: string;
   destination: string | null;
+  /** Obra vinculada (opcional) — aparece junto do destino. */
+  obra_id: string | null;
   checked_out_at: string;
   expected_return_date: string | null;
   receiver_signature: string | null;
@@ -545,6 +578,7 @@ export interface ToolWithStatus extends Tool {
   current_destination: string | null;
   current_checked_out_at: string | null;
   current_expected_return_date: string | null;
+  current_obra_id: string | null;
   open_maintenance_id: string | null;
   open_maintenance_description: string | null;
   open_maintenance_started_at: string | null;

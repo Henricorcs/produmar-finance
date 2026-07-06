@@ -1,0 +1,96 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import type { ObraStatus } from "@/lib/types";
+
+function revalidate() {
+  revalidatePath("/obras");
+  revalidatePath("/operacoes");
+  revalidatePath("/ferramentas");
+  revalidatePath("/contas");
+}
+
+function clean(s?: string | null): string | null {
+  const v = s?.trim();
+  return v ? v.toUpperCase() : null;
+}
+
+export interface ObraInput {
+  name: string;
+  contact_id?: string | null;
+  location?: string | null;
+  status?: ObraStatus | null;
+  start_date?: string | null;
+  planned_end_date?: string | null;
+  actual_end_date?: string | null;
+  budget?: number | null;
+  notes?: string | null;
+}
+
+export async function createObra(input: ObraInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome da obra" };
+
+  const { data, error } = await supabase
+    .from("obras")
+    .insert({
+      name,
+      contact_id: input.contact_id || null,
+      location: clean(input.location),
+      status: input.status ?? "planejamento",
+      start_date: input.start_date || null,
+      planned_end_date: input.planned_end_date || null,
+      actual_end_date: input.actual_end_date || null,
+      budget: input.budget ?? null,
+      notes: clean(input.notes),
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error?.message ?? "Erro ao cadastrar obra" };
+  revalidate();
+  return { ok: true, obraId: data.id as string };
+}
+
+export async function updateObra(id: string, input: ObraInput) {
+  const supabase = createClient();
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome da obra" };
+
+  const { error } = await supabase
+    .from("obras")
+    .update({
+      name,
+      contact_id: input.contact_id || null,
+      location: clean(input.location),
+      status: input.status ?? "planejamento",
+      start_date: input.start_date || null,
+      planned_end_date: input.planned_end_date || null,
+      actual_end_date: input.actual_end_date || null,
+      budget: input.budget ?? null,
+      notes: clean(input.notes),
+    })
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Desativa (ou reativa) a obra — histórico e vínculos existentes permanecem. */
+export async function setObraActive(id: string, active: boolean) {
+  const supabase = createClient();
+  const { error } = await supabase.from("obras").update({ active }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}

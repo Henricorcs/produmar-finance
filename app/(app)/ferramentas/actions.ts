@@ -168,6 +168,7 @@ export async function checkoutTool(input: {
   tool_id: string;
   borrower_name: string;
   destination?: string | null;
+  obra_id?: string | null;
   expected_return_date?: string | null;
   notes?: string | null;
   receiver_signature?: string | null;
@@ -199,6 +200,7 @@ export async function checkoutTool(input: {
       tool_id: input.tool_id,
       borrower_name: borrower,
       destination: clean(input.destination),
+      obra_id: input.obra_id || null,
       expected_return_date: input.expected_return_date || null,
       notes: clean(input.notes),
       receiver_signature: input.receiver_signature || null,

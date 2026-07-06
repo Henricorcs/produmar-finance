@@ -20,7 +20,7 @@ import { FilterTabs } from "@/components/ui/filter-tabs";
 import { TransactionDialog } from "./transaction-dialog";
 import { deleteTransaction, markTransactionPaid } from "@/app/(app)/contas/actions";
 import { formatBRL, formatDate } from "@/lib/utils";
-import type { Category, CostCenter, Transaction, TransactionAttachment } from "@/lib/types";
+import type { Category, CostCenter, Obra, Transaction, TransactionAttachment } from "@/lib/types";
 
 type TransactionWithCategory = Transaction & {
   categories: { name: string; color: string } | null;
@@ -31,6 +31,7 @@ interface Props {
   transactions: TransactionWithCategory[];
   categories: Category[];
   costCenters: CostCenter[];
+  obras?: Obra[];
   month: string;
   initialFilter?: string;
 }
@@ -49,6 +50,7 @@ export function ContasPageClient({
   transactions,
   categories,
   costCenters,
+  obras = [],
   month,
   initialFilter = "",
 }: Props) {
@@ -180,6 +182,7 @@ export function ContasPageClient({
         transaction={editingTransaction}
         categories={categories}
         costCenters={costCenters}
+        obras={obras}
       />
     </div>
   );

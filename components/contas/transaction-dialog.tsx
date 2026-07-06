@@ -27,6 +27,7 @@ import { createTransaction, updateTransaction } from "@/app/(app)/contas/actions
 import type {
   Category,
   CostCenter,
+  Obra,
   Transaction,
   TransactionAttachment,
   TransactionStatus,
@@ -39,6 +40,7 @@ interface Props {
   transaction?: (Transaction & { transaction_attachments?: TransactionAttachment[] }) | null;
   categories: Category[];
   costCenters: CostCenter[];
+  obras?: Obra[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -64,6 +66,7 @@ export function TransactionDialog({
   transaction,
   categories,
   costCenters,
+  obras = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +74,7 @@ export function TransactionDialog({
   const [status, setStatus] = useState<TransactionStatus>(transaction?.status ?? "pendente");
   const [categoryId, setCategoryId] = useState<string>(transaction?.category_id ?? "");
   const [costCenterId, setCostCenterId] = useState<string>(transaction?.cost_center_id ?? "");
+  const [obraId, setObraId] = useState<string>(transaction?.obra_id ?? "");
   const [amount, setAmount] = useState<string>(
     transaction?.amount ? formatBRLInput(transaction.amount) : ""
   );
@@ -95,6 +99,7 @@ export function TransactionDialog({
       setStatus(transaction?.status ?? "pendente");
       setCategoryId(transaction?.category_id ?? "");
       setCostCenterId(transaction?.cost_center_id ?? "");
+      setObraId(transaction?.obra_id ?? "");
       setAmount(transaction?.amount ? formatBRLInput(transaction.amount) : "");
       setNewFiles([]);
       setExistingAttachments(transaction?.transaction_attachments ?? []);
@@ -156,6 +161,7 @@ export function TransactionDialog({
     formData.set("status", status);
     formData.set("category_id", categoryId);
     formData.set("cost_center_id", costCenterId);
+    formData.set("obra_id", obraId);
     formData.set("amount", amount);
 
     // Append new file uploads
@@ -336,6 +342,24 @@ export function TransactionDialog({
                 autoFocusSearch={false}
               />
             </div>
+
+            {/* Obra — vínculo opcional */}
+            {obras.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Obra</Label>
+                <SearchableSelect
+                  items={obras}
+                  value={obraId}
+                  onChange={setObraId}
+                  getId={(o) => o.id}
+                  getLabel={(o) => o.name}
+                  placeholder="Vincular a uma obra (opcional)..."
+                  searchPlaceholder="Buscar obra..."
+                  emptyMessage="Nenhuma obra cadastrada"
+                  autoFocusSearch={false}
+                />
+              </div>
+            )}
 
             {/* Notes */}
             <div className="space-y-1.5">

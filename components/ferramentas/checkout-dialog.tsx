@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SignaturePad } from "@/components/operador/signature-pad";
 import { checkoutTool, uploadLoanReceiverPhoto } from "@/app/(app)/ferramentas/actions";
-import type { ToolWithStatus } from "@/lib/types";
+import type { Obra, ToolWithStatus } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -24,15 +24,17 @@ interface Props {
   availableTools: ToolWithStatus[];
   /** Pré-seleciona a ferramenta (quando aberto a partir do card/detalhe). */
   presetToolId?: string | null;
+  obras?: Obra[];
 }
 
-export function CheckoutDialog({ open, onClose, availableTools, presetToolId }: Props) {
+export function CheckoutDialog({ open, onClose, availableTools, presetToolId, obras = [] }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const [toolId, setToolId] = useState("");
   const [borrower, setBorrower] = useState("");
   const [destination, setDestination] = useState("");
+  const [obraId, setObraId] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   const [signature, setSignature] = useState<string | null>(null);
@@ -44,6 +46,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId }: 
     setToolId(presetToolId ?? "");
     setBorrower("");
     setDestination("");
+    setObraId("");
     setExpectedDate("");
     setNotes("");
     setSignature(null);
@@ -73,6 +76,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId }: 
         tool_id: toolId,
         borrower_name: borrower,
         destination,
+        obra_id: obraId || null,
         expected_return_date: expectedDate || null,
         notes,
         receiver_signature: signature,
@@ -159,6 +163,22 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId }: 
               autoComplete="off"
             />
           </div>
+
+          {obras.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>Obra</Label>
+              <SearchableSelect
+                items={obras}
+                value={obraId}
+                onChange={setObraId}
+                getId={(o) => o.id}
+                getLabel={(o) => o.name}
+                placeholder="Vincular a uma obra (opcional)..."
+                searchPlaceholder="Buscar obra..."
+                emptyMessage="Nenhuma obra cadastrada"
+              />
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="co_expected">Previsão de devolução</Label>

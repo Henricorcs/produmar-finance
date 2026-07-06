@@ -36,6 +36,7 @@ import type {
   Category,
   CostCenter,
   Machine,
+  Obra,
   PickupLocation,
   Product,
   Profile,
@@ -64,6 +65,7 @@ interface Props {
   categories: Category[];
   costCenters: CostCenter[];
   stockBalances: ProductStockBalance[];
+  obras: Obra[];
   month: string;
   initialFilter?: string;
 }
@@ -151,6 +153,7 @@ export function OperacoesPageClient({
   categories,
   costCenters,
   stockBalances,
+  obras,
   month,
   initialFilter = "",
 }: Props) {
@@ -348,6 +351,7 @@ export function OperacoesPageClient({
         products={products}
         pickupLocations={pickupLocations}
         stockBalances={stockBalances}
+        obras={obras}
       />
     </div>
   );

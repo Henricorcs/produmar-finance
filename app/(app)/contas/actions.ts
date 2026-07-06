@@ -15,6 +15,7 @@ interface TransactionPayload {
   status: TransactionStatus;
   category_id: string | null;
   cost_center_id: string | null;
+  obra_id: string | null;
   notes: string | null;
 }
 
@@ -31,6 +32,7 @@ function parsePayload(formData: FormData): TransactionPayload | { error: string 
   const status = (formData.get("status") as TransactionStatus) || "pendente";
   const category_id = String(formData.get("category_id") ?? "") || null;
   const cost_center_id = String(formData.get("cost_center_id") ?? "") || null;
+  const obra_id = String(formData.get("obra_id") ?? "") || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
   if (!type || !["entrada", "saida"].includes(type)) return { error: "Tipo inválido" };
@@ -38,7 +40,7 @@ function parsePayload(formData: FormData): TransactionPayload | { error: string 
   if (isNaN(amount) || amount <= 0) return { error: "Valor inválido" };
   if (!due_date) return { error: "Data de vencimento é obrigatória" };
 
-  return { type, description, amount, due_date, paid_date, status, category_id, cost_center_id, notes };
+  return { type, description, amount, due_date, paid_date, status, category_id, cost_center_id, obra_id, notes };
 }
 
 function revalidate() {

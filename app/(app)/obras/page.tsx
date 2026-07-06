@@ -1,35 +1,55 @@
-import { HardHat, FolderKanban, Banknote, ListChecks, BarChart3 } from "lucide-react";
-import { ComingSoonModule } from "@/components/modules/coming-soon-module";
+import { createClient } from "@/lib/supabase/server";
+import { ObrasPageClient } from "@/components/obras/obras-page-client";
+import type { Contact, ObraSummary } from "@/lib/types";
+import type {
+  ObraTransactionRow,
+  ObraServiceOrderRow,
+  ObraToolLoanRow,
+} from "@/components/obras/obras-page-client";
 
-export default function ObrasPage() {
+export const dynamic = "force-dynamic";
+
+export default async function ObrasPage() {
+  const supabase = createClient();
+
+  const [obrasRes, contactsRes, transactionsRes, serviceOrdersRes, toolLoansRes] =
+    await Promise.all([
+      supabase
+        .from("v_obra_summary")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("contacts")
+        .select("*")
+        .eq("is_customer", true)
+        .order("name"),
+      supabase
+        .from("transactions")
+        .select("id, type, description, amount, due_date, status, obra_id")
+        .not("obra_id", "is", null)
+        .order("due_date", { ascending: false })
+        .limit(500),
+      supabase
+        .from("service_orders")
+        .select("id, order_number, type, status, total_amount, client_name, obra_id")
+        .not("obra_id", "is", null)
+        .order("issue_date", { ascending: false })
+        .limit(500),
+      supabase
+        .from("tool_loans")
+        .select("id, borrower_name, destination, checked_out_at, returned_at, obra_id, tools(name, code)")
+        .not("obra_id", "is", null)
+        .order("checked_out_at", { ascending: false })
+        .limit(500),
+    ]);
+
   return (
-    <ComingSoonModule
-      title="Obras"
-      badge="Fase 3 · Em breve"
-      description="Gestão e acompanhamento de obras"
-      icon={HardHat}
-      features={[
-        {
-          icon: FolderKanban,
-          title: "Cadastro de obras",
-          description: "Organize cada obra com cliente, local e prazo",
-        },
-        {
-          icon: Banknote,
-          title: "Custos por obra",
-          description: "Acompanhe gastos de material e mão de obra",
-        },
-        {
-          icon: ListChecks,
-          title: "Etapas e medições",
-          description: "Registre o avanço de cada etapa da obra",
-        },
-        {
-          icon: BarChart3,
-          title: "Relatórios",
-          description: "Resultado e rentabilidade por obra",
-        },
-      ]}
+    <ObrasPageClient
+      obras={(obrasRes.data as ObraSummary[]) ?? []}
+      contacts={(contactsRes.data as Contact[]) ?? []}
+      transactions={(transactionsRes.data as ObraTransactionRow[]) ?? []}
+      serviceOrders={(serviceOrdersRes.data as ObraServiceOrderRow[]) ?? []}
+      toolLoans={(toolLoansRes.data as unknown as ObraToolLoanRow[]) ?? []}
     />
   );
 }

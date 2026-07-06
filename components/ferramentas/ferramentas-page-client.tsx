@@ -25,7 +25,7 @@ import {
 } from "./maintenance-dialog";
 import { ToolDetailDialog } from "./tool-detail-dialog";
 import { CONDITION_LABELS, STATUS_META, fmtDateTime } from "./tool-shared";
-import type { ToolLoan, ToolMaintenance, ToolStatus, ToolWithStatus } from "@/lib/types";
+import type { Obra, ToolLoan, ToolMaintenance, ToolStatus, ToolWithStatus } from "@/lib/types";
 
 // ── Tipos das linhas com joins ────────────────────────────────────────────────
 export type LoanRow = ToolLoan & {
@@ -40,12 +40,13 @@ interface Props {
   tools: ToolWithStatus[];
   loans: LoanRow[];
   maintenance: MaintenanceRow[];
+  obras?: Obra[];
 }
 
 type Tab = "ferramentas" | "em_uso" | "manutencao" | "historico";
 type StatusFilter = "todas" | ToolStatus;
 
-export function FerramentasPageClient({ tools, loans, maintenance }: Props) {
+export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }: Props) {
   const [tab, setTab] = useState<Tab>("ferramentas");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todas");
@@ -330,6 +331,7 @@ export function FerramentasPageClient({ tools, loans, maintenance }: Props) {
         onClose={() => setCheckoutOpen(false)}
         availableTools={availableTools}
         presetToolId={checkoutPresetId}
+        obras={obras}
       />
       <ReturnDialog
         open={!!returnTarget}
@@ -353,6 +355,7 @@ export function FerramentasPageClient({ tools, loans, maintenance }: Props) {
         tool={detailTool}
         loans={detailLoans}
         maintenance={detailMaintenance}
+        obras={obras}
         onEdit={(t) => {
           setDetailToolId(null);
           openEdit(t);

@@ -262,6 +262,8 @@ export interface ServiceOrderInput {
   machine_id?: string | null;
   assigned_to?: string | null;
   pickup_location_id?: string | null;
+  /** Obra vinculada (opcional) — o custo desta OS soma no total da obra. */
+  obra_id?: string | null;
   delivery_address?: string | null;
   service_description?: string | null;
   delivery_date?: string | null;
@@ -293,6 +295,7 @@ function sanitizeOrder(input: ServiceOrderInput) {
     machine_id: input.machine_id || null,
     assigned_to: input.assigned_to || null,
     pickup_location_id: input.pickup_location_id || null,
+    obra_id: input.obra_id || null,
     delivery_address: input.delivery_address?.trim() ? input.delivery_address.trim().toUpperCase() : null,
     service_description: input.service_description?.trim()
       ? input.service_description.trim().toUpperCase()
@@ -381,7 +384,7 @@ async function syncServiceOrderFinance(
   const { data: o } = await supabase
     .from("service_orders")
     .select(
-      "order_number, freight_type, total_amount, service_cost, fuel_cost, delivery_date, issue_date, client_name, service_description, status, transaction_id, created_by"
+      "order_number, freight_type, total_amount, service_cost, fuel_cost, delivery_date, issue_date, client_name, service_description, status, transaction_id, created_by, obra_id"
     )
     .eq("id", orderId)
     .maybeSingle<{
@@ -397,6 +400,7 @@ async function syncServiceOrderFinance(
       status: string;
       transaction_id: string | null;
       created_by: string | null;
+      obra_id: string | null;
     }>();
   if (!o) return;
   // Só OS finalizada conta; OS com lançamento manual legado fica como está.
@@ -427,6 +431,7 @@ async function syncServiceOrderFinance(
       paid_date: date,
       cost_center_id: costCenterId,
       service_order_id: orderId,
+      obra_id: o.obra_id,
       created_by: o.created_by,
     });
   }
@@ -442,6 +447,7 @@ async function syncServiceOrderFinance(
       paid_date: date,
       cost_center_id: costCenterId,
       service_order_id: orderId,
+      obra_id: o.obra_id,
       created_by: o.created_by,
     });
   }

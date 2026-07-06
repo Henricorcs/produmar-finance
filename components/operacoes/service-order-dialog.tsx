@@ -39,6 +39,7 @@ import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, os
 import { PRODUCT_UNITS } from "@/lib/types";
 import type {
   Machine,
+  Obra,
   PickupLocation,
   Product,
   Profile,
@@ -61,6 +62,7 @@ interface Props {
   products: Product[];
   pickupLocations: PickupLocation[];
   stockBalances?: ProductStockBalance[];
+  obras?: Obra[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -144,6 +146,7 @@ export function ServiceOrderDialog({
   products,
   pickupLocations,
   stockBalances = [],
+  obras = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +163,7 @@ export function ServiceOrderDialog({
   const [machineId, setMachineId]                   = useState("");
   const [assignedTo, setAssignedTo]                 = useState("");
   const [pickupLocationId, setPickupLocationId]     = useState("");
+  const [obraId, setObraId]                         = useState("");
   const [deliveryAddress, setDeliveryAddress]       = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
 
@@ -244,6 +248,7 @@ export function ServiceOrderDialog({
       setMachineId(order.machine_id ?? "");
       setAssignedTo(order.assigned_to ?? "");
       setPickupLocationId(order.pickup_location_id ?? "");
+      setObraId(order.obra_id ?? "");
       setDeliveryAddress(order.delivery_address ?? "");
       setServiceDescription(order.service_description ?? "");
       setDeliveryDate(order.delivery_date ?? "");
@@ -290,7 +295,7 @@ export function ServiceOrderDialog({
       setFreightType("cliente");
       setStatus("pendente");
       setClientName(""); setClientDocument(""); setClientPhone("");
-      setMachineId(""); setAssignedTo(""); setPickupLocationId("");
+      setMachineId(""); setAssignedTo(""); setPickupLocationId(""); setObraId("");
       setDeliveryAddress(""); setServiceDescription("");
       setDeliveryDate(todayStr());
       setHourmeterStart(""); setHourmeterEnd("");
@@ -632,6 +637,7 @@ export function ServiceOrderDialog({
       machine_id: machineId || null,
       assigned_to: assignedTo || null,
       pickup_location_id: pickupLocationId || null,
+      obra_id: obraId || null,
       delivery_address: deliveryAddress,
       service_description: serviceDescription,
       // Frete não tem previsão de entrega — a data real entra no fechamento.
@@ -1077,6 +1083,23 @@ export function ServiceOrderDialog({
                 </p>
               )}
             </div>
+            )}
+
+            {/* Obra — vínculo opcional, soma o custo desta OS no total da obra */}
+            {obras.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Obra</Label>
+                <SearchableSelect
+                  items={obras}
+                  value={obraId}
+                  onChange={setObraId}
+                  getId={(o) => o.id}
+                  getLabel={(o) => o.name}
+                  placeholder="Vincular a uma obra (opcional)..."
+                  searchPlaceholder="Buscar obra..."
+                  emptyMessage="Nenhuma obra cadastrada"
+                />
+              </div>
             )}
 
             {/* Locations — serviço rápido não tem local de retirada/entrega */}

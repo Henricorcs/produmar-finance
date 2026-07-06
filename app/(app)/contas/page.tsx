@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ContasPageClient } from "@/components/contas/contas-page-client";
-import type { Category, CostCenter } from "@/lib/types";
+import type { Category, CostCenter, Obra } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export default async function ContasPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [transactionsRes, categoriesRes, costCentersRes] = await Promise.all([
+  const [transactionsRes, categoriesRes, costCentersRes, obrasRes] = await Promise.all([
     supabase
       .from("transactions")
       .select(
@@ -33,6 +33,7 @@ export default async function ContasPage({
       .order("due_date", { ascending: false }),
     supabase.from("categories").select("*").order("name"),
     supabase.from("cost_centers").select("*").eq("active", true).order("name"),
+    supabase.from("obras").select("*").eq("active", true).order("name"),
   ]);
 
   return (
@@ -40,6 +41,7 @@ export default async function ContasPage({
       transactions={transactionsRes.data ?? []}
       categories={(categoriesRes.data as Category[]) ?? []}
       costCenters={(costCentersRes.data as CostCenter[]) ?? []}
+      obras={(obrasRes.data as Obra[]) ?? []}
       month={month}
       initialFilter={searchParams.filter ?? ""}
     />
