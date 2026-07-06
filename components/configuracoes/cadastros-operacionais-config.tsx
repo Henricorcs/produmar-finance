@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, X, Check, Truck, Package, MapPin, Clock, Gauge } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, Truck, Package, MapPin, Clock, Gauge, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,10 +15,12 @@ import {
   updatePickupLocation,
   deletePickupLocation,
 } from "@/app/(app)/operacoes/actions";
+import { createContact, updateContact, deleteContact } from "@/app/(app)/obras/actions";
 import { machineCategoryLabel } from "@/lib/utils";
 import {
   MACHINE_CATEGORIES,
   PRODUCT_UNITS,
+  type Contact,
   type Machine,
   type MachineTrackingType,
   type Product,
@@ -29,17 +31,19 @@ interface Props {
   machines: Machine[];
   products: Product[];
   pickupLocations: PickupLocation[];
+  contacts: Contact[];
 }
 
-type Tab = "machines" | "products" | "locations";
+type Tab = "machines" | "products" | "locations" | "contacts";
 
-export function CadastrosOperacionaisConfig({ machines, products, pickupLocations }: Props) {
+export function CadastrosOperacionaisConfig({ machines, products, pickupLocations, contacts }: Props) {
   const [tab, setTab] = useState<Tab>("machines");
 
   const tabs: { value: Tab; label: string; icon: React.ComponentType<{ className?: string }>; count: number }[] = [
     { value: "machines",  label: "Máquinas", icon: Truck,   count: machines.length },
     { value: "products",  label: "Produtos", icon: Package, count: products.length },
     { value: "locations", label: "Jazidas",  icon: MapPin,  count: pickupLocations.length },
+    { value: "contacts",  label: "Clientes", icon: Users,   count: contacts.length },
   ];
 
   return (
@@ -69,6 +73,7 @@ export function CadastrosOperacionaisConfig({ machines, products, pickupLocation
       {tab === "machines"  && <MachinesList   machines={machines} />}
       {tab === "products"  && <ProductsList   products={products} />}
       {tab === "locations" && <LocationsList  locations={pickupLocations} />}
+      {tab === "contacts"  && <ContactsList   contacts={contacts} />}
     </div>
   );
 }
@@ -478,6 +483,119 @@ function LocationsList({ locations }: { locations: PickupLocation[] }) {
             onChange={(e) => setAddress(e.target.value)}
             placeholder="endereço (opcional)"
             className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              value={docNumber}
+              onChange={(e) => setDocNumber(e.target.value)}
+              placeholder="CNPJ/CPF (opcional)"
+              className="h-9 text-sm"
+            />
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="telefone (opcional)"
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={reset} className="flex-1 h-9 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50">
+              <X className="w-3 h-3 inline mr-1" /> Cancelar
+            </button>
+            <Button type="submit" size="sm" className="flex-1">
+              <Check className="w-3 h-3" />
+              {editingId ? "Salvar" : "Adicionar"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ── Contacts (clientes) ──────────────────────────────────────────────────────
+
+function ContactsList({ contacts }: { contacts: Contact[] }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName]           = useState("");
+  const [docNumber, setDocNumber] = useState("");
+  const [phone, setPhone]         = useState("");
+
+  function reset() {
+    setName(""); setDocNumber(""); setPhone("");
+    setEditingId(null); setShowForm(false);
+  }
+
+  function startEdit(c: Contact) {
+    setEditingId(c.id);
+    setName(c.name);
+    setDocNumber(c.document ?? "");
+    setPhone(c.phone ?? "");
+    setShowForm(true);
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (editingId) {
+      await updateContact(editingId, { name, document: docNumber, phone });
+    } else {
+      await createContact({ name, document: docNumber, phone });
+    }
+    reset();
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Remover o cliente "${name}"? Obras já cadastradas com ele ficam sem cliente.`)) return;
+    await deleteContact(id);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+        {contacts.length === 0 && (
+          <p className="text-xs text-slate-400 dark:text-slate-500 py-3">
+            Nenhum cliente cadastrado.
+          </p>
+        )}
+        {contacts.map((c) => (
+          <div key={c.id} className="flex items-center gap-3 py-2.5">
+            <div className="w-8 h-8 rounded-lg bg-produmar-50 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
+              <Users className="w-4 h-4 text-produmar-600 dark:text-produmar-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate text-slate-800 dark:text-slate-200">
+                {c.name}
+              </p>
+              {(c.document || c.phone) && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  {[c.document, c.phone].filter(Boolean).join(" · ")}
+                </p>
+              )}
+            </div>
+            <button onClick={() => startEdit(c)} className="p-1 text-slate-400 hover:text-produmar-600">
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => handleDelete(c.id, c.name)} className="p-1 text-slate-400 hover:text-red-500">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {!showForm ? (
+        <Button variant="outline" size="sm" className="w-full" onClick={() => setShowForm(true)}>
+          <Plus className="w-4 h-4" />
+          Novo cliente
+        </Button>
+      ) : (
+        <form onSubmit={submit} className="space-y-2 p-3 rounded-xl bg-produmar-50/30 dark:bg-slate-800/40 border border-produmar-100 dark:border-slate-700">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="nome ou razão social"
+            className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+            required
           />
           <div className="grid grid-cols-2 gap-2">
             <Input

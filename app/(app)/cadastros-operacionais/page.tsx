@@ -2,22 +2,24 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CadastrosOperacionaisConfig } from "@/components/configuracoes/cadastros-operacionais-config";
 import { Truck } from "lucide-react";
-import type { Machine, Product, PickupLocation } from "@/lib/types";
+import type { Contact, Machine, Product, PickupLocation } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function CadastrosOperacionaisPage() {
   const supabase = createClient();
 
-  const [machinesRes, productsRes, locationsRes] = await Promise.all([
+  const [machinesRes, productsRes, locationsRes, contactsRes] = await Promise.all([
     supabase.from("machines").select("*").order("name"),
     supabase.from("products").select("*").order("name"),
     supabase.from("pickup_locations").select("*").order("name"),
+    supabase.from("contacts").select("*").order("name"),
   ]);
 
   const machines = (machinesRes.data as Machine[]) ?? [];
   const products = (productsRes.data as Product[]) ?? [];
   const pickupLocations = (locationsRes.data as PickupLocation[]) ?? [];
+  const contacts = (contactsRes.data as Contact[]) ?? [];
 
   return (
     <div className="space-y-5 animate-fade-in max-w-3xl">
@@ -42,6 +44,7 @@ export default async function CadastrosOperacionaisPage() {
             machines={machines}
             products={products}
             pickupLocations={pickupLocations}
+            contacts={contacts}
           />
         </CardContent>
       </Card>

@@ -9,6 +9,7 @@ function revalidate() {
   revalidatePath("/operacoes");
   revalidatePath("/ferramentas");
   revalidatePath("/contas");
+  revalidatePath("/cadastros-operacionais");
 }
 
 function clean(s?: string | null): string | null {
@@ -129,4 +130,33 @@ export async function createContact(input: ContactInput) {
   if (error || !data) return { error: error?.message ?? "Erro ao cadastrar cliente" };
   revalidate();
   return { ok: true, contact: data };
+}
+
+export async function updateContact(id: string, input: ContactInput) {
+  const supabase = createClient();
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome do cliente" };
+
+  const { error } = await supabase
+    .from("contacts")
+    .update({
+      name,
+      document: clean(input.document),
+      phone: clean(input.phone),
+    })
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Remove o cliente. Obras que apontam pra ele ficam sem cliente (contact_id vira null). */
+export async function deleteContact(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("contacts").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
 }
