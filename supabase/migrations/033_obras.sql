@@ -70,12 +70,14 @@ create index if not exists idx_tool_loans_obra_id on public.tool_loans(obra_id);
 -- ============================================================================
 create or replace view public.v_tool_status
 with (security_invoker = on) as
+-- Atenção: CREATE OR REPLACE VIEW só permite ACRESCENTAR colunas no final da
+-- lista (não inserir no meio) — por isso current_obra_id vai depois de status,
+-- preservando a ordem/nome de todas as colunas que já existiam na view.
 select
   t.*,
   ol.id                   as open_loan_id,
   ol.borrower_name        as current_borrower,
   ol.destination          as current_destination,
-  ol.obra_id              as current_obra_id,
   ol.checked_out_at       as current_checked_out_at,
   ol.expected_return_date as current_expected_return_date,
   om.id                   as open_maintenance_id,
@@ -86,7 +88,8 @@ select
     when om.id is not null then 'manutencao'
     when ol.id is not null then 'em_uso'
     else 'disponivel'
-  end as status
+  end as status,
+  ol.obra_id as current_obra_id
 from public.tools t
 left join lateral (
   select id, borrower_name, destination, obra_id, checked_out_at, expected_return_date
