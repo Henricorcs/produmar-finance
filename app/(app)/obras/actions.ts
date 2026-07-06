@@ -94,3 +94,39 @@ export async function setObraActive(id: string, active: boolean) {
   revalidate();
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENTE (cadastro rápido a partir do diálogo de obra)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ContactInput {
+  name: string;
+  document?: string | null;
+  phone?: string | null;
+}
+
+export async function createContact(input: ContactInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome do cliente" };
+
+  const { data, error } = await supabase
+    .from("contacts")
+    .insert({
+      name,
+      document: clean(input.document),
+      phone: clean(input.phone),
+      is_customer: true,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) return { error: error?.message ?? "Erro ao cadastrar cliente" };
+  revalidate();
+  return { ok: true, contact: data };
+}

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createObra, updateObra } from "@/app/(app)/obras/actions";
+import { QuickCreateContactDialog } from "./quick-create-contact-dialog";
 import { OBRA_STATUS_OPTIONS } from "./obra-shared";
 import type { Contact, ObraStatus, ObraSummary } from "@/lib/types";
 
@@ -37,6 +38,11 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
   const [plannedEndDate, setPlannedEndDate] = useState("");
   const [budget, setBudget] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [localContacts, setLocalContacts] = useState<Contact[]>(contacts);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+
+  useEffect(() => setLocalContacts(contacts), [contacts]);
 
   useEffect(() => {
     if (!open) return;
@@ -80,7 +86,17 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
     });
   }
 
+  function handleContactCreated(contact: Contact) {
+    setLocalContacts((prev) =>
+      [...prev.filter((c) => c.id !== contact.id), contact].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+    );
+    setContactId(contact.id);
+  }
+
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
@@ -105,7 +121,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
           <div className="space-y-1.5">
             <Label>Cliente</Label>
             <SearchableSelect
-              items={contacts}
+              items={localContacts}
               value={contactId}
               onChange={setContactId}
               getId={(c) => c.id}
@@ -113,6 +129,8 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
               placeholder="Selecione um cliente (opcional)..."
               searchPlaceholder="Buscar cliente..."
               emptyMessage="Nenhum cliente cadastrado"
+              onCreateNew={() => setContactDialogOpen(true)}
+              createNewLabel="Cadastrar cliente"
             />
           </div>
 
@@ -210,5 +228,11 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
         </form>
       </DialogContent>
     </Dialog>
+    <QuickCreateContactDialog
+      open={contactDialogOpen}
+      onClose={() => setContactDialogOpen(false)}
+      onCreated={handleContactCreated}
+    />
+    </>
   );
 }
