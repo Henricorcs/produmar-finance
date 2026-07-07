@@ -459,11 +459,8 @@ export function ServiceOrderDialog({
       if (useHourBasedPricing) {
         const isInterno = freightType === "interno";
         const rate = parseBRLToNumber(hourlyRate);
-        // Valor da hora é obrigatório para cliente; opcional no consumo interno.
-        if (!isInterno && rate <= 0) {
-          setError("Informe o valor da hora");
-          return;
-        }
+        // Valor da hora é opcional — pode ser preenchido depois, antes do
+        // técnico fechar a OS (o horímetro/hora só é calculado no fechamento).
         if (hoursWorked > 0) {
           // OS já com horímetro inicial E final (ex.: edição de OS já fechada)
           // → item calculado direto.
@@ -1371,17 +1368,19 @@ export function ServiceOrderDialog({
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <Label className="text-[10px] text-slate-500">Horímetro inicial</Label>
-                          <Input
-                            value={hourmeterStart}
-                            onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
-                            placeholder="0,0"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            className="h-9 text-sm tabular-nums"
-                          />
-                        </div>
+                        {(!isClient || order?.hourmeter_end != null) && (
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-slate-500">Horímetro inicial</Label>
+                            <Input
+                              value={hourmeterStart}
+                              onChange={(e) => setHourmeterStart(formatHourmeter(e.target.value))}
+                              placeholder="0,0"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              className="h-9 text-sm tabular-nums"
+                            />
+                          </div>
+                        )}
                         {order?.hourmeter_end != null ? (
                           <div className="space-y-1">
                             <Label className="text-[10px] text-slate-500">Horímetro final</Label>
@@ -1395,10 +1394,11 @@ export function ServiceOrderDialog({
                             />
                           </div>
                         ) : (
-                          <div className="flex items-end pb-1">
+                          <div className={`flex items-end pb-1 ${isClient ? "col-span-2" : ""}`}>
                             <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight">
-                              Horímetro final será preenchido pelo técnico ao fechar a OS.
-                              Se deixar o inicial em branco, o técnico informa os dois.
+                              {isClient
+                                ? "Horímetro inicial e final serão preenchidos pelo técnico ao fechar a OS."
+                                : "Horímetro final será preenchido pelo técnico ao fechar a OS. Se deixar o inicial em branco, o técnico informa os dois."}
                             </p>
                           </div>
                         )}
@@ -1424,7 +1424,7 @@ export function ServiceOrderDialog({
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold text-produmar-700 dark:text-produmar-400 flex items-center gap-1.5">
                           <DollarSign className="w-3.5 h-3.5" />
-                          Valor por hora *
+                          Valor por hora
                         </Label>
                       </div>
                       <div className="relative">
@@ -1432,10 +1432,10 @@ export function ServiceOrderDialog({
                         <Input
                           value={hourlyRate}
                           onChange={(e) => setHourlyRate(formatBRLInput(e.target.value))}
-                          placeholder="0,00"
+                          placeholder="opcional, pode informar depois"
                           inputMode="decimal"
                           autoComplete="off"
-                          className="pl-9 tabular-nums"
+                          className="pl-9 tabular-nums placeholder:text-xs"
                         />
                       </div>
                     </>
