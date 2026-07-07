@@ -8,7 +8,7 @@ import { formatBRL } from "@/lib/utils";
 import { ObraDialog } from "./obra-dialog";
 import { ObraDetailDialog } from "./obra-detail-dialog";
 import { OBRA_STATUS_META } from "./obra-shared";
-import type { Contact, ObraStatus, ObraSummary } from "@/lib/types";
+import type { Contact, ObraItem, ObraStatus, ObraSummary } from "@/lib/types";
 
 export type ObraTransactionRow = {
   id: string;
@@ -43,6 +43,7 @@ export type ObraToolLoanRow = {
 interface Props {
   obras: ObraSummary[];
   contacts: Contact[];
+  items: ObraItem[];
   transactions: ObraTransactionRow[];
   serviceOrders: ObraServiceOrderRow[];
   toolLoans: ObraToolLoanRow[];
@@ -53,6 +54,7 @@ type StatusFilter = "todas" | ObraStatus;
 export function ObrasPageClient({
   obras,
   contacts,
+  items,
   transactions,
   serviceOrders,
   toolLoans,
@@ -73,6 +75,10 @@ export function ObrasPageClient({
   const detailObra = useMemo(
     () => (detailObraId ? obras.find((o) => o.id === detailObraId) ?? null : null),
     [detailObraId, obras]
+  );
+  const detailItems = useMemo(
+    () => (detailObraId ? items.filter((i) => i.obra_id === detailObraId) : []),
+    [detailObraId, items]
   );
   const detailTransactions = useMemo(
     () => (detailObraId ? transactions.filter((t) => t.obra_id === detailObraId) : []),
@@ -250,6 +256,7 @@ export function ObrasPageClient({
         clientName={
           detailObra?.contact_id ? contactsById.get(detailObra.contact_id)?.name ?? null : null
         }
+        items={detailItems}
         transactions={detailTransactions}
         serviceOrders={detailServiceOrders}
         toolLoans={detailToolLoans}
@@ -312,6 +319,11 @@ function ObraCard({
           {formatBRL(Number(obra.total_cost))}
         </span>
       </div>
+      {Number(obra.total_savings) > 0 && (
+        <div className="mt-1 flex items-center justify-end text-[11px] text-emerald-600 dark:text-emerald-400">
+          economia de {formatBRL(Number(obra.total_savings))}
+        </div>
+      )}
     </div>
   );
 }

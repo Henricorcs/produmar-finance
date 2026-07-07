@@ -226,7 +226,37 @@ export interface ObraSummary extends Obra {
   total_cost: number;
   os_count: number;
   tools_in_use: number;
+  total_savings: number;
 }
+
+/** Linha de material/mão de obra lançada na obra (lista estilo planilha). */
+export interface ObraItem {
+  id: string;
+  obra_id: string;
+  item_date: string;
+  product: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  market_unit_price: number | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const OBRA_ITEM_UNITS = [
+  "UNIDADE",
+  "PÇ",
+  "KG",
+  "M",
+  "M²",
+  "M³",
+  "SC",
+  "L",
+  "DIÁRIA",
+  "PACOTE",
+] as const;
 
 export interface ServiceOrder {
   id: string;

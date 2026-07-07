@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ObrasPageClient } from "@/components/obras/obras-page-client";
-import type { Contact, ObraSummary } from "@/lib/types";
+import type { Contact, ObraItem, ObraSummary } from "@/lib/types";
 import type {
   ObraTransactionRow,
   ObraServiceOrderRow,
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function ObrasPage() {
   const supabase = createClient();
 
-  const [obrasRes, contactsRes, transactionsRes, serviceOrdersRes, toolLoansRes] =
+  const [obrasRes, contactsRes, itemsRes, transactionsRes, serviceOrdersRes, toolLoansRes] =
     await Promise.all([
       supabase
         .from("v_obra_summary")
@@ -23,6 +23,11 @@ export default async function ObrasPage() {
         .select("*")
         .eq("is_customer", true)
         .order("name"),
+      supabase
+        .from("obra_items")
+        .select("*")
+        .order("item_date", { ascending: false })
+        .limit(2000),
       supabase
         .from("transactions")
         .select("id, type, description, amount, due_date, status, obra_id")
@@ -47,6 +52,7 @@ export default async function ObrasPage() {
     <ObrasPageClient
       obras={(obrasRes.data as ObraSummary[]) ?? []}
       contacts={(contactsRes.data as Contact[]) ?? []}
+      items={(itemsRes.data as ObraItem[]) ?? []}
       transactions={(transactionsRes.data as ObraTransactionRow[]) ?? []}
       serviceOrders={(serviceOrdersRes.data as ObraServiceOrderRow[]) ?? []}
       toolLoans={(toolLoansRes.data as unknown as ObraToolLoanRow[]) ?? []}

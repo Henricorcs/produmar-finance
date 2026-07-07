@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import {
   Pencil,
   Archive,
@@ -10,6 +10,10 @@ import {
   Wrench,
   MapPin,
   Calendar,
+  Package,
+  Plus,
+  Trash2,
+  TrendingDown,
 } from "lucide-react";
 import {
   Dialog,
@@ -19,14 +23,19 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatBRL, formatDate } from "@/lib/utils";
-import { setObraActive } from "@/app/(app)/obras/actions";
+import { setObraActive, deleteObraItem } from "@/app/(app)/obras/actions";
 import { OBRA_STATUS_META } from "./obra-shared";
-import type { ObraSummary } from "@/lib/types";
+import { ObraItemDialog } from "./obra-item-dialog";
+import type { ObraItem, ObraSummary } from "@/lib/types";
 import type {
   ObraServiceOrderRow,
   ObraToolLoanRow,
   ObraTransactionRow,
 } from "./obras-page-client";
+
+function formatQtyDisplay(q: number): string {
+  return q.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+}
 
 const OS_TYPE_LABELS: Record<string, string> = {
   entrega_material: "Entrega de material",
@@ -47,6 +56,7 @@ interface Props {
   onClose: () => void;
   obra: ObraSummary | null;
   clientName: string | null;
+  items: ObraItem[];
   transactions: ObraTransactionRow[];
   serviceOrders: ObraServiceOrderRow[];
   toolLoans: ObraToolLoanRow[];
@@ -58,12 +68,15 @@ export function ObraDetailDialog({
   onClose,
   obra,
   clientName,
+  items,
   transactions,
   serviceOrders,
   toolLoans,
   onEdit,
 }: Props) {
   const [isPending, startTransition] = useTransition();
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<ObraItem | null>(null);
 
   if (!obra) return null;
 
@@ -81,7 +94,15 @@ export function ObraDetailDialog({
     });
   }
 
+  function handleDeleteItem(item: ObraItem) {
+    if (!confirm(`Remover "${item.product}" da lista?`)) return;
+    startTransition(async () => {
+      await deleteObraItem(item.id);
+    });
+  }
+
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
@@ -121,15 +142,110 @@ export function ObraDetailDialog({
             {obra.notes && <InfoRow label="Obs." value={obra.notes} />}
           </div>
 
-          {/* Custo total */}
-          <div className="rounded-xl border border-produmar-100 dark:border-slate-700 bg-produmar-50/40 dark:bg-slate-800/40 p-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-              <Wallet className="w-4 h-4 text-produmar-600 dark:text-produmar-400" />
-              Custo total
+          {/* Custo total + economia */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl border border-produmar-100 dark:border-slate-700 bg-produmar-50/40 dark:bg-slate-800/40 p-3">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <Wallet className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
+                Custo total
+              </div>
+              <span className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                {formatBRL(Number(obra.total_cost))}
+              </span>
             </div>
-            <span className="text-lg font-bold text-slate-800 dark:text-slate-100">
-              {formatBRL(Number(obra.total_cost))}
-            </span>
+            <div className="rounded-xl border border-emerald-100 dark:border-slate-700 bg-emerald-50/40 dark:bg-slate-800/40 p-3">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <TrendingDown className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                Economia
+              </div>
+              <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                {formatBRL(Number(obra.total_savings))}
+              </span>
+            </div>
+          </div>
+
+          {/* Lista de materiais / mão de obra */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                <Package className="w-3.5 h-3.5" />
+                Materiais e mão de obra ({items.length})
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditItem(null);
+                  setItemDialogOpen(true);
+                }}
+                className="flex items-center gap-1 text-xs font-medium text-produmar-600 hover:text-produmar-700 dark:text-produmar-400"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Lançar item
+              </button>
+            </div>
+            {items.length === 0 ? (
+              <p className="text-sm text-slate-400 dark:text-slate-500 py-1">
+                Nenhum item lançado ainda.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {items.map((it) => {
+                  const total = Number(it.quantity) * Number(it.unit_price);
+                  const savings =
+                    it.market_unit_price != null
+                      ? Number(it.quantity) * (Number(it.market_unit_price) - Number(it.unit_price))
+                      : null;
+                  return (
+                    <div
+                      key={it.id}
+                      className="flex items-start justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-slate-800 dark:text-slate-100 truncate">
+                          {it.product}
+                        </p>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {formatDate(it.item_date)} · {formatQtyDisplay(Number(it.quantity))} {it.unit} ×{" "}
+                          {formatBRL(Number(it.unit_price))}
+                        </p>
+                        {savings != null && (
+                          <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                            Economia {formatBRL(savings)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">
+                          {formatBRL(total)}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditItem(it);
+                              setItemDialogOpen(true);
+                            }}
+                            className="text-slate-400 hover:text-produmar-600 dark:hover:text-produmar-400"
+                            title="Editar"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteItem(it)}
+                            disabled={isPending}
+                            className="text-slate-400 hover:text-red-500"
+                            title="Remover"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* OS vinculadas */}
@@ -285,6 +401,14 @@ export function ObraDetailDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    <ObraItemDialog
+      open={itemDialogOpen}
+      onClose={() => setItemDialogOpen(false)}
+      obraId={obra.id}
+      item={editItem}
+    />
+    </>
   );
 }
 

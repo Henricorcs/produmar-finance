@@ -97,6 +97,81 @@ export async function setObraActive(id: string, active: boolean) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ITENS DA OBRA (materiais / mão de obra — lista estilo planilha)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ObraItemInput {
+  item_date: string;
+  product: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  market_unit_price?: number | null;
+  notes?: string | null;
+}
+
+export async function createObraItem(obraId: string, input: ObraItemInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const product = clean(input.product);
+  if (!product) return { error: "Informe o produto/descrição" };
+  if (!input.quantity || input.quantity <= 0) return { error: "Informe a quantidade" };
+
+  const { error } = await supabase.from("obra_items").insert({
+    obra_id: obraId,
+    item_date: input.item_date || new Date().toISOString().split("T")[0],
+    product,
+    quantity: input.quantity,
+    unit: clean(input.unit) ?? "UNIDADE",
+    unit_price: input.unit_price ?? 0,
+    market_unit_price: input.market_unit_price ?? null,
+    notes: clean(input.notes),
+    created_by: user.id,
+  });
+
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+export async function updateObraItem(id: string, input: ObraItemInput) {
+  const supabase = createClient();
+
+  const product = clean(input.product);
+  if (!product) return { error: "Informe o produto/descrição" };
+  if (!input.quantity || input.quantity <= 0) return { error: "Informe a quantidade" };
+
+  const { error } = await supabase
+    .from("obra_items")
+    .update({
+      item_date: input.item_date || new Date().toISOString().split("T")[0],
+      product,
+      quantity: input.quantity,
+      unit: clean(input.unit) ?? "UNIDADE",
+      unit_price: input.unit_price ?? 0,
+      market_unit_price: input.market_unit_price ?? null,
+      notes: clean(input.notes),
+    })
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+export async function deleteObraItem(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("obra_items").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CLIENTE (cadastro rápido a partir do diálogo de obra)
 // ─────────────────────────────────────────────────────────────────────────────
 
