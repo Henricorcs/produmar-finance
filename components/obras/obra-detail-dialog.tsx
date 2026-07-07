@@ -166,23 +166,21 @@ export function ObraDetailDialog({
 
           {/* Lista de materiais / mão de obra */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5" />
-                Materiais e mão de obra ({items.length})
-              </h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditItem(null);
-                  setItemDialogOpen(true);
-                }}
-                className="flex items-center gap-1 text-xs font-medium text-produmar-600 hover:text-produmar-700 dark:text-produmar-400"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Lançar item
-              </button>
-            </div>
+            <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1.5 mb-2">
+              <Package className="w-3.5 h-3.5" />
+              Materiais e mão de obra ({items.length})
+            </h3>
+            <Button
+              type="button"
+              onClick={() => {
+                setEditItem(null);
+                setItemDialogOpen(true);
+              }}
+              className="w-full mb-2"
+            >
+              <Plus className="w-4 h-4" />
+              Lançar item
+            </Button>
             {items.length === 0 ? (
               <p className="text-sm text-slate-400 dark:text-slate-500 py-1">
                 Nenhum item lançado ainda.
