@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 //   back() de limpeza (não devem fechar o diálogo de baixo).
 const dialogStack: Array<() => void> = [];
 let suppressPopstate = 0;
+let dialogIdCounter = 0;
 
 /**
  * Wrapper sobre Radix Dialog.Root que integra com o histórico do navegador:
@@ -49,7 +50,11 @@ const Dialog = ({
     // objeto cru, o router perde a referência da rota e, quando um Server
     // Action chama revalidatePath, o refresh joga o usuário de volta para a
     // rota inicial (/ → /dashboard).
-    window.history.pushState({ ...window.history.state, __dialog: true }, "");
+    const dialogId = ++dialogIdCounter;
+    window.history.pushState(
+      { ...window.history.state, __dialog: true, __dialogId: dialogId },
+      ""
+    );
     let closedByPop = false;
 
     const close = () => {
@@ -75,16 +80,30 @@ const Dialog = ({
       window.removeEventListener("popstate", handlePopState);
       const idx = dialogStack.lastIndexOf(close);
       if (idx !== -1) dialogStack.splice(idx, 1);
-      // Se fechou por outro caminho (X, overlay, ESC, programático),
-      // remove a entrada de histórico que adicionamos — mas só se ela ainda
-      // for o topo da pilha. Sem essa checagem, um back() poderia pular para
-      // antes da página e levar o usuário para fora da rota atual.
-      if (!closedByPop && window.history.state?.__dialog) {
+      if (closedByPop) return;
+
+      // Se fechou por outro caminho (X, overlay, ESC, programático), remove
+      // a entrada de histórico que adicionamos. Adia pro próximo microtask
+      // (em vez de rodar na hora) porque, quando este diálogo fecha e outro
+      // abre na MESMA ação (ex.: "Editar" fechando o detalhe e abrindo o
+      // formulário), o effect do diálogo novo roda logo em seguida, ainda
+      // síncrono — o React resolve todos os cleanups antes de rodar os
+      // effects novos da mesma leva. Se checássemos aqui (síncrono), ainda
+      // veríamos NOSSA própria entrada como topo (o novo diálogo ainda não
+      // empilhou) e chamaríamos back() mesmo assim — o popstate assíncrono
+      // resultante chegaria DEPOIS do novo diálogo já ter empilhado, e como
+      // nosso próprio listener já foi removido, quem escuta é o listener do
+      // diálogo novo: ele veria a pilha com só ele mesmo no topo e se
+      // fecharia sozinho, por engano. Adiando a checagem pro microtask,
+      // damos tempo do effect do diálogo novo (se houver) já ter empilhado
+      // sua própria entrada — só chamamos back() se AINDA formos o topo.
+      queueMicrotask(() => {
+        if (window.history.state?.__dialogId !== dialogId) return;
         // Ainda há diálogo(s) abaixo: o popstate do nosso back() seria
         // capturado por eles — suprime para que não fechem junto.
         if (dialogStack.length > 0) suppressPopstate++;
         window.history.back();
-      }
+      });
     };
   }, [open]);
 
