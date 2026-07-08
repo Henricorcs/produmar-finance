@@ -487,7 +487,7 @@ export function OperadorClient({
         />
       )}
 
-      {/* Pausar serviço (prestação de serviço interno) */}
+      {/* Pausar serviço */}
       {pauseTarget && (
         <PauseDialog
           order={pauseTarget}
@@ -578,11 +578,9 @@ function OSCard({
   const isFrete    = o.type === "frete";
   // Serviço rápido: tarefa/errand de funcionário (ex.: comprar diesel).
   const isQuick    = o.type === "servico_rapido";
-  // Pausa/retomada — prestação de serviço interno (serviço que pode durar vários
-  // dias) e serviço rápido (a tarefa pode ficar pendente). Pausa em aberto (sem
-  // retomada) = serviço pausado.
-  const isServiceInterno = o.type === "prestacao_servico" && o.freight_type === "interno";
-  const isPausable = isServiceInterno || isQuick;
+  // Pausa/retomada disponível para todos os tipos de serviço. Pausa em
+  // aberto (sem retomada) = serviço pausado.
+  const isPausable = true;
   // Encaminhar (passar a OS para outro operador) — disponível no serviço rápido.
   const canForwardThis = isQuick && o.status !== "entregue" && o.status !== "cancelado";
   const forwards = (o.service_order_forwards ?? [])
@@ -910,7 +908,7 @@ function OSCard({
         </div>
       )}
 
-      {/* Diário de trabalho (serviço interno em andamento): pausas e retomadas
+      {/* Diário de trabalho (serviço em andamento): pausas e retomadas
           já registradas, com leitura e observação do dia. */}
       {showWorkLog && (
         <div
@@ -981,8 +979,7 @@ function OSCard({
         </div>
       )}
 
-      {/* Pausar / continuar — prestação de serviço interno e serviço rápido em
-          andamento. */}
+      {/* Pausar / continuar — disponível para qualquer serviço em andamento. */}
       {isPausable && o.status === "em_andamento" && (
         openPause ? (
           <Button

@@ -40,7 +40,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onFinalized: (orderId: string) => void;
-  /** Serviço rápido: "ainda não terminei" abre a pausa em vez de finalizar. */
+  /** "Ainda não terminei" abre a pausa em vez de finalizar (todos os serviços). */
   onPauseInstead?: (order: OrderDetails) => void;
 }
 
@@ -795,8 +795,8 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
               </p>
             )}
 
-            {/* Serviço rápido: se ainda não terminou, pausa em vez de finalizar. */}
-            {isQuick && onPauseInstead && (
+            {/* Se ainda não terminou, pausa em vez de finalizar (todos os serviços). */}
+            {onPauseInstead && (
               <Button
                 type="button"
                 variant="outline"
