@@ -24,7 +24,22 @@ export interface ToolInput {
   name: string;
   code?: string | null;
   condition?: ToolCondition | null;
+  quantity?: number | null;
+  unit?: string | null;
+  unit_value?: number | null;
+  replacement_value?: number | null;
   notes?: string | null;
+}
+
+function normQuantity(v?: number | null): number {
+  return Math.max(1, Math.floor(v ?? 1));
+}
+function normMoney(v?: number | null): number {
+  return Math.max(0, v ?? 0);
+}
+function normUnit(v?: string | null): string {
+  const u = v?.trim();
+  return u ? u : "unidade";
 }
 
 export async function createTool(input: ToolInput) {
@@ -35,7 +50,7 @@ export async function createTool(input: ToolInput) {
   if (!user) return { error: "Não autenticado" };
 
   const name = clean(input.name);
-  if (!name) return { error: "Informe o nome da ferramenta" };
+  if (!name) return { error: "Informe o nome do patrimônio" };
 
   const { data, error } = await supabase
     .from("tools")
@@ -43,6 +58,10 @@ export async function createTool(input: ToolInput) {
       name,
       code: clean(input.code),
       condition: input.condition ?? "bom",
+      quantity: normQuantity(input.quantity),
+      unit: normUnit(input.unit),
+      unit_value: normMoney(input.unit_value),
+      replacement_value: normMoney(input.replacement_value),
       notes: clean(input.notes),
       created_by: user.id,
     })
@@ -58,7 +77,7 @@ export async function updateTool(id: string, input: ToolInput) {
   const supabase = createClient();
 
   const name = clean(input.name);
-  if (!name) return { error: "Informe o nome da ferramenta" };
+  if (!name) return { error: "Informe o nome do patrimônio" };
 
   const { error } = await supabase
     .from("tools")
@@ -66,6 +85,10 @@ export async function updateTool(id: string, input: ToolInput) {
       name,
       code: clean(input.code),
       condition: input.condition ?? "bom",
+      quantity: normQuantity(input.quantity),
+      unit: normUnit(input.unit),
+      unit_value: normMoney(input.unit_value),
+      replacement_value: normMoney(input.replacement_value),
       notes: clean(input.notes),
     })
     .eq("id", id);
@@ -75,16 +98,7 @@ export async function updateTool(id: string, input: ToolInput) {
   return { ok: true };
 }
 
-/** Baixa (desativa) ou reativa uma ferramenta — histórico permanece. */
-export async function setToolActive(id: string, active: boolean) {
-  const supabase = createClient();
-  const { error } = await supabase.from("tools").update({ active }).eq("id", id);
-  if (error) return { error: error.message };
-  revalidate();
-  return { ok: true };
-}
-
-/** Exclui a ferramenta e todo o histórico (retiradas e manutenções, por cascade). */
+/** Exclui o patrimônio e todo o histórico (retiradas, manutenções e inutilizações, por cascade). */
 export async function deleteTool(id: string) {
   const supabase = createClient();
 
@@ -166,6 +180,7 @@ export async function getToolPhotoUrl(storagePath: string) {
 
 export async function checkoutTool(input: {
   tool_id: string;
+  quantity?: number | null;
   borrower_name: string;
   destination?: string | null;
   obra_id?: string | null;
@@ -180,24 +195,27 @@ export async function checkoutTool(input: {
   if (!user) return { error: "Não autenticado" };
 
   const borrower = clean(input.borrower_name);
-  if (!input.tool_id) return { error: "Selecione a ferramenta" };
+  if (!input.tool_id) return { error: "Selecione o patrimônio" };
   if (!borrower) return { error: "Informe quem está retirando" };
 
-  // a ferramenta precisa estar disponível
+  const qty = normQuantity(input.quantity);
+
+  // precisa haver saldo disponível
   const { data: t } = await supabase
     .from("v_tool_status")
-    .select("status, name")
+    .select("available_qty, open_maintenance_id, name")
     .eq("id", input.tool_id)
     .maybeSingle();
-  if (!t) return { error: "Ferramenta não encontrada" };
-  if (t.status === "em_uso") return { error: "Esta ferramenta já está em uso" };
-  if (t.status === "manutencao") return { error: "Esta ferramenta está em manutenção" };
-  if (t.status === "baixada") return { error: "Esta ferramenta está baixada" };
+  if (!t) return { error: "Patrimônio não encontrado" };
+  if (t.open_maintenance_id) return { error: "Este item está em manutenção" };
+  if (qty > (t.available_qty ?? 0))
+    return { error: `Saldo insuficiente (disponível: ${t.available_qty ?? 0})` };
 
   const { data, error } = await supabase
     .from("tool_loans")
     .insert({
       tool_id: input.tool_id,
+      quantity: qty,
       borrower_name: borrower,
       destination: clean(input.destination),
       obra_id: input.obra_id || null,
@@ -304,20 +322,20 @@ export async function openMaintenance(input: {
   if (!user) return { error: "Não autenticado" };
 
   const description = clean(input.description);
-  if (!input.tool_id) return { error: "Selecione a ferramenta" };
+  if (!input.tool_id) return { error: "Selecione o patrimônio" };
   if (!description) return { error: "Descreva a manutenção" };
 
+  // manutenção é do item inteiro — não pode haver nada em uso nem outra aberta
   const { data: t } = await supabase
     .from("v_tool_status")
-    .select("status")
+    .select("status, in_use_qty")
     .eq("id", input.tool_id)
     .maybeSingle();
-  if (!t) return { error: "Ferramenta não encontrada" };
-  if (t.status === "em_uso")
-    return { error: "Devolva a ferramenta antes de enviar para manutenção" };
+  if (!t) return { error: "Patrimônio não encontrado" };
+  if ((t.in_use_qty ?? 0) > 0)
+    return { error: "Devolva as retiradas em aberto antes de enviar para manutenção" };
   if (t.status === "manutencao")
-    return { error: "Esta ferramenta já está em manutenção" };
-  if (t.status === "baixada") return { error: "Esta ferramenta está baixada" };
+    return { error: "Este item já está em manutenção" };
 
   const { error } = await supabase.from("tool_maintenance").insert({
     tool_id: input.tool_id,
@@ -372,6 +390,97 @@ export async function finishMaintenance(input: {
       .eq("id", m.tool_id);
   }
 
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INUTILIZAÇÃO (perda definitiva)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Inutiliza N unidades (perda/sucata). Valida o saldo disponível. */
+export async function writeOffTool(input: {
+  tool_id: string;
+  quantity?: number | null;
+  reason?: string | null;
+}) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.tool_id) return { error: "Selecione o patrimônio" };
+  const qty = normQuantity(input.quantity);
+
+  const { data: t } = await supabase
+    .from("v_tool_status")
+    .select("available_qty")
+    .eq("id", input.tool_id)
+    .maybeSingle();
+  if (!t) return { error: "Patrimônio não encontrado" };
+  if (qty > (t.available_qty ?? 0))
+    return { error: `Saldo insuficiente (disponível: ${t.available_qty ?? 0})` };
+
+  const { error } = await supabase.from("tool_writeoffs").insert({
+    tool_id: input.tool_id,
+    quantity: qty,
+    reason: clean(input.reason),
+    created_by: user.id,
+  });
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Desfaz uma inutilização — repõe o saldo. */
+export async function undoWriteoff(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("tool_writeoffs").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TIPOS DE UNIDADE (cadastro editável)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function normUnitName(v: string): string {
+  return v.trim().toLowerCase();
+}
+
+function unitError(error: { code?: string; message: string }): string {
+  if (error.code === "23505") return "Essa unidade já existe";
+  return error.message;
+}
+
+export async function createToolUnit(name: string) {
+  const supabase = createClient();
+  const n = normUnitName(name);
+  if (!n) return { error: "Informe o nome da unidade" };
+
+  const { error } = await supabase.from("tool_units").insert({ name: n });
+  if (error) return { error: unitError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function renameToolUnit(id: string, name: string) {
+  const supabase = createClient();
+  const n = normUnitName(name);
+  if (!n) return { error: "Informe o nome da unidade" };
+
+  const { error } = await supabase.from("tool_units").update({ name: n }).eq("id", id);
+  if (error) return { error: unitError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function deleteToolUnit(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("tool_units").delete().eq("id", id);
+  if (error) return { error: error.message };
   revalidate();
   return { ok: true };
 }

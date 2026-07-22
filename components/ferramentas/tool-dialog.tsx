@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Camera, X } from "lucide-react";
+import { Camera, X, Settings2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,25 +14,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createTool, updateTool, uploadToolPhoto } from "@/app/(app)/ferramentas/actions";
-import { ConditionPicker } from "./tool-shared";
-import type { Tool, ToolCondition } from "@/lib/types";
+import { ConditionPicker, parseMoney, formatMoneyInput } from "./tool-shared";
+import { ToolUnitsDialog } from "./tool-units-dialog";
+import type { Tool, ToolCondition, ToolUnit } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Ferramenta em edição — null cria uma nova. */
+  /** Patrimônio em edição — null cria um novo. */
   tool: Tool | null;
+  /** Tipos de unidade cadastrados. */
+  units: ToolUnit[];
 }
 
-export function ToolDialog({ open, onClose, tool }: Props) {
+export function ToolDialog({ open, onClose, tool, units }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [condition, setCondition] = useState<ToolCondition>("bom");
+  const [quantity, setQuantity] = useState("1");
+  const [unit, setUnit] = useState("unidade");
+  const [unitValue, setUnitValue] = useState("");
+  const [replacementValue, setReplacementValue] = useState("");
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
+  const [unitsOpen, setUnitsOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -40,6 +48,16 @@ export function ToolDialog({ open, onClose, tool }: Props) {
     setName(tool?.name ?? "");
     setCode(tool?.code ?? "");
     setCondition(tool?.condition ?? "bom");
+    setQuantity(tool ? String(tool.quantity) : "1");
+    setUnit(tool?.unit ?? "unidade");
+    setUnitValue(
+      tool && tool.unit_value ? tool.unit_value.toFixed(2).replace(".", ",") : ""
+    );
+    setReplacementValue(
+      tool && tool.replacement_value
+        ? tool.replacement_value.toFixed(2).replace(".", ",")
+        : ""
+    );
     setNotes(tool?.notes ?? "");
     setPhoto(null);
     setError(null);
@@ -50,12 +68,22 @@ export function ToolDialog({ open, onClose, tool }: Props) {
     setError(null);
 
     if (!name.trim()) {
-      setError("Informe o nome da ferramenta");
+      setError("Informe o nome do patrimônio");
       return;
     }
+    const qty = Math.max(1, Math.floor(Number(quantity) || 1));
 
     startTransition(async () => {
-      const input = { name, code, condition, notes };
+      const input = {
+        name,
+        code,
+        condition,
+        quantity: qty,
+        unit,
+        unit_value: parseMoney(unitValue),
+        replacement_value: parseMoney(replacementValue),
+        notes,
+      };
       const r = tool ? await updateTool(tool.id, input) : await createTool(input);
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao salvar");
@@ -69,7 +97,7 @@ export function ToolDialog({ open, onClose, tool }: Props) {
         fd.append("file", photo);
         const up = await uploadToolPhoto(toolId, fd);
         if (up && "error" in up) {
-          setError(`Ferramenta salva, mas a foto falhou: ${up.error}`);
+          setError(`Patrimônio salvo, mas a foto falhou: ${up.error}`);
           return;
         }
       }
@@ -82,7 +110,7 @@ export function ToolDialog({ open, onClose, tool }: Props) {
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="dark:text-slate-100">
-            {tool ? "Editar ferramenta" : "Nova ferramenta"}
+            {tool ? "Editar patrimônio" : "Novo patrimônio"}
           </DialogTitle>
         </DialogHeader>
 
@@ -109,6 +137,81 @@ export function ToolDialog({ open, onClose, tool }: Props) {
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
             />
+          </div>
+
+          {/* Quantidade + unidade */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="tool_quantity">Quantidade *</Label>
+              <Input
+                id="tool_quantity"
+                type="number"
+                min={1}
+                step={1}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className="tabular-nums"
+                inputMode="numeric"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="tool_unit">Unidade</Label>
+                <button
+                  type="button"
+                  onClick={() => setUnitsOpen(true)}
+                  className="flex items-center gap-1 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
+                >
+                  <Settings2 className="w-3 h-3" />
+                  Gerenciar
+                </button>
+              </div>
+              <select
+                id="tool_unit"
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="w-full h-10 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-slate-800 dark:text-slate-100"
+              >
+                {/* unidade atual pode não estar mais no cadastro (foi removida) */}
+                {!units.some((u) => u.name === unit) && (
+                  <option value={unit}>{unit}</option>
+                )}
+                {units.map((u) => (
+                  <option key={u.id} value={u.name}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Valores */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="tool_unit_value">Valor unitário (R$)</Label>
+              <Input
+                id="tool_unit_value"
+                value={unitValue}
+                onChange={(e) => setUnitValue(formatMoneyInput(e.target.value))}
+                placeholder="0,00"
+                inputMode="decimal"
+                autoComplete="off"
+                className="tabular-nums"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tool_replacement_value">Valor de reposição (R$)</Label>
+              <Input
+                id="tool_replacement_value"
+                value={replacementValue}
+                onChange={(e) => setReplacementValue(formatMoneyInput(e.target.value))}
+                placeholder="0,00"
+                inputMode="decimal"
+                autoComplete="off"
+                className="tabular-nums"
+              />
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -182,6 +285,8 @@ export function ToolDialog({ open, onClose, tool }: Props) {
             </Button>
           </DialogFooter>
         </form>
+
+        <ToolUnitsDialog open={unitsOpen} onClose={() => setUnitsOpen(false)} units={units} />
       </DialogContent>
     </Dialog>
   );

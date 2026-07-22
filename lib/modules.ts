@@ -70,13 +70,13 @@ export const APP_MODULES: AppModule[] = [
   },
   {
     slug: "ferramentas",
-    name: "Ferramentas",
-    description: "Cadastro, retiradas e manutenção de ferramentas",
+    name: "Patrimônio",
+    description: "Controle de patrimônio: saldo, valor e inutilizações",
     href: "/ferramentas",
     icon: Wrench,
     accentIcon:
       "bg-amber-50 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400",
-    tabs: [{ href: "/ferramentas", label: "Ferramentas", short: "Ferram.", icon: Wrench }],
+    tabs: [{ href: "/ferramentas", label: "Patrimônio", short: "Patrim.", icon: Wrench }],
   },
   {
     slug: "obras",

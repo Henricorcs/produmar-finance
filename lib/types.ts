@@ -563,6 +563,14 @@ export interface Tool {
   condition: ToolCondition;
   photo_path: string | null;
   active: boolean;
+  /** Saldo total de unidades deste item. */
+  quantity: number;
+  /** Tipo de unidade (unidade, peça, jogo, par...). Texto livre. */
+  unit: string;
+  /** Valor unitário do item. */
+  unit_value: number;
+  /** Valor de reposição — quanto custa repor uma unidade perdida/inutilizada. */
+  replacement_value: number;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -572,6 +580,8 @@ export interface Tool {
 export interface ToolLoan {
   id: string;
   tool_id: string;
+  /** Quantidade retirada nesta baixa. */
+  quantity: number;
   borrower_name: string;
   destination: string | null;
   /** Obra vinculada (opcional) — aparece junto do destino. */
@@ -600,7 +610,24 @@ export interface ToolMaintenance {
   created_at: string;
 }
 
-/** Linha da view v_tool_status (ferramenta + status derivado). */
+/** Inutilização (perda definitiva) de N unidades de um patrimônio. */
+export interface ToolWriteoff {
+  id: string;
+  tool_id: string;
+  quantity: number;
+  reason: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Tipo de unidade editável (unidade, peça, jogo, par...). */
+export interface ToolUnit {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+/** Linha da view v_tool_status (patrimônio + status e saldos derivados). */
 export interface ToolWithStatus extends Tool {
   status: ToolStatus;
   open_loan_id: string | null;
@@ -612,4 +639,10 @@ export interface ToolWithStatus extends Tool {
   open_maintenance_id: string | null;
   open_maintenance_description: string | null;
   open_maintenance_started_at: string | null;
+  /** Soma das retiradas em aberto. */
+  in_use_qty: number;
+  /** Soma das inutilizações. */
+  written_off_qty: number;
+  /** Saldo disponível = quantity - in_use_qty - written_off_qty (>= 0). */
+  available_qty: number;
 }

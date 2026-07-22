@@ -64,7 +64,7 @@ export function ReturnDialog({ open, onClose, target }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">Devolução de ferramenta</DialogTitle>
+          <DialogTitle className="dark:text-slate-100">Devolução</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -66,7 +66,7 @@ export function OpenMaintenanceDialog({ open, onClose, availableTools, presetToo
     setError(null);
 
     if (!toolId) {
-      setError("Selecione a ferramenta");
+      setError("Selecione o patrimônio");
       return;
     }
     if (!description.trim()) {
@@ -90,7 +90,7 @@ export function OpenMaintenanceDialog({ open, onClose, availableTools, presetToo
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Ferramenta *</Label>
+            <Label>Patrimônio *</Label>
             {presetTool ? (
               <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-800 dark:text-slate-100">
                 {presetTool.name}
@@ -113,9 +113,9 @@ export function OpenMaintenanceDialog({ open, onClose, availableTools, presetToo
                     )}
                   </div>
                 )}
-                placeholder="Selecione a ferramenta..."
-                searchPlaceholder="Buscar ferramenta..."
-                emptyMessage="Nenhuma ferramenta disponível"
+                placeholder="Selecione o patrimônio..."
+                searchPlaceholder="Buscar patrimônio..."
+                emptyMessage="Nenhum patrimônio disponível"
               />
             )}
           </div>

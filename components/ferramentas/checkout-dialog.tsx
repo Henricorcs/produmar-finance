@@ -20,9 +20,9 @@ import type { Obra, ToolWithStatus } from "@/lib/types";
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Ferramentas disponíveis para retirada. */
+  /** Patrimônio com saldo disponível para baixar. */
   availableTools: ToolWithStatus[];
-  /** Pré-seleciona a ferramenta (quando aberto a partir do card/detalhe). */
+  /** Pré-seleciona o item (quando aberto a partir do card/detalhe). */
   presetToolId?: string | null;
   obras?: Obra[];
 }
@@ -32,6 +32,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
   const [error, setError] = useState<string | null>(null);
 
   const [toolId, setToolId] = useState("");
+  const [quantity, setQuantity] = useState("1");
   const [borrower, setBorrower] = useState("");
   const [destination, setDestination] = useState("");
   const [obraId, setObraId] = useState("");
@@ -44,6 +45,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
   useEffect(() => {
     if (!open) return;
     setToolId(presetToolId ?? "");
+    setQuantity("1");
     setBorrower("");
     setDestination("");
     setObraId("");
@@ -58,22 +60,32 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
     ? availableTools.find((t) => t.id === presetToolId) ?? null
     : null;
 
+  // saldo do item selecionado (preset ou escolhido no select)
+  const selectedTool = availableTools.find((t) => t.id === toolId) ?? presetTool;
+  const maxQty = selectedTool?.available_qty ?? 1;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
     if (!toolId) {
-      setError("Selecione a ferramenta");
+      setError("Selecione o patrimônio");
       return;
     }
     if (!borrower.trim()) {
       setError("Informe quem está retirando");
       return;
     }
+    const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+    if (qty > maxQty) {
+      setError(`Saldo insuficiente (disponível: ${maxQty})`);
+      return;
+    }
 
     startTransition(async () => {
       const r = await checkoutTool({
         tool_id: toolId,
+        quantity: qty,
         borrower_name: borrower,
         destination,
         obra_id: obraId || null,
@@ -105,12 +117,12 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">Retirada de ferramenta</DialogTitle>
+          <DialogTitle className="dark:text-slate-100">Baixar patrimônio</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Ferramenta *</Label>
+            <Label>Patrimônio *</Label>
             {presetTool ? (
               <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-800 dark:text-slate-100">
                 {presetTool.name}
@@ -128,15 +140,37 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
                 renderItem={(t) => (
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <span className="truncate">{t.name}</span>
-                    {t.code && (
-                      <span className="text-[10px] text-slate-400 flex-shrink-0">{t.code}</span>
-                    )}
+                    <span className="text-[10px] text-slate-400 flex-shrink-0">
+                      {t.code ? `${t.code} · ` : ""}
+                      {t.available_qty} disp.
+                    </span>
                   </div>
                 )}
-                placeholder="Selecione a ferramenta..."
-                searchPlaceholder="Buscar ferramenta..."
-                emptyMessage="Nenhuma ferramenta disponível"
+                placeholder="Selecione o patrimônio..."
+                searchPlaceholder="Buscar patrimônio..."
+                emptyMessage="Nenhum patrimônio disponível"
               />
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="co_quantity">Quantidade *</Label>
+            <Input
+              id="co_quantity"
+              type="number"
+              min={1}
+              max={maxQty}
+              step={1}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="tabular-nums"
+              inputMode="numeric"
+              autoComplete="off"
+            />
+            {selectedTool && (
+              <p className="text-[11px] text-slate-400">
+                Saldo disponível: {maxQty} {selectedTool.unit}
+              </p>
             )}
           </div>
 
@@ -258,7 +292,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
               Cancelar
             </Button>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Registrando..." : "Registrar retirada"}
+              {isPending ? "Registrando..." : "Baixar"}
             </Button>
           </DialogFooter>
         </form>

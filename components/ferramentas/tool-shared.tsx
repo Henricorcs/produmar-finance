@@ -30,10 +30,39 @@ export const STATUS_META: Record<ToolStatus, { label: string; chip: string }> = 
     chip: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
   },
   baixada: {
-    label: "Baixada",
+    label: "Inutilizada",
     chip: "bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
   },
 };
+
+/**
+ * Valor perdido numa inutilização = qtd × valor de reposição.
+ * Se o item não tem valor de reposição, cai no valor unitário.
+ */
+export function lossValue(
+  quantity: number,
+  tool: { unit_value: number; replacement_value: number } | null
+): number {
+  if (!tool) return 0;
+  const per = tool.replacement_value > 0 ? tool.replacement_value : tool.unit_value;
+  return quantity * per;
+}
+
+/** Parse de valor em R$ digitado (1.234,56 → 1234.56). */
+export function parseMoney(s: string): number {
+  if (!s) return 0;
+  const n = parseFloat(s.replace(/\./g, "").replace(",", "."));
+  return isNaN(n) ? 0 : n;
+}
+
+/** Máscara de digitação de dinheiro: mantém só dígitos e uma vírgula com 2 casas. */
+export function formatMoneyInput(raw: string): string {
+  const cleaned = raw.replace(/[^\d,]/g, "");
+  const parts = cleaned.split(",");
+  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
+  if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
+  return cleaned;
+}
 
 /** Data + hora curtas (retiradas usam timestamp, não só data). */
 export function fmtDateTime(iso: string): string {

@@ -281,15 +281,15 @@ export function ObraDetailDialog({
             )}
           </div>
 
-          {/* Ferramentas em uso */}
+          {/* Patrimônio em uso */}
           <div>
             <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
               <Wrench className="w-3.5 h-3.5" />
-              Ferramentas ({toolLoans.length})
+              Patrimônio ({toolLoans.length})
             </h3>
             {toolLoans.length === 0 ? (
               <p className="text-sm text-slate-400 dark:text-slate-500 py-1">
-                Nenhuma ferramenta retirada para esta obra ainda.
+                Nenhum patrimônio retirado para esta obra ainda.
               </p>
             ) : (
               <div className="space-y-1.5">

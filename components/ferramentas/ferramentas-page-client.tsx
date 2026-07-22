@@ -11,21 +11,35 @@ import {
   Hammer,
   History,
   AlertTriangle,
+  Ban,
+  TrendingUp,
+  TrendingDown,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBRL, formatDate, daysUntil } from "@/lib/utils";
+import { undoWriteoff } from "@/app/(app)/ferramentas/actions";
 import { ToolDialog } from "./tool-dialog";
 import { CheckoutDialog } from "./checkout-dialog";
 import { ReturnDialog, type ReturnTarget } from "./return-dialog";
+import { WriteoffDialog } from "./writeoff-dialog";
 import {
   OpenMaintenanceDialog,
   FinishMaintenanceDialog,
   type FinishTarget,
 } from "./maintenance-dialog";
 import { ToolDetailDialog } from "./tool-detail-dialog";
-import { CONDITION_LABELS, STATUS_META, fmtDateTime } from "./tool-shared";
-import type { Obra, ToolLoan, ToolMaintenance, ToolStatus, ToolWithStatus } from "@/lib/types";
+import { CONDITION_LABELS, STATUS_META, fmtDateTime, lossValue } from "./tool-shared";
+import type {
+  Obra,
+  ToolLoan,
+  ToolMaintenance,
+  ToolStatus,
+  ToolUnit,
+  ToolWithStatus,
+  ToolWriteoff,
+} from "@/lib/types";
 
 // ── Tipos das linhas com joins ────────────────────────────────────────────────
 export type LoanRow = ToolLoan & {
@@ -36,17 +50,36 @@ export type MaintenanceRow = ToolMaintenance & {
   tools: { name: string; code: string | null } | null;
 };
 
+export type WriteoffRow = ToolWriteoff & {
+  tools: {
+    name: string;
+    code: string | null;
+    unit: string;
+    unit_value: number;
+    replacement_value: number;
+  } | null;
+};
+
 interface Props {
   tools: ToolWithStatus[];
   loans: LoanRow[];
   maintenance: MaintenanceRow[];
+  writeoffs: WriteoffRow[];
+  units: ToolUnit[];
   obras?: Obra[];
 }
 
 type Tab = "ferramentas" | "em_uso" | "manutencao" | "historico";
 type StatusFilter = "todas" | ToolStatus;
 
-export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }: Props) {
+export function FerramentasPageClient({
+  tools,
+  loans,
+  maintenance,
+  writeoffs,
+  units,
+  obras = [],
+}: Props) {
   const [tab, setTab] = useState<Tab>("ferramentas");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todas");
@@ -57,6 +90,7 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutPresetId, setCheckoutPresetId] = useState<string | null>(null);
   const [returnTarget, setReturnTarget] = useState<ReturnTarget | null>(null);
+  const [writeoffTool, setWriteoffTool] = useState<ToolWithStatus | null>(null);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [maintenancePresetId, setMaintenancePresetId] = useState<string | null>(null);
   const [finishTarget, setFinishTarget] = useState<FinishTarget | null>(null);
@@ -75,7 +109,12 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
     () => (detailToolId ? maintenance.filter((m) => m.tool_id === detailToolId) : []),
     [detailToolId, maintenance]
   );
+  const detailWriteoffs = useMemo(
+    () => (detailToolId ? writeoffs.filter((w) => w.tool_id === detailToolId) : []),
+    [detailToolId, writeoffs]
+  );
 
+  // itens com saldo disponível para baixar / inutilizar / manutenção
   const availableTools = useMemo(
     () => tools.filter((t) => t.status === "disponivel"),
     [tools]
@@ -88,13 +127,24 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
     return c;
   }, [tools]);
 
-  const inUseTools = useMemo(() => tools.filter((t) => t.status === "em_uso"), [tools]);
+  // retiradas em aberto (uma linha por baixa)
+  const openLoans = useMemo(() => loans.filter((l) => !l.returned_at), [loans]);
   const openMaintenanceRows = useMemo(
     () => maintenance.filter((m) => !m.finished_at),
     [maintenance]
   );
 
-  // ── Filtro da lista de ferramentas ──────────────────────────────────────────
+  // ── Resumo financeiro ─────────────────────────────────────────────────────────
+  const invested = useMemo(
+    () => tools.reduce((sum, t) => sum + t.quantity * t.unit_value, 0),
+    [tools]
+  );
+  const losses = useMemo(
+    () => writeoffs.reduce((sum, w) => sum + lossValue(w.quantity, w.tools), 0),
+    [writeoffs]
+  );
+
+  // ── Filtro da lista de patrimônio ────────────────────────────────────────────
   const filteredTools = useMemo(() => {
     const q = search.trim().toUpperCase();
     return tools.filter((t) => {
@@ -123,6 +173,15 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
       condition: tool.condition,
     });
   }
+  function openReturnForLoan(loan: LoanRow) {
+    const t = tools.find((x) => x.id === loan.tool_id);
+    setReturnTarget({
+      loanId: loan.id,
+      toolName: loan.tools?.name ?? "—",
+      borrower: loan.borrower_name,
+      condition: t?.condition ?? "bom",
+    });
+  }
   function openMaintenanceFor(tool?: ToolWithStatus) {
     setMaintenancePresetId(tool?.id ?? null);
     setMaintenanceOpen(true);
@@ -146,18 +205,28 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
     icon: React.ComponentType<{ className?: string }>;
     count: number;
   }[] = [
-    { value: "ferramentas", label: "Ferram.", icon: Hammer, count: tools.filter((t) => t.active).length },
-    { value: "em_uso", label: "Em uso", icon: ArrowRightLeft, count: inUseTools.length },
+    {
+      value: "ferramentas",
+      label: "Patrim.",
+      icon: Hammer,
+      count: tools.filter((t) => t.status !== "baixada").length,
+    },
+    { value: "em_uso", label: "Em uso", icon: ArrowRightLeft, count: openLoans.length },
     { value: "manutencao", label: "Manut.", icon: Wrench, count: openMaintenanceRows.length },
-    { value: "historico", label: "Histórico", icon: History, count: loans.length + maintenance.length },
+    {
+      value: "historico",
+      label: "Histórico",
+      icon: History,
+      count: loans.length + maintenance.length + writeoffs.length,
+    },
   ];
 
   const statusFilters: { value: StatusFilter; label: string }[] = [
-    { value: "todas", label: "Todas" },
+    { value: "todas", label: "Todos" },
     { value: "disponivel", label: "Disponíveis" },
     { value: "em_uso", label: "Em uso" },
     { value: "manutencao", label: "Manutenção" },
-    { value: "baixada", label: "Baixadas" },
+    { value: "baixada", label: "Inutilizados" },
   ];
 
   return (
@@ -166,10 +235,10 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">
-            Ferramentas
+            Patrimônio
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Cadastro, retiradas e manutenção
+            Controle de saldo, valor e inutilizações
           </p>
         </div>
         <Button
@@ -180,8 +249,19 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
           className="flex-shrink-0"
         >
           <Plus className="w-4 h-4" />
-          Nova ferramenta
+          Novo
         </Button>
+      </div>
+
+      {/* Resumo financeiro */}
+      <div className="grid grid-cols-2 gap-2">
+        <SummaryCard
+          icon={TrendingUp}
+          label="Investido"
+          value={formatBRL(invested)}
+          tone="emerald"
+        />
+        <SummaryCard icon={TrendingDown} label="Perdas" value={formatBRL(losses)} tone="red" />
       </div>
 
       {/* KPIs */}
@@ -266,8 +346,8 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
             tools.length === 0 ? (
               <EmptyState
                 icon={Hammer}
-                text="Nenhuma ferramenta cadastrada ainda."
-                hint="Cadastre a primeira para começar o controle."
+                text="Nenhum patrimônio cadastrado ainda."
+                hint="Cadastre o primeiro para começar o controle."
                 action={
                   <Button
                     size="sm"
@@ -276,7 +356,7 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
                       setToolDialogOpen(true);
                     }}
                   >
-                    <Plus className="w-4 h-4" /> Nova ferramenta
+                    <Plus className="w-4 h-4" /> Novo
                   </Button>
                 }
               />
@@ -291,6 +371,7 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
                   tool={t}
                   onOpen={() => setDetailToolId(t.id)}
                   onCheckout={() => openCheckout(t)}
+                  onWriteoff={() => setWriteoffTool(t)}
                   onReturn={() => openReturn(t)}
                 />
               ))}
@@ -300,7 +381,7 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
       )}
 
       {tab === "em_uso" && (
-        <EmUsoTab tools={inUseTools} onCheckout={() => openCheckout()} onReturn={openReturn} />
+        <EmUsoTab loans={openLoans} onCheckout={() => openCheckout()} onReturn={openReturnForLoan} />
       )}
 
       {tab === "manutencao" && (
@@ -318,13 +399,16 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
         />
       )}
 
-      {tab === "historico" && <HistoricoTab loans={loans} maintenance={maintenance} />}
+      {tab === "historico" && (
+        <HistoricoTab loans={loans} maintenance={maintenance} writeoffs={writeoffs} />
+      )}
 
       {/* Dialogs */}
       <ToolDialog
         open={toolDialogOpen}
         onClose={() => setToolDialogOpen(false)}
         tool={editTool}
+        units={units}
       />
       <CheckoutDialog
         open={checkoutOpen}
@@ -337,6 +421,11 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
         open={!!returnTarget}
         onClose={() => setReturnTarget(null)}
         target={returnTarget}
+      />
+      <WriteoffDialog
+        open={!!writeoffTool}
+        onClose={() => setWriteoffTool(null)}
+        tool={writeoffTool}
       />
       <OpenMaintenanceDialog
         open={maintenanceOpen}
@@ -355,6 +444,7 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
         tool={detailTool}
         loans={detailLoans}
         maintenance={detailMaintenance}
+        writeoffs={detailWriteoffs}
         obras={obras}
         onEdit={(t) => {
           setDetailToolId(null);
@@ -363,6 +453,10 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
         onCheckout={(t) => {
           setDetailToolId(null);
           openCheckout(t);
+        }}
+        onWriteoff={(t) => {
+          setDetailToolId(null);
+          setWriteoffTool(t);
         }}
         onReturn={(t) => {
           setDetailToolId(null);
@@ -381,16 +475,18 @@ export function FerramentasPageClient({ tools, loans, maintenance, obras = [] }:
   );
 }
 
-// ── Card de ferramenta ───────────────────────────────────────────────────────
+// ── Card de patrimônio ───────────────────────────────────────────────────────
 function ToolCard({
   tool,
   onOpen,
   onCheckout,
+  onWriteoff,
   onReturn,
 }: {
   tool: ToolWithStatus;
   onOpen: () => void;
   onCheckout: () => void;
+  onWriteoff: () => void;
   onReturn: () => void;
 }) {
   const meta = STATUS_META[tool.status];
@@ -429,6 +525,18 @@ function ToolCard({
         </span>
       </div>
 
+      {/* Linha de saldo (só quando há mais de uma unidade) */}
+      {tool.quantity > 1 && (
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          <span className="font-medium text-slate-700 dark:text-slate-200">
+            {tool.available_qty} disp.
+          </span>
+          {tool.in_use_qty > 0 ? ` · ${tool.in_use_qty} em uso` : ""}
+          {tool.written_off_qty > 0 ? ` · ${tool.written_off_qty} inutil.` : ""}
+          {` de ${tool.quantity} ${tool.unit}`}
+        </p>
+      )}
+
       {tool.status === "em_uso" && (
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 truncate">
           Com <span className="font-medium text-slate-700 dark:text-slate-200">{tool.current_borrower}</span>
@@ -448,70 +556,81 @@ function ToolCard({
         </p>
       )}
 
-      {(tool.status === "disponivel" || tool.status === "em_uso") && (
+      {tool.status === "disponivel" && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCheckout();
+            }}
+            className="flex items-center justify-center gap-1.5 text-xs font-semibold px-2.5 py-2 rounded-lg bg-produmar-600 hover:bg-produmar-700 text-white transition-colors"
+          >
+            <ArrowRightLeft className="w-3.5 h-3.5" />
+            Baixar
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onWriteoff();
+            }}
+            className="flex items-center justify-center gap-1.5 text-xs font-semibold px-2.5 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors"
+          >
+            <Ban className="w-3.5 h-3.5" />
+            Inutilizar
+          </button>
+        </div>
+      )}
+      {tool.status === "em_uso" && (
         <div className="mt-3">
-          {tool.status === "disponivel" ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onCheckout();
-              }}
-              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-2.5 py-2 rounded-lg bg-produmar-600 hover:bg-produmar-700 text-white transition-colors"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              Retirar
-            </button>
-          ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onReturn();
-              }}
-              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-2.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-              Devolver
-            </button>
-          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onReturn();
+            }}
+            className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-2.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+            Devolver
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-// ── Aba: Em uso (quem está com o quê) ────────────────────────────────────────
+// ── Aba: Em uso (cada retirada em aberto) ────────────────────────────────────
 function EmUsoTab({
-  tools,
+  loans,
   onCheckout,
   onReturn,
 }: {
-  tools: ToolWithStatus[];
+  loans: LoanRow[];
   onCheckout: () => void;
-  onReturn: (tool: ToolWithStatus) => void;
+  onReturn: (loan: LoanRow) => void;
 }) {
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={onCheckout}>
           <ArrowRightLeft className="w-3.5 h-3.5" />
-          Nova retirada
+          Nova baixa
         </Button>
       </div>
 
-      {tools.length === 0 ? (
+      {loans.length === 0 ? (
         <EmptyState
           icon={ArrowRightLeft}
-          text="Nenhuma ferramenta em uso."
-          hint="Tudo devolvido — registre uma retirada quando alguém pegar algo."
+          text="Nenhuma retirada em aberto."
+          hint="Tudo devolvido — registre uma baixa quando alguém pegar algo."
         />
       ) : (
         <div className="space-y-2">
-          {tools.map((t) => {
+          {loans.map((l) => {
             const late =
-              t.current_expected_return_date && daysUntil(t.current_expected_return_date) < 0;
+              l.expected_return_date && daysUntil(l.expected_return_date) < 0;
             return (
               <div
-                key={t.id}
+                key={l.id}
                 className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 flex items-center gap-3"
               >
                 <div className="w-9 h-9 rounded-lg bg-produmar-50 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
@@ -519,28 +638,29 @@ function EmUsoTab({
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-                    {t.name}
-                    {t.code ? (
-                      <span className="text-[11px] text-slate-400 font-normal ml-1.5">{t.code}</span>
+                    {l.quantity > 1 ? `${l.quantity}× ` : ""}
+                    {l.tools?.name ?? "—"}
+                    {l.tools?.code ? (
+                      <span className="text-[11px] text-slate-400 font-normal ml-1.5">{l.tools.code}</span>
                     ) : null}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                    Com <span className="font-medium">{t.current_borrower}</span>
-                    {t.current_destination ? ` · ${t.current_destination}` : ""}
+                    Com <span className="font-medium">{l.borrower_name}</span>
+                    {l.destination ? ` · ${l.destination}` : ""}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    {t.current_checked_out_at ? `Desde ${fmtDateTime(t.current_checked_out_at)}` : ""}
-                    {t.current_expected_return_date && (
+                    {l.checked_out_at ? `Desde ${fmtDateTime(l.checked_out_at)}` : ""}
+                    {l.expected_return_date && (
                       <span className={late ? "text-red-500 font-medium" : ""}>
                         {" "}
-                        · devolução {formatDate(t.current_expected_return_date)}
+                        · devolução {formatDate(l.expected_return_date)}
                         {late ? " (atrasada)" : ""}
                       </span>
                     )}
                   </p>
                 </div>
                 <button
-                  onClick={() => onReturn(t)}
+                  onClick={() => onReturn(l)}
                   className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
                 >
                   <Undo2 className="w-3.5 h-3.5" />
@@ -580,8 +700,8 @@ function ManutencaoTab({
       {rows.length === 0 ? (
         <EmptyState
           icon={Wrench}
-          text="Nenhuma ferramenta em manutenção."
-          hint="Envie uma ferramenta para manutenção quando precisar de conserto."
+          text="Nenhum item em manutenção."
+          hint="Envie um item para manutenção quando precisar de conserto."
         />
       ) : (
         <div className="space-y-2">
@@ -625,14 +745,25 @@ function ManutencaoTab({
   );
 }
 
-// ── Aba: Histórico (retiradas + manutenções) ─────────────────────────────────
+// ── Aba: Histórico (baixas + manutenções + inutilizações) ────────────────────
 function HistoricoTab({
   loans,
   maintenance,
+  writeoffs,
 }: {
   loans: LoanRow[];
   maintenance: MaintenanceRow[];
+  writeoffs: WriteoffRow[];
 }) {
+  const [pending, setPending] = useState<string | null>(null);
+
+  async function handleUndo(id: string) {
+    if (!confirm("Desfazer esta inutilização? O saldo é reposto.")) return;
+    setPending(id);
+    await undoWriteoff(id);
+    setPending(null);
+  }
+
   const events = useMemo(() => {
     const list: { key: string; date: string; node: React.ReactNode }[] = [
       ...loans.map((l) => ({
@@ -645,6 +776,7 @@ function HistoricoTab({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                {l.quantity > 1 ? `${l.quantity}× ` : ""}
                 {l.tools?.name ?? "—"} · {l.borrower_name}
               </p>
               <p className="text-[11px] text-slate-400 truncate">
@@ -693,16 +825,49 @@ function HistoricoTab({
           </div>
         ),
       })),
+      ...writeoffs.map((w) => ({
+        key: `wo-${w.id}`,
+        date: w.created_at,
+        node: (
+          <div className="flex items-center gap-3 px-4 py-2.5">
+            <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
+              <Ban className="w-4 h-4 text-red-600 dark:text-red-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                {w.quantity > 1 ? `${w.quantity}× ` : ""}
+                {w.tools?.name ?? "—"}
+                {w.reason ? ` · ${w.reason}` : ""}
+              </p>
+              <p className="text-[11px] text-slate-400 truncate">
+                {fmtDateTime(w.created_at)}
+                {lossValue(w.quantity, w.tools) > 0
+                  ? ` · perda ${formatBRL(lossValue(w.quantity, w.tools))}`
+                  : ""}
+              </p>
+            </div>
+            <button
+              onClick={() => handleUndo(w.id)}
+              disabled={pending === w.id}
+              className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-produmar-600 dark:text-slate-400 dark:hover:text-produmar-400 flex-shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Desfazer
+            </button>
+          </div>
+        ),
+      })),
     ];
     return list.sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [loans, maintenance]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loans, maintenance, writeoffs, pending]);
 
   if (events.length === 0) {
     return (
       <EmptyState
         icon={History}
         text="Nenhum registro ainda."
-        hint="Retiradas, devoluções e manutenções aparecem aqui."
+        hint="Baixas, devoluções, manutenções e inutilizações aparecem aqui."
       />
     );
   }
@@ -712,6 +877,37 @@ function HistoricoTab({
       {events.map((e) => (
         <div key={e.key}>{e.node}</div>
       ))}
+    </div>
+  );
+}
+
+// ── Resumo card ───────────────────────────────────────────────────────────────
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  tone: "emerald" | "red";
+}) {
+  const tones = {
+    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400",
+    red: "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400",
+  }[tone];
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 flex items-center gap-3">
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${tones}`}>
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">{label}</p>
+        <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums truncate">
+          {value}
+        </p>
+      </div>
     </div>
   );
 }
