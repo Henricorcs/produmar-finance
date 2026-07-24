@@ -102,14 +102,20 @@ export async function updateTool(id: string, input: ToolInput) {
 export async function deleteTool(id: string) {
   const supabase = createClient();
 
-  // remove a foto do storage, se houver
+  // remove as fotos do storage (as linhas em tool_photos somem por cascade)
+  const { data: photos } = await supabase
+    .from("tool_photos")
+    .select("path")
+    .eq("tool_id", id);
+  const paths = (photos ?? []).map((p) => p.path as string);
   const { data: tool } = await supabase
     .from("tools")
     .select("photo_path")
     .eq("id", id)
     .maybeSingle();
-  if (tool?.photo_path) {
-    await supabase.storage.from("attachments").remove([tool.photo_path]);
+  if (tool?.photo_path && !paths.includes(tool.photo_path)) paths.push(tool.photo_path);
+  if (paths.length) {
+    await supabase.storage.from("attachments").remove(paths);
   }
 
   const { error } = await supabase.from("tools").delete().eq("id", id);
@@ -122,49 +128,124 @@ export async function deleteTool(id: string) {
 // FOTO DA FERRAMENTA
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function uploadToolPhoto(toolId: string, formData: FormData) {
+/**
+ * Sobe uma ou mais fotos do patrimônio. Cada arquivo vira uma linha em
+ * tool_photos; a primeira também vira a "foto principal" (tools.photo_path)
+ * quando ainda não houver nenhuma, mantendo compatibilidade com a lista/consultas.
+ */
+export async function uploadToolPhotos(toolId: string, formData: FormData) {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
 
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Arquivo inválido" };
-  if (file.size > MAX_FILE_SIZE) return { error: "Arquivo maior que 10 MB" };
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { error: "Nenhuma foto válida" };
+  if (files.some((f) => f.size > MAX_FILE_SIZE)) return { error: "Cada foto deve ter no máximo 10 MB" };
 
-  // apaga a foto anterior para não acumular lixo no storage
+  const uploadedPaths: string[] = [];
+  for (const file of files) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `tools/${toolId}/${randomUUID()}_${safeName}`;
+
+    const { error: upErr } = await supabase.storage
+      .from("attachments")
+      .upload(path, file, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false,
+      });
+    if (upErr) {
+      // desfaz o que já subiu neste lote para não deixar lixo
+      if (uploadedPaths.length) await supabase.storage.from("attachments").remove(uploadedPaths);
+      return { error: upErr.message };
+    }
+    uploadedPaths.push(path);
+  }
+
+  const { error: insErr } = await supabase.from("tool_photos").insert(
+    uploadedPaths.map((path) => ({ tool_id: toolId, path, created_by: user.id }))
+  );
+  if (insErr) {
+    await supabase.storage.from("attachments").remove(uploadedPaths);
+    return { error: insErr.message };
+  }
+
+  // garante uma foto principal (usada na lista / consultas antigas)
   const { data: tool } = await supabase
     .from("tools")
     .select("photo_path")
     .eq("id", toolId)
     .maybeSingle();
-  if (tool?.photo_path) {
-    await supabase.storage.from("attachments").remove([tool.photo_path]);
+  if (!tool?.photo_path) {
+    await supabase.from("tools").update({ photo_path: uploadedPaths[0] }).eq("id", toolId);
   }
-
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `tools/${toolId}/${randomUUID()}_${safeName}`;
-
-  const { error: upErr } = await supabase.storage
-    .from("attachments")
-    .upload(path, file, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-  if (upErr) return { error: upErr.message };
-
-  const { error } = await supabase
-    .from("tools")
-    .update({ photo_path: path })
-    .eq("id", toolId);
-  if (error) return { error: error.message };
 
   revalidate();
   return { ok: true };
 }
 
-/** Gera uma URL assinada (1h) para exibir a foto da ferramenta. */
+/** Lista as fotos do patrimônio com URL assinada (1h) para exibição. */
+export async function getToolPhotos(toolId: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("tool_photos")
+    .select("id, path")
+    .eq("tool_id", toolId)
+    .order("created_at", { ascending: true });
+  if (error) return { error: error.message };
+
+  const photos = await Promise.all(
+    (data ?? []).map(async (p) => {
+      const { data: signed } = await supabase.storage
+        .from("attachments")
+        .createSignedUrl(p.path, 60 * 60);
+      return { id: p.id as string, path: p.path as string, url: signed?.signedUrl ?? null };
+    })
+  );
+  return { photos };
+}
+
+/** Remove uma foto do patrimônio (storage + linha). Reajusta a foto principal. */
+export async function deleteToolPhoto(photoId: string) {
+  const supabase = createClient();
+
+  const { data: photo } = await supabase
+    .from("tool_photos")
+    .select("id, tool_id, path")
+    .eq("id", photoId)
+    .maybeSingle();
+  if (!photo) return { error: "Foto não encontrada" };
+
+  await supabase.storage.from("attachments").remove([photo.path]);
+  const { error } = await supabase.from("tool_photos").delete().eq("id", photoId);
+  if (error) return { error: error.message };
+
+  // se era a foto principal, aponta para outra remanescente (ou limpa)
+  const { data: tool } = await supabase
+    .from("tools")
+    .select("photo_path")
+    .eq("id", photo.tool_id)
+    .maybeSingle();
+  if (tool?.photo_path === photo.path) {
+    const { data: next } = await supabase
+      .from("tool_photos")
+      .select("path")
+      .eq("tool_id", photo.tool_id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    await supabase
+      .from("tools")
+      .update({ photo_path: next?.path ?? null })
+      .eq("id", photo.tool_id);
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/** Gera uma URL assinada (1h) para exibir uma foto avulsa (ex.: recebedor da retirada). */
 export async function getToolPhotoUrl(storagePath: string) {
   const supabase = createClient();
   const { data, error } = await supabase.storage

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createTool, updateTool, uploadToolPhoto } from "@/app/(app)/ferramentas/actions";
+import { createTool, updateTool, uploadToolPhotos } from "@/app/(app)/ferramentas/actions";
 import { ConditionPicker, parseMoney, formatMoneyInput } from "./tool-shared";
 import { ToolUnitsDialog } from "./tool-units-dialog";
 import type { Tool, ToolCondition, ToolUnit } from "@/lib/types";
@@ -39,7 +39,7 @@ export function ToolDialog({ open, onClose, tool, units }: Props) {
   const [unitValue, setUnitValue] = useState("");
   const [replacementValue, setReplacementValue] = useState("");
   const [notes, setNotes] = useState("");
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
   const [unitsOpen, setUnitsOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -59,7 +59,7 @@ export function ToolDialog({ open, onClose, tool, units }: Props) {
         : ""
     );
     setNotes(tool?.notes ?? "");
-    setPhoto(null);
+    setPhotos([]);
     setError(null);
   }, [open, tool]);
 
@@ -90,14 +90,14 @@ export function ToolDialog({ open, onClose, tool, units }: Props) {
         return;
       }
 
-      // foto é opcional — sobe depois do cadastro
+      // fotos são opcionais — sobem depois do cadastro
       const toolId = tool?.id ?? (r as { toolId?: string }).toolId;
-      if (photo && toolId) {
+      if (photos.length > 0 && toolId) {
         const fd = new FormData();
-        fd.append("file", photo);
-        const up = await uploadToolPhoto(toolId, fd);
+        photos.forEach((p) => fd.append("files", p));
+        const up = await uploadToolPhotos(toolId, fd);
         if (up && "error" in up) {
-          setError(`Patrimônio salvo, mas a foto falhou: ${up.error}`);
+          setError(`Patrimônio salvo, mas as fotos falharam: ${up.error}`);
           return;
         }
       }
@@ -220,41 +220,55 @@ export function ToolDialog({ open, onClose, tool, units }: Props) {
           </div>
 
           <div className="space-y-1.5">
-            <Label>Foto</Label>
+            <Label>Fotos</Label>
             <input
               ref={fileRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
-              onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const picked = Array.from(e.target.files ?? []);
+                if (picked.length) setPhotos((prev) => [...prev, ...picked]);
+                if (fileRef.current) fileRef.current.value = "";
+              }}
             />
-            {photo ? (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
-                <span className="text-sm text-slate-600 dark:text-slate-300 truncate">
-                  {photo.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPhoto(null);
-                    if (fileRef.current) fileRef.current.value = "";
-                  }}
-                  className="p-1 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
-                  aria-label="Remover foto"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => fileRef.current?.click()}
-              >
-                <Camera className="w-4 h-4" />
-                {tool?.photo_path ? "Trocar foto" : "Adicionar foto"}
-              </Button>
+            {photos.length > 0 && (
+              <ul className="space-y-1.5">
+                {photos.map((p, i) => (
+                  <li
+                    key={`${p.name}-${i}`}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2"
+                  >
+                    <span className="text-sm text-slate-600 dark:text-slate-300 truncate">
+                      {p.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="p-1 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
+                      aria-label="Remover foto"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Camera className="w-4 h-4" />
+              {photos.length > 0 ? "Adicionar mais fotos" : "Adicionar fotos"}
+            </Button>
+            {tool && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                As fotos atuais ficam salvas. Aqui você adiciona novas — para
+                remover, use a galeria nos detalhes do patrimônio.
+              </p>
             )}
           </div>
 

@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { formatBRL, formatDate } from "@/lib/utils";
 import {
   deleteTool,
+  deleteToolPhoto,
+  getToolPhotos,
   getToolPhotoUrl,
   undoWriteoff,
 } from "@/app/(app)/ferramentas/actions";
@@ -66,23 +68,39 @@ export function ToolDetailDialog({
   onFinishMaintenance,
 }: Props) {
   const [isPending, startTransition] = useTransition();
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<{ id: string; url: string | null }[]>([]);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [receiverPhotoUrls, setReceiverPhotoUrls] = useState<Record<string, string>>({});
 
   const obraNameById = new Map(obras.map((o) => [o.id, o.name]));
 
-  // carrega a foto sob demanda (URL assinada)
+  // carrega as fotos sob demanda (URLs assinadas)
   useEffect(() => {
-    setPhotoUrl(null);
-    if (!open || !tool?.photo_path) return;
+    setPhotos([]);
+    if (!open || !tool?.id) return;
     let cancelled = false;
-    getToolPhotoUrl(tool.photo_path).then((r) => {
-      if (!cancelled && "url" in r) setPhotoUrl(r.url ?? null);
+    getToolPhotos(tool.id).then((r) => {
+      if (cancelled || !("photos" in r)) return;
+      setPhotos((r.photos ?? []).map((p) => ({ id: p.id, url: p.url })));
     });
     return () => {
       cancelled = true;
     };
-  }, [open, tool?.photo_path]);
+  }, [open, tool?.id]);
+
+  function handleDeletePhoto(photoId: string) {
+    if (!confirm("Remover esta foto?")) return;
+    setDeletingPhotoId(photoId);
+    startTransition(async () => {
+      const r = await deleteToolPhoto(photoId);
+      setDeletingPhotoId(null);
+      if (r && "error" in r) {
+        alert(r.error);
+        return;
+      }
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    });
+  }
 
   // fotos de quem recebeu, uma por retirada
   useEffect(() => {
@@ -251,20 +269,36 @@ export function ToolDetailDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Foto */}
-          {tool.photo_path &&
-            (photoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={photoUrl}
-                alt={tool.name}
-                className="w-full max-h-56 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
-              />
-            ) : (
-              <div className="w-full h-32 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-center">
-                <ImageIcon className="w-6 h-6 text-slate-300 dark:text-slate-600" />
-              </div>
-            ))}
+          {/* Fotos (galeria) */}
+          {photos.length > 0 && (
+            <div className={photos.length === 1 ? "" : "grid grid-cols-2 gap-2"}>
+              {photos.map((p) => (
+                <div key={p.id} className="relative group">
+                  {p.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.url}
+                      alt={tool.name}
+                      className="w-full max-h-56 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
+                    />
+                  ) : (
+                    <div className="w-full h-32 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                      <ImageIcon className="w-6 h-6 text-slate-300 dark:text-slate-600" />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePhoto(p.id)}
+                    disabled={deletingPhotoId === p.id}
+                    aria-label="Remover foto"
+                    className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Informações */}
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-sm">

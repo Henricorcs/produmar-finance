@@ -579,6 +579,14 @@ export interface Tool {
   updated_at: string;
 }
 
+export interface ToolPhoto {
+  id: string;
+  tool_id: string;
+  path: string;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface ToolLoan {
   id: string;
   tool_id: string;
