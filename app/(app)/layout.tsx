@@ -32,12 +32,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // Layout simplificado para operador — painel de OS apenas
+  // Operador sem módulos → layout simplificado (painel de OS apenas).
+  // Operador com módulos liberados → layout completo, com hub e nav dos módulos.
   if (isOperador) {
+    const hasModules = (profile?.allowed_modules?.length ?? 0) > 0;
+    if (!hasModules) {
+      return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+          <Topbar profile={profile} notifications={[]} />
+          <main className="max-w-3xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
+        </div>
+      );
+    }
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
         <Topbar profile={profile} notifications={[]} />
-        <main className="max-w-3xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
+        <TabsNav />
+        <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-safe-nav">{children}</main>
       </div>
     );
   }

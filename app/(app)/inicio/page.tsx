@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClipboardList } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { modulesForProfile } from "@/lib/modules";
 import type { Profile } from "@/lib/types";
@@ -18,6 +19,7 @@ export default async function InicioPage() {
     .single<Pick<Profile, "role" | "allowed_modules">>();
 
   const modules = modulesForProfile(profile?.allowed_modules, profile?.role);
+  const isOperador = profile?.role === "operador";
 
   return (
     <div className="animate-fade-in max-w-3xl mx-auto">
@@ -31,6 +33,26 @@ export default async function InicioPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        {/* Operador: acesso ao painel de OS, além dos módulos liberados */}
+        {isOperador && (
+          <Link
+            href="/operador"
+            className="group relative flex flex-col rounded-2xl border border-produmar-100/60 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-4 sm:p-5 min-h-[9.5rem] transition-all active:scale-[0.97] hover:shadow-md hover:border-produmar-200 dark:hover:border-slate-700"
+          >
+            <span className="flex items-center justify-center w-11 h-11 rounded-xl shrink-0 bg-amber-50 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400">
+              <ClipboardList className="w-6 h-6" />
+            </span>
+            <div className="mt-auto pt-4">
+              <div className="text-[15px] font-semibold text-produmar-800 dark:text-slate-100 leading-snug">
+                Painel de OS
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Suas ordens de serviço
+              </p>
+            </div>
+          </Link>
+        )}
+
         {modules.map((mod) => {
           const Icon = mod.icon;
           return (

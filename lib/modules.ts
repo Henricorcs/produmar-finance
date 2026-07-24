@@ -100,14 +100,24 @@ export function findModuleByPath(pathname: string): AppModule | undefined {
 /**
  * Módulos visíveis para um usuário conforme seu perfil.
  *  • admin → todos os módulos.
- *  • allowedModules vazio → todos (sem restrição).
- *  • caso contrário → apenas os módulos liberados.
+ *  • operador/visualizador → SÓ os módulos liberados explicitamente
+ *    (vazio = nenhum; esses perfis são fechados por padrão e têm tela própria).
+ *  • financeiro → vazio = todos (aberto por padrão); caso contrário os liberados.
  */
 export function modulesForProfile(
   allowedModules: string[] | undefined,
   role?: string
 ): AppModule[] {
   if (role === "admin") return APP_MODULES;
-  if (!allowedModules || allowedModules.length === 0) return APP_MODULES;
-  return APP_MODULES.filter((m) => allowedModules.includes(m.slug));
+
+  const allowed = allowedModules ?? [];
+
+  if (role === "operador" || role === "visualizador") {
+    if (allowed.length === 0) return [];
+    return APP_MODULES.filter((m) => allowed.includes(m.slug));
+  }
+
+  // financeiro (e demais): aberto por padrão
+  if (allowed.length === 0) return APP_MODULES;
+  return APP_MODULES.filter((m) => allowed.includes(m.slug));
 }

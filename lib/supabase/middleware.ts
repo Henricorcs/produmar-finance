@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { isModuleBlocked } from "@/lib/module-access";
+import { isModuleBlocked, moduleSlugForPath } from "@/lib/module-access";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -59,16 +59,25 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Operador: acessa apenas /operador e /imprimir (comprovantes)
-    if (
-      role === "operador" &&
-      !path.startsWith("/operador") &&
-      !path.startsWith("/imprimir") &&
-      !isPublicRoute
-    ) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/operador";
-      return NextResponse.redirect(url);
+    // Operador: sempre acessa /operador e /imprimir (comprovantes). Se tiver
+    // módulos liberados, também acessa o hub, as configurações e esses módulos.
+    if (role === "operador" && !isPublicRoute) {
+      const allowedModules = (user.user_metadata?.allowed_modules as string[] | undefined) ?? [];
+      const hasModules = allowedModules.length > 0;
+      const slug = moduleSlugForPath(path);
+      const canAccess =
+        path.startsWith("/operador") ||
+        path.startsWith("/imprimir") ||
+        (hasModules &&
+          (path.startsWith("/inicio") ||
+            path.startsWith("/configuracoes") ||
+            (slug !== null && allowedModules.includes(slug))));
+
+      if (!canAccess) {
+        const url = request.nextUrl.clone();
+        url.pathname = hasModules ? "/inicio" : "/operador";
+        return NextResponse.redirect(url);
+      }
     }
 
     // Módulos liberados por usuário — admin/operador/visualizador não se aplicam

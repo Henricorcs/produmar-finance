@@ -101,7 +101,7 @@ export async function inviteUser(
   } catch {
     allowedModules = [];
   }
-  if (role !== "financeiro") allowedModules = [];
+  if (role !== "financeiro" && role !== "operador") allowedModules = [];
 
   if (!email) return { error: "Email obrigatório" };
   if (!password || password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };

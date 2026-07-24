@@ -110,7 +110,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
     );
     formData.set(
       "allowed_modules",
-      JSON.stringify(selectedRole === "financeiro" ? inviteModules : [])
+      JSON.stringify(
+        selectedRole === "financeiro" || selectedRole === "operador" ? inviteModules : []
+      )
     );
 
     startTransition(async () => {
@@ -145,6 +147,7 @@ export function UserManagementClient({ users, currentUserId }: Props) {
           const isMe = u.id === currentUserId;
           const isOperador = u.role === "operador";
           const isFinanceiro = u.role === "financeiro";
+          const canHaveModules = isFinanceiro || isOperador;
           const cats = u.allowed_categories ?? [];
           const mods = u.allowed_modules ?? [];
           return (
@@ -172,11 +175,13 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                         : "Todos os veículos"}
                     </p>
                   )}
-                  {isFinanceiro && editingModsId !== u.id && (
+                  {canHaveModules && editingModsId !== u.id && (
                     <p className="text-[10px] text-produmar-600 dark:text-produmar-400 truncate mt-0.5">
                       {mods.length > 0
                         ? mods.map(moduleLabel).join(", ")
-                        : "Todos os módulos"}
+                        : isOperador
+                          ? "Só painel de OS"
+                          : "Todos os módulos"}
                     </p>
                   )}
                 </div>
@@ -194,7 +199,7 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                     <HardHat className="w-3.5 h-3.5" />
                   </button>
                 )}
-                {isFinanceiro && (
+                {canHaveModules && (
                   <button
                     onClick={() => (editingModsId === u.id ? setEditingModsId(null) : startEditMods(u))}
                     title="Editar módulos liberados"
@@ -264,8 +269,8 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                 </div>
               )}
 
-              {/* Editor de módulos liberados (financeiro) */}
-              {isFinanceiro && editingModsId === u.id && (
+              {/* Editor de módulos liberados (financeiro / operador) */}
+              {canHaveModules && editingModsId === u.id && (
                 <div className="mt-2 ml-11 space-y-2 rounded-lg border border-produmar-100 dark:border-slate-700 bg-produmar-50/30 dark:bg-slate-800/40 p-3">
                   <div className="flex flex-wrap gap-1.5">
                     {MODULE_OPTIONS.map((m) => {
@@ -294,7 +299,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                      Em branco = acesso a todos os módulos.
+                      {isOperador
+                        ? "Em branco = só painel de OS."
+                        : "Em branco = acesso a todos os módulos."}
                     </span>
                     <div className="flex gap-2">
                       <button
@@ -447,8 +454,8 @@ export function UserManagementClient({ users, currentUserId }: Props) {
             </div>
           )}
 
-          {/* Módulos liberados — só para financeiro (opcional) */}
-          {selectedRole === "financeiro" && (
+          {/* Módulos liberados — para financeiro e operador (opcional) */}
+          {(selectedRole === "financeiro" || selectedRole === "operador") && (
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <LayoutGrid className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
@@ -481,8 +488,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                 })}
               </div>
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                Opcional. Deixe em branco para liberar todos os módulos. Marque só
-                para limitar (ex.: apenas Obras e Patrimônio).
+                {selectedRole === "operador"
+                  ? "Opcional. O operador sempre tem o Painel de OS. Marque módulos extras (ex.: Obras) para liberar além do painel."
+                  : "Opcional. Deixe em branco para liberar todos os módulos. Marque só para limitar (ex.: apenas Obras e Patrimônio)."}
               </p>
             </div>
           )}
