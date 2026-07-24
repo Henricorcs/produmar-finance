@@ -1,13 +1,26 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check } from "lucide-react";
+import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { inviteUser, removeUser, updateOperatorCategories } from "@/app/(app)/configuracoes/actions";
+import {
+  inviteUser,
+  removeUser,
+  updateOperatorCategories,
+  updateUserModules,
+} from "@/app/(app)/configuracoes/actions";
 import { machineCategoryLabel } from "@/lib/utils";
+import { APP_MODULES } from "@/lib/modules";
 import { MACHINE_CATEGORIES, type Profile, type UserRole } from "@/lib/types";
+
+/** Módulos que podem ser liberados por usuário (nome curto p/ os botões). */
+const MODULE_OPTIONS = APP_MODULES.map((m) => ({ slug: m.slug, name: m.name }));
+
+function moduleLabel(slug: string): string {
+  return MODULE_OPTIONS.find((m) => m.slug === slug)?.name ?? slug;
+}
 
 const ROLES: { value: UserRole; label: string; desc: string }[] = [
   { value: "admin",       label: "Admin",       desc: "Acesso total"                   },
@@ -39,15 +52,20 @@ export function UserManagementClient({ users, currentUserId }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [selectedRole, setSelectedRole] = useState<UserRole>("financeiro");
   const [inviteCategories, setInviteCategories] = useState<string[]>([]);
+  const [inviteModules, setInviteModules] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingCatsId, setEditingCatsId] = useState<string | null>(null);
   const [catsDraft, setCatsDraft] = useState<string[]>([]);
+  const [editingModsId, setEditingModsId] = useState<string | null>(null);
+  const [modsDraft, setModsDraft] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
   const [savingCats, startSaveCats] = useTransition();
+  const [savingMods, startSaveMods] = useTransition();
 
   function startEditCats(u: Profile) {
+    setEditingModsId(null);
     setEditingCatsId(u.id);
     setCatsDraft(u.allowed_categories ?? []);
   }
@@ -63,6 +81,23 @@ export function UserManagementClient({ users, currentUserId }: Props) {
     });
   }
 
+  function startEditMods(u: Profile) {
+    setEditingCatsId(null);
+    setEditingModsId(u.id);
+    setModsDraft(u.allowed_modules ?? []);
+  }
+
+  function saveMods(userId: string) {
+    startSaveMods(async () => {
+      const res = await updateUserModules(userId, modsDraft);
+      if ("error" in res) {
+        alert(res.error);
+        return;
+      }
+      setEditingModsId(null);
+    });
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setFormError(null);
@@ -72,6 +107,10 @@ export function UserManagementClient({ users, currentUserId }: Props) {
     formData.set(
       "allowed_categories",
       JSON.stringify(selectedRole === "operador" ? inviteCategories : [])
+    );
+    formData.set(
+      "allowed_modules",
+      JSON.stringify(selectedRole === "financeiro" ? inviteModules : [])
     );
 
     startTransition(async () => {
@@ -83,6 +122,7 @@ export function UserManagementClient({ users, currentUserId }: Props) {
         setShowForm(false);
         setSelectedRole("financeiro");
         setInviteCategories([]);
+        setInviteModules([]);
         (e.target as HTMLFormElement).reset();
       }
     });
@@ -104,7 +144,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
           const Icon = ROLE_ICON[u.role];
           const isMe = u.id === currentUserId;
           const isOperador = u.role === "operador";
+          const isFinanceiro = u.role === "financeiro";
           const cats = u.allowed_categories ?? [];
+          const mods = u.allowed_modules ?? [];
           return (
             <div key={u.id} className="py-3 first:pt-0 last:pb-0">
               <div className="flex items-center gap-3">
@@ -130,6 +172,13 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                         : "Todos os veículos"}
                     </p>
                   )}
+                  {isFinanceiro && editingModsId !== u.id && (
+                    <p className="text-[10px] text-produmar-600 dark:text-produmar-400 truncate mt-0.5">
+                      {mods.length > 0
+                        ? mods.map(moduleLabel).join(", ")
+                        : "Todos os módulos"}
+                    </p>
+                  )}
                 </div>
                 <span
                   className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${ROLE_BADGE[u.role]}`}
@@ -143,6 +192,15 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                     className="p-1 text-slate-300 dark:text-slate-600 hover:text-produmar-600 dark:hover:text-produmar-400 transition-colors flex-shrink-0"
                   >
                     <HardHat className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {isFinanceiro && (
+                  <button
+                    onClick={() => (editingModsId === u.id ? setEditingModsId(null) : startEditMods(u))}
+                    title="Editar módulos liberados"
+                    className="p-1 text-slate-300 dark:text-slate-600 hover:text-produmar-600 dark:hover:text-produmar-400 transition-colors flex-shrink-0"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
                   </button>
                 )}
                 {!isMe && (
@@ -200,6 +258,55 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                       <Button type="button" size="sm" disabled={savingCats} onClick={() => saveCats(u.id)}>
                         <Check className="w-3 h-3" />
                         {savingCats ? "Salvando…" : "Salvar"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Editor de módulos liberados (financeiro) */}
+              {isFinanceiro && editingModsId === u.id && (
+                <div className="mt-2 ml-11 space-y-2 rounded-lg border border-produmar-100 dark:border-slate-700 bg-produmar-50/30 dark:bg-slate-800/40 p-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {MODULE_OPTIONS.map((m) => {
+                      const active = modsDraft.includes(m.slug);
+                      return (
+                        <button
+                          key={m.slug}
+                          type="button"
+                          onClick={() =>
+                            setModsDraft((prev) =>
+                              prev.includes(m.slug)
+                                ? prev.filter((x) => x !== m.slug)
+                                : [...prev, m.slug]
+                            )
+                          }
+                          className={`px-2.5 h-8 rounded-full text-xs font-medium border transition-colors ${
+                            active
+                              ? "bg-produmar-600 border-produmar-600 text-white"
+                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          {m.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                      Em branco = acesso a todos os módulos.
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingModsId(null)}
+                        className="px-3 h-8 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+                      >
+                        Cancelar
+                      </button>
+                      <Button type="button" size="sm" disabled={savingMods} onClick={() => saveMods(u.id)}>
+                        <Check className="w-3 h-3" />
+                        {savingMods ? "Salvando…" : "Salvar"}
                       </Button>
                     </div>
                   </div>
@@ -336,6 +443,46 @@ export function UserManagementClient({ users, currentUserId }: Props) {
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
                 Opcional. Deixe em branco para quem não opera veículo (ex.: só faz
                 serviço rápido). Marque só para limitar aos veículos que ele usa.
+              </p>
+            </div>
+          )}
+
+          {/* Módulos liberados — só para financeiro (opcional) */}
+          {selectedRole === "financeiro" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs flex items-center gap-1.5">
+                <LayoutGrid className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
+                Módulos que ele pode acessar
+                <span className="font-normal text-slate-400 dark:text-slate-500">(opcional)</span>
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {MODULE_OPTIONS.map((m) => {
+                  const active = inviteModules.includes(m.slug);
+                  return (
+                    <button
+                      key={m.slug}
+                      type="button"
+                      onClick={() =>
+                        setInviteModules((prev) =>
+                          prev.includes(m.slug)
+                            ? prev.filter((x) => x !== m.slug)
+                            : [...prev, m.slug]
+                        )
+                      }
+                      className={`px-2.5 h-8 rounded-full text-xs font-medium border transition-colors ${
+                        active
+                          ? "bg-produmar-600 border-produmar-600 text-white"
+                          : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                      }`}
+                    >
+                      {m.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                Opcional. Deixe em branco para liberar todos os módulos. Marque só
+                para limitar (ex.: apenas Obras e Patrimônio).
               </p>
             </div>
           )}

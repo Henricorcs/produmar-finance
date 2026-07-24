@@ -90,6 +90,19 @@ export async function inviteUser(
   }
   if (role !== "operador") allowedCategories = [];
 
+  // Módulos liberados (só faz sentido p/ financeiro) — enviado como JSON.
+  let allowedModules: string[] = [];
+  try {
+    const raw = formData.get("allowed_modules");
+    if (typeof raw === "string" && raw.trim()) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) allowedModules = parsed.map(String);
+    }
+  } catch {
+    allowedModules = [];
+  }
+  if (role !== "financeiro") allowedModules = [];
+
   if (!email) return { error: "Email obrigatório" };
   if (!password || password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };
   if (!["admin", "financeiro", "visualizador", "operador"].includes(role))
@@ -101,7 +114,8 @@ export async function inviteUser(
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: fullName || null, role },
+    // allowed_modules vai no metadata p/ o middleware bloquear rotas sem consultar o banco.
+    user_metadata: { full_name: fullName || null, role, allowed_modules: allowedModules },
   });
 
   if (createError) return { error: createError.message };
@@ -112,6 +126,7 @@ export async function inviteUser(
     full_name: fullName || null,
     role,
     allowed_categories: allowedCategories,
+    allowed_modules: allowedModules,
   });
 
   revalidatePath("/configuracoes");
@@ -146,6 +161,48 @@ export async function updateOperatorCategories(
     .update({ allowed_categories: clean })
     .eq("id", targetUserId);
   if (error) return { error: error.message };
+
+  revalidatePath("/configuracoes");
+  return { ok: true };
+}
+
+/** Admin atualiza os módulos liberados para um usuário (vazio = todos). */
+export async function updateUserModules(
+  targetUserId: string,
+  modules: string[]
+): Promise<{ error: string } | { ok: true }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
+
+  const clean = Array.isArray(modules)
+    ? [...new Set(modules.map((m) => String(m).trim()).filter(Boolean))]
+    : [];
+
+  const admin = createAdminClient();
+
+  const { error } = await admin
+    .from("profiles")
+    .update({ allowed_modules: clean })
+    .eq("id", targetUserId);
+  if (error) return { error: error.message };
+
+  // Mantém o metadata em sincronia — é o que o middleware lê p/ bloquear rotas.
+  // Preserva as chaves existentes (role, full_name) ao gravar allowed_modules.
+  const { data: target } = await admin.auth.admin.getUserById(targetUserId);
+  const { error: metaError } = await admin.auth.admin.updateUserById(targetUserId, {
+    user_metadata: { ...(target?.user?.user_metadata ?? {}), allowed_modules: clean },
+  });
+  if (metaError) return { error: metaError.message };
 
   revalidatePath("/configuracoes");
   return { ok: true };

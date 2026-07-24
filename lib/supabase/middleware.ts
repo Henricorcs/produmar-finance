@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isModuleBlocked } from "@/lib/module-access";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -68,6 +69,17 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = "/operador";
       return NextResponse.redirect(url);
+    }
+
+    // Módulos liberados por usuário — admin/operador/visualizador não se aplicam
+    // (admin vê tudo; os outros já foram tratados acima). Vazio = sem restrição.
+    if (role !== "admin" && role !== "operador" && role !== "visualizador" && !isPublicRoute) {
+      const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;
+      if (isModuleBlocked(path, allowedModules)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/inicio";
+        return NextResponse.redirect(url);
+      }
     }
   }
 

@@ -96,3 +96,18 @@ export function findModuleByPath(pathname: string): AppModule | undefined {
     m.tabs.some((t) => pathname === t.href || pathname.startsWith(t.href + "/"))
   );
 }
+
+/**
+ * Módulos visíveis para um usuário conforme seu perfil.
+ *  • admin → todos os módulos.
+ *  • allowedModules vazio → todos (sem restrição).
+ *  • caso contrário → apenas os módulos liberados.
+ */
+export function modulesForProfile(
+  allowedModules: string[] | undefined,
+  role?: string
+): AppModule[] {
+  if (role === "admin") return APP_MODULES;
+  if (!allowedModules || allowedModules.length === 0) return APP_MODULES;
+  return APP_MODULES.filter((m) => allowedModules.includes(m.slug));
+}

@@ -12,6 +12,8 @@ export interface Profile {
   avatar_url: string | null;
   /** Categorias de máquina/veículo que este operador pode usar (vazio = todas). */
   allowed_categories: string[];
+  /** Slugs dos módulos liberados para este usuário (vazio = todos). */
+  allowed_modules: string[];
   created_at: string;
   updated_at: string;
 }
