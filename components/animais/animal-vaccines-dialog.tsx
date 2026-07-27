@@ -11,8 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { createVaccine, updateVaccine, deleteVaccine } from "@/app/(app)/animais/actions";
-import { formatMl, parseDecimal, formatDecimalInput } from "./animal-shared";
+import { ICON_BUTTON, formatMl, parseDecimal, formatDecimalInput } from "./animal-shared";
 import type { AnimalVaccine } from "@/lib/types";
 
 interface Props {
@@ -145,17 +146,19 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                   </p>
                 </div>
                 <button
+                  aria-label={`Editar ${v.name}`}
                   onClick={() => startEdit(v)}
-                  className="p-1 text-slate-400 hover:text-produmar-600"
+                  className={cn(ICON_BUTTON, "text-slate-400 hover:text-produmar-600")}
                 >
-                  <Pencil className="w-3.5 h-3.5" />
+                  <Pencil className="w-4 h-4" />
                 </button>
                 <button
+                  aria-label={`Remover ${v.name}`}
                   onClick={() => handleDelete(v)}
                   disabled={isPending}
-                  className="p-1 text-slate-400 hover:text-red-500"
+                  className={cn(ICON_BUTTON, "text-slate-400 hover:text-red-500 -mr-2")}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             ))}
@@ -170,8 +173,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
           {!showForm ? (
             <Button
               variant="outline"
-              size="sm"
-              className="w-full"
+              className="w-full h-11 sm:h-9 sm:text-xs"
               onClick={() => setShowForm(true)}
             >
               <Plus className="w-4 h-4" />
@@ -186,7 +188,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                 value={name}
                 onChange={(e) => setName(e.target.value.toLowerCase())}
                 placeholder="nome (ex: febre aftosa)"
-                className="h-9 text-sm"
+                className="h-11 sm:h-9 sm:text-sm"
                 autoFocus
               />
               <div className="space-y-1">
@@ -198,7 +200,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                   value={recurrence}
                   onChange={(e) => setRecurrence(e.target.value.replace(/\D/g, ""))}
                   placeholder="ex: 6"
-                  className="h-9 text-sm tabular-nums"
+                  className="h-11 tabular-nums sm:h-9 sm:text-sm"
                   inputMode="numeric"
                 />
               </div>
@@ -212,7 +214,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                   value={doseMl}
                   onChange={(e) => setDoseMl(formatDecimalInput(e.target.value))}
                   placeholder="ex: 5"
-                  className="h-9 text-sm tabular-nums"
+                  className="h-11 tabular-nums sm:h-9 sm:text-sm"
                   inputMode="decimal"
                 />
               </div>
@@ -225,7 +227,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                     value={dosePerWeight}
                     onChange={(e) => setDosePerWeight(formatDecimalInput(e.target.value))}
                     placeholder="1"
-                    className="h-9 text-sm tabular-nums flex-1"
+                    className="h-11 tabular-nums flex-1 sm:h-9 sm:text-sm"
                     inputMode="decimal"
                     aria-label="ml por peso"
                   />
@@ -236,7 +238,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                     value={doseWeightKg}
                     onChange={(e) => setDoseWeightKg(formatDecimalInput(e.target.value))}
                     placeholder="50"
-                    className="h-9 text-sm tabular-nums flex-1"
+                    className="h-11 tabular-nums flex-1 sm:h-9 sm:text-sm"
                     inputMode="decimal"
                     aria-label="kg de peso"
                   />
@@ -256,18 +258,18 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                   value={brand}
                   onChange={(e) => setBrand(e.target.value.toUpperCase())}
                   placeholder="ex: zoetis, ourofino"
-                  className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+                  className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
                 />
               </div>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={reset}
-                  className="flex-1 h-9 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50"
+                  className="flex-1 h-11 text-xs rounded-lg sm:h-9 border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50"
                 >
                   <X className="w-3 h-3 inline mr-1" /> Cancelar
                 </button>
-                <Button type="submit" size="sm" className="flex-1" disabled={isPending}>
+                <Button type="submit" className="flex-1 h-11 sm:h-9 sm:text-xs" disabled={isPending}>
                   <Check className="w-3 h-3" />
                   {editingId ? "Salvar" : "Adicionar"}
                 </Button>

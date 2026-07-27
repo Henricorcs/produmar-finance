@@ -10,11 +10,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import {
   createAnimalType,
   renameAnimalType,
   deleteAnimalType,
 } from "@/app/(app)/animais/actions";
+import { ICON_BUTTON } from "./animal-shared";
 import type { AnimalType } from "@/lib/types";
 
 interface Props {
@@ -98,17 +100,19 @@ export function AnimalTypesDialog({ open, onClose, types }: Props) {
                   {t.name}
                 </p>
                 <button
+                  aria-label={`Editar ${t.name}`}
                   onClick={() => startEdit(t)}
-                  className="p-1 text-slate-400 hover:text-produmar-600"
+                  className={cn(ICON_BUTTON, "text-slate-400 hover:text-produmar-600")}
                 >
-                  <Pencil className="w-3.5 h-3.5" />
+                  <Pencil className="w-4 h-4" />
                 </button>
                 <button
+                  aria-label={`Remover ${t.name}`}
                   onClick={() => handleDelete(t)}
                   disabled={isPending}
-                  className="p-1 text-slate-400 hover:text-red-500"
+                  className={cn(ICON_BUTTON, "text-slate-400 hover:text-red-500 -mr-2")}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             ))}
@@ -123,8 +127,7 @@ export function AnimalTypesDialog({ open, onClose, types }: Props) {
           {!showForm ? (
             <Button
               variant="outline"
-              size="sm"
-              className="w-full"
+              className="w-full h-11 sm:h-9 sm:text-xs"
               onClick={() => setShowForm(true)}
             >
               <Plus className="w-4 h-4" />
@@ -139,19 +142,19 @@ export function AnimalTypesDialog({ open, onClose, types }: Props) {
                 value={name}
                 onChange={(e) => setName(e.target.value.toLowerCase())}
                 placeholder="nome (ex: nelore, angus)"
-                className="h-9 text-sm"
+                className="h-11 sm:h-9 sm:text-sm"
                 autoFocus
               />
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={reset}
-                  className="flex-1 h-9 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50"
+                  className="flex-1 h-11 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 sm:h-9"
                 >
                   <X className="w-3 h-3 inline mr-1" /> Cancelar
                 </button>
-                <Button type="submit" size="sm" className="flex-1" disabled={isPending}>
-                  <Check className="w-3 h-3" />
+                <Button type="submit" className="flex-1 h-11 sm:h-9 sm:text-xs" disabled={isPending}>
+                  <Check className="w-4 h-4" />
                   {editingId ? "Salvar" : "Adicionar"}
                 </Button>
               </div>

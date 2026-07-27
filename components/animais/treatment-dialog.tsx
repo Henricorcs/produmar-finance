@@ -13,9 +13,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { localDateISO } from "@/lib/utils";
+import { cn, localDateISO } from "@/lib/utils";
 import { createTreatment, updateTreatment } from "@/app/(app)/animais/actions";
-import { parseDecimal, formatDecimalInput, categoryLabel } from "./animal-shared";
+import {
+  FOOTER_CANCEL,
+  FOOTER_SUBMIT,
+  STICKY_FOOTER,
+  parseDecimal,
+  formatDecimalInput,
+  categoryLabel,
+} from "./animal-shared";
 import type { AnimalTreatment, AnimalWithInfo } from "@/lib/types";
 
 interface Props {
@@ -207,6 +214,7 @@ export function TreatmentDialog({
                 type="date"
                 value={appliedAt}
                 onChange={(e) => setAppliedAt(e.target.value)}
+                className="h-11 sm:h-10"
               />
             </div>
             <div className="space-y-1.5">
@@ -216,6 +224,7 @@ export function TreatmentDialog({
                 type="date"
                 value={nextApplication}
                 onChange={(e) => setNextApplication(e.target.value)}
+                className="h-11 sm:h-10"
               />
             </div>
           </div>
@@ -238,11 +247,17 @@ export function TreatmentDialog({
             </p>
           )}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+          <DialogFooter className={STICKY_FOOTER}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+              className={cn(FOOTER_CANCEL, "h-11 sm:h-10")}
+            >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}>
               {isPending ? "Salvando..." : treatment ? "Salvar" : "Registrar"}
             </Button>
           </DialogFooter>

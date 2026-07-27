@@ -13,8 +13,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { createAnimal, updateAnimal, uploadAnimalPhotos } from "@/app/(app)/animais/actions";
-import { SexPicker, parseDecimal, formatDecimalInput } from "./animal-shared";
+import {
+  FOOTER_CANCEL,
+  FOOTER_SUBMIT,
+  INLINE_LINK,
+  STICKY_FOOTER,
+  SexPicker,
+  parseDecimal,
+  formatDecimalInput,
+} from "./animal-shared";
 import { AnimalTypesDialog } from "./animal-types-dialog";
 import type { Animal, AnimalSex, AnimalType } from "@/lib/types";
 
@@ -127,6 +136,7 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
                 type="date"
                 value={birthDate}
                 onChange={(e) => setBirthDate(e.target.value)}
+                className="h-11 sm:h-10"
               />
             </div>
             <div className="space-y-1.5">
@@ -146,12 +156,8 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="animal_type">Tipo de animal</Label>
-              <button
-                type="button"
-                onClick={() => setTypesOpen(true)}
-                className="flex items-center gap-1 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
-              >
-                <Settings2 className="w-3 h-3" />
+              <button type="button" onClick={() => setTypesOpen(true)} className={INLINE_LINK}>
+                <Settings2 className="w-3.5 h-3.5" />
                 Gerenciar
               </button>
             </div>
@@ -159,7 +165,7 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
               id="animal_type"
               value={typeId}
               onChange={(e) => setTypeId(e.target.value)}
-              className="w-full h-10 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-slate-800 dark:text-slate-100"
+              className="w-full h-11 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-slate-800 dark:text-slate-100 sm:h-10"
             >
               <option value="">Sem tipo</option>
               {types.map((t) => (
@@ -197,7 +203,7 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
                     <button
                       type="button"
                       onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="p-1 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
+                      className="w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
                       aria-label="Remover foto"
                     >
                       <X className="w-4 h-4" />
@@ -209,7 +215,7 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
             <Button
               type="button"
               variant="outline"
-              className="w-full"
+              className="w-full h-11 sm:h-10"
               onClick={() => fileRef.current?.click()}
             >
               <Camera className="w-4 h-4" />
@@ -241,11 +247,17 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
             </p>
           )}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+          <DialogFooter className={STICKY_FOOTER}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+              className={cn(FOOTER_CANCEL, "h-11 sm:h-10")}
+            >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}>
               {isPending ? "Salvando..." : animal ? "Salvar" : "Cadastrar"}
             </Button>
           </DialogFooter>

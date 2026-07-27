@@ -13,9 +13,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { localDateISO } from "@/lib/utils";
+import { cn, localDateISO } from "@/lib/utils";
 import { createBirth } from "@/app/(app)/animais/actions";
-import { SexPicker, categoryLabel } from "./animal-shared";
+import {
+  FOOTER_CANCEL,
+  FOOTER_SUBMIT,
+  STICKY_FOOTER,
+  SexPicker,
+  categoryLabel,
+} from "./animal-shared";
 import type { AnimalSex, AnimalWithInfo } from "@/lib/types";
 
 interface Props {
@@ -132,6 +138,7 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
               type="date"
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
+              className="h-11 sm:h-10"
             />
           </div>
 
@@ -185,11 +192,17 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
             </p>
           )}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+          <DialogFooter className={STICKY_FOOTER}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+              className={cn(FOOTER_CANCEL, "h-11 sm:h-10")}
+            >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}>
               {isPending ? "Salvando..." : "Registrar"}
             </Button>
           </DialogFooter>

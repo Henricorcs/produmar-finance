@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Baby,
   Beef,
+  ChevronRight,
   ImageIcon,
   Pencil,
   Plus,
@@ -13,10 +14,11 @@ import {
   Stethoscope,
   Syringe,
   Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatBRL, formatDate } from "@/lib/utils";
+import { cn, formatBRL, formatDate } from "@/lib/utils";
 import {
   deleteBirth,
   deleteTreatment,
@@ -30,9 +32,11 @@ import { BirthDialog } from "./birth-dialog";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import {
   CATEGORY_META,
+  ICON_BUTTON,
   VACCINE_STATUS_META,
   categoryLabel,
   formatAge,
+  formatMl,
   formatWeight,
   vaccineStatusFor,
 } from "./animal-shared";
@@ -150,15 +154,15 @@ export function AnimaisPageClient({
     return Array.from(set).sort();
   }, [treatments]);
 
-  // ── KPIs ────────────────────────────────────────────────────────────────────
+  // ── Contagens ───────────────────────────────────────────────────────────────
   const countBy = useMemo(() => {
     const c: Record<AnimalCategory, number> = { boi: 0, vaca: 0, bezerro: 0 };
     for (const a of animals) c[a.category]++;
     return c;
   }, [animals]);
 
-  const pendingVaccination = useMemo(
-    () => animals.filter((a) => a.vaccines_due > 0),
+  const pendingCount = useMemo(
+    () => animals.filter((a) => a.vaccines_due > 0).length,
     [animals]
   );
 
@@ -213,51 +217,45 @@ export function AnimaisPageClient({
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     count: number;
+    alert?: boolean;
   }[] = [
     { value: "animais", label: "Animais", icon: Beef, count: animals.length },
-    { value: "vacinas", label: "Vacinas", icon: Syringe, count: pendingVaccination.length },
     {
-      value: "tratamentos",
-      label: "Tratam.",
-      icon: Stethoscope,
-      count: treatments.length,
+      value: "vacinas",
+      label: "Vacinas",
+      icon: Syringe,
+      count: pendingCount,
+      alert: pendingCount > 0,
     },
+    { value: "tratamentos", label: "Tratam.", icon: Stethoscope, count: treatments.length },
     { value: "partos", label: "Partos", icon: Baby, count: births.length },
   ];
 
-  const categoryFilters: { value: CategoryFilter; label: string }[] = [
-    { value: "todos", label: "Todos" },
-    { value: "vaca", label: "Vacas" },
-    { value: "boi", label: "Bois" },
-    { value: "bezerro", label: "Bezerros" },
+  const categoryFilters: { value: CategoryFilter; label: string; count: number }[] = [
+    { value: "todos", label: "Todos", count: animals.length },
+    { value: "vaca", label: "Vacas", count: countBy.vaca },
+    { value: "boi", label: "Bois", count: countBy.boi },
+    { value: "bezerro", label: "Bezerros", count: countBy.bezerro },
   ];
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Animais</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
             Rebanho, tratamentos, vacinas e partos
           </p>
         </div>
-        <Button onClick={openNewAnimal} className="flex-shrink-0">
+        <Button onClick={openNewAnimal} className="flex-shrink-0 h-11 px-4">
           <Plus className="w-4 h-4" />
           Novo
         </Button>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-4 gap-2">
-        <KpiCard icon={Beef} label="Total" value={String(animals.length)} tone="produmar" />
-        <KpiCard icon={Beef} label="Vacas" value={String(countBy.vaca)} tone="rose" />
-        <KpiCard icon={Beef} label="Bois" value={String(countBy.boi)} tone="produmar" />
-        <KpiCard icon={Baby} label="Bezerros" value={String(countBy.bezerro)} tone="amber" />
-      </div>
-
-      {/* Abas */}
-      <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+      {/* Abas — 4 no grid do celular (sem rolagem lateral) */}
+      <div className="grid grid-cols-4 gap-1.5 sm:flex">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = tab === t.value;
@@ -265,15 +263,31 @@ export function AnimaisPageClient({
             <button
               key={t.value}
               onClick={() => setTab(t.value)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+              className={cn(
+                "relative flex flex-col items-center justify-center gap-1 min-h-[58px] px-1 rounded-xl border text-[11px] font-medium transition-colors active:scale-[0.97]",
+                "sm:flex-row sm:min-h-0 sm:px-3 sm:py-2 sm:text-xs sm:gap-1.5",
                 active
                   ? "bg-produmar-600 border-produmar-600 text-white"
                   : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-              }`}
+              )}
             >
-              <Icon className="w-4 h-4" />
-              {t.label}
-              {t.count > 0 && <span className="opacity-70">{t.count}</span>}
+              <Icon className="w-5 h-5 sm:w-4 sm:h-4" />
+              <span className="leading-none">{t.label}</span>
+              {t.count > 0 && (
+                <span
+                  className={cn(
+                    "absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold flex items-center justify-center",
+                    "sm:static sm:min-w-0 sm:h-auto sm:px-0 sm:bg-transparent sm:opacity-70",
+                    active
+                      ? "bg-white/25 text-white sm:text-white"
+                      : t.alert
+                      ? "bg-red-500 text-white sm:bg-transparent sm:text-red-500"
+                      : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 sm:bg-transparent"
+                  )}
+                >
+                  {t.count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -282,34 +296,67 @@ export function AnimaisPageClient({
       {/* ── Aba: Animais ─────────────────────────────────────────────────── */}
       {tab === "animais" && (
         <div className="space-y-3">
+          {/* Filtro por categoria — também serve de resumo do rebanho */}
+          <div className="grid grid-cols-4 gap-1.5">
+            {categoryFilters.map((f) => {
+              const active = categoryFilter === f.value;
+              return (
+                <button
+                  key={f.value}
+                  onClick={() => setCategoryFilter(f.value)}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-0.5 min-h-[56px] rounded-xl border transition-colors active:scale-[0.97]",
+                    active
+                      ? "bg-produmar-50 border-produmar-300 dark:bg-produmar-950/40 dark:border-produmar-700"
+                      : "bg-white border-slate-200 dark:bg-slate-900 dark:border-slate-700"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "text-lg font-bold tabular-nums leading-none",
+                      active
+                        ? "text-produmar-700 dark:text-produmar-300"
+                        : "text-slate-800 dark:text-slate-100"
+                    )}
+                  >
+                    {f.count}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] leading-tight",
+                      active
+                        ? "text-produmar-600 dark:text-produmar-400"
+                        : "text-slate-500 dark:text-slate-400"
+                    )}
+                  >
+                    {f.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Busca */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar pelo número ou tipo..."
-              className="pl-9"
+              className="pl-9 pr-10 h-11"
               autoComplete="off"
+              enterKeyHint="search"
             />
-          </div>
-
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
-            {categoryFilters.map((f) => (
+            {search && (
               <button
-                key={f.value}
-                onClick={() => setCategoryFilter(f.value)}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  categoryFilter === f.value
-                    ? "bg-produmar-600 border-produmar-600 text-white"
-                    : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-                }`}
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Limpar busca"
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-slate-400 hover:text-slate-600"
               >
-                {f.label}
-                {f.value !== "todos" && (
-                  <span className="opacity-60 ml-1">{countBy[f.value]}</span>
-                )}
+                <X className="w-4 h-4" />
               </button>
-            ))}
+            )}
           </div>
 
           {filteredAnimals.length === 0 ? (
@@ -319,7 +366,7 @@ export function AnimaisPageClient({
                 text="Nenhum animal cadastrado ainda."
                 hint="Cadastre o primeiro para controlar vacinas e tratamentos."
                 action={
-                  <Button size="sm" onClick={openNewAnimal}>
+                  <Button onClick={openNewAnimal}>
                     <Plus className="w-4 h-4" /> Novo animal
                   </Button>
                 }
@@ -328,7 +375,7 @@ export function AnimaisPageClient({
               <EmptyState icon={Search} text="Nada encontrado com esse filtro." />
             )
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
               {filteredAnimals.map((a) => (
                 <AnimalCard
                   key={a.id}
@@ -346,12 +393,16 @@ export function AnimaisPageClient({
       {/* ── Aba: Vacinas ─────────────────────────────────────────────────── */}
       {tab === "vacinas" && (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <Button onClick={() => openVaccination(null)}>
+          <div className="flex gap-2">
+            <Button className="flex-[2] h-11" onClick={() => openVaccination(null)}>
               <Syringe className="w-4 h-4" />
               Aplicar protocolo
             </Button>
-            <Button variant="outline" onClick={() => setVaccinesOpen(true)}>
+            <Button
+              variant="outline"
+              className="flex-1 h-11"
+              onClick={() => setVaccinesOpen(true)}
+            >
               <Settings2 className="w-4 h-4" />
               Vacinas
             </Button>
@@ -363,7 +414,7 @@ export function AnimaisPageClient({
               text="Nenhuma vacina cadastrada."
               hint="Cadastre as vacinas do rebanho para acompanhar quem está em dia."
               action={
-                <Button size="sm" onClick={() => setVaccinesOpen(true)}>
+                <Button onClick={() => setVaccinesOpen(true)}>
                   <Plus className="w-4 h-4" /> Cadastrar vacina
                 </Button>
               }
@@ -371,19 +422,27 @@ export function AnimaisPageClient({
           ) : animals.length === 0 ? (
             <EmptyState icon={Beef} text="Cadastre os animais para acompanhar a vacinação." />
           ) : (
-            <div className="space-y-2">
-              {[...animals]
-                .sort((a, b) => b.vaccines_due - a.vaccines_due)
-                .map((a) => (
-                  <VaccinationStatusRow
-                    key={a.id}
-                    animal={a}
-                    vaccines={vaccines}
-                    vaccinations={vaccinations}
-                    onOpen={() => setDetailAnimalId(a.id)}
-                  />
-                ))}
-            </div>
+            <>
+              {pendingCount > 0 && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                  {pendingCount} animal(is) com vacina pendente — toque para aplicar
+                </p>
+              )}
+              <div className="space-y-2">
+                {[...animals]
+                  .sort((a, b) => b.vaccines_due - a.vaccines_due)
+                  .map((a) => (
+                    <VaccinationStatusRow
+                      key={a.id}
+                      animal={a}
+                      vaccines={vaccines}
+                      vaccinations={vaccinations}
+                      onOpen={() => setDetailAnimalId(a.id)}
+                    />
+                  ))}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -391,7 +450,7 @@ export function AnimaisPageClient({
       {/* ── Aba: Tratamentos ─────────────────────────────────────────────── */}
       {tab === "tratamentos" && (
         <div className="space-y-3">
-          <Button className="w-full" onClick={() => openTreatment(null)}>
+          <Button className="w-full h-11" onClick={() => openTreatment(null)}>
             <Plus className="w-4 h-4" />
             Novo tratamento
           </Button>
@@ -405,48 +464,39 @@ export function AnimaisPageClient({
           ) : (
             <div className="space-y-2">
               {treatments.map((t) => (
-                <div
-                  key={t.id}
-                  className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                        {t.description}
+                <TappableRow key={t.id} onOpen={() => setDetailAnimalId(t.animal_id)}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                      {t.description}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Animal {t.animals?.tag ?? "—"} · {formatDate(t.applied_at)}
+                      {t.medicine ? ` · ${t.medicine}` : ""}
+                      {t.dose ? ` (${t.dose})` : ""}
+                      {Number(t.cost) > 0 ? ` · ${formatBRL(Number(t.cost))}` : ""}
+                    </p>
+                    {t.next_application && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                        repetir em {formatDate(t.next_application)}
                       </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Animal {t.animals?.tag ?? "—"} · {formatDate(t.applied_at)}
-                        {t.medicine ? ` · ${t.medicine}` : ""}
-                        {t.dose ? ` (${t.dose})` : ""}
-                        {Number(t.cost) > 0 ? ` · ${formatBRL(Number(t.cost))}` : ""}
-                      </p>
-                      {t.next_application && (
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-                          repetir em {formatDate(t.next_application)}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => openTreatment(null, t)}
-                        aria-label="Editar tratamento"
-                        className="p-1 text-slate-300 hover:text-produmar-600"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteTreatment(t.id)}
-                        disabled={isPending}
-                        aria-label="Remover tratamento"
-                        className="p-1 text-slate-300 hover:text-red-500"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    )}
                   </div>
-                </div>
+                  <RowAction
+                    label="Editar tratamento"
+                    onClick={() => openTreatment(null, t)}
+                    className="text-slate-400 hover:text-produmar-600"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </RowAction>
+                  <RowAction
+                    label="Remover tratamento"
+                    onClick={() => handleDeleteTreatment(t.id)}
+                    disabled={isPending}
+                    className="text-slate-400 hover:text-red-500"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </RowAction>
+                </TappableRow>
               ))}
             </div>
           )}
@@ -456,7 +506,7 @@ export function AnimaisPageClient({
       {/* ── Aba: Partos ──────────────────────────────────────────────────── */}
       {tab === "partos" && (
         <div className="space-y-3">
-          <Button className="w-full" onClick={() => openBirth(null)}>
+          <Button className="w-full h-11" onClick={() => openBirth(null)}>
             <Plus className="w-4 h-4" />
             Registrar parto
           </Button>
@@ -470,35 +520,27 @@ export function AnimaisPageClient({
           ) : (
             <div className="space-y-2">
               {births.map((b) => (
-                <div
-                  key={b.id}
-                  className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                        {b.calf_sex === "macho" ? "Bezerro" : "Bezerra"}
-                        {b.calf_tag ? ` nº ${b.calf_tag}` : ""}
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Mãe {b.animals?.tag ?? "—"} · {formatDate(b.birth_date)}
-                        {b.calf_animal_id ? " · cadastrado no rebanho" : ""}
-                      </p>
-                      {b.notes && (
-                        <p className="text-[11px] text-slate-400 mt-0.5">{b.notes}</p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteBirth(b.id)}
-                      disabled={isPending}
-                      aria-label="Remover parto"
-                      className="p-1 text-slate-300 hover:text-red-500 flex-shrink-0"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                <TappableRow key={b.id} onOpen={() => setDetailAnimalId(b.mother_id)}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                      {b.calf_sex === "macho" ? "Bezerro" : "Bezerra"}
+                      {b.calf_tag ? ` nº ${b.calf_tag}` : ""}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Mãe {b.animals?.tag ?? "—"} · {formatDate(b.birth_date)}
+                      {b.calf_animal_id ? " · cadastrado no rebanho" : ""}
+                    </p>
+                    {b.notes && <p className="text-[11px] text-slate-400 mt-0.5">{b.notes}</p>}
                   </div>
-                </div>
+                  <RowAction
+                    label="Remover parto"
+                    onClick={() => handleDeleteBirth(b.id)}
+                    disabled={isPending}
+                    className="text-slate-400 hover:text-red-500"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </RowAction>
+                </TappableRow>
               ))}
             </div>
           )}
@@ -559,6 +601,62 @@ export function AnimaisPageClient({
   );
 }
 
+// ── Linha tocável com ações ──────────────────────────────────────────────────
+/** Abre a ficha do animal ao tocar; os botões de ação não disparam a abertura. */
+function TappableRow({
+  onOpen,
+  children,
+}: {
+  onOpen: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-3 pr-1 py-2.5 cursor-pointer transition-all active:bg-slate-50 dark:active:bg-slate-800/60 hover:border-produmar-200 dark:hover:border-produmar-800"
+    >
+      {children}
+    </div>
+  );
+}
+
+function RowAction({
+  label,
+  onClick,
+  disabled,
+  className,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(ICON_BUTTON, "active:bg-slate-100 dark:active:bg-slate-800", className)}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ── Card do animal ───────────────────────────────────────────────────────────
 function AnimalCard({
   animal,
@@ -584,25 +682,25 @@ function AnimalCard({
           onOpen();
         }
       }}
-      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 cursor-pointer transition-all hover:shadow-md hover:border-produmar-200 dark:hover:border-produmar-800 active:bg-slate-50 dark:active:bg-slate-800/60"
+      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 cursor-pointer transition-all active:scale-[0.98] active:bg-slate-50 dark:active:bg-slate-800/60 hover:shadow-md hover:border-produmar-200 dark:hover:border-produmar-800"
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3">
         {thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumbUrl}
             alt={`Animal ${animal.tag}`}
-            className="w-14 h-14 rounded-lg object-cover border border-slate-200 dark:border-slate-700 flex-shrink-0"
+            className="w-16 h-16 rounded-lg object-cover border border-slate-200 dark:border-slate-700 flex-shrink-0"
           />
         ) : (
-          <div className="w-14 h-14 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-center flex-shrink-0">
+          <div className="w-16 h-16 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-center flex-shrink-0">
             <ImageIcon className="w-5 h-5 text-slate-300 dark:text-slate-600" />
           </div>
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+          <div className="flex items-center gap-2">
+            <p className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate">
               {animal.tag}
             </p>
             <span
@@ -611,7 +709,7 @@ function AnimalCard({
               {categoryLabel(animal.category, animal.sex)}
             </span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+          <p className="text-xs text-slate-400 mt-0.5 truncate">
             {animal.type_name ?? "sem tipo"} · {formatAge(animal.age_months)}
             {Number(animal.weight) > 0 ? ` · ${formatWeight(Number(animal.weight))}` : ""}
           </p>
@@ -627,7 +725,7 @@ function AnimalCard({
                   <Syringe className="w-3 h-3" />
                   Vacinas em dia
                 </span>
-              )
+            )
             )}
             {animal.calves_count > 0 && (
               <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
@@ -637,6 +735,8 @@ function AnimalCard({
             )}
           </div>
         </div>
+
+        <ChevronRight className="w-5 h-5 text-slate-300 dark:text-slate-600 flex-shrink-0" />
       </div>
     </div>
   );
@@ -659,7 +759,7 @@ function VaccinationStatusRow({
       .filter((x) => x.animal_id === animal.id && x.vaccine_id === v.id)
       .sort((a, b) => (a.applied_at < b.applied_at ? 1 : -1))[0];
     const { status } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
-    return { vaccine: v, status };
+    return { vaccine: v, status, last };
   });
 
   return (
@@ -673,7 +773,7 @@ function VaccinationStatusRow({
           onOpen();
         }
       }}
-      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 cursor-pointer transition-all hover:shadow-md hover:border-produmar-200 dark:hover:border-produmar-800"
+      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-3 cursor-pointer transition-all active:scale-[0.98] active:bg-slate-50 dark:active:bg-slate-800/60 hover:border-produmar-200 dark:hover:border-produmar-800"
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
@@ -682,56 +782,31 @@ function VaccinationStatusRow({
             {categoryLabel(animal.category, animal.sex)}
           </span>
         </p>
-        <span
-          className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${
-            animal.vaccines_due > 0
-              ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
-              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
-          }`}
-        >
-          {animal.vaccines_due > 0 ? `${animal.vaccines_due} pendente(s)` : "Em dia"}
-        </span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span
+            className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+              animal.vaccines_due > 0
+                ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
+                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+            )}
+          >
+            {animal.vaccines_due > 0 ? `${animal.vaccines_due} pendente(s)` : "Em dia"}
+          </span>
+          <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+        </div>
       </div>
       <div className="flex flex-wrap gap-1.5 mt-2">
-        {rows.map(({ vaccine, status }) => (
+        {rows.map(({ vaccine, status, last }) => (
           <span
             key={vaccine.id}
             className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${VACCINE_STATUS_META[status].chip}`}
           >
             {vaccine.name}
+            {last?.dose_ml ? ` ${formatMl(Number(last.dose_ml))}` : ""}
           </span>
         ))}
       </div>
-    </div>
-  );
-}
-
-// ── KPI card ────────────────────────────────────────────────────────────────
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  tone: "produmar" | "rose" | "amber";
-}) {
-  const tones = {
-    produmar: "bg-produmar-50 text-produmar-600 dark:bg-produmar-900/30 dark:text-produmar-400",
-    rose: "bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400",
-    amber: "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
-  }[tone];
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 flex flex-col items-center text-center gap-1">
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${tones}`}>
-        <Icon className="w-4 h-4" />
-      </div>
-      <p className="text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums leading-none">
-        {value}
-      </p>
-      <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{label}</p>
     </div>
   );
 }

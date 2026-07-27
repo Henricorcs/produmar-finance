@@ -2,6 +2,35 @@
 
 import type { AnimalCategory, AnimalSex, AnimalVaccine } from "@/lib/types";
 
+// ── Layout (celular) ─────────────────────────────────────────────────────────
+
+/**
+ * Rodapé do diálogo colado no fim da tela no celular: em formulário longo
+ * (protocolo com 5 vacinas, cadastro do animal) o botão de salvar fica sempre
+ * à mão, sem precisar rolar até o fim. No desktop segue no fluxo normal.
+ */
+export const STICKY_FOOTER =
+  "sticky bottom-0 z-10 flex-row -mx-5 px-5 pt-3 pb-[calc(0.25rem+env(safe-area-inset-bottom))] " +
+  "bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 " +
+  "sm:static sm:mx-0 sm:px-0 sm:pt-0 sm:pb-0 sm:border-0";
+
+/** Botão "Cancelar" do rodapé: estreito no celular, natural no desktop. */
+export const FOOTER_CANCEL = "flex-1 sm:flex-none";
+/** Botão principal do rodapé: ganha o dobro do espaço no celular. */
+export const FOOTER_SUBMIT = "flex-[2] sm:flex-none";
+
+/** Alvo de toque confortável para os ícones de ação nas listas (44x44). */
+export const ICON_BUTTON =
+  "w-11 h-11 flex items-center justify-center rounded-lg flex-shrink-0 transition-colors";
+
+/**
+ * Link pequeno ("Gerenciar", "Marcar todas") com área de toque de 44px sem
+ * esticar a linha do rótulo — as margens negativas devolvem o espaço extra.
+ */
+export const INLINE_LINK =
+  "flex items-center gap-1 min-h-[44px] px-2 -my-2 text-[11px] font-medium " +
+  "text-produmar-600 dark:text-produmar-400 hover:underline";
+
 // ── Sexo ─────────────────────────────────────────────────────────────────────
 
 export const SEX_OPTIONS: { value: AnimalSex; label: string }[] = [
@@ -181,7 +210,7 @@ export function SexPicker({
           key={opt.value}
           type="button"
           onClick={() => onChange(opt.value)}
-          className={`py-2 text-xs rounded-lg border font-medium transition-colors ${
+          className={`min-h-[44px] px-2 text-sm rounded-lg border font-medium transition-colors active:scale-[0.97] ${
             value === opt.value
               ? "bg-produmar-50 border-produmar-300 text-produmar-700 dark:bg-produmar-950/40 dark:border-produmar-700 dark:text-produmar-300"
               : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800"

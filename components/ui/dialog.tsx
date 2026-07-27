@@ -166,7 +166,10 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-produmar-500 focus:ring-offset-2 disabled:pointer-events-none">
+      {/* Área de toque de 44px no celular — o X continua no mesmo lugar,
+          só o alvo do dedo cresce (right-0.5/top-0.5 + w-11/h-11 mantêm o
+          ícone centrado exatamente onde estava com right-4/top-4). */}
+      <DialogPrimitive.Close className="absolute right-0.5 top-0.5 w-11 h-11 flex items-center justify-center rounded-lg opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-produmar-500 focus:ring-offset-2 disabled:pointer-events-none">
         <X className="h-4 w-4" />
         <span className="sr-only">Fechar</span>
       </DialogPrimitive.Close>

@@ -14,10 +14,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { localDateISO } from "@/lib/utils";
+import { cn, localDateISO } from "@/lib/utils";
 import { applyVaccineProtocol } from "@/app/(app)/animais/actions";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import {
+  FOOTER_CANCEL,
+  FOOTER_SUBMIT,
+  INLINE_LINK,
+  STICKY_FOOTER,
   categoryLabel,
   doseRuleLabel,
   formatDecimalInput,
@@ -131,6 +135,16 @@ export function VaccineProtocolDialog({
     });
   }
 
+  /** Marca todas as vacinas de uma vez (ou limpa, se já estão todas marcadas). */
+  function toggleAll() {
+    setItems((prev) => {
+      if (Object.keys(prev).length === vaccines.length) return {};
+      const next: ItemMap = {};
+      for (const v of vaccines) next[v.id] = prev[v.id] ?? newItem(v, weightKg);
+      return next;
+    });
+  }
+
   function patchItem(vaccineId: string, patch: Partial<ProtocolItem>) {
     setItems((prev) => (prev[vaccineId] ? { ...prev, [vaccineId]: { ...prev[vaccineId], ...patch } } : prev));
   }
@@ -216,21 +230,36 @@ export function VaccineProtocolDialog({
               type="date"
               value={appliedAt}
               onChange={(e) => setAppliedAt(e.target.value)}
+              className="h-11 sm:h-10"
             />
           </div>
 
           {/* Vacinas do protocolo — só marcar e conferir a quantidade */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label>Vacinas aplicadas *</Label>
-              <button
-                type="button"
-                onClick={() => setVaccinesOpen(true)}
-                className="flex items-center gap-1 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
-              >
-                <Settings2 className="w-3 h-3" />
-                Gerenciar
-              </button>
+            <div className="flex items-center justify-between gap-2">
+              <Label>
+                Vacinas aplicadas *
+                {selectedCount > 0 && (
+                  <span className="text-produmar-600 dark:text-produmar-400 font-normal ml-1.5">
+                    {selectedCount} marcada{selectedCount > 1 ? "s" : ""}
+                  </span>
+                )}
+              </Label>
+              <div className="flex items-center gap-3">
+                {vaccines.length > 1 && (
+                  <button type="button" onClick={toggleAll} className={INLINE_LINK}>
+                    {selectedCount === vaccines.length ? "Limpar" : "Marcar todas"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setVaccinesOpen(true)}
+                  className={INLINE_LINK}
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                  Gerenciar
+                </button>
+              </div>
             </div>
 
             {vaccines.length === 0 ? (
@@ -255,16 +284,16 @@ export function VaccineProtocolDialog({
                       <button
                         type="button"
                         onClick={() => toggle(v)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left"
+                        className="w-full flex items-center gap-3 px-3 min-h-[56px] py-3 text-left active:opacity-70"
                       >
                         <span
-                          className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${
+                          className={`w-6 h-6 rounded-md border flex items-center justify-center flex-shrink-0 ${
                             checked
                               ? "bg-produmar-600 border-produmar-600 text-white"
                               : "border-slate-300 dark:border-slate-600"
                           }`}
                         >
-                          {checked && <Check className="w-3.5 h-3.5" />}
+                          {checked && <Check className="w-4 h-4" />}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
@@ -294,7 +323,7 @@ export function VaccineProtocolDialog({
                                 })
                               }
                               placeholder="0"
-                              className="h-9 text-sm tabular-nums"
+                              className="h-11 text-base tabular-nums sm:h-9 sm:text-sm"
                               inputMode="decimal"
                               autoComplete="off"
                             />
@@ -310,7 +339,7 @@ export function VaccineProtocolDialog({
                                 patchItem(v.id, { brand: e.target.value.toUpperCase() })
                               }
                               placeholder="ex: zoetis"
-                              className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+                              className="h-11 text-base uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
                               autoComplete="off"
                             />
                           </div>
@@ -341,11 +370,21 @@ export function VaccineProtocolDialog({
             </p>
           )}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+          <DialogFooter className={STICKY_FOOTER}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+              className={cn(FOOTER_CANCEL, "h-11 sm:h-10")}
+            >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button
+              type="submit"
+              disabled={isPending || selectedCount === 0}
+              className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}
+            >
               <Syringe className="w-4 h-4" />
               {isPending
                 ? "Salvando..."

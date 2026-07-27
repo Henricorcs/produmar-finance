@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { formatBRL, formatDate } from "@/lib/utils";
+import { cn, formatBRL, formatDate } from "@/lib/utils";
 import {
   deleteAnimal,
   deleteAnimalPhoto,
@@ -28,6 +28,7 @@ import {
 } from "@/app/(app)/animais/actions";
 import {
   CATEGORY_META,
+  ICON_BUTTON,
   SEX_LABELS,
   VACCINE_STATUS_META,
   categoryLabel,
@@ -215,9 +216,9 @@ export function AnimalDetailDialog({
             onClick={() => handleDeleteTreatment(t.id)}
             disabled={isPending}
             aria-label="Remover tratamento"
-            className="p-1 text-slate-300 hover:text-red-500 flex-shrink-0"
+            className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       ),
@@ -257,9 +258,9 @@ export function AnimalDetailDialog({
               }
               disabled={isPending}
               aria-label="Remover aplicação"
-              className="p-1 text-slate-300 hover:text-red-500 flex-shrink-0"
+              className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         ),
@@ -289,9 +290,9 @@ export function AnimalDetailDialog({
             onClick={() => handleDeleteBirth(b.id)}
             disabled={isPending}
             aria-label="Remover parto"
-            className="p-1 text-slate-300 hover:text-red-500 flex-shrink-0"
+            className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       ),
@@ -323,7 +324,7 @@ export function AnimalDetailDialog({
               key={s.value}
               type="button"
               onClick={() => setSection(s.value)}
-              className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+              className={`flex-1 px-3 min-h-[44px] rounded-lg text-xs font-medium border transition-colors active:scale-[0.97] ${
                 section === s.value
                   ? "bg-produmar-600 border-produmar-600 text-white"
                   : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
@@ -360,9 +361,9 @@ export function AnimalDetailDialog({
                         onClick={() => handleDeletePhoto(p.id)}
                         disabled={deletingPhotoId === p.id}
                         aria-label="Remover foto"
-                        className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                        className="absolute top-1.5 right-1.5 w-9 h-9 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   ))}
@@ -409,12 +410,13 @@ export function AnimalDetailDialog({
 
               {/* Ações principais */}
               <div className="grid grid-cols-2 gap-2">
-                <Button onClick={() => onTreatment(animal)}>
+                <Button className="h-12 sm:h-10" onClick={() => onTreatment(animal)}>
                   <Stethoscope className="w-4 h-4" />
                   Tratamento
                 </Button>
                 <Button
                   variant="outline"
+                  className="h-12 sm:h-10"
                   onClick={() =>
                     onVaccinate(
                       animal,
@@ -424,9 +426,18 @@ export function AnimalDetailDialog({
                 >
                   <Syringe className="w-4 h-4" />
                   Vacinas
+                  {pendingVaccineIds.length > 0 && (
+                    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                      {pendingVaccineIds.length}
+                    </span>
+                  )}
                 </Button>
                 {isFemale && (
-                  <Button variant="outline" className="col-span-2" onClick={() => onBirth(animal)}>
+                  <Button
+                    variant="outline"
+                    className="col-span-2 h-12 sm:h-10"
+                    onClick={() => onBirth(animal)}
+                  >
                     <Baby className="w-4 h-4" />
                     Registrar parto
                   </Button>
@@ -445,7 +456,7 @@ export function AnimalDetailDialog({
               ) : (
                 <>
                   <Button
-                    className="w-full"
+                    className="w-full h-12 sm:h-10"
                     onClick={() =>
                       onVaccinate(
                         animal,
@@ -493,12 +504,11 @@ export function AnimalDetailDialog({
                           </span>
                         </div>
                         <Button
-                          size="sm"
                           variant="outline"
-                          className="w-full mt-2"
+                          className="w-full mt-2 h-11 sm:h-10"
                           onClick={() => onVaccinate(animal, [vaccine.id])}
                         >
-                          <Syringe className="w-3.5 h-3.5" />
+                          <Syringe className="w-4 h-4" />
                           Aplicar agora
                         </Button>
                       </div>
@@ -530,7 +540,7 @@ export function AnimalDetailDialog({
             <button
               type="button"
               onClick={() => onEdit(animal)}
-              className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium text-slate-500 hover:text-produmar-600 dark:text-slate-400 dark:hover:text-produmar-400 transition-colors"
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-slate-500 hover:text-produmar-600 dark:text-slate-400 dark:hover:text-produmar-400 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
             >
               <Pencil className="w-3.5 h-3.5" />
               Editar
@@ -539,7 +549,7 @@ export function AnimalDetailDialog({
               type="button"
               onClick={handleDelete}
               disabled={isPending}
-              className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium text-slate-400 hover:text-red-500 transition-colors"
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-slate-400 hover:text-red-500 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
               Excluir
