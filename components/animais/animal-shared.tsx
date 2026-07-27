@@ -1,6 +1,6 @@
 "use client";
 
-import type { AnimalCategory, AnimalSex } from "@/lib/types";
+import type { AnimalCategory, AnimalSex, AnimalVaccine } from "@/lib/types";
 
 // ── Sexo ─────────────────────────────────────────────────────────────────────
 
@@ -72,6 +72,48 @@ export function formatDecimalInput(raw: string): string {
   if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
   if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
   return cleaned;
+}
+
+/** Volume em ml, sem casas quando inteiro (5 ml / 6,4 ml). */
+export function formatMl(ml: number | null): string {
+  if (!ml) return "—";
+  const n = Number(ml);
+  return `${n % 1 === 0 ? n.toFixed(0) : n.toFixed(1).replace(".", ",")} ml`;
+}
+
+// ── Dose da vacina ───────────────────────────────────────────────────────────
+
+type DoseRule = Pick<
+  AnimalVaccine,
+  "default_dose_ml" | "dose_ml_per_weight" | "dose_weight_kg"
+>;
+
+/**
+ * Quantos ml dar neste animal: se a vacina tem dose por peso ("X ml a cada
+ * Y kg") e o animal tem peso, calcula; senão usa a dose fixa do cadastro.
+ */
+export function suggestedDoseMl(vaccine: DoseRule, weightKg: number): number | null {
+  const perWeight = Number(vaccine.dose_ml_per_weight ?? 0);
+  const everyKg = Number(vaccine.dose_weight_kg ?? 0);
+  if (perWeight > 0 && everyKg > 0 && weightKg > 0) {
+    return Math.round((weightKg / everyKg) * perWeight * 10) / 10;
+  }
+  const fixed = Number(vaccine.default_dose_ml ?? 0);
+  return fixed > 0 ? fixed : null;
+}
+
+/** Explica de onde saiu a dose sugerida (mostrado abaixo do campo). */
+export function doseRuleLabel(vaccine: DoseRule, weightKg: number): string | null {
+  const perWeight = Number(vaccine.dose_ml_per_weight ?? 0);
+  const everyKg = Number(vaccine.dose_weight_kg ?? 0);
+  if (perWeight > 0 && everyKg > 0) {
+    const rule = `${formatMl(perWeight)} a cada ${everyKg} kg`;
+    return weightKg > 0
+      ? `${rule} · peso ${formatWeight(weightKg)}`
+      : `${rule} · animal sem peso cadastrado`;
+  }
+  const fixed = Number(vaccine.default_dose_ml ?? 0);
+  return fixed > 0 ? `dose padrão ${formatMl(fixed)}` : null;
 }
 
 // ── Vacinação ────────────────────────────────────────────────────────────────

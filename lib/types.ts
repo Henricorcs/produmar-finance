@@ -731,6 +731,13 @@ export interface AnimalVaccine {
   id: string;
   name: string;
   recurrence_months: number | null;
+  /** Dose fixa em ml. */
+  default_dose_ml: number | null;
+  /** Dose por peso: `dose_ml_per_weight` ml a cada `dose_weight_kg` kg. */
+  dose_ml_per_weight: number | null;
+  dose_weight_kg: number | null;
+  /** Marca que costuma ser usada — vem preenchida na aplicação. */
+  default_brand: string | null;
   notes: string | null;
   created_at: string;
 }
@@ -740,7 +747,12 @@ export interface AnimalVaccination {
   animal_id: string;
   vaccine_id: string;
   applied_at: string;
-  dose: string | null;
+  /** Quantidade aplicada, em ml. */
+  dose_ml: number | null;
+  /** Marca da vacina usada nesta aplicação. */
+  brand: string | null;
+  /** Agrupa as vacinas aplicadas no mesmo protocolo. */
+  protocol_id: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;

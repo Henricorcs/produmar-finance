@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createVaccine, updateVaccine, deleteVaccine } from "@/app/(app)/animais/actions";
+import { formatMl, parseDecimal, formatDecimalInput } from "./animal-shared";
 import type { AnimalVaccine } from "@/lib/types";
 
 interface Props {
@@ -29,10 +30,18 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [recurrence, setRecurrence] = useState("");
+  const [doseMl, setDoseMl] = useState("");
+  const [dosePerWeight, setDosePerWeight] = useState("");
+  const [doseWeightKg, setDoseWeightKg] = useState("");
+  const [brand, setBrand] = useState("");
 
   function reset() {
     setName("");
     setRecurrence("");
+    setDoseMl("");
+    setDosePerWeight("");
+    setDoseWeightKg("");
+    setBrand("");
     setEditingId(null);
     setShowForm(false);
     setError(null);
@@ -42,6 +51,12 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
     setEditingId(v.id);
     setName(v.name);
     setRecurrence(v.recurrence_months ? String(v.recurrence_months) : "");
+    setDoseMl(v.default_dose_ml ? String(v.default_dose_ml).replace(".", ",") : "");
+    setDosePerWeight(
+      v.dose_ml_per_weight ? String(v.dose_ml_per_weight).replace(".", ",") : ""
+    );
+    setDoseWeightKg(v.dose_weight_kg ? String(v.dose_weight_kg).replace(".", ",") : "");
+    setBrand(v.default_brand ?? "");
     setShowForm(true);
     setError(null);
   }
@@ -56,7 +71,14 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
     const months = recurrence.trim() ? Math.max(0, Math.floor(Number(recurrence) || 0)) : null;
 
     startTransition(async () => {
-      const input = { name, recurrence_months: months };
+      const input = {
+        name,
+        recurrence_months: months,
+        default_dose_ml: parseDecimal(doseMl),
+        dose_ml_per_weight: parseDecimal(dosePerWeight),
+        dose_weight_kg: parseDecimal(doseWeightKg),
+        default_brand: brand,
+      };
       const r = editingId ? await updateVaccine(editingId, input) : await createVaccine(input);
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao salvar");
@@ -112,6 +134,14 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                           v.recurrence_months === 1 ? "mês" : "meses"
                         }`
                       : "dose única"}
+                    {v.dose_ml_per_weight && v.dose_weight_kg
+                      ? ` · ${formatMl(Number(v.dose_ml_per_weight))} a cada ${
+                          v.dose_weight_kg
+                        } kg`
+                      : v.default_dose_ml
+                      ? ` · ${formatMl(Number(v.default_dose_ml))}`
+                      : ""}
+                    {v.default_brand ? ` · ${v.default_brand}` : ""}
                   </p>
                 </div>
                 <button
@@ -170,6 +200,63 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                   placeholder="ex: 6"
                   className="h-9 text-sm tabular-nums"
                   inputMode="numeric"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="vaccine_dose" className="text-[11px]">
+                  Dose padrão (ml)
+                </Label>
+                <Input
+                  id="vaccine_dose"
+                  value={doseMl}
+                  onChange={(e) => setDoseMl(formatDecimalInput(e.target.value))}
+                  placeholder="ex: 5"
+                  className="h-9 text-sm tabular-nums"
+                  inputMode="decimal"
+                />
+              </div>
+
+              {/* Dose por peso — para produto que varia com o tamanho do animal */}
+              <div className="space-y-1">
+                <Label className="text-[11px]">Ou dose por peso (opcional)</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={dosePerWeight}
+                    onChange={(e) => setDosePerWeight(formatDecimalInput(e.target.value))}
+                    placeholder="1"
+                    className="h-9 text-sm tabular-nums flex-1"
+                    inputMode="decimal"
+                    aria-label="ml por peso"
+                  />
+                  <span className="text-[11px] text-slate-400 flex-shrink-0">
+                    ml a cada
+                  </span>
+                  <Input
+                    value={doseWeightKg}
+                    onChange={(e) => setDoseWeightKg(formatDecimalInput(e.target.value))}
+                    placeholder="50"
+                    className="h-9 text-sm tabular-nums flex-1"
+                    inputMode="decimal"
+                    aria-label="kg de peso"
+                  />
+                  <span className="text-[11px] text-slate-400 flex-shrink-0">kg</span>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Preenchido, o sistema calcula os ml pelo peso do animal.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="vaccine_brand" className="text-[11px]">
+                  Marca padrão
+                </Label>
+                <Input
+                  id="vaccine_brand"
+                  value={brand}
+                  onChange={(e) => setBrand(e.target.value.toUpperCase())}
+                  placeholder="ex: zoetis, ourofino"
+                  className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
                 />
               </div>
               <div className="flex gap-2">

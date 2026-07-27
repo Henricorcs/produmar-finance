@@ -23,6 +23,7 @@ import {
   deleteBirth,
   deleteTreatment,
   deleteVaccination,
+  deleteVaccinationProtocol,
   getAnimalPhotos,
 } from "@/app/(app)/animais/actions";
 import {
@@ -30,7 +31,9 @@ import {
   SEX_LABELS,
   VACCINE_STATUS_META,
   categoryLabel,
+  doseRuleLabel,
   formatAge,
+  formatMl,
   formatWeight,
   vaccineStatusFor,
 } from "./animal-shared";
@@ -54,7 +57,8 @@ interface Props {
   vaccines: AnimalVaccine[];
   onEdit: (animal: AnimalWithInfo) => void;
   onTreatment: (animal: AnimalWithInfo) => void;
-  onVaccinate: (animal: AnimalWithInfo, vaccineId?: string) => void;
+  /** Abre o protocolo de vacinação, já marcando as vacinas indicadas. */
+  onVaccinate: (animal: AnimalWithInfo, vaccineIds?: string[]) => void;
   onBirth: (animal: AnimalWithInfo) => void;
 }
 
@@ -137,10 +141,16 @@ export function AnimalDetailDialog({
     });
   }
 
-  function handleDeleteVaccination(id: string) {
-    if (!confirm("Remover esta aplicação de vacina?")) return;
+  /** Remove o protocolo inteiro quando as vacinas foram aplicadas juntas. */
+  function handleDeleteVaccinationGroup(protocolId: string | null, id: string, count: number) {
+    const msg =
+      protocolId && count > 1
+        ? `Remover este protocolo? As ${count} vacinas aplicadas juntas serão apagadas.`
+        : "Remover esta aplicação de vacina?";
+    if (!confirm(msg)) return;
     startTransition(async () => {
-      await deleteVaccination(id);
+      if (protocolId && count > 1) await deleteVaccinationProtocol(protocolId);
+      else await deleteVaccination(id);
     });
   }
 
@@ -161,7 +171,21 @@ export function AnimalDetailDialog({
     return { vaccine: v, last, status, nextDate };
   });
 
+  /** Vacinas atrasadas ou nunca aplicadas — já vêm marcadas no protocolo. */
+  const pendingVaccineIds = vaccineRows
+    .filter((r) => r.status !== "em_dia")
+    .map((r) => r.vaccine.id);
+
   const vaccineNameById = new Map(vaccines.map((v) => [v.id, v.name]));
+
+  // Vacinas aplicadas juntas viram UM evento no histórico (o protocolo).
+  const vaccinationGroups = Object.values(
+    vaccinations.reduce<Record<string, AnimalVaccination[]>>((acc, v) => {
+      const key = v.protocol_id ?? v.id;
+      (acc[key] ??= []).push(v);
+      return acc;
+    }, {})
+  );
 
   // ── Histórico unificado ───────────────────────────────────────────────────
   const events: { key: string; date: string; node: React.ReactNode }[] = [
@@ -198,36 +222,49 @@ export function AnimalDetailDialog({
         </div>
       ),
     })),
-    ...vaccinations.map((v) => ({
-      key: `vc-${v.id}`,
-      date: v.applied_at,
-      node: (
-        <div className="flex items-start gap-2.5">
-          <span className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
-            <Syringe className="w-3.5 h-3.5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-slate-800 dark:text-slate-100">
-              Vacina: {vaccineNameById.get(v.vaccine_id) ?? "—"}
-              {v.dose ? ` (${v.dose})` : ""}
-            </p>
-            <p className="text-[11px] text-slate-400">
-              {formatDate(v.applied_at)}
-              {v.notes ? ` · ${v.notes}` : ""}
-            </p>
+    ...vaccinationGroups.map((group) => {
+      const first = group[0];
+      return {
+        key: `vc-${first.protocol_id ?? first.id}`,
+        date: first.applied_at,
+        node: (
+          <div className="flex items-start gap-2.5">
+            <span className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+              <Syringe className="w-3.5 h-3.5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-slate-800 dark:text-slate-100">
+                {group.length > 1 ? `Protocolo · ${group.length} vacinas` : "Vacina aplicada"}
+              </p>
+              <ul className="mt-0.5 space-y-0.5">
+                {group.map((v) => (
+                  <li key={v.id} className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {vaccineNameById.get(v.vaccine_id) ?? "—"}
+                    {v.dose_ml ? ` · ${formatMl(Number(v.dose_ml))}` : ""}
+                    {v.brand ? ` · ${v.brand}` : ""}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-slate-400">
+                {formatDate(first.applied_at)}
+                {first.notes ? ` · ${first.notes}` : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                handleDeleteVaccinationGroup(first.protocol_id, first.id, group.length)
+              }
+              disabled={isPending}
+              aria-label="Remover aplicação"
+              className="p-1 text-slate-300 hover:text-red-500 flex-shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => handleDeleteVaccination(v.id)}
-            disabled={isPending}
-            aria-label="Remover aplicação"
-            className="p-1 text-slate-300 hover:text-red-500 flex-shrink-0"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ),
-    })),
+        ),
+      };
+    }),
     ...births.map((b) => ({
       key: `bt-${b.id}`,
       date: b.birth_date,
@@ -376,9 +413,17 @@ export function AnimalDetailDialog({
                   <Stethoscope className="w-4 h-4" />
                   Tratamento
                 </Button>
-                <Button variant="outline" onClick={() => onVaccinate(animal)}>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    onVaccinate(
+                      animal,
+                      pendingVaccineIds.length > 0 ? pendingVaccineIds : undefined
+                    )
+                  }
+                >
                   <Syringe className="w-4 h-4" />
-                  Vacina
+                  Vacinas
                 </Button>
                 {isFemale && (
                   <Button variant="outline" className="col-span-2" onClick={() => onBirth(animal)}>
@@ -398,44 +443,68 @@ export function AnimalDetailDialog({
                   acompanhar a situação de cada animal.
                 </p>
               ) : (
-                vaccineRows.map(({ vaccine, last, status, nextDate }) => {
-                  const statusMeta = VACCINE_STATUS_META[status];
-                  return (
-                    <div
-                      key={vaccine.id}
-                      className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                            {vaccine.name}
-                          </p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            {last
-                              ? `Última: ${formatDate(last.applied_at)}`
-                              : "Nunca aplicada"}
-                            {nextDate ? ` · próxima ${formatDate(nextDate)}` : ""}
-                            {!vaccine.recurrence_months ? " · dose única" : ""}
-                          </p>
-                        </div>
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${statusMeta.chip}`}
-                        >
-                          {statusMeta.label}
-                        </span>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full mt-2"
-                        onClick={() => onVaccinate(animal, vaccine.id)}
+                <>
+                  <Button
+                    className="w-full"
+                    onClick={() =>
+                      onVaccinate(
+                        animal,
+                        pendingVaccineIds.length > 0 ? pendingVaccineIds : undefined
+                      )
+                    }
+                  >
+                    <Syringe className="w-4 h-4" />
+                    {pendingVaccineIds.length > 0
+                      ? `Aplicar protocolo (${pendingVaccineIds.length} pendente${
+                          pendingVaccineIds.length > 1 ? "s" : ""
+                        })`
+                      : "Aplicar protocolo"}
+                  </Button>
+                  {vaccineRows.map(({ vaccine, last, status, nextDate }) => {
+                    const statusMeta = VACCINE_STATUS_META[status];
+                    const rule = doseRuleLabel(vaccine, Number(animal.weight));
+                    return (
+                      <div
+                        key={vaccine.id}
+                        className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5"
                       >
-                        <Syringe className="w-3.5 h-3.5" />
-                        Aplicar agora
-                      </Button>
-                    </div>
-                  );
-                })
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                              {vaccine.name}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {last ? `Última: ${formatDate(last.applied_at)}` : "Nunca aplicada"}
+                              {last?.dose_ml ? ` · ${formatMl(Number(last.dose_ml))}` : ""}
+                              {last?.brand ? ` · ${last.brand}` : ""}
+                              {nextDate ? ` · próxima ${formatDate(nextDate)}` : ""}
+                              {!vaccine.recurrence_months ? " · dose única" : ""}
+                            </p>
+                            {rule && (
+                              <p className="text-[11px] text-produmar-600 dark:text-produmar-400 mt-0.5">
+                                aplicar {rule}
+                              </p>
+                            )}
+                          </div>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${statusMeta.chip}`}
+                          >
+                            {statusMeta.label}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full mt-2"
+                          onClick={() => onVaccinate(animal, [vaccine.id])}
+                        >
+                          <Syringe className="w-3.5 h-3.5" />
+                          Aplicar agora
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
           )}

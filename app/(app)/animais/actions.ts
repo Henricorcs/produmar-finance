@@ -310,40 +310,60 @@ function normRecurrence(v?: number | null): number | null {
   return n > 0 ? n : null;
 }
 
-export async function createVaccine(input: {
+export interface VaccineInput {
   name: string;
   recurrence_months?: number | null;
+  /** Dose fixa em ml. */
+  default_dose_ml?: number | null;
+  /** Dose por peso: X ml a cada Y kg. */
+  dose_ml_per_weight?: number | null;
+  dose_weight_kg?: number | null;
+  default_brand?: string | null;
   notes?: string | null;
-}) {
-  const supabase = createClient();
-  const name = normTypeName(input.name);
-  if (!name) return { error: "Informe o nome da vacina" };
-
-  const { error } = await supabase.from("animal_vaccines").insert({
-    name,
-    recurrence_months: normRecurrence(input.recurrence_months),
-    notes: clean(input.notes),
-  });
-  if (error) return { error: dupNameError(error, "Essa vacina") };
-  revalidate();
-  return { ok: true };
 }
 
-export async function updateVaccine(
-  id: string,
-  input: { name: string; recurrence_months?: number | null; notes?: string | null }
-) {
+/** Doses só fazem sentido positivas — zero/negativo vira null (não definida). */
+function normDose(v?: number | null): number | null {
+  if (v == null) return null;
+  return v > 0 ? v : null;
+}
+
+/** Campos de dose e marca, normalizados (usados no create e no update). */
+function vaccineFields(input: VaccineInput) {
+  const perWeight = normDose(input.dose_ml_per_weight);
+  const weightKg = normDose(input.dose_weight_kg);
+  return {
+    recurrence_months: normRecurrence(input.recurrence_months),
+    default_dose_ml: normDose(input.default_dose_ml),
+    // a dose por peso só vale com os dois lados preenchidos ("X ml a cada Y kg")
+    dose_ml_per_weight: perWeight && weightKg ? perWeight : null,
+    dose_weight_kg: perWeight && weightKg ? weightKg : null,
+    default_brand: clean(input.default_brand),
+    notes: clean(input.notes),
+  };
+}
+
+export async function createVaccine(input: VaccineInput) {
   const supabase = createClient();
   const name = normTypeName(input.name);
   if (!name) return { error: "Informe o nome da vacina" };
 
   const { error } = await supabase
     .from("animal_vaccines")
-    .update({
-      name,
-      recurrence_months: normRecurrence(input.recurrence_months),
-      notes: clean(input.notes),
-    })
+    .insert({ name, ...vaccineFields(input) });
+  if (error) return { error: dupNameError(error, "Essa vacina") };
+  revalidate();
+  return { ok: true };
+}
+
+export async function updateVaccine(id: string, input: VaccineInput) {
+  const supabase = createClient();
+  const name = normTypeName(input.name);
+  if (!name) return { error: "Informe o nome da vacina" };
+
+  const { error } = await supabase
+    .from("animal_vaccines")
+    .update({ name, ...vaccineFields(input) })
     .eq("id", id);
   if (error) return { error: dupNameError(error, "Essa vacina") };
   revalidate();
@@ -359,11 +379,22 @@ export async function deleteVaccine(id: string) {
   return { ok: true };
 }
 
-export async function registerVaccination(input: {
-  animal_id: string;
+export interface ProtocolItemInput {
   vaccine_id: string;
+  /** Quantidade aplicada em ml. */
+  dose_ml?: number | null;
+  /** Marca da vacina usada. */
+  brand?: string | null;
+}
+
+/**
+ * Aplica um PROTOCOLO: várias vacinas no mesmo animal, na mesma data.
+ * As linhas compartilham um protocol_id para o histórico mostrar agrupado.
+ */
+export async function applyVaccineProtocol(input: {
+  animal_id: string;
   applied_at?: string | null;
-  dose?: string | null;
+  items: ProtocolItemInput[];
   notes?: string | null;
 }) {
   const supabase = createClient();
@@ -373,24 +404,50 @@ export async function registerVaccination(input: {
   if (!user) return { error: "Não autenticado" };
 
   if (!input.animal_id) return { error: "Selecione o animal" };
-  if (!input.vaccine_id) return { error: "Selecione a vacina" };
 
-  const { error } = await supabase.from("animal_vaccinations").insert({
-    animal_id: input.animal_id,
-    vaccine_id: input.vaccine_id,
-    applied_at: input.applied_at || new Date().toISOString().split("T")[0],
-    dose: clean(input.dose),
-    notes: clean(input.notes),
-    created_by: user.id,
-  });
+  const items = (input.items ?? []).filter((i) => i.vaccine_id);
+  if (items.length === 0) return { error: "Marque pelo menos uma vacina" };
+
+  // a mesma vacina não pode entrar duas vezes no protocolo
+  const uniqueIds = new Set(items.map((i) => i.vaccine_id));
+  if (uniqueIds.size !== items.length) return { error: "Vacina repetida no protocolo" };
+
+  const protocolId = randomUUID();
+  const appliedAt = input.applied_at || new Date().toISOString().split("T")[0];
+  const notes = clean(input.notes);
+
+  const { error } = await supabase.from("animal_vaccinations").insert(
+    items.map((i) => ({
+      animal_id: input.animal_id,
+      vaccine_id: i.vaccine_id,
+      applied_at: appliedAt,
+      dose_ml: i.dose_ml && i.dose_ml > 0 ? i.dose_ml : null,
+      brand: clean(i.brand),
+      protocol_id: protocolId,
+      notes,
+      created_by: user.id,
+    }))
+  );
   if (error) return { error: error.message };
   revalidate();
-  return { ok: true };
+  return { ok: true, protocolId };
 }
 
 export async function deleteVaccination(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("animal_vaccinations").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+/** Apaga o protocolo inteiro (todas as vacinas aplicadas juntas). */
+export async function deleteVaccinationProtocol(protocolId: string) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("animal_vaccinations")
+    .delete()
+    .eq("protocol_id", protocolId);
   if (error) return { error: error.message };
   revalidate();
   return { ok: true };

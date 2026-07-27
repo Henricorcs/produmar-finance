@@ -25,7 +25,7 @@ import {
 import { AnimalDialog } from "./animal-dialog";
 import { AnimalDetailDialog } from "./animal-detail-dialog";
 import { TreatmentDialog } from "./treatment-dialog";
-import { VaccinationDialog } from "./vaccination-dialog";
+import { VaccineProtocolDialog } from "./vaccine-protocol-dialog";
 import { BirthDialog } from "./birth-dialog";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import {
@@ -96,8 +96,8 @@ export function AnimaisPageClient({
   const [vaccinationOpen, setVaccinationOpen] = useState(false);
   const [vaccinationPreset, setVaccinationPreset] = useState<{
     animalId: string | null;
-    vaccineId: string | null;
-  }>({ animalId: null, vaccineId: null });
+    vaccineIds: string[];
+  }>({ animalId: null, vaccineIds: [] });
   const [birthOpen, setBirthOpen] = useState(false);
   const [birthPresetId, setBirthPresetId] = useState<string | null>(null);
   const [vaccinesOpen, setVaccinesOpen] = useState(false);
@@ -186,8 +186,8 @@ export function AnimaisPageClient({
     setEditTreatment(treatment ?? null);
     setTreatmentOpen(true);
   }
-  function openVaccination(animal?: AnimalWithInfo | null, vaccineId?: string) {
-    setVaccinationPreset({ animalId: animal?.id ?? null, vaccineId: vaccineId ?? null });
+  function openVaccination(animal?: AnimalWithInfo | null, vaccineIds?: string[]) {
+    setVaccinationPreset({ animalId: animal?.id ?? null, vaccineIds: vaccineIds ?? [] });
     setVaccinationOpen(true);
   }
   function openBirth(animal?: AnimalWithInfo | null) {
@@ -349,7 +349,7 @@ export function AnimaisPageClient({
           <div className="grid grid-cols-2 gap-2">
             <Button onClick={() => openVaccination(null)}>
               <Syringe className="w-4 h-4" />
-              Aplicar vacina
+              Aplicar protocolo
             </Button>
             <Button variant="outline" onClick={() => setVaccinesOpen(true)}>
               <Settings2 className="w-4 h-4" />
@@ -525,7 +525,7 @@ export function AnimaisPageClient({
           openEdit(a);
         }}
         onTreatment={(a) => openTreatment(a)}
-        onVaccinate={(a, vaccineId) => openVaccination(a, vaccineId)}
+        onVaccinate={(a, vaccineIds) => openVaccination(a, vaccineIds)}
         onBirth={(a) => openBirth(a)}
       />
       <TreatmentDialog
@@ -536,13 +536,13 @@ export function AnimaisPageClient({
         treatment={editTreatment}
         medicineSuggestions={medicineSuggestions}
       />
-      <VaccinationDialog
+      <VaccineProtocolDialog
         open={vaccinationOpen}
         onClose={() => setVaccinationOpen(false)}
         animals={animals}
         vaccines={vaccines}
         presetAnimalId={vaccinationPreset.animalId}
-        presetVaccineId={vaccinationPreset.vaccineId}
+        presetVaccineIds={vaccinationPreset.vaccineIds}
       />
       <BirthDialog
         open={birthOpen}
