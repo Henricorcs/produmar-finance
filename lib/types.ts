@@ -656,3 +656,108 @@ export interface ToolWithStatus extends Tool {
   /** Saldo disponível = quantity - in_use_qty - written_off_qty (>= 0). */
   available_qty: number;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANIMAIS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type AnimalSex = "macho" | "femea";
+/** Categoria derivada na view v_animals (idade < 12 meses = bezerro). */
+export type AnimalCategory = "boi" | "vaca" | "bezerro";
+
+/** Tipo/raça do animal — cadastro editável. */
+export interface AnimalType {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface Animal {
+  id: string;
+  /** Número do animal (brinco). */
+  tag: string;
+  sex: AnimalSex;
+  birth_date: string | null;
+  type_id: string | null;
+  /** Peso atual em kg. */
+  weight: number;
+  photo_path: string | null;
+  active: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnimalPhoto {
+  id: string;
+  animal_id: string;
+  path: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Parto — uma linha por bezerro nascido. */
+export interface AnimalBirth {
+  id: string;
+  mother_id: string;
+  birth_date: string;
+  calf_tag: string | null;
+  calf_sex: AnimalSex | null;
+  /** Preenchido quando o bezerro também virou cadastro de animal. */
+  calf_animal_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AnimalTreatment {
+  id: string;
+  animal_id: string;
+  description: string;
+  /** Remédio aplicado neste tratamento. */
+  medicine: string | null;
+  dose: string | null;
+  applied_at: string;
+  next_application: string | null;
+  cost: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Vacina cadastrada — recurrence_months null/0 = dose única. */
+export interface AnimalVaccine {
+  id: string;
+  name: string;
+  recurrence_months: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface AnimalVaccination {
+  id: string;
+  animal_id: string;
+  vaccine_id: string;
+  applied_at: string;
+  dose: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Linha da view v_animals (animal + categoria, idade e agregados). */
+export interface AnimalWithInfo extends Animal {
+  type_name: string | null;
+  /** Idade em meses cheios (null quando não há data de nascimento). */
+  age_months: number | null;
+  category: AnimalCategory;
+  /** Quantos bezerros já pariu. */
+  calves_count: number;
+  last_birth_date: string | null;
+  treatments_count: number;
+  last_treatment_at: string | null;
+  /** Vacinas em dia / pendentes (sobre o cadastro de vacinas). */
+  vaccines_ok: number;
+  vaccines_due: number;
+}

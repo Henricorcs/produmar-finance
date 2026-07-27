@@ -12,6 +12,7 @@ import {
   Wrench,
   HardHat,
   ClipboardList,
+  Beef,
   type LucideIcon,
 } from "lucide-react";
 
@@ -87,6 +88,16 @@ export const APP_MODULES: AppModule[] = [
     accentIcon:
       "bg-orange-50 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400",
     tabs: [{ href: "/obras", label: "Obras", short: "Obras", icon: HardHat }],
+  },
+  {
+    slug: "animais",
+    name: "Animais",
+    description: "Rebanho: cadastro, tratamentos, vacinas e partos",
+    href: "/animais",
+    icon: Beef,
+    accentIcon:
+      "bg-rose-50 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400",
+    tabs: [{ href: "/animais", label: "Animais", short: "Animais", icon: Beef }],
   },
 ];
 

@@ -10,6 +10,7 @@ export const ASSIGNABLE_MODULE_SLUGS = [
   "materiais-servicos",
   "ferramentas",
   "obras",
+  "animais",
 ] as const;
 
 export type ModuleSlug = (typeof ASSIGNABLE_MODULE_SLUGS)[number];
@@ -32,6 +33,7 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   "materiais-servicos": ["/operacoes", "/estoque", "/cadastros-operacionais"],
   ferramentas: ["/ferramentas"],
   obras: ["/obras"],
+  animais: ["/animais"],
 };
 
 /**
