@@ -21,6 +21,7 @@ import { VaccineProtocolDialog } from "./vaccine-protocol-dialog";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import { TreatmentDialog } from "./treatment-dialog";
 import { BirthDialog } from "./birth-dialog";
+import { QuickAddRow } from "./quick-add-row";
 import {
   categoryLabel,
   formatMl,
@@ -368,44 +369,32 @@ export function AnimaisPageClient({
             </button>
           </div>
 
-          {filtered.length === 0 ? (
-            animals.length === 0 ? (
-              <EmptyState
-                icon={Beef}
-                text="Nenhum animal cadastrado ainda."
-                hint="Cadastre o primeiro para montar o guia de vacinação."
-                action={
-                  <Button onClick={openNewAnimal}>
-                    <Plus className="w-4 h-4" /> Novo animal
-                  </Button>
-                }
-              />
-            ) : (
-              <EmptyState
-                icon={Search}
-                text={
-                  onlyPending ? "Ninguém com vacina pendente." : "Nada encontrado com esse filtro."
-                }
-              />
-            )
-          ) : (
-            <>
-              <RebanhoTable
-                animals={filtered}
-                vaccines={vaccines}
-                vaccinations={vaccinations}
-                birthsByMother={birthsByMother}
-                treatmentsByAnimal={treatmentsByAnimal}
-                onOpenAnimal={(id) => setDetailAnimalId(id)}
-                onApply={(a, ids) => openProtocol(a, ids)}
-              />
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Célula vermelha = vacina atrasada ou nunca aplicada, com os ml a aplicar —
-                toque nela para registrar. Passe o mouse no tratamento para ver o remédio;
-                no celular, toque no animal.
-              </p>
-            </>
-          )}
+          {/* A planilha fica sempre na tela: a primeira linha é de digitação —
+              cadastra o animal sem abrir formulário. */}
+          <RebanhoTable
+            animals={filtered}
+            breeds={breeds}
+            vaccines={vaccines}
+            vaccinations={vaccinations}
+            birthsByMother={birthsByMother}
+            treatmentsByAnimal={treatmentsByAnimal}
+            onOpenAnimal={(id) => setDetailAnimalId(id)}
+            onApply={(a, ids) => openProtocol(a, ids)}
+            emptyMessage={
+              filtered.length > 0
+                ? undefined
+                : animals.length === 0
+                ? "Nenhum animal ainda — digite o número na linha acima e aperte Enter."
+                : onlyPending
+                ? "Ninguém com vacina pendente."
+                : "Nada encontrado com esse filtro."
+            }
+          />
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Digite na primeira linha para cadastrar (Enter salva). Célula vermelha = vacina
+            atrasada ou nunca aplicada, com os ml a aplicar — toque nela para registrar.
+            Passe o mouse no tratamento para ver o remédio; no celular, toque no animal.
+          </p>
         </>
       )}
 
@@ -541,20 +530,25 @@ export function AnimaisPageClient({
 // tooltip. No celular desliza para o lado com a coluna do número fixa.
 function RebanhoTable({
   animals,
+  breeds,
   vaccines,
   vaccinations,
   birthsByMother,
   treatmentsByAnimal,
   onOpenAnimal,
   onApply,
+  emptyMessage,
 }: {
   animals: AnimalWithInfo[];
+  breeds: AnimalBreed[];
   vaccines: AnimalVaccine[];
   vaccinations: VaccinationRow[];
   birthsByMother: Map<string, AnimalBirth[]>;
   treatmentsByAnimal: Map<string, AnimalTreatment[]>;
   onOpenAnimal: (id: string) => void;
   onApply: (animal: AnimalWithInfo, vaccineIds: string[]) => void;
+  /** Mostrado numa linha quando o filtro não devolve ninguém. */
+  emptyMessage?: string;
 }) {
   // última aplicação por animal+vacina
   const lastByKey = useMemo(() => {
@@ -615,6 +609,20 @@ function RebanhoTable({
           </tr>
         </thead>
         <tbody>
+          {/* Linha de digitação — cadastrar sem clicar em "Novo" */}
+          <QuickAddRow breeds={breeds} trailingColSpan={vaccines.length + 1} />
+
+          {emptyMessage && (
+            <tr className="border-t border-slate-100 dark:border-slate-800">
+              <td
+                colSpan={6 + vaccines.length}
+                className="px-3 py-6 text-center text-slate-400 dark:text-slate-500"
+              >
+                {emptyMessage}
+              </td>
+            </tr>
+          )}
+
           {animals.map((a) => {
             const weightKg = Number(a.weight);
             const abirths = birthsByMother.get(a.id) ?? [];
@@ -707,7 +715,7 @@ function RebanhoTable({
             );
           })}
         </tbody>
-        {vaccines.length > 0 && (
+        {vaccines.length > 0 && animals.length > 0 && (
           <tfoot>
             <tr className="border-t-2 border-produmar-200 dark:border-slate-600 bg-produmar-50/60 dark:bg-slate-800/80">
               <td className="sticky left-0 bg-produmar-50 dark:bg-slate-800 px-3 py-2 font-semibold text-[10px] uppercase tracking-wide text-produmar-700 dark:text-produmar-300 whitespace-nowrap">
