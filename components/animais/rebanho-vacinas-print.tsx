@@ -125,7 +125,7 @@ export function RebanhoVacinasPrint({
       <div className="no-print" style={{ height: "calc(3.5rem + env(safe-area-inset-top))" }} />
 
       {/* Documento */}
-      <div className="doc max-w-[1123px] mx-auto my-6 shadow-xl text-[11px] leading-relaxed text-slate-800">
+      <div className="doc max-w-[1123px] mx-auto my-6 shadow-xl text-[12px] leading-relaxed text-slate-800">
         <div className="p-6 space-y-3">
           {/* ── Cabeçalho ─────────────────────────────────────────────── */}
           <div className="flex items-start justify-between border-b-2 border-produmar-600 pb-3">
@@ -139,20 +139,20 @@ export function RebanhoVacinasPrint({
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.15em]">
                 Guia de vacinação
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">
+              <p className="text-[11px] text-slate-500 mt-0.5">
                 {animals.length} animais
                 {filterLabel ? ` · ${filterLabel}` : ""} · {pendingCount} com vacina pendente
               </p>
-              <p className="text-[10px] text-slate-400">{formatDate(new Date())}</p>
+              <p className="text-[11px] text-slate-500">{formatDate(new Date())}</p>
             </div>
           </div>
 
           {animals.length === 0 ? (
-            <p className="text-[11px] text-slate-400 py-6 text-center">
+            <p className="text-[12px] text-slate-500 py-6 text-center">
               Nenhum animal para listar.
             </p>
           ) : (
-            <table className="w-full text-[10px]">
+            <table className="w-full text-[12px]">
               <thead>
                 <tr className="bg-slate-100 text-slate-600 text-left">
                   <th className="py-1.5 px-1.5 font-semibold border border-slate-200">Nº</th>
@@ -168,7 +168,7 @@ export function RebanhoVacinasPrint({
                       {v.name}
                       {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
                       {v.default_brand && (
-                        <span className="block text-[8px] font-normal text-slate-500">
+                        <span className="block text-[10px] font-normal text-slate-500">
                           {v.default_brand}
                         </span>
                       )}
@@ -212,7 +212,7 @@ export function RebanhoVacinasPrint({
                             {due ? (
                               <span className="inline-flex items-center gap-1">
                                 {/* quadradinho para marcar à caneta */}
-                                <span className="inline-block w-2.5 h-2.5 border border-slate-500" />
+                                <span className="inline-block w-3 h-3 border border-slate-500" />
                                 <span className="font-bold tabular-nums">
                                   {dose ? formatMl(dose) : "aplicar"}
                                 </span>
@@ -247,7 +247,7 @@ export function RebanhoVacinasPrint({
                           <span className="font-bold tabular-nums">
                             {totals[i].ml > 0 ? formatMl(totals[i].ml) : "—"}
                           </span>
-                          <span className="text-[9px] text-slate-500"> · {totals[i].count}</span>
+                          <span className="text-[10px] text-slate-500"> · {totals[i].count}</span>
                         </>
                       ) : (
                         <span className="text-slate-400">—</span>
@@ -259,7 +259,7 @@ export function RebanhoVacinasPrint({
             </table>
           )}
 
-          <p className="text-[9px] text-slate-400 pt-1">
+          <p className="text-[10px] text-slate-500 pt-1">
             Fundo vermelho = vacina atrasada ou nunca aplicada; o valor é a dose em ml para
             aquele animal. Marque o quadradinho ao aplicar. &quot;ok&quot; = em dia, com o mês
             da última aplicação. Pariu = crias (M = macho, F = fêmea). &quot;Levar&quot; = soma

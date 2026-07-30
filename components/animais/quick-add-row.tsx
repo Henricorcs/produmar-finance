@@ -67,7 +67,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   }
 
   const inputCls =
-    "h-10 w-full rounded-lg border border-produmar-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-produmar-400 disabled:opacity-50";
+    "h-11 w-full rounded-lg border border-produmar-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-produmar-400 disabled:opacity-50";
 
   return (
     <>
@@ -101,7 +101,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
                 title={s === "femea" ? "Fêmea" : "Macho"}
                 disabled={isPending}
                 className={cn(
-                  "w-10 h-10 rounded-lg border text-[11px] font-bold transition-colors",
+                  "w-11 h-11 rounded-lg border text-sm font-bold transition-colors",
                   sex === s
                     ? "bg-produmar-600 border-produmar-600 text-white"
                     : "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-600"
@@ -162,7 +162,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
 
         {/* Colunas de vacina ficam vazias — dose é assunto da vacinação */}
         {Array.from({ length: vaccinesCount }).map((_, i) => (
-          <td key={i} className="px-1 py-2 text-center text-slate-300 dark:text-slate-600">
+          <td key={i} className="px-1 py-2 text-center text-sm text-slate-300 dark:text-slate-600">
             ·
           </td>
         ))}
@@ -173,9 +173,9 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
             type="button"
             onClick={submit}
             disabled={isPending}
-            className="flex items-center gap-1.5 h-10 px-3 rounded-lg bg-produmar-600 text-white text-xs font-semibold hover:bg-produmar-700 active:scale-[0.97] transition-all disabled:opacity-50 whitespace-nowrap"
+            className="flex items-center gap-1.5 h-11 px-4 rounded-lg bg-produmar-600 text-white text-sm font-semibold hover:bg-produmar-700 active:scale-[0.97] transition-all disabled:opacity-50 whitespace-nowrap"
           >
-            <Check className="w-3.5 h-3.5" />
+            <Check className="w-4 h-4" />
             {isPending ? "Salvando..." : "Adicionar"}
           </button>
         </td>
@@ -186,7 +186,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
         <tr className="bg-produmar-50/50 dark:bg-slate-800/40">
           <td
             colSpan={6 + vaccinesCount}
-            className="px-3 pb-2 text-[11px] font-medium text-red-600 dark:text-red-400"
+            className="px-3 pb-2 text-sm font-medium text-red-600 dark:text-red-400"
           >
             {error}
           </td>

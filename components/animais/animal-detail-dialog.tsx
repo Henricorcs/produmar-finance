@@ -200,14 +200,14 @@ export function AnimalDetailDialog({
               </p>
               <ul className="mt-0.5 space-y-0.5">
                 {group.map((v) => (
-                  <li key={v.id} className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <li key={v.id} className="text-sm text-slate-500 dark:text-slate-400">
                     {vaccineNameById.get(v.vaccine_id) ?? "—"}
                     {v.dose_ml ? ` · ${formatMl(Number(v.dose_ml))}` : ""}
                     {v.brand ? ` · ${v.brand}` : ""}
                   </li>
                 ))}
               </ul>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-sm text-slate-400">
                 {formatDate(first.applied_at)}
                 {first.notes ? ` · ${first.notes}` : ""}
               </p>
@@ -239,7 +239,7 @@ export function AnimalDetailDialog({
               {t.medicine ? ` · ${t.medicine}` : ""}
               {t.dose ? ` (${t.dose})` : ""}
             </p>
-            <p className="text-[11px] text-slate-400">{formatDate(t.applied_at)}</p>
+            <p className="text-sm text-slate-400">{formatDate(t.applied_at)}</p>
           </div>
           <button
             type="button"
@@ -267,7 +267,7 @@ export function AnimalDetailDialog({
               {b.calf_tag ? ` · nº ${b.calf_tag}` : ""}
               {b.calf_animal_id ? " · cadastrado" : ""}
             </p>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-sm text-slate-400">
               {formatDate(b.birth_date)}
               {b.notes ? ` · ${b.notes}` : ""}
             </p>
@@ -311,7 +311,7 @@ export function AnimalDetailDialog({
               key={s.value}
               type="button"
               onClick={() => setSection(s.value)}
-              className={`flex-1 px-3 min-h-[44px] rounded-lg text-xs font-medium border transition-colors active:scale-[0.97] ${
+              className={`flex-1 px-3 min-h-[44px] rounded-lg text-sm font-medium border transition-colors active:scale-[0.97] ${
                 section === s.value
                   ? "bg-produmar-600 border-produmar-600 text-white"
                   : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
@@ -358,7 +358,7 @@ export function AnimalDetailDialog({
               )}
 
               {/* Informações */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-base">
                 <InfoRow label="Número" value={animal.tag} />
                 <InfoRow label="Sexo" value={SEX_LABELS[animal.sex]} />
                 <InfoRow label="Raça" value={animal.breed_name ?? "—"} />
@@ -480,7 +480,7 @@ export function AnimalDetailDialog({
                             <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
                               {vaccine.name}
                             </p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                               {last ? `Última: ${formatDate(last.applied_at)}` : "Nunca aplicada"}
                               {last?.dose_ml ? ` · ${formatMl(Number(last.dose_ml))}` : ""}
                               {last?.brand ? ` · ${last.brand}` : ""}
@@ -488,13 +488,13 @@ export function AnimalDetailDialog({
                               {!vaccine.recurrence_months ? " · dose única" : ""}
                             </p>
                             {rule && (
-                              <p className="text-[11px] text-produmar-600 dark:text-produmar-400 mt-0.5">
+                              <p className="text-sm text-produmar-600 dark:text-produmar-400 mt-0.5">
                                 aplicar {rule}
                               </p>
                             )}
                           </div>
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${statusMeta.chip}`}
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${statusMeta.chip}`}
                           >
                             {statusMeta.label}
                           </span>
@@ -536,7 +536,7 @@ export function AnimalDetailDialog({
             <button
               type="button"
               onClick={() => onEdit(animal)}
-              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-slate-500 hover:text-produmar-600 dark:text-slate-400 dark:hover:text-produmar-400 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-sm font-medium text-slate-500 hover:text-produmar-600 dark:text-slate-400 dark:hover:text-produmar-400 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
             >
               <Pencil className="w-3.5 h-3.5" />
               Editar
@@ -545,7 +545,7 @@ export function AnimalDetailDialog({
               type="button"
               onClick={handleDelete}
               disabled={isPending}
-              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-slate-400 hover:text-red-500 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-sm font-medium text-slate-400 hover:text-red-500 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
               Excluir

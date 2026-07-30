@@ -136,7 +136,7 @@ export function AnimalFichaPrint({
       <div className="no-print" style={{ height: "calc(3.5rem + env(safe-area-inset-top))" }} />
 
       {/* Documento */}
-      <div className="doc max-w-[794px] mx-auto my-6 shadow-xl text-[12px] leading-relaxed text-slate-800">
+      <div className="doc max-w-[794px] mx-auto my-6 shadow-xl text-[13px] leading-relaxed text-slate-800">
         <div className="p-8 space-y-4">
           {/* ── Cabeçalho ─────────────────────────────────────────────── */}
           <div className="flex items-start justify-between border-b-2 border-produmar-600 pb-4">
@@ -162,7 +162,7 @@ export function AnimalFichaPrint({
 
           {/* ── Identificação + foto ──────────────────────────────────── */}
           <div className="flex gap-4 avoid-break">
-            <table className="flex-1 text-[12px]">
+            <table className="flex-1 text-[13px]">
               <tbody>
                 {info.map((i) => (
                   <tr key={i.label} className="border-b border-slate-100">
@@ -190,7 +190,7 @@ export function AnimalFichaPrint({
           </div>
 
           {animal.notes && (
-            <p className="text-[11px] text-slate-600 border border-slate-200 rounded-lg px-3 py-2">
+            <p className="text-[12.5px] text-slate-600 border border-slate-200 rounded-lg px-3 py-2">
               <span className="text-slate-400 uppercase tracking-wide text-[10px] mr-1.5">
                 Obs.
               </span>
@@ -200,13 +200,13 @@ export function AnimalFichaPrint({
 
           {/* ── Situação da vacinação ─────────────────────────────────── */}
           <div className="avoid-break">
-            <h2 className="text-[13px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
+            <h2 className="text-[14px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
               Situação da vacinação
             </h2>
             {rows.length === 0 ? (
-              <p className="text-[11px] text-slate-400">Nenhuma vacina cadastrada.</p>
+              <p className="text-[12px] text-slate-500">Nenhuma vacina cadastrada.</p>
             ) : (
-              <table className="w-full text-[11px]">
+              <table className="w-full text-[12.5px]">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 text-left">
                     <th className="py-1.5 px-2 font-semibold">Vacina</th>
@@ -252,7 +252,7 @@ export function AnimalFichaPrint({
               </table>
             )}
             {rows.some((r) => r.vaccine.dose_ml_per_weight && r.vaccine.dose_weight_kg) && (
-              <p className="text-[10px] text-slate-400 mt-1">
+              <p className="text-[11px] text-slate-500 mt-1">
                 {rows
                   .filter((r) => r.vaccine.dose_ml_per_weight && r.vaccine.dose_weight_kg)
                   .map((r) => `${r.vaccine.name}: ${doseRuleLabel(r.vaccine, weightKg)}`)
@@ -263,10 +263,10 @@ export function AnimalFichaPrint({
 
           {/* ── Linhas em branco para anotar ──────────────────────────── */}
           <div className="avoid-break">
-            <h2 className="text-[13px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
+            <h2 className="text-[14px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
               Aplicações desta vez
             </h2>
-            <table className="w-full text-[11px]">
+            <table className="w-full text-[12.5px]">
               <thead>
                 <tr className="bg-slate-100 text-slate-600 text-left">
                   <th className="py-1.5 px-2 font-semibold w-[34%]">Vacina</th>
@@ -293,10 +293,10 @@ export function AnimalFichaPrint({
           {/* ── Partos ────────────────────────────────────────────────── */}
           {births.length > 0 && (
             <div className="avoid-break">
-              <h2 className="text-[13px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
+              <h2 className="text-[14px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
                 Partos
               </h2>
-              <table className="w-full text-[11px]">
+              <table className="w-full text-[12.5px]">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 text-left">
                     <th className="py-1.5 px-2 font-semibold">Data</th>
@@ -326,10 +326,10 @@ export function AnimalFichaPrint({
           {/* ── Tratamentos (com o remédio usado) ─────────────────────── */}
           {treatments.length > 0 && (
             <div className="avoid-break">
-              <h2 className="text-[13px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
+              <h2 className="text-[14px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
                 Tratamentos
               </h2>
-              <table className="w-full text-[11px]">
+              <table className="w-full text-[12.5px]">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 text-left">
                     <th className="py-1.5 px-2 font-semibold">Data</th>
@@ -355,10 +355,10 @@ export function AnimalFichaPrint({
           {/* ── Histórico ─────────────────────────────────────────────── */}
           {history.length > 0 && (
             <div className="avoid-break">
-              <h2 className="text-[13px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
+              <h2 className="text-[14px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
                 Histórico de vacinação
               </h2>
-              <table className="w-full text-[11px]">
+              <table className="w-full text-[12.5px]">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 text-left">
                     <th className="py-1.5 px-2 font-semibold">Data</th>
@@ -385,7 +385,7 @@ export function AnimalFichaPrint({
             </div>
           )}
 
-          <p className="text-[10px] text-slate-400 text-right pt-2 border-t border-slate-100">
+          <p className="text-[11px] text-slate-500 text-right pt-2 border-t border-slate-100">
             Ficha gerada em {formatDate(new Date())}
           </p>
         </div>

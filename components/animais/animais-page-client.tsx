@@ -266,8 +266,8 @@ export function AnimaisPageClient({
               key={t.value}
               onClick={() => setTab(t.value)}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-1 min-h-[58px] px-1 rounded-xl border text-[11px] font-medium transition-colors active:scale-[0.97]",
-                "sm:flex-row sm:min-h-0 sm:px-3 sm:py-2 sm:text-xs sm:gap-1.5",
+                "relative flex flex-col items-center justify-center gap-1 min-h-[58px] px-1 rounded-xl border text-sm font-medium transition-colors active:scale-[0.97]",
+                "sm:flex-row sm:min-h-0 sm:px-3 sm:py-2 sm:gap-1.5",
                 active
                   ? "bg-produmar-600 border-produmar-600 text-white"
                   : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
@@ -278,7 +278,7 @@ export function AnimaisPageClient({
               {t.count > 0 && (
                 <span
                   className={cn(
-                    "absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold flex items-center justify-center",
+                    "absolute top-1 right-1 min-w-[20px] h-[20px] px-1 rounded-full text-xs font-semibold flex items-center justify-center",
                     "sm:static sm:min-w-0 sm:h-auto sm:px-0 sm:bg-transparent sm:opacity-70",
                     active
                       ? "bg-white/25 text-white sm:text-white"
@@ -315,7 +315,7 @@ export function AnimaisPageClient({
                 >
                   <span
                     className={cn(
-                      "text-lg font-bold tabular-nums leading-none",
+                      "text-xl font-bold tabular-nums leading-none",
                       active
                         ? "text-produmar-700 dark:text-produmar-300"
                         : "text-slate-800 dark:text-slate-100"
@@ -325,7 +325,7 @@ export function AnimaisPageClient({
                   </span>
                   <span
                     className={cn(
-                      "text-[10px] leading-tight",
+                      "text-xs leading-tight",
                       active
                         ? "text-produmar-600 dark:text-produmar-400"
                         : "text-slate-500 dark:text-slate-400"
@@ -349,7 +349,7 @@ export function AnimaisPageClient({
               type="button"
               onClick={() => setOnlyPending((v) => !v)}
               className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border text-xs font-medium transition-colors active:scale-[0.97]",
+                "flex-1 flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border text-sm font-medium transition-colors active:scale-[0.97]",
                 onlyPending
                   ? "bg-red-50 border-red-300 text-red-700 dark:bg-red-950/40 dark:border-red-800 dark:text-red-400"
                   : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
@@ -362,7 +362,7 @@ export function AnimaisPageClient({
             <button
               type="button"
               onClick={() => window.open(printHref, "_blank")}
-              className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border border-produmar-200 bg-white text-xs font-medium text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
+              className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border border-produmar-200 bg-white text-sm font-medium text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
             >
               <Printer className="w-4 h-4" />
               Imprimir guia
@@ -390,7 +390,7 @@ export function AnimaisPageClient({
                 : "Nada encontrado com esse filtro."
             }
           />
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Digite na primeira linha para cadastrar (Enter salva). Célula vermelha = vacina
             atrasada ou nunca aplicada, com os ml a aplicar — toque nela para registrar.
             Passe o mouse no tratamento para ver o remédio; no celular, toque no animal.
@@ -423,7 +423,7 @@ export function AnimaisPageClient({
                 setTab("rebanho");
                 setOnlyPending(true);
               }}
-              className="w-full flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-red-200 bg-red-50 text-xs font-medium text-red-700 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-400 active:scale-[0.98] transition-transform"
+              className="w-full flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-red-200 bg-red-50 text-sm font-medium text-red-700 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-400 active:scale-[0.98] transition-transform"
             >
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               <span className="flex-1 text-left">
@@ -582,9 +582,9 @@ function RebanhoTable({
 
   return (
     <div className="overflow-x-auto -mx-4 sm:mx-0 border-y sm:border border-slate-200 dark:border-slate-700 sm:rounded-xl bg-white dark:bg-slate-900">
-      <table className="w-full text-xs min-w-[760px]">
+      <table className="w-full text-[15px] min-w-[940px]">
         <thead>
-          <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-[13px] text-slate-600 dark:text-slate-300">
             <th className="sticky left-0 z-10 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 font-semibold">
               Nº
             </th>
@@ -600,12 +600,12 @@ function RebanhoTable({
             {vaccines.map((v) => (
               <th
                 key={v.id}
-                className="px-2 py-2.5 font-semibold text-center capitalize whitespace-nowrap"
+                className="px-2 py-3 font-semibold text-center text-sm capitalize whitespace-nowrap"
               >
                 {v.name}
                 {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
                 {v.default_brand && (
-                  <span className="block text-[9px] font-normal normal-case tracking-normal text-slate-400">
+                  <span className="block text-[13px] font-normal text-slate-500 dark:text-slate-400">
                     {v.default_brand}
                   </span>
                 )}
@@ -622,7 +622,7 @@ function RebanhoTable({
             <tr className="border-t border-slate-100 dark:border-slate-800">
               <td
                 colSpan={6 + vaccines.length}
-                className="px-3 py-6 text-center text-slate-400 dark:text-slate-500"
+                className="px-3 py-6 text-center text-base text-slate-500 dark:text-slate-400"
               >
                 {emptyMessage}
               </td>
@@ -644,20 +644,20 @@ function RebanhoTable({
                 }}
                 className="group border-t border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
               >
-                <td className="sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/60 px-3 py-2.5 font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                <td className="sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/60 px-3 py-3 font-bold text-[17px] text-slate-800 dark:text-slate-100 whitespace-nowrap">
                   {a.tag}
                 </td>
-                <td className="px-2 py-2.5 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                <td className="px-2 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
                   {categoryLabel(a.category, a.sex)}
                 </td>
-                <td className="px-2 py-2.5 whitespace-nowrap capitalize text-slate-600 dark:text-slate-300">
+                <td className="px-2 py-3 whitespace-nowrap capitalize text-slate-600 dark:text-slate-300">
                   {a.breed_name ?? "—"}
                 </td>
-                <td className="px-2 py-2.5 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300">
+                <td className="px-2 py-3 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300">
                   {weightKg > 0 ? formatWeight(weightKg) : "—"}
                 </td>
                 <td
-                  className="px-2 py-2.5 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300"
+                  className="px-2 py-3 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300"
                   title={birthsTitle(abirths)}
                 >
                   {pariuLabel(a.sex, abirths)}
@@ -686,12 +686,12 @@ function RebanhoTable({
                             onApply(a, [v.id]);
                           }}
                           title={`Aplicar ${v.name} no animal ${a.tag}`}
-                          className="min-h-[40px] px-2 rounded-lg font-bold text-red-700 dark:text-red-400 tabular-nums active:scale-[0.95] transition-transform"
+                          className="min-h-[40px] px-2 rounded-lg font-bold text-[17px] text-red-700 dark:text-red-400 tabular-nums active:scale-[0.95] transition-transform"
                         >
                           {dose ? formatMl(dose) : "aplicar"}
                         </button>
                       ) : (
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[13px] text-slate-500 dark:text-slate-400">
                           ok{last ? ` ${formatDate(last.applied_at).slice(3)}` : ""}
                         </span>
                       )}
@@ -699,7 +699,7 @@ function RebanhoTable({
                   );
                 })}
                 <td
-                  className="px-2 py-2.5 whitespace-nowrap max-w-[170px]"
+                  className="px-2 py-3 whitespace-nowrap max-w-[170px]"
                   title={treatmentsTitle(atreatments)}
                 >
                   {lastTreatment ? (
@@ -707,7 +707,7 @@ function RebanhoTable({
                       <p className="truncate text-slate-700 dark:text-slate-200">
                         {lastTreatment.description}
                       </p>
-                      <p className="truncate text-[10px] text-slate-400">
+                      <p className="truncate text-[13px] text-slate-500 dark:text-slate-400">
                         {formatDate(lastTreatment.applied_at)}
                         {lastTreatment.medicine ? ` · ${lastTreatment.medicine}` : ""}
                         {atreatments.length > 1 ? ` · +${atreatments.length - 1}` : ""}
@@ -724,23 +724,23 @@ function RebanhoTable({
         {vaccines.length > 0 && animals.length > 0 && (
           <tfoot>
             <tr className="border-t-2 border-produmar-200 dark:border-slate-600 bg-produmar-50/60 dark:bg-slate-800/80">
-              <td className="sticky left-0 bg-produmar-50 dark:bg-slate-800 px-3 py-2 font-semibold text-[10px] uppercase tracking-wide text-produmar-700 dark:text-produmar-300 whitespace-nowrap">
+              <td className="sticky left-0 bg-produmar-50 dark:bg-slate-800 px-3 py-2.5 font-bold text-[13px] text-produmar-700 dark:text-produmar-300 whitespace-nowrap">
                 Levar
               </td>
-              <td colSpan={4} className="px-2 py-2 text-right text-[10px] text-slate-400">
+              <td colSpan={4} className="px-2 py-2.5 text-right text-[13px] text-slate-500 dark:text-slate-400">
                 total das pendentes →
               </td>
               {vaccines.map((v, i) => (
                 <td key={v.id} className="px-1 py-2 text-center whitespace-nowrap">
                   {totals[i].count > 0 ? (
                     <div>
-                      <p className="font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                      <p className="font-bold text-base tabular-nums text-slate-800 dark:text-slate-100">
                         {totals[i].ml > 0 ? formatMl(totals[i].ml) : "—"}
                       </p>
-                      <p className="text-[9px] text-slate-400">{totals[i].count} animal(is)</p>
+                      <p className="text-[13px] text-slate-500 dark:text-slate-400">{totals[i].count} animal(is)</p>
                     </div>
                   ) : (
-                    <span className="text-[10px] text-slate-300 dark:text-slate-600">—</span>
+                    <span className="text-sm text-slate-300 dark:text-slate-600">—</span>
                   )}
                 </td>
               ))}
@@ -841,11 +841,11 @@ function LogRow({
       className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-3 cursor-pointer transition-all active:scale-[0.98] active:bg-slate-50 dark:active:bg-slate-800/60 hover:border-produmar-200 dark:hover:border-produmar-800"
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+        <p className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate">
           {tag}
         </p>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <span className="text-[11px] text-slate-400 tabular-nums">
+          <span className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
             {formatDate(appliedAt)}
           </span>
           <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
@@ -854,7 +854,7 @@ function LogRow({
 
       <ul className="mt-1.5 space-y-1">
         {items.map((i) => (
-          <li key={i.id} className="flex items-center gap-2 text-xs">
+          <li key={i.id} className="flex items-center gap-2 text-sm">
             <Syringe className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <span className="text-slate-700 dark:text-slate-200 truncate">
               {i.animal_vaccines?.name ?? "—"}
@@ -863,7 +863,7 @@ function LogRow({
               {i.dose_ml ? formatMl(Number(i.dose_ml)) : "—"}
             </span>
             {i.brand && (
-              <span className="text-[10px] text-slate-400 truncate flex-shrink-0">
+              <span className="text-xs text-slate-500 dark:text-slate-400 truncate flex-shrink-0">
                 {i.brand}
               </span>
             )}
@@ -889,8 +889,8 @@ function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center text-center py-12 px-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
       <Icon className="w-8 h-8 text-slate-300 dark:text-slate-600 mb-2" />
-      <p className="text-sm text-slate-500 dark:text-slate-400">{text}</p>
-      {hint && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{hint}</p>}
+      <p className="text-base text-slate-600 dark:text-slate-300">{text}</p>
+      {hint && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{hint}</p>}
       {action && <div className="mt-3">{action}</div>}
     </div>
   );
