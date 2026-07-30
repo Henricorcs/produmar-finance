@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createAnimal } from "@/app/(app)/animais/actions";
+import { createAnimal, createBirth } from "@/app/(app)/animais/actions";
 import { formatDecimalInput, parseDecimal } from "./animal-shared";
 import type { AnimalBreed, AnimalSex } from "@/lib/types";
 
@@ -15,11 +15,11 @@ interface Props {
 
 /**
  * Linha de digitação direta no topo da planilha — cadastra o animal sem abrir
- * formulário: número, sexo (F/M), raça, peso e nascimento; Enter salva.
- * Sexo, raça e nascimento ficam para o próximo — um lote de bezerros da
- * mesma data entra só digitando número e peso. As colunas de vacina ficam
- * vazias (dose é assunto da vacinação, não do cadastro) e o botão Adicionar
- * mora na última coluna, fixo à direita.
+ * formulário. Cada campo fica na sua coluna:
+ *   • Cat.  → sexo (F/M) + nascimento, que é o que define bezerro
+ *   • Pariu → o parto: data e, ao preencher a data, o sexo do bezerro
+ * Enter salva. Sexo, raça e nascimento ficam para o próximo — um lote de
+ * bezerros da mesma data entra só digitando número e peso.
  */
 export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -30,7 +30,12 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   const [breedId, setBreedId] = useState("");
   const [weight, setWeight] = useState("");
   const [birthDate, setBirthDate] = useState("");
+  // parto (só para fêmea): data + sexo do bezerro
+  const [calvedAt, setCalvedAt] = useState("");
+  const [calfSex, setCalfSex] = useState<AnimalSex | null>(null);
   const tagRef = useRef<HTMLInputElement>(null);
+
+  const isFemale = sex === "femea";
 
   function submit() {
     if (isPending) return;
@@ -40,6 +45,11 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
       tagRef.current?.focus();
       return;
     }
+    if (isFemale && calvedAt && !calfSex) {
+      setError("Marque se o bezerro é macho (M) ou fêmea (F)");
+      return;
+    }
+
     startTransition(async () => {
       const r = await createAnimal({
         tag,
@@ -52,9 +62,26 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
         setError(r.error ?? "Erro ao salvar");
         return;
       }
-      // pronto pro próximo: mantém sexo/raça/nascimento (lote), limpa nº e peso
+
+      // parto informado na linha → grava junto, já com o sexo do bezerro
+      const animalId = (r as { animalId?: string }).animalId;
+      if (isFemale && calvedAt && calfSex && animalId) {
+        const b = await createBirth({
+          mother_id: animalId,
+          birth_date: calvedAt,
+          calf_sex: calfSex,
+        });
+        if (b && "error" in b) {
+          setError(`Animal salvo, mas o parto falhou: ${b.error}`);
+          return;
+        }
+      }
+
+      // pronto pro próximo: mantém sexo/raça/nascimento (lote), limpa o resto
       setTag("");
       setWeight("");
+      setCalvedAt("");
+      setCalfSex(null);
       tagRef.current?.focus();
     });
   }
@@ -69,9 +96,42 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   const inputCls =
     "h-11 w-full rounded-lg border border-produmar-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-produmar-400 disabled:opacity-50";
 
+  /** Botõezinhos F/M reaproveitados no sexo do animal e no do bezerro. */
+  function SexToggle({
+    value,
+    onPick,
+    disabled,
+  }: {
+    value: AnimalSex | null;
+    onPick: (s: AnimalSex) => void;
+    disabled?: boolean;
+  }) {
+    return (
+      <div className="flex gap-1">
+        {(["femea", "macho"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onPick(s)}
+            title={s === "femea" ? "Fêmea" : "Macho"}
+            disabled={disabled}
+            className={cn(
+              "w-11 h-11 rounded-lg border text-sm font-bold transition-colors disabled:opacity-50",
+              value === s
+                ? "bg-produmar-600 border-produmar-600 text-white"
+                : "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-600"
+            )}
+          >
+            {s === "femea" ? "F" : "M"}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <>
-      <tr className="border-t border-produmar-100 dark:border-slate-700 bg-produmar-50/50 dark:bg-slate-800/40">
+      <tr className="border-t border-produmar-100 dark:border-slate-700 bg-produmar-50/50 dark:bg-slate-800/40 align-top">
         {/* Nº — sempre visível (coluna fixa à esquerda) */}
         <td className="sticky left-0 z-10 bg-produmar-50 dark:bg-slate-800 px-2 py-2 min-w-[104px]">
           <input
@@ -90,26 +150,21 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
           />
         </td>
 
-        {/* Sexo (a categoria sai sozinha: fêmea → vaca/bezerra, macho → boi/bezerro) */}
-        <td className="px-1 py-2">
-          <div className="flex gap-1">
-            {(["femea", "macho"] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSex(s)}
-                title={s === "femea" ? "Fêmea" : "Macho"}
-                disabled={isPending}
-                className={cn(
-                  "w-11 h-11 rounded-lg border text-sm font-bold transition-colors",
-                  sex === s
-                    ? "bg-produmar-600 border-produmar-600 text-white"
-                    : "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-600"
-                )}
-              >
-                {s === "femea" ? "F" : "M"}
-              </button>
-            ))}
+        {/* Cat. → sexo + nascimento (juntos é o que define boi/vaca/bezerro) */}
+        <td className="px-1 py-2 min-w-[132px]">
+          <div className="space-y-1">
+            <SexToggle value={sex} onPick={setSex} disabled={isPending} />
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              onKeyDown={onEnter}
+              aria-label="Data de nascimento do animal"
+              title="Nascimento do animal (opcional — menos de 12 meses conta como bezerro)"
+              className={cn(inputCls, "h-9 text-[13px]")}
+              disabled={isPending}
+            />
+            <p className="text-[11px] text-slate-400 leading-none pl-0.5">nascimento</p>
           </div>
         </td>
 
@@ -146,18 +201,44 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
           />
         </td>
 
-        {/* Nascimento (na coluna Pariu — opcional, é o que define bezerro) */}
+        {/* Pariu → data do parto e, ao preencher, o sexo do bezerro */}
         <td className="px-1 py-2 min-w-[132px]">
-          <input
-            type="date"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            onKeyDown={onEnter}
-            aria-label="Data de nascimento"
-            title="Nascimento (opcional — menos de 12 meses conta como bezerro)"
-            className={inputCls}
-            disabled={isPending}
-          />
+          {isFemale ? (
+            <div className="space-y-1">
+              <input
+                type="date"
+                value={calvedAt}
+                onChange={(e) => {
+                  setCalvedAt(e.target.value);
+                  if (!e.target.value) setCalfSex(null);
+                }}
+                onKeyDown={onEnter}
+                aria-label="Data do parto"
+                title="Se ela pariu: a data do parto"
+                className={inputCls}
+                disabled={isPending}
+              />
+              {calvedAt ? (
+                <div className="space-y-0.5">
+                  <SexToggle value={calfSex} onPick={setCalfSex} disabled={isPending} />
+                  <p
+                    className={cn(
+                      "text-[11px] leading-none pl-0.5",
+                      calfSex ? "text-slate-400" : "text-produmar-600 font-medium"
+                    )}
+                  >
+                    {calfSex ? "sexo do bezerro" : "bezerro: M ou F?"}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-400 leading-none pl-0.5">
+                  parto (se pariu)
+                </p>
+              )}
+            </div>
+          ) : (
+            <span className="text-sm text-slate-300 dark:text-slate-600">—</span>
+          )}
         </td>
 
         {/* Colunas de vacina ficam vazias — dose é assunto da vacinação */}
@@ -181,7 +262,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
         </td>
       </tr>
 
-      {/* Erro do cadastro (nº repetido etc.) — linha própria, some sozinha */}
+      {/* Erro do cadastro (nº repetido etc.) */}
       {error && (
         <tr className="bg-produmar-50/50 dark:bg-slate-800/40">
           <td

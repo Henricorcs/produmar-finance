@@ -380,6 +380,7 @@ export function AnimaisPageClient({
             treatmentsByAnimal={treatmentsByAnimal}
             onOpenAnimal={(id) => setDetailAnimalId(id)}
             onApply={(a, ids) => openProtocol(a, ids)}
+            onBirth={(a) => openBirth(a)}
             emptyMessage={
               filtered.length > 0
                 ? undefined
@@ -391,9 +392,10 @@ export function AnimaisPageClient({
             }
           />
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Digite na primeira linha para cadastrar (Enter salva). Célula vermelha = vacina
-            atrasada ou nunca aplicada, com os ml a aplicar — toque nela para registrar.
-            Passe o mouse no tratamento para ver o remédio; no celular, toque no animal.
+            Digite na primeira linha para cadastrar (Enter salva). Em &quot;Pariu&quot;, a data
+            do parto abre a escolha M ou F do bezerro. Célula vermelha = vacina atrasada ou
+            nunca aplicada, com os ml a aplicar — toque nela para registrar. Passe o mouse no
+            tratamento para ver o remédio; no celular, toque no animal.
           </p>
         </>
       )}
@@ -537,6 +539,7 @@ function RebanhoTable({
   treatmentsByAnimal,
   onOpenAnimal,
   onApply,
+  onBirth,
   emptyMessage,
 }: {
   animals: AnimalWithInfo[];
@@ -547,6 +550,8 @@ function RebanhoTable({
   treatmentsByAnimal: Map<string, AnimalTreatment[]>;
   onOpenAnimal: (id: string) => void;
   onApply: (animal: AnimalWithInfo, vaccineIds: string[]) => void;
+  /** Abre o registro de parto daquela mãe. */
+  onBirth: (animal: AnimalWithInfo) => void;
   /** Mostrado numa linha quando o filtro não devolve ninguém. */
   emptyMessage?: string;
 }) {
@@ -656,11 +661,34 @@ function RebanhoTable({
                 <td className="px-2 py-3 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300">
                   {weightKg > 0 ? formatWeight(weightKg) : "—"}
                 </td>
+                {/* Pariu — clicável na fêmea: abre o parto (data + M/F do bezerro) */}
                 <td
-                  className="px-2 py-3 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300"
+                  className="px-1 py-1 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300"
                   title={birthsTitle(abirths)}
                 >
-                  {pariuLabel(a.sex, abirths)}
+                  {a.sex === "femea" ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBirth(a);
+                      }}
+                      title={
+                        birthsTitle(abirths) ?? "Registrar parto (data e sexo do bezerro)"
+                      }
+                      className="min-h-[40px] px-2 rounded-lg text-[15px] hover:bg-produmar-50 dark:hover:bg-slate-800 active:scale-[0.95] transition-all"
+                    >
+                      {abirths.length > 0 ? (
+                        pariuLabel(a.sex, abirths)
+                      ) : (
+                        <span className="text-produmar-600 dark:text-produmar-400 font-medium">
+                          + parto
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    <span className="px-2 text-slate-300 dark:text-slate-600">—</span>
+                  )}
                 </td>
                 {vaccines.map((v) => {
                   const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
