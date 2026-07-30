@@ -16,10 +16,11 @@ interface Props {
 /**
  * Linha de digitação direta no topo da planilha — cadastra o animal sem abrir
  * formulário. Cada campo fica na sua coluna:
- *   • Cat.  → sexo (F/M) + nascimento, que é o que define bezerro
- *   • Pariu → o parto: data e, ao preencher a data, o sexo do bezerro
- * Enter salva. Sexo, raça e nascimento ficam para o próximo — um lote de
- * bezerros da mesma data entra só digitando número e peso.
+ *   • Cat.  → sexo (F/M) do animal
+ *   • Pariu → o parto: a data (que é o nascimento do bezerro) e, ao
+ *     preenchê-la, o sexo do bezerro
+ * Enter salva. Sexo e raça ficam para o próximo — um lote entra só
+ * digitando número e peso.
  */
 export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -29,7 +30,6 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   const [sex, setSex] = useState<AnimalSex>("femea");
   const [breedId, setBreedId] = useState("");
   const [weight, setWeight] = useState("");
-  const [birthDate, setBirthDate] = useState("");
   // parto (só para fêmea): data + sexo do bezerro
   const [calvedAt, setCalvedAt] = useState("");
   const [calfSex, setCalfSex] = useState<AnimalSex | null>(null);
@@ -54,7 +54,6 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
       const r = await createAnimal({
         tag,
         sex,
-        birth_date: birthDate || null,
         breed_id: breedId || null,
         weight: parseDecimal(weight),
       });
@@ -77,7 +76,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
         }
       }
 
-      // pronto pro próximo: mantém sexo/raça/nascimento (lote), limpa o resto
+      // pronto pro próximo: mantém sexo e raça (lote), limpa o resto
       setTag("");
       setWeight("");
       setCalvedAt("");
@@ -150,22 +149,9 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
           />
         </td>
 
-        {/* Cat. → sexo + nascimento (juntos é o que define boi/vaca/bezerro) */}
-        <td className="px-1 py-2 min-w-[132px]">
-          <div className="space-y-1">
-            <SexToggle value={sex} onPick={setSex} disabled={isPending} />
-            <input
-              type="date"
-              value={birthDate}
-              onChange={(e) => setBirthDate(e.target.value)}
-              onKeyDown={onEnter}
-              aria-label="Data de nascimento do animal"
-              title="Nascimento do animal (opcional — menos de 12 meses conta como bezerro)"
-              className={cn(inputCls, "h-9 text-[13px]")}
-              disabled={isPending}
-            />
-            <p className="text-[11px] text-slate-400 leading-none pl-0.5">nascimento</p>
-          </div>
+        {/* Cat. → sexo do animal (a categoria sai daí + da idade) */}
+        <td className="px-1 py-2">
+          <SexToggle value={sex} onPick={setSex} disabled={isPending} />
         </td>
 
         {/* Raça */}

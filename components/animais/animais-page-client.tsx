@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   AlertTriangle,
   Beef,
@@ -14,7 +14,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, localDateISO } from "@/lib/utils";
+import {
+  applyVaccineProtocol,
+  deleteVaccination,
+} from "@/app/(app)/animais/actions";
 import { AnimalDialog } from "./animal-dialog";
 import { AnimalDetailDialog } from "./animal-detail-dialog";
 import { VaccineProtocolDialog } from "./vaccine-protocol-dialog";
@@ -66,6 +70,9 @@ export function AnimaisPageClient({
   treatments,
   births,
 }: Props) {
+  const [, startTransition] = useTransition();
+  /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
+  const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("rebanho");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
@@ -216,6 +223,49 @@ export function AnimaisPageClient({
     setBirthOpen(true);
   }
 
+  /**
+   * Um toque na célula de ml já registra a vacina: data de hoje, a dose
+   * calculada para aquele animal e o remédio do cadastro. Sem diálogo —
+   * é o gesto do curral.
+   */
+  function applyNow(animal: AnimalWithInfo, vaccine: AnimalVaccine) {
+    const key = `${animal.id}|${vaccine.id}`;
+    if (applyingKey) return;
+    setApplyingKey(key);
+    startTransition(async () => {
+      const r = await applyVaccineProtocol({
+        animal_id: animal.id,
+        applied_at: localDateISO(),
+        items: [
+          {
+            vaccine_id: vaccine.id,
+            dose_ml: suggestedDoseMl(vaccine, Number(animal.weight)),
+            brand: vaccine.default_brand,
+          },
+        ],
+      });
+      setApplyingKey(null);
+      if (r && "error" in r) alert(r.error ?? "Erro ao registrar a vacina");
+    });
+  }
+
+  /** Desfaz a aplicação feita hoje (erro de dedo na planilha). */
+  function undoToday(
+    animal: AnimalWithInfo,
+    vaccine: AnimalVaccine,
+    last: VaccinationRow
+  ) {
+    if (applyingKey) return;
+    if (!confirm(`Desfazer ${vaccine.name} do animal ${animal.tag} aplicada hoje?`)) return;
+    const key = `${animal.id}|${vaccine.id}`;
+    setApplyingKey(key);
+    startTransition(async () => {
+      const r = await deleteVaccination(last.id);
+      setApplyingKey(null);
+      if (r && "error" in r) alert(r.error ?? "Erro ao desfazer");
+    });
+  }
+
   const tabs: {
     value: Tab;
     label: string;
@@ -295,9 +345,11 @@ export function AnimaisPageClient({
         })}
       </div>
 
-      {/* ── Aba: Rebanho — a planilha do curral ──────────────────────────── */}
+      {/* ── Aba: Rebanho — a planilha do curral ────────────────────────────
+          `uppercase` no bloco todo: o patrão pediu tudo em caixa alta aqui.
+          Botões, inputs e selects não herdam text-transform — daí as variantes. */}
       {tab === "rebanho" && (
-        <>
+        <div className="space-y-4 uppercase [&_button]:uppercase [&_input]:uppercase [&_select]:uppercase [&_input::placeholder]:uppercase">
           {/* Filtro por categoria — também serve de resumo do rebanho */}
           <div className="grid grid-cols-4 gap-1.5">
             {categoryFilters.map((f) => {
@@ -379,8 +431,10 @@ export function AnimaisPageClient({
             birthsByMother={birthsByMother}
             treatmentsByAnimal={treatmentsByAnimal}
             onOpenAnimal={(id) => setDetailAnimalId(id)}
-            onApply={(a, ids) => openProtocol(a, ids)}
+            onApplyNow={applyNow}
+            onUndo={undoToday}
             onBirth={(a) => openBirth(a)}
+            applyingKey={applyingKey}
             emptyMessage={
               filtered.length > 0
                 ? undefined
@@ -391,13 +445,13 @@ export function AnimaisPageClient({
                 : "Nada encontrado com esse filtro."
             }
           />
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
             Digite na primeira linha para cadastrar (Enter salva). Em &quot;Pariu&quot;, a data
             do parto abre a escolha M ou F do bezerro. Célula vermelha = vacina atrasada ou
             nunca aplicada, com os ml a aplicar — toque nela para registrar. Passe o mouse no
             tratamento para ver o remédio; no celular, toque no animal.
           </p>
-        </>
+        </div>
       )}
 
       {/* ── Aba: Vacinação — registro do que foi aplicado ────────────────── */}
@@ -538,8 +592,10 @@ function RebanhoTable({
   birthsByMother,
   treatmentsByAnimal,
   onOpenAnimal,
-  onApply,
+  onApplyNow,
+  onUndo,
   onBirth,
+  applyingKey,
   emptyMessage,
 }: {
   animals: AnimalWithInfo[];
@@ -549,9 +605,14 @@ function RebanhoTable({
   birthsByMother: Map<string, AnimalBirth[]>;
   treatmentsByAnimal: Map<string, AnimalTreatment[]>;
   onOpenAnimal: (id: string) => void;
-  onApply: (animal: AnimalWithInfo, vaccineIds: string[]) => void;
+  /** Um toque na célula = vacina aplicada na hora. */
+  onApplyNow: (animal: AnimalWithInfo, vaccine: AnimalVaccine) => void;
+  /** Toque de novo no "ok hoje" desfaz a aplicação. */
+  onUndo: (animal: AnimalWithInfo, vaccine: AnimalVaccine, last: VaccinationRow) => void;
   /** Abre o registro de parto daquela mãe. */
   onBirth: (animal: AnimalWithInfo) => void;
+  /** Chave `animalId|vaccineId` sendo salva no momento. */
+  applyingKey: string | null;
   /** Mostrado numa linha quando o filtro não devolve ninguém. */
   emptyMessage?: string;
 }) {
@@ -565,6 +626,8 @@ function RebanhoTable({
     }
     return m;
   }, [vaccinations]);
+
+  const today = localDateISO();
 
   // quanto levar: soma dos ml pendentes de cada vacina (dos animais listados)
   const totals = useMemo(
@@ -605,7 +668,7 @@ function RebanhoTable({
             {vaccines.map((v) => (
               <th
                 key={v.id}
-                className="px-2 py-3 font-semibold text-center text-sm capitalize whitespace-nowrap"
+                className="px-2 py-3 font-semibold text-center text-sm whitespace-nowrap"
               >
                 {v.name}
                 {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
@@ -655,7 +718,7 @@ function RebanhoTable({
                 <td className="px-2 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
                   {categoryLabel(a.category, a.sex)}
                 </td>
-                <td className="px-2 py-3 whitespace-nowrap capitalize text-slate-600 dark:text-slate-300">
+                <td className="px-2 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
                   {a.breed_name ?? "—"}
                 </td>
                 <td className="px-2 py-3 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300">
@@ -691,32 +754,56 @@ function RebanhoTable({
                   )}
                 </td>
                 {vaccines.map((v) => {
-                  const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
+                  const key = `${a.id}|${v.id}`;
+                  const last = lastByKey.get(key) ?? null;
                   const { status } = vaccineStatusFor(
                     last?.applied_at ?? null,
                     v.recurrence_months
                   );
                   const due = status !== "em_dia";
                   const dose = suggestedDoseMl(v, weightKg);
+                  const saving = applyingKey === key;
+                  const appliedToday = !!last && last.applied_at === today;
                   return (
                     <td
                       key={v.id}
                       className={cn(
                         "px-1 py-1 text-center whitespace-nowrap",
-                        due && "bg-red-50 dark:bg-red-950/30"
+                        due && "bg-red-50 dark:bg-red-950/30",
+                        appliedToday && "bg-emerald-50 dark:bg-emerald-950/30"
                       )}
                     >
                       {due ? (
+                        // um toque = aplicado, com a dose e o remédio do cadastro
                         <button
                           type="button"
+                          disabled={saving}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onApply(a, [v.id]);
+                            onApplyNow(a, v);
                           }}
-                          title={`Aplicar ${v.name} no animal ${a.tag}`}
-                          className="min-h-[40px] px-2 rounded-lg font-bold text-[17px] text-red-700 dark:text-red-400 tabular-nums active:scale-[0.95] transition-transform"
+                          title={`Aplicar ${v.name}${
+                            dose ? ` (${formatMl(dose)})` : ""
+                          } no animal ${a.tag} — registra na hora`}
+                          className="min-h-[40px] px-2 rounded-lg font-bold text-[17px] text-red-700 dark:text-red-400 tabular-nums hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-[0.95] transition-all disabled:opacity-50"
                         >
-                          {dose ? formatMl(dose) : "aplicar"}
+                          {saving ? "…" : dose ? formatMl(dose) : "aplicar"}
+                        </button>
+                      ) : appliedToday ? (
+                        // aplicado agora há pouco: toque de novo desfaz (erro de dedo)
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUndo(a, v, last!);
+                          }}
+                          title={`${v.name} aplicada hoje${
+                            last?.dose_ml ? ` (${formatMl(Number(last.dose_ml))})` : ""
+                          } — toque para desfazer`}
+                          className="min-h-[40px] px-2 rounded-lg font-bold text-[15px] text-emerald-700 dark:text-emerald-400 tabular-nums hover:bg-emerald-100 dark:hover:bg-emerald-900/40 active:scale-[0.95] transition-all disabled:opacity-50"
+                        >
+                          {saving ? "…" : "ok hoje"}
                         </button>
                       ) : (
                         <span className="text-[13px] text-slate-500 dark:text-slate-400">
