@@ -34,7 +34,7 @@ export interface AnimalInput {
   tag: string;
   sex: AnimalSex;
   birth_date?: string | null;
-  type_id?: string | null;
+  breed_id?: string | null;
   weight?: number | null;
   notes?: string | null;
 }
@@ -55,7 +55,7 @@ export async function createAnimal(input: AnimalInput) {
       tag,
       sex: input.sex,
       birth_date: input.birth_date || null,
-      type_id: input.type_id || null,
+      breed_id: input.breed_id || null,
       weight: normWeight(input.weight),
       notes: clean(input.notes),
       created_by: user.id,
@@ -80,7 +80,7 @@ export async function updateAnimal(id: string, input: AnimalInput) {
       tag,
       sex: input.sex,
       birth_date: input.birth_date || null,
-      type_id: input.type_id || null,
+      breed_id: input.breed_id || null,
       weight: normWeight(input.weight),
       notes: clean(input.notes),
     })
@@ -91,7 +91,7 @@ export async function updateAnimal(id: string, input: AnimalInput) {
   return { ok: true };
 }
 
-/** Exclui o animal e todo o histórico (fotos, tratamentos, vacinas e partos, por cascade). */
+/** Exclui o animal, as fotos e o histórico de vacinação (cascade). */
 export async function deleteAnimal(id: string) {
   const supabase = createClient();
 
@@ -258,10 +258,10 @@ export async function getAnimalThumbnails(paths: string[]) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TIPOS DE ANIMAL (cadastro editável)
+// RAÇAS (cadastro editável)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function normTypeName(v: string): string {
+function normName(v: string): string {
   return v.trim().toLowerCase();
 }
 
@@ -270,31 +270,31 @@ function dupNameError(error: { code?: string; message: string }, what: string): 
   return error.message;
 }
 
-export async function createAnimalType(name: string) {
+export async function createBreed(name: string) {
   const supabase = createClient();
-  const n = normTypeName(name);
-  if (!n) return { error: "Informe o nome do tipo" };
+  const n = normName(name);
+  if (!n) return { error: "Informe o nome da raça" };
 
-  const { error } = await supabase.from("animal_types").insert({ name: n });
-  if (error) return { error: dupNameError(error, "Esse tipo") };
+  const { error } = await supabase.from("animal_breeds").insert({ name: n });
+  if (error) return { error: dupNameError(error, "Essa raça") };
   revalidate();
   return { ok: true };
 }
 
-export async function renameAnimalType(id: string, name: string) {
+export async function renameBreed(id: string, name: string) {
   const supabase = createClient();
-  const n = normTypeName(name);
-  if (!n) return { error: "Informe o nome do tipo" };
+  const n = normName(name);
+  if (!n) return { error: "Informe o nome da raça" };
 
-  const { error } = await supabase.from("animal_types").update({ name: n }).eq("id", id);
-  if (error) return { error: dupNameError(error, "Esse tipo") };
+  const { error } = await supabase.from("animal_breeds").update({ name: n }).eq("id", id);
+  if (error) return { error: dupNameError(error, "Essa raça") };
   revalidate();
   return { ok: true };
 }
 
-export async function deleteAnimalType(id: string) {
+export async function deleteBreed(id: string) {
   const supabase = createClient();
-  const { error } = await supabase.from("animal_types").delete().eq("id", id);
+  const { error } = await supabase.from("animal_breeds").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidate();
   return { ok: true };
@@ -345,7 +345,7 @@ function vaccineFields(input: VaccineInput) {
 
 export async function createVaccine(input: VaccineInput) {
   const supabase = createClient();
-  const name = normTypeName(input.name);
+  const name = normName(input.name);
   if (!name) return { error: "Informe o nome da vacina" };
 
   const { error } = await supabase
@@ -358,7 +358,7 @@ export async function createVaccine(input: VaccineInput) {
 
 export async function updateVaccine(id: string, input: VaccineInput) {
   const supabase = createClient();
-  const name = normTypeName(input.name);
+  const name = normName(input.name);
   if (!name) return { error: "Informe o nome da vacina" };
 
   const { error } = await supabase
@@ -448,160 +448,6 @@ export async function deleteVaccinationProtocol(protocolId: string) {
     .from("animal_vaccinations")
     .delete()
     .eq("protocol_id", protocolId);
-  if (error) return { error: error.message };
-  revalidate();
-  return { ok: true };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TRATAMENTOS
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface TreatmentInput {
-  animal_id: string;
-  description: string;
-  medicine?: string | null;
-  dose?: string | null;
-  applied_at?: string | null;
-  next_application?: string | null;
-  cost?: number | null;
-  notes?: string | null;
-}
-
-export async function createTreatment(input: TreatmentInput) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Não autenticado" };
-
-  const description = clean(input.description);
-  if (!input.animal_id) return { error: "Selecione o animal" };
-  if (!description) return { error: "Descreva o tratamento" };
-
-  const { error } = await supabase.from("animal_treatments").insert({
-    animal_id: input.animal_id,
-    description,
-    medicine: clean(input.medicine),
-    dose: clean(input.dose),
-    applied_at: input.applied_at || new Date().toISOString().split("T")[0],
-    next_application: input.next_application || null,
-    cost: Math.max(0, input.cost ?? 0),
-    notes: clean(input.notes),
-    created_by: user.id,
-  });
-  if (error) return { error: error.message };
-  revalidate();
-  return { ok: true };
-}
-
-export async function updateTreatment(id: string, input: TreatmentInput) {
-  const supabase = createClient();
-
-  const description = clean(input.description);
-  if (!description) return { error: "Descreva o tratamento" };
-
-  const { error } = await supabase
-    .from("animal_treatments")
-    .update({
-      description,
-      medicine: clean(input.medicine),
-      dose: clean(input.dose),
-      applied_at: input.applied_at || new Date().toISOString().split("T")[0],
-      next_application: input.next_application || null,
-      cost: Math.max(0, input.cost ?? 0),
-      notes: clean(input.notes),
-    })
-    .eq("id", id);
-  if (error) return { error: error.message };
-  revalidate();
-  return { ok: true };
-}
-
-export async function deleteTreatment(id: string) {
-  const supabase = createClient();
-  const { error } = await supabase.from("animal_treatments").delete().eq("id", id);
-  if (error) return { error: error.message };
-  revalidate();
-  return { ok: true };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PARTOS (bezerros)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface BirthInput {
-  mother_id: string;
-  birth_date: string;
-  calf_tag?: string | null;
-  calf_sex?: AnimalSex | null;
-  notes?: string | null;
-  /** Cria também o cadastro do bezerro como animal (exige número). */
-  register_calf?: boolean;
-}
-
-export async function createBirth(input: BirthInput) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Não autenticado" };
-
-  if (!input.mother_id) return { error: "Selecione a mãe" };
-  if (!input.birth_date) return { error: "Informe a data de nascimento" };
-
-  const calfTag = clean(input.calf_tag);
-
-  // opcionalmente já cadastra o bezerro como animal (herda o tipo da mãe)
-  let calfAnimalId: string | null = null;
-  if (input.register_calf) {
-    if (!calfTag) return { error: "Informe o número do bezerro para cadastrá-lo" };
-    if (!input.calf_sex) return { error: "Informe o sexo do bezerro para cadastrá-lo" };
-
-    const { data: mother } = await supabase
-      .from("animals")
-      .select("type_id")
-      .eq("id", input.mother_id)
-      .maybeSingle();
-
-    const { data: calf, error: calfErr } = await supabase
-      .from("animals")
-      .insert({
-        tag: calfTag,
-        sex: input.calf_sex,
-        birth_date: input.birth_date,
-        type_id: mother?.type_id ?? null,
-        created_by: user.id,
-      })
-      .select("id")
-      .single();
-    if (calfErr || !calf) return { error: calfErr ? dupTagError(calfErr) : "Erro ao cadastrar o bezerro" };
-    calfAnimalId = calf.id as string;
-  }
-
-  const { error } = await supabase.from("animal_births").insert({
-    mother_id: input.mother_id,
-    birth_date: input.birth_date,
-    calf_tag: calfTag,
-    calf_sex: input.calf_sex ?? null,
-    calf_animal_id: calfAnimalId,
-    notes: clean(input.notes),
-    created_by: user.id,
-  });
-  if (error) {
-    // desfaz o cadastro do bezerro para não deixar animal órfão
-    if (calfAnimalId) await supabase.from("animals").delete().eq("id", calfAnimalId);
-    return { error: error.message };
-  }
-
-  revalidate();
-  return { ok: true };
-}
-
-/** Remove o registro do parto. O bezerro cadastrado como animal continua existindo. */
-export async function deleteBirth(id: string) {
-  const supabase = createClient();
-  const { error } = await supabase.from("animal_births").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidate();
   return { ok: true };

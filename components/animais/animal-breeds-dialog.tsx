@@ -11,22 +11,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import {
-  createAnimalType,
-  renameAnimalType,
-  deleteAnimalType,
-} from "@/app/(app)/animais/actions";
+import { createBreed, renameBreed, deleteBreed } from "@/app/(app)/animais/actions";
 import { ICON_BUTTON } from "./animal-shared";
-import type { AnimalType } from "@/lib/types";
+import type { AnimalBreed } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  types: AnimalType[];
+  breeds: AnimalBreed[];
 }
 
-/** Mini-CRUD de tipos de animal (adicionar / renomear / remover). */
-export function AnimalTypesDialog({ open, onClose, types }: Props) {
+/** Mini-CRUD de raças (adicionar / renomear / remover). */
+export function AnimalBreedsDialog({ open, onClose, breeds }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +37,7 @@ export function AnimalTypesDialog({ open, onClose, types }: Props) {
     setError(null);
   }
 
-  function startEdit(t: AnimalType) {
+  function startEdit(t: AnimalBreed) {
     setEditingId(t.id);
     setName(t.name);
     setShowForm(true);
@@ -52,13 +48,13 @@ export function AnimalTypesDialog({ open, onClose, types }: Props) {
     e.preventDefault();
     setError(null);
     if (!name.trim()) {
-      setError("Informe o nome do tipo");
+      setError("Informe o nome da raça");
       return;
     }
     startTransition(async () => {
       const r = editingId
-        ? await renameAnimalType(editingId, name)
-        : await createAnimalType(name);
+        ? await renameBreed(editingId, name)
+        : await createBreed(name);
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao salvar");
         return;
@@ -67,13 +63,13 @@ export function AnimalTypesDialog({ open, onClose, types }: Props) {
     });
   }
 
-  function handleDelete(t: AnimalType) {
+  function handleDelete(t: AnimalBreed) {
     if (
-      !confirm(`Remover o tipo "${t.name}"? Os animais já cadastrados ficam sem tipo.`)
+      !confirm(`Remover a raça "${t.name}"? Os animais já cadastrados ficam sem raça.`)
     )
       return;
     startTransition(async () => {
-      await deleteAnimalType(t.id);
+      await deleteBreed(t.id);
     });
   }
 
@@ -81,17 +77,17 @@ export function AnimalTypesDialog({ open, onClose, types }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">Tipos de animal</DialogTitle>
+          <DialogTitle className="dark:text-slate-100">Raças</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3">
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {types.length === 0 && (
+            {breeds.length === 0 && (
               <p className="text-xs text-slate-400 dark:text-slate-500 py-3">
-                Nenhum tipo cadastrado.
+                Nenhuma raça cadastrada.
               </p>
             )}
-            {types.map((t) => (
+            {breeds.map((t) => (
               <div key={t.id} className="flex items-center gap-3 py-2.5">
                 <div className="w-8 h-8 rounded-lg bg-produmar-50 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
                   <Tag className="w-4 h-4 text-produmar-600 dark:text-produmar-400" />
@@ -131,7 +127,7 @@ export function AnimalTypesDialog({ open, onClose, types }: Props) {
               onClick={() => setShowForm(true)}
             >
               <Plus className="w-4 h-4" />
-              Novo tipo
+              Nova raça
             </Button>
           ) : (
             <form

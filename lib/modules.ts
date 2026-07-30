@@ -92,7 +92,7 @@ export const APP_MODULES: AppModule[] = [
   {
     slug: "animais",
     name: "Animais",
-    description: "Rebanho: cadastro, tratamentos, vacinas e partos",
+    description: "Vacinação do rebanho, com ficha do animal para imprimir",
     href: "/animais",
     icon: Beef,
     accentIcon:

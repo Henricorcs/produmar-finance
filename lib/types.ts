@@ -665,8 +665,8 @@ export type AnimalSex = "macho" | "femea";
 /** Categoria derivada na view v_animals (idade < 12 meses = bezerro). */
 export type AnimalCategory = "boi" | "vaca" | "bezerro";
 
-/** Tipo/raça do animal — cadastro editável. */
-export interface AnimalType {
+/** Raça do animal — cadastro editável. */
+export interface AnimalBreed {
   id: string;
   name: string;
   created_at: string;
@@ -678,7 +678,7 @@ export interface Animal {
   tag: string;
   sex: AnimalSex;
   birth_date: string | null;
-  type_id: string | null;
+  breed_id: string | null;
   /** Peso atual em kg. */
   weight: number;
   photo_path: string | null;
@@ -693,35 +693,6 @@ export interface AnimalPhoto {
   id: string;
   animal_id: string;
   path: string;
-  created_by: string | null;
-  created_at: string;
-}
-
-/** Parto — uma linha por bezerro nascido. */
-export interface AnimalBirth {
-  id: string;
-  mother_id: string;
-  birth_date: string;
-  calf_tag: string | null;
-  calf_sex: AnimalSex | null;
-  /** Preenchido quando o bezerro também virou cadastro de animal. */
-  calf_animal_id: string | null;
-  notes: string | null;
-  created_by: string | null;
-  created_at: string;
-}
-
-export interface AnimalTreatment {
-  id: string;
-  animal_id: string;
-  description: string;
-  /** Remédio aplicado neste tratamento. */
-  medicine: string | null;
-  dose: string | null;
-  applied_at: string;
-  next_application: string | null;
-  cost: number;
-  notes: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -758,17 +729,14 @@ export interface AnimalVaccination {
   created_at: string;
 }
 
-/** Linha da view v_animals (animal + categoria, idade e agregados). */
+/** Linha da view v_animals (animal + raça, idade, categoria e vacinação). */
 export interface AnimalWithInfo extends Animal {
-  type_name: string | null;
+  breed_name: string | null;
   /** Idade em meses cheios (null quando não há data de nascimento). */
   age_months: number | null;
   category: AnimalCategory;
-  /** Quantos bezerros já pariu. */
-  calves_count: number;
-  last_birth_date: string | null;
-  treatments_count: number;
-  last_treatment_at: string | null;
+  /** Quantas vacinas existem no cadastro. */
+  vaccines_total: number;
   /** Vacinas em dia / pendentes (sobre o cadastro de vacinas). */
   vaccines_ok: number;
   vaccines_due: number;

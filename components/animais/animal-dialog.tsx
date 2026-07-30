@@ -24,30 +24,30 @@ import {
   parseDecimal,
   formatDecimalInput,
 } from "./animal-shared";
-import { AnimalTypesDialog } from "./animal-types-dialog";
-import type { Animal, AnimalSex, AnimalType } from "@/lib/types";
+import { AnimalBreedsDialog } from "./animal-breeds-dialog";
+import type { Animal, AnimalBreed, AnimalSex } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   /** Animal em edição — null cria um novo. */
   animal: Animal | null;
-  /** Tipos de animal cadastrados. */
-  types: AnimalType[];
+  /** Raças cadastradas. */
+  breeds: AnimalBreed[];
 }
 
-export function AnimalDialog({ open, onClose, animal, types }: Props) {
+export function AnimalDialog({ open, onClose, animal, breeds }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const [tag, setTag] = useState("");
   const [sex, setSex] = useState<AnimalSex>("femea");
   const [birthDate, setBirthDate] = useState("");
-  const [typeId, setTypeId] = useState("");
+  const [breedId, setBreedId] = useState("");
   const [weight, setWeight] = useState("");
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
-  const [typesOpen, setTypesOpen] = useState(false);
+  const [breedsOpen, setBreedsOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
     setTag(animal?.tag ?? "");
     setSex(animal?.sex ?? "femea");
     setBirthDate(animal?.birth_date ?? "");
-    setTypeId(animal?.type_id ?? "");
+    setBreedId(animal?.breed_id ?? "");
     setWeight(animal && animal.weight ? String(animal.weight).replace(".", ",") : "");
     setNotes(animal?.notes ?? "");
     setPhotos([]);
@@ -76,7 +76,7 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
         tag,
         sex,
         birth_date: birthDate || null,
-        type_id: typeId || null,
+        breed_id: breedId || null,
         weight: parseDecimal(weight),
         notes,
       };
@@ -155,20 +155,20 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="animal_type">Tipo de animal</Label>
-              <button type="button" onClick={() => setTypesOpen(true)} className={INLINE_LINK}>
+              <Label htmlFor="animal_breed">Raça</Label>
+              <button type="button" onClick={() => setBreedsOpen(true)} className={INLINE_LINK}>
                 <Settings2 className="w-3.5 h-3.5" />
                 Gerenciar
               </button>
             </div>
             <select
-              id="animal_type"
-              value={typeId}
-              onChange={(e) => setTypeId(e.target.value)}
+              id="animal_breed"
+              value={breedId}
+              onChange={(e) => setBreedId(e.target.value)}
               className="w-full h-11 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-slate-800 dark:text-slate-100 sm:h-10"
             >
-              <option value="">Sem tipo</option>
-              {types.map((t) => (
+              <option value="">Sem raça</option>
+              {breeds.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
@@ -263,7 +263,11 @@ export function AnimalDialog({ open, onClose, animal, types }: Props) {
           </DialogFooter>
         </form>
 
-        <AnimalTypesDialog open={typesOpen} onClose={() => setTypesOpen(false)} types={types} />
+        <AnimalBreedsDialog
+          open={breedsOpen}
+          onClose={() => setBreedsOpen(false)}
+          breeds={breeds}
+        />
       </DialogContent>
     </Dialog>
   );
