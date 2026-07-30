@@ -330,7 +330,7 @@ export function VaccineProtocolDialog({
                           </div>
                           <div className="space-y-1">
                             <Label htmlFor={`brand_${v.id}`} className="text-[11px]">
-                              Marca
+                              Remédio (marca)
                             </Label>
                             <Input
                               id={`brand_${v.id}`}

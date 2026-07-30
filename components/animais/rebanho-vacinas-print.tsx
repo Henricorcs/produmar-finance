@@ -166,6 +166,12 @@ export function RebanhoVacinasPrint({
                       className="py-1.5 px-1.5 font-semibold border border-slate-200 capitalize text-center"
                     >
                       {v.name}
+                      {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
+                      {v.default_brand && (
+                        <span className="block text-[8px] font-normal text-slate-500">
+                          {v.default_brand}
+                        </span>
+                      )}
                     </th>
                   ))}
                 </tr>

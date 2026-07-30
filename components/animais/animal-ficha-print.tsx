@@ -212,7 +212,7 @@ export function AnimalFichaPrint({
                     <th className="py-1.5 px-2 font-semibold">Vacina</th>
                     <th className="py-1.5 px-2 font-semibold">Dose a aplicar</th>
                     <th className="py-1.5 px-2 font-semibold">Última</th>
-                    <th className="py-1.5 px-2 font-semibold">Marca</th>
+                    <th className="py-1.5 px-2 font-semibold">Remédio</th>
                     <th className="py-1.5 px-2 font-semibold">Próxima</th>
                     <th className="py-1.5 px-2 font-semibold">Situação</th>
                   </tr>
@@ -272,7 +272,7 @@ export function AnimalFichaPrint({
                   <th className="py-1.5 px-2 font-semibold w-[34%]">Vacina</th>
                   <th className="py-1.5 px-2 font-semibold w-[16%]">Data</th>
                   <th className="py-1.5 px-2 font-semibold w-[14%]">Dose (ml)</th>
-                  <th className="py-1.5 px-2 font-semibold w-[22%]">Marca</th>
+                  <th className="py-1.5 px-2 font-semibold w-[22%]">Remédio</th>
                   <th className="py-1.5 px-2 font-semibold w-[14%]">Quem aplicou</th>
                 </tr>
               </thead>
@@ -364,7 +364,7 @@ export function AnimalFichaPrint({
                     <th className="py-1.5 px-2 font-semibold">Data</th>
                     <th className="py-1.5 px-2 font-semibold">Vacina</th>
                     <th className="py-1.5 px-2 font-semibold">Dose</th>
-                    <th className="py-1.5 px-2 font-semibold">Marca</th>
+                    <th className="py-1.5 px-2 font-semibold">Remédio</th>
                   </tr>
                 </thead>
                 <tbody>

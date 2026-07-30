@@ -603,6 +603,12 @@ function RebanhoTable({
                 className="px-2 py-2.5 font-semibold text-center capitalize whitespace-nowrap"
               >
                 {v.name}
+                {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
+                {v.default_brand && (
+                  <span className="block text-[9px] font-normal normal-case tracking-normal text-slate-400">
+                    {v.default_brand}
+                  </span>
+                )}
               </th>
             ))}
             <th className="px-2 py-2.5 font-semibold">Tratamento</th>
@@ -610,7 +616,7 @@ function RebanhoTable({
         </thead>
         <tbody>
           {/* Linha de digitação — cadastrar sem clicar em "Novo" */}
-          <QuickAddRow breeds={breeds} trailingColSpan={vaccines.length + 1} />
+          <QuickAddRow breeds={breeds} vaccinesCount={vaccines.length} />
 
           {emptyMessage && (
             <tr className="border-t border-slate-100 dark:border-slate-800">

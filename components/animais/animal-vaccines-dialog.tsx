@@ -251,7 +251,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
 
               <div className="space-y-1">
                 <Label htmlFor="vaccine_brand" className="text-[11px]">
-                  Marca padrão
+                  Remédio (marca)
                 </Label>
                 <Input
                   id="vaccine_brand"
