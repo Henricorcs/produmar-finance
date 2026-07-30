@@ -9,16 +9,27 @@ import {
   formatAge,
   formatMl,
   formatWeight,
+  pariuLabel,
   suggestedDoseMl,
   vaccineStatusFor,
   SEX_LABELS,
 } from "./animal-shared";
-import type { AnimalVaccination, AnimalVaccine, AnimalWithInfo } from "@/lib/types";
+import type {
+  AnimalBirth,
+  AnimalTreatment,
+  AnimalVaccination,
+  AnimalVaccine,
+  AnimalWithInfo,
+} from "@/lib/types";
 
 interface Props {
   animal: AnimalWithInfo;
   vaccines: AnimalVaccine[];
   vaccinations: AnimalVaccination[];
+  /** Tratamentos deste animal (com o remédio usado). */
+  treatments?: AnimalTreatment[];
+  /** Partos deste animal (uma linha por bezerro). */
+  births?: AnimalBirth[];
   /** URL assinada da foto principal (opcional). */
   photoUrl?: string | null;
   /** Dispara a impressão sozinho ao abrir. */
@@ -37,6 +48,8 @@ export function AnimalFichaPrint({
   animal,
   vaccines,
   vaccinations,
+  treatments = [],
+  births = [],
   photoUrl,
   autoPrint,
 }: Props) {
@@ -71,6 +84,15 @@ export function AnimalFichaPrint({
     { label: "Idade", value: formatAge(animal.age_months) },
     { label: "Peso", value: weightKg > 0 ? formatWeight(weightKg) : "—" },
   ];
+  if (animal.sex === "femea") {
+    info.push({
+      label: "Pariu",
+      value:
+        births.length === 0
+          ? "Não"
+          : `${pariuLabel(animal.sex, births)} · último em ${formatDate(births[0].birth_date)}`,
+    });
+  }
 
   return (
     <>
@@ -207,7 +229,11 @@ export function AnimalFichaPrint({
                       </td>
                       <td className="py-1.5 px-2">{last?.brand ?? "—"}</td>
                       <td className="py-1.5 px-2 tabular-nums">
-                        {nextDate ? formatDate(nextDate) : "dose única"}
+                        {nextDate
+                          ? formatDate(nextDate)
+                          : vaccine.recurrence_months
+                          ? "—"
+                          : "dose única"}
                       </td>
                       <td className="py-1.5 px-2">
                         <span
@@ -263,6 +289,68 @@ export function AnimalFichaPrint({
               </tbody>
             </table>
           </div>
+
+          {/* ── Partos ────────────────────────────────────────────────── */}
+          {births.length > 0 && (
+            <div className="avoid-break">
+              <h2 className="text-[13px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
+                Partos
+              </h2>
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600 text-left">
+                    <th className="py-1.5 px-2 font-semibold">Data</th>
+                    <th className="py-1.5 px-2 font-semibold">Bezerro</th>
+                    <th className="py-1.5 px-2 font-semibold">Nº</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {births.map((b) => (
+                    <tr key={b.id} className="border-b border-slate-100">
+                      <td className="py-1.5 px-2 tabular-nums">{formatDate(b.birth_date)}</td>
+                      <td className="py-1.5 px-2">
+                        {b.calf_sex === "macho"
+                          ? "Macho"
+                          : b.calf_sex === "femea"
+                          ? "Fêmea"
+                          : "—"}
+                      </td>
+                      <td className="py-1.5 px-2">{b.calf_tag ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── Tratamentos (com o remédio usado) ─────────────────────── */}
+          {treatments.length > 0 && (
+            <div className="avoid-break">
+              <h2 className="text-[13px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
+                Tratamentos
+              </h2>
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600 text-left">
+                    <th className="py-1.5 px-2 font-semibold">Data</th>
+                    <th className="py-1.5 px-2 font-semibold">Tratamento</th>
+                    <th className="py-1.5 px-2 font-semibold">Remédio</th>
+                    <th className="py-1.5 px-2 font-semibold">Dose</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {treatments.map((t) => (
+                    <tr key={t.id} className="border-b border-slate-100">
+                      <td className="py-1.5 px-2 tabular-nums">{formatDate(t.applied_at)}</td>
+                      <td className="py-1.5 px-2">{t.description}</td>
+                      <td className="py-1.5 px-2">{t.medicine ?? "—"}</td>
+                      <td className="py-1.5 px-2">{t.dose ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* ── Histórico ─────────────────────────────────────────────── */}
           {history.length > 0 && (

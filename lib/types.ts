@@ -697,6 +697,35 @@ export interface AnimalPhoto {
   created_at: string;
 }
 
+/** Parto — uma linha por bezerro nascido, com o sexo da cria. */
+export interface AnimalBirth {
+  id: string;
+  mother_id: string;
+  birth_date: string;
+  calf_tag: string | null;
+  calf_sex: AnimalSex | null;
+  /** Preenchido quando o bezerro também virou cadastro de animal. */
+  calf_animal_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Tratamento — o remédio usado aparece na tela ao passar o mouse. */
+export interface AnimalTreatment {
+  id: string;
+  animal_id: string;
+  description: string;
+  medicine: string | null;
+  dose: string | null;
+  applied_at: string;
+  next_application: string | null;
+  cost: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 /** Vacina cadastrada — recurrence_months null/0 = dose única. */
 export interface AnimalVaccine {
   id: string;

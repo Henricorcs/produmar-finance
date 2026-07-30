@@ -145,6 +145,27 @@ export function doseRuleLabel(vaccine: DoseRule, weightKg: number): string | nul
   return fixed > 0 ? `dose padrão ${formatMl(fixed)}` : null;
 }
 
+// ── Partos ───────────────────────────────────────────────────────────────────
+
+/**
+ * Resumo dos partos para a coluna "Pariu": "2 (1M, 1F)".
+ * Macho não pare e sem parto registrado vira "—".
+ */
+export function pariuLabel(
+  sex: AnimalSex,
+  births: { calf_sex: AnimalSex | null }[]
+): string {
+  if (sex !== "femea" || births.length === 0) return "—";
+  const m = births.filter((b) => b.calf_sex === "macho").length;
+  const f = births.filter((b) => b.calf_sex === "femea").length;
+  const unknown = births.length - m - f;
+  const parts: string[] = [];
+  if (m) parts.push(`${m}M`);
+  if (f) parts.push(`${f}F`);
+  if (unknown) parts.push(`${unknown}?`);
+  return parts.length ? `${births.length} (${parts.join(", ")})` : String(births.length);
+}
+
 // ── Vacinação ────────────────────────────────────────────────────────────────
 
 export type VaccineStatus = "em_dia" | "atrasada" | "nunca";

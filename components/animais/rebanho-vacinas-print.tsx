@@ -6,15 +6,23 @@ import {
   categoryLabel,
   formatMl,
   formatWeight,
+  pariuLabel,
   suggestedDoseMl,
   vaccineStatusFor,
 } from "./animal-shared";
-import type { AnimalVaccination, AnimalVaccine, AnimalWithInfo } from "@/lib/types";
+import type {
+  AnimalBirth,
+  AnimalVaccination,
+  AnimalVaccine,
+  AnimalWithInfo,
+} from "@/lib/types";
 
 interface Props {
   animals: AnimalWithInfo[];
   vaccines: AnimalVaccine[];
   vaccinations: AnimalVaccination[];
+  /** Partos (para a coluna "Pariu"). */
+  births?: AnimalBirth[];
   /** Texto do filtro usado (aparece no cabeçalho). */
   filterLabel?: string | null;
   autoPrint?: boolean;
@@ -29,6 +37,7 @@ export function RebanhoVacinasPrint({
   animals,
   vaccines,
   vaccinations,
+  births = [],
   filterLabel,
   autoPrint,
 }: Props) {
@@ -47,7 +56,30 @@ export function RebanhoVacinasPrint({
     if (!cur || cur.applied_at < v.applied_at) lastByKey.set(key, v);
   }
 
+  /** Partos por mãe (para a coluna "Pariu"). */
+  const birthsByMother = new Map<string, AnimalBirth[]>();
+  for (const b of births) {
+    const arr = birthsByMother.get(b.mother_id);
+    if (arr) arr.push(b);
+    else birthsByMother.set(b.mother_id, [b]);
+  }
+
   const pendingCount = animals.filter((a) => a.vaccines_due > 0).length;
+
+  /** Quanto levar: soma dos ml pendentes de cada vacina (dos animais da folha). */
+  const totals = vaccines.map((v) => {
+    let count = 0;
+    let ml = 0;
+    for (const a of animals) {
+      const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
+      const { status } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
+      if (status === "em_dia") continue;
+      count++;
+      const dose = suggestedDoseMl(v, Number(a.weight));
+      if (dose) ml += dose;
+    }
+    return { count, ml: Math.round(ml * 10) / 10 };
+  });
 
   return (
     <>
@@ -127,6 +159,7 @@ export function RebanhoVacinasPrint({
                   <th className="py-1.5 px-1.5 font-semibold border border-slate-200">Cat.</th>
                   <th className="py-1.5 px-1.5 font-semibold border border-slate-200">Raça</th>
                   <th className="py-1.5 px-1.5 font-semibold border border-slate-200">Peso</th>
+                  <th className="py-1.5 px-1.5 font-semibold border border-slate-200">Pariu</th>
                   {vaccines.map((v) => (
                     <th
                       key={v.id}
@@ -151,6 +184,9 @@ export function RebanhoVacinasPrint({
                       </td>
                       <td className="py-1.5 px-1.5 border border-slate-200 tabular-nums whitespace-nowrap">
                         {weightKg > 0 ? formatWeight(weightKg) : "—"}
+                      </td>
+                      <td className="py-1.5 px-1.5 border border-slate-200 tabular-nums whitespace-nowrap">
+                        {pariuLabel(a.sex, birthsByMother.get(a.id) ?? [])}
                       </td>
                       {vaccines.map((v) => {
                         const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
@@ -187,13 +223,41 @@ export function RebanhoVacinasPrint({
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr className="bg-produmar-50">
+                  <td
+                    colSpan={5}
+                    className="py-1.5 px-1.5 border border-slate-200 text-right font-bold text-[10px] uppercase tracking-wide text-produmar-700"
+                  >
+                    Levar (total das pendentes)
+                  </td>
+                  {vaccines.map((v, i) => (
+                    <td
+                      key={v.id}
+                      className="py-1.5 px-1.5 border border-slate-200 text-center whitespace-nowrap"
+                    >
+                      {totals[i].count > 0 ? (
+                        <>
+                          <span className="font-bold tabular-nums">
+                            {totals[i].ml > 0 ? formatMl(totals[i].ml) : "—"}
+                          </span>
+                          <span className="text-[9px] text-slate-500"> · {totals[i].count}</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
             </table>
           )}
 
           <p className="text-[9px] text-slate-400 pt-1">
             Fundo vermelho = vacina atrasada ou nunca aplicada; o valor é a dose em ml para
             aquele animal. Marque o quadradinho ao aplicar. &quot;ok&quot; = em dia, com o mês
-            da última aplicação.
+            da última aplicação. Pariu = crias (M = macho, F = fêmea). &quot;Levar&quot; = soma
+            dos ml pendentes e quantos animais faltam de cada vacina.
           </p>
         </div>
       </div>

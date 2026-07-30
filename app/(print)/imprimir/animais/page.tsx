@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { RebanhoVacinasPrint } from "@/components/animais/rebanho-vacinas-print";
 import type {
+  AnimalBirth,
   AnimalCategory,
   AnimalVaccination,
   AnimalVaccine,
@@ -39,13 +40,17 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   let query = supabase.from("v_animals").select("*").order("tag", { ascending: true });
   if (categoria && categoria in CATEGORY_LABELS) query = query.eq("category", categoria);
 
-  const [animalsRes, vaccinesRes, vaccinationsRes] = await Promise.all([
+  const [animalsRes, vaccinesRes, vaccinationsRes, birthsRes] = await Promise.all([
     query,
     supabase.from("animal_vaccines").select("*").order("name", { ascending: true }),
     supabase
       .from("animal_vaccinations")
       .select("*")
       .order("applied_at", { ascending: false }),
+    supabase
+      .from("animal_births")
+      .select("*")
+      .order("birth_date", { ascending: false }),
   ]);
 
   let animals = (animalsRes.data as AnimalWithInfo[]) ?? [];
@@ -63,6 +68,7 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
       animals={animals}
       vaccines={(vaccinesRes.data as AnimalVaccine[]) ?? []}
       vaccinations={(vaccinationsRes.data as AnimalVaccination[]) ?? []}
+      births={(birthsRes.data as AnimalBirth[]) ?? []}
       filterLabel={filterLabel || null}
     />
   );

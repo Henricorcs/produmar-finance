@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { ImageIcon, Pencil, Printer, Syringe, Trash2 } from "lucide-react";
+import { Baby, ImageIcon, Pencil, Printer, Stethoscope, Syringe, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,8 @@ import { cn, formatDate } from "@/lib/utils";
 import {
   deleteAnimal,
   deleteAnimalPhoto,
+  deleteBirth,
+  deleteTreatment,
   deleteVaccination,
   deleteVaccinationProtocol,
   getAnimalPhotos,
@@ -27,9 +29,16 @@ import {
   formatAge,
   formatMl,
   formatWeight,
+  pariuLabel,
   vaccineStatusFor,
 } from "./animal-shared";
-import type { AnimalVaccination, AnimalVaccine, AnimalWithInfo } from "@/lib/types";
+import type {
+  AnimalBirth,
+  AnimalTreatment,
+  AnimalVaccination,
+  AnimalVaccine,
+  AnimalWithInfo,
+} from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -39,9 +48,15 @@ interface Props {
   vaccinations: AnimalVaccination[];
   /** Cadastro de vacinas — base da situação de vacinação. */
   vaccines: AnimalVaccine[];
+  /** Tratamentos deste animal (com o remédio usado). */
+  treatments: AnimalTreatment[];
+  /** Partos deste animal (uma linha por bezerro). */
+  births: AnimalBirth[];
   onEdit: (animal: AnimalWithInfo) => void;
   /** Abre o protocolo de vacinação, já marcando as vacinas indicadas. */
   onVaccinate: (animal: AnimalWithInfo, vaccineIds?: string[]) => void;
+  onTreatment: (animal: AnimalWithInfo) => void;
+  onBirth: (animal: AnimalWithInfo) => void;
 }
 
 type Section = "ficha" | "vacinas" | "historico";
@@ -52,8 +67,12 @@ export function AnimalDetailDialog({
   animal,
   vaccinations,
   vaccines,
+  treatments,
+  births,
   onEdit,
   onVaccinate,
+  onTreatment,
+  onBirth,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [section, setSection] = useState<Section>("ficha");
@@ -110,6 +129,20 @@ export function AnimalDetailDialog({
     });
   }
 
+  function handleDeleteTreatment(id: string) {
+    if (!confirm("Remover este tratamento?")) return;
+    startTransition(async () => {
+      await deleteTreatment(id);
+    });
+  }
+
+  function handleDeleteBirth(id: string) {
+    if (!confirm("Remover este parto? O bezerro cadastrado continua no rebanho.")) return;
+    startTransition(async () => {
+      await deleteBirth(id);
+    });
+  }
+
   /** Remove o protocolo inteiro quando as vacinas foram aplicadas juntas. */
   function handleDeleteGroup(protocolId: string | null, id: string, count: number) {
     const msg =
@@ -147,12 +180,116 @@ export function AnimalDetailDialog({
       (acc[key] ??= []).push(v);
       return acc;
     }, {})
-  ).sort((a, b) => (a[0].applied_at < b[0].applied_at ? 1 : -1));
+  );
+
+  // Histórico unificado: vacinas (por protocolo) + tratamentos + partos
+  const events: { key: string; date: string; node: React.ReactNode }[] = [
+    ...groups.map((group) => {
+      const first = group[0];
+      return {
+        key: `vc-${first.protocol_id ?? first.id}`,
+        date: first.applied_at,
+        node: (
+          <div className="flex items-start gap-2.5">
+            <span className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+              <Syringe className="w-3.5 h-3.5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-slate-800 dark:text-slate-100">
+                {group.length > 1 ? `Protocolo · ${group.length} vacinas` : "Vacina aplicada"}
+              </p>
+              <ul className="mt-0.5 space-y-0.5">
+                {group.map((v) => (
+                  <li key={v.id} className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {vaccineNameById.get(v.vaccine_id) ?? "—"}
+                    {v.dose_ml ? ` · ${formatMl(Number(v.dose_ml))}` : ""}
+                    {v.brand ? ` · ${v.brand}` : ""}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-slate-400">
+                {formatDate(first.applied_at)}
+                {first.notes ? ` · ${first.notes}` : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleDeleteGroup(first.protocol_id, first.id, group.length)}
+              disabled={isPending}
+              aria-label="Remover aplicação"
+              className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ),
+      };
+    }),
+    ...treatments.map((t) => ({
+      key: `tr-${t.id}`,
+      date: t.applied_at,
+      node: (
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg bg-produmar-50 dark:bg-produmar-900/40 text-produmar-600 dark:text-produmar-300 flex-shrink-0">
+            <Stethoscope className="w-3.5 h-3.5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-slate-800 dark:text-slate-100">
+              {t.description}
+              {t.medicine ? ` · ${t.medicine}` : ""}
+              {t.dose ? ` (${t.dose})` : ""}
+            </p>
+            <p className="text-[11px] text-slate-400">{formatDate(t.applied_at)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleDeleteTreatment(t.id)}
+            disabled={isPending}
+            aria-label="Remover tratamento"
+            className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ),
+    })),
+    ...births.map((b) => ({
+      key: `bt-${b.id}`,
+      date: b.birth_date,
+      node: (
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex-shrink-0">
+            <Baby className="w-3.5 h-3.5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-slate-800 dark:text-slate-100">
+              Pariu {b.calf_sex === "macho" ? "um bezerro (macho)" : "uma bezerra (fêmea)"}
+              {b.calf_tag ? ` · nº ${b.calf_tag}` : ""}
+              {b.calf_animal_id ? " · cadastrado" : ""}
+            </p>
+            <p className="text-[11px] text-slate-400">
+              {formatDate(b.birth_date)}
+              {b.notes ? ` · ${b.notes}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleDeleteBirth(b.id)}
+            disabled={isPending}
+            aria-label="Remover parto"
+            className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ),
+    })),
+  ].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   const sections: { value: Section; label: string; count?: number }[] = [
     { value: "ficha", label: "Ficha" },
     { value: "vacinas", label: "Vacinas", count: animal.vaccines_due },
-    { value: "historico", label: "Histórico", count: groups.length },
+    { value: "historico", label: "Histórico", count: events.length },
   ];
 
   return (
@@ -231,6 +368,18 @@ export function AnimalDetailDialog({
                 />
                 <InfoRow label="Idade" value={formatAge(animal.age_months)} />
                 <InfoRow label="Peso" value={weightKg > 0 ? formatWeight(weightKg) : "—"} />
+                {animal.sex === "femea" && (
+                  <InfoRow
+                    label="Pariu"
+                    value={
+                      births.length === 0
+                        ? "Não"
+                        : `${pariuLabel(animal.sex, births)} · último em ${formatDate(
+                            births[0].birth_date
+                          )}`
+                    }
+                  />
+                )}
                 <InfoRow
                   label="Vacinação"
                   value={
@@ -245,7 +394,7 @@ export function AnimalDetailDialog({
               </div>
 
               {/* Ações principais */}
-              <div className="grid grid-cols-1 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <Button
                   className="h-12 sm:h-10"
                   onClick={() =>
@@ -256,7 +405,7 @@ export function AnimalDetailDialog({
                   }
                 >
                   <Syringe className="w-4 h-4" />
-                  Aplicar protocolo
+                  Vacinar
                   {pendingVaccineIds.length > 0 && (
                     <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-white/25 text-white text-[10px] font-semibold flex items-center justify-center">
                       {pendingVaccineIds.length}
@@ -271,6 +420,24 @@ export function AnimalDetailDialog({
                   <Printer className="w-4 h-4" />
                   Imprimir ficha
                 </Button>
+                <Button
+                  variant="outline"
+                  className={cn("h-12 sm:h-10", animal.sex !== "femea" && "col-span-2")}
+                  onClick={() => onTreatment(animal)}
+                >
+                  <Stethoscope className="w-4 h-4" />
+                  Tratamento
+                </Button>
+                {animal.sex === "femea" && (
+                  <Button
+                    variant="outline"
+                    className="h-12 sm:h-10"
+                    onClick={() => onBirth(animal)}
+                  >
+                    <Baby className="w-4 h-4" />
+                    Parto
+                  </Button>
+                )}
               </div>
             </>
           )}
@@ -350,59 +517,15 @@ export function AnimalDetailDialog({
 
           {section === "historico" && (
             <div>
-              {groups.length === 0 ? (
+              {events.length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500 py-2">
-                  Nenhuma vacina aplicada ainda.
+                  Nenhuma vacina, tratamento ou parto registrado.
                 </p>
               ) : (
                 <div className="space-y-2.5">
-                  {groups.map((group) => {
-                    const first = group[0];
-                    return (
-                      <div
-                        key={first.protocol_id ?? first.id}
-                        className="flex items-start gap-2.5"
-                      >
-                        <span className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
-                          <Syringe className="w-3.5 h-3.5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-slate-800 dark:text-slate-100">
-                            {group.length > 1
-                              ? `Protocolo · ${group.length} vacinas`
-                              : "Vacina aplicada"}
-                          </p>
-                          <ul className="mt-0.5 space-y-0.5">
-                            {group.map((v) => (
-                              <li
-                                key={v.id}
-                                className="text-[11px] text-slate-500 dark:text-slate-400"
-                              >
-                                {vaccineNameById.get(v.vaccine_id) ?? "—"}
-                                {v.dose_ml ? ` · ${formatMl(Number(v.dose_ml))}` : ""}
-                                {v.brand ? ` · ${v.brand}` : ""}
-                              </li>
-                            ))}
-                          </ul>
-                          <p className="text-[11px] text-slate-400">
-                            {formatDate(first.applied_at)}
-                            {first.notes ? ` · ${first.notes}` : ""}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteGroup(first.protocol_id, first.id, group.length)
-                          }
-                          disabled={isPending}
-                          aria-label="Remover aplicação"
-                          className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    );
-                  })}
+                  {events.map((e) => (
+                    <div key={e.key}>{e.node}</div>
+                  ))}
                 </div>
               )}
             </div>

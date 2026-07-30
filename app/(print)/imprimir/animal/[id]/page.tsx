@@ -1,7 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AnimalFichaPrint } from "@/components/animais/animal-ficha-print";
-import type { AnimalVaccination, AnimalVaccine, AnimalWithInfo } from "@/lib/types";
+import type {
+  AnimalBirth,
+  AnimalTreatment,
+  AnimalVaccination,
+  AnimalVaccine,
+  AnimalWithInfo,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -32,13 +38,23 @@ export default async function ImprimirFichaAnimalPage({ params }: Props) {
     );
   }
 
-  const [vaccinesRes, vaccinationsRes] = await Promise.all([
+  const [vaccinesRes, vaccinationsRes, treatmentsRes, birthsRes] = await Promise.all([
     supabase.from("animal_vaccines").select("*").order("name", { ascending: true }),
     supabase
       .from("animal_vaccinations")
       .select("*")
       .eq("animal_id", animal.id)
       .order("applied_at", { ascending: false }),
+    supabase
+      .from("animal_treatments")
+      .select("*")
+      .eq("animal_id", animal.id)
+      .order("applied_at", { ascending: false }),
+    supabase
+      .from("animal_births")
+      .select("*")
+      .eq("mother_id", animal.id)
+      .order("birth_date", { ascending: false }),
   ]);
 
   // foto principal com URL assinada (a impressão precisa da imagem acessível)
@@ -55,6 +71,8 @@ export default async function ImprimirFichaAnimalPage({ params }: Props) {
       animal={animal}
       vaccines={(vaccinesRes.data as AnimalVaccine[]) ?? []}
       vaccinations={(vaccinationsRes.data as AnimalVaccination[]) ?? []}
+      treatments={(treatmentsRes.data as AnimalTreatment[]) ?? []}
+      births={(birthsRes.data as AnimalBirth[]) ?? []}
       photoUrl={photoUrl}
     />
   );

@@ -452,3 +452,129 @@ export async function deleteVaccinationProtocol(protocolId: string) {
   revalidate();
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRATAMENTOS (simples: o que foi tratado + remédio usado)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface TreatmentInput {
+  animal_id: string;
+  description: string;
+  medicine?: string | null;
+  dose?: string | null;
+  applied_at?: string | null;
+}
+
+export async function createTreatment(input: TreatmentInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const description = clean(input.description);
+  if (!input.animal_id) return { error: "Selecione o animal" };
+  if (!description) return { error: "Descreva o tratamento" };
+
+  const { error } = await supabase.from("animal_treatments").insert({
+    animal_id: input.animal_id,
+    description,
+    medicine: clean(input.medicine),
+    dose: clean(input.dose),
+    applied_at: input.applied_at || new Date().toISOString().split("T")[0],
+    created_by: user.id,
+  });
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+export async function deleteTreatment(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_treatments").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARTOS (uma linha por bezerro, com o sexo da cria)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BirthInput {
+  mother_id: string;
+  birth_date: string;
+  calf_sex: AnimalSex;
+  calf_tag?: string | null;
+  notes?: string | null;
+  /** Cria também o cadastro do bezerro como animal (exige número). */
+  register_calf?: boolean;
+}
+
+export async function createBirth(input: BirthInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.mother_id) return { error: "Selecione a mãe" };
+  if (!input.birth_date) return { error: "Informe a data do parto" };
+  if (!input.calf_sex) return { error: "Informe o sexo do bezerro" };
+
+  const calfTag = clean(input.calf_tag);
+
+  // opcionalmente já cadastra o bezerro como animal (herda a raça da mãe)
+  let calfAnimalId: string | null = null;
+  if (input.register_calf) {
+    if (!calfTag) return { error: "Informe o número do bezerro para cadastrá-lo" };
+
+    const { data: mother } = await supabase
+      .from("animals")
+      .select("breed_id")
+      .eq("id", input.mother_id)
+      .maybeSingle();
+
+    const { data: calf, error: calfErr } = await supabase
+      .from("animals")
+      .insert({
+        tag: calfTag,
+        sex: input.calf_sex,
+        birth_date: input.birth_date,
+        breed_id: mother?.breed_id ?? null,
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+    if (calfErr || !calf)
+      return { error: calfErr ? dupTagError(calfErr) : "Erro ao cadastrar o bezerro" };
+    calfAnimalId = calf.id as string;
+  }
+
+  const { error } = await supabase.from("animal_births").insert({
+    mother_id: input.mother_id,
+    birth_date: input.birth_date,
+    calf_tag: calfTag,
+    calf_sex: input.calf_sex,
+    calf_animal_id: calfAnimalId,
+    notes: clean(input.notes),
+    created_by: user.id,
+  });
+  if (error) {
+    // desfaz o cadastro do bezerro para não deixar animal órfão
+    if (calfAnimalId) await supabase.from("animals").delete().eq("id", calfAnimalId);
+    return { error: error.message };
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/** Remove o registro do parto. O bezerro cadastrado como animal continua existindo. */
+export async function deleteBirth(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_births").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
