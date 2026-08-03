@@ -429,6 +429,14 @@ export async function applyVaccineProtocol(input: {
     }))
   );
   if (error) return { error: error.message };
+
+  // aplicou → a pendência marcada na mão para essas vacinas está resolvida
+  await supabase
+    .from("animal_vaccine_pending")
+    .delete()
+    .eq("animal_id", input.animal_id)
+    .in("vaccine_id", Array.from(uniqueIds));
+
   revalidate();
   return { ok: true, protocolId };
 }
@@ -505,12 +513,19 @@ export interface BirthInput {
   mother_id: string;
   birth_date: string;
   calf_sex: AnimalSex;
-  calf_tag?: string | null;
+  /** Número do bezerro — obrigatório: ele entra no rebanho junto com o parto. */
+  calf_tag: string;
+  /** Peso do bezerro ao nascer, em kg. */
+  calf_weight?: number | null;
   notes?: string | null;
-  /** Cria também o cadastro do bezerro como animal (exige número). */
-  register_calf?: boolean;
 }
 
+/**
+ * Registra o parto E cadastra o bezerro no rebanho na mesma hora, atrelado à
+ * mãe (animal_births.calf_animal_id): a ficha do bezerro mostra de quem ele é
+ * e a da mãe lista as crias. O bezerro herda a raça da mãe e nasce com a data
+ * do parto — a categoria "bezerro" sai daí sozinha (view v_animals).
+ */
 export async function createBirth(input: BirthInput) {
   const supabase = createClient();
   const {
@@ -523,33 +538,29 @@ export async function createBirth(input: BirthInput) {
   if (!input.calf_sex) return { error: "Informe o sexo do bezerro" };
 
   const calfTag = clean(input.calf_tag);
+  if (!calfTag) return { error: "Informe o número do bezerro" };
 
-  // opcionalmente já cadastra o bezerro como animal (herda a raça da mãe)
-  let calfAnimalId: string | null = null;
-  if (input.register_calf) {
-    if (!calfTag) return { error: "Informe o número do bezerro para cadastrá-lo" };
+  const { data: mother } = await supabase
+    .from("animals")
+    .select("breed_id")
+    .eq("id", input.mother_id)
+    .maybeSingle();
 
-    const { data: mother } = await supabase
-      .from("animals")
-      .select("breed_id")
-      .eq("id", input.mother_id)
-      .maybeSingle();
-
-    const { data: calf, error: calfErr } = await supabase
-      .from("animals")
-      .insert({
-        tag: calfTag,
-        sex: input.calf_sex,
-        birth_date: input.birth_date,
-        breed_id: mother?.breed_id ?? null,
-        created_by: user.id,
-      })
-      .select("id")
-      .single();
-    if (calfErr || !calf)
-      return { error: calfErr ? dupTagError(calfErr) : "Erro ao cadastrar o bezerro" };
-    calfAnimalId = calf.id as string;
-  }
+  const { data: calf, error: calfErr } = await supabase
+    .from("animals")
+    .insert({
+      tag: calfTag,
+      sex: input.calf_sex,
+      birth_date: input.birth_date,
+      breed_id: mother?.breed_id ?? null,
+      weight: normWeight(input.calf_weight),
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (calfErr || !calf)
+    return { error: calfErr ? dupTagError(calfErr) : "Erro ao cadastrar o bezerro" };
+  const calfAnimalId = calf.id as string;
 
   const { error } = await supabase.from("animal_births").insert({
     mother_id: input.mother_id,
@@ -562,19 +573,87 @@ export async function createBirth(input: BirthInput) {
   });
   if (error) {
     // desfaz o cadastro do bezerro para não deixar animal órfão
-    if (calfAnimalId) await supabase.from("animals").delete().eq("id", calfAnimalId);
+    await supabase.from("animals").delete().eq("id", calfAnimalId);
     return { error: error.message };
+  }
+
+  revalidate();
+  return { ok: true, calfAnimalId };
+}
+
+/**
+ * Remove o registro do parto. Lançou errado? `deleteCalf` tira junto o bezerro
+ * que entrou no rebanho por causa dele — senão o bezerro continua lá, só que
+ * sem mãe.
+ */
+export async function deleteBirth(id: string, deleteCalf = false) {
+  const supabase = createClient();
+
+  const { data: birth } = await supabase
+    .from("animal_births")
+    .select("id, calf_animal_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  const { error } = await supabase.from("animal_births").delete().eq("id", id);
+  if (error) return { error: error.message };
+
+  if (deleteCalf && birth?.calf_animal_id) {
+    const r = await deleteAnimal(birth.calf_animal_id as string);
+    if (r && "error" in r) return { error: `Parto removido, mas o bezerro não: ${r.error}` };
   }
 
   revalidate();
   return { ok: true };
 }
 
-/** Remove o registro do parto. O bezerro cadastrado como animal continua existindo. */
-export async function deleteBirth(id: string) {
+// ─────────────────────────────────────────────────────────────────────────────
+// PENDÊNCIA MARCADA NA MÃO (quem decide o que falta é o dono do rebanho)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Marca/desmarca "esta vacina deste animal está pendente". Aplicar a vacina
+ * limpa a marca sozinho (ver applyVaccineProtocol).
+ */
+export async function setVaccinePending(
+  animalId: string,
+  vaccineId: string,
+  pending: boolean,
+  note?: string | null
+) {
   const supabase = createClient();
-  const { error } = await supabase.from("animal_births").delete().eq("id", id);
-  if (error) return { error: error.message };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!animalId || !vaccineId) return { error: "Animal ou vacina não informados" };
+
+  if (!pending) {
+    const { error } = await supabase
+      .from("animal_vaccine_pending")
+      .delete()
+      .eq("animal_id", animalId)
+      .eq("vaccine_id", vaccineId);
+    if (error) return { error: pendingTableError(error) };
+    revalidate();
+    return { ok: true };
+  }
+
+  const { error } = await supabase
+    .from("animal_vaccine_pending")
+    .upsert(
+      { animal_id: animalId, vaccine_id: vaccineId, note: clean(note), created_by: user.id },
+      { onConflict: "animal_id,vaccine_id" }
+    );
+  if (error) return { error: pendingTableError(error) };
   revalidate();
   return { ok: true };
+}
+
+/** A tabela vem da migration 044 — sem ela o erro do Postgres não diz nada. */
+function pendingTableError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.message.includes("animal_vaccine_pending"))
+    return "Rode a migration 044 no Supabase para usar a marcação de pendente";
+  return error.message;
 }

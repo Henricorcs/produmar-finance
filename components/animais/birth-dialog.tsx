@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { Baby, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,36 +13,47 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { cn, localDateISO } from "@/lib/utils";
-import { createBirth } from "@/app/(app)/animais/actions";
+import { cn, formatDate, localDateISO } from "@/lib/utils";
+import { createBirth, deleteBirth } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
   FOOTER_SUBMIT,
+  ICON_BUTTON,
   STICKY_FOOTER,
   SexPicker,
   categoryLabel,
+  formatDecimalInput,
+  formatWeight,
+  parseDecimal,
 } from "./animal-shared";
-import type { AnimalSex, AnimalWithInfo } from "@/lib/types";
+import type { AnimalBirth, AnimalSex, AnimalWithInfo } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   /** Só fêmeas podem parir. */
   mothers: AnimalWithInfo[];
-  /** Pré-seleciona a mãe (quando aberto pela ficha). */
+  /** Pré-seleciona a mãe (quando aberto pela planilha ou pela ficha). */
   presetMotherId?: string | null;
+  /** Partos já registrados da mãe escolhida — dá para apagar o que saiu errado. */
+  births?: AnimalBirth[];
 }
 
-/** Registra um parto — o essencial é o sexo do bezerro (macho ou fêmea). */
-export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
+/**
+ * Partos da vaca: a lista do que já foi lançado (com o botão de apagar, para
+ * quando o parto entra errado) e o registro de um novo. Ao registrar, o
+ * bezerro já entra no rebanho atrelado à mãe — número e peso são dele.
+ */
+export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [] }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [motherId, setMotherId] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [calfSex, setCalfSex] = useState<AnimalSex>("femea");
   const [calfTag, setCalfTag] = useState("");
-  const [registerCalf, setRegisterCalf] = useState(true);
+  const [calfWeight, setCalfWeight] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -49,13 +61,42 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
     setBirthDate(localDateISO());
     setCalfSex("femea");
     setCalfTag("");
-    setRegisterCalf(true);
+    setCalfWeight("");
     setError(null);
   }, [open, presetMotherId]);
 
   const presetMother = presetMotherId
     ? mothers.find((a) => a.id === presetMotherId) ?? null
     : null;
+
+  /** Partos da mãe escolhida, do mais novo para o mais antigo. */
+  const motherBirths = motherId
+    ? births
+        .filter((b) => b.mother_id === motherId)
+        .sort((a, b) => (a.birth_date < b.birth_date ? 1 : -1))
+    : [];
+
+  function handleDelete(b: AnimalBirth) {
+    const calf = b.calf_tag ? `nº ${b.calf_tag}` : "sem número";
+    if (!confirm(`Apagar o parto de ${formatDate(b.birth_date)} (bezerro ${calf})?`)) return;
+
+    // o bezerro entrou no rebanho por causa deste parto — pergunta se sai junto
+    const alsoCalf = b.calf_animal_id
+      ? confirm(
+          `Tirar também o bezerro ${calf} do rebanho?\n\n` +
+            "OK = apaga o parto e o bezerro.\n" +
+            "Cancelar = apaga só o parto e o bezerro continua cadastrado."
+        )
+      : false;
+
+    setDeletingId(b.id);
+    setError(null);
+    startTransition(async () => {
+      const r = await deleteBirth(b.id, alsoCalf);
+      setDeletingId(null);
+      if (r && "error" in r) setError(r.error ?? "Erro ao apagar o parto");
+    });
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,8 +110,8 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
       setError("Informe a data do parto");
       return;
     }
-    if (registerCalf && !calfTag.trim()) {
-      setError("Informe o número do bezerro para cadastrá-lo");
+    if (!calfTag.trim()) {
+      setError("Informe o número do bezerro — ele entra no rebanho junto com o parto");
       return;
     }
 
@@ -80,7 +121,7 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
         birth_date: birthDate,
         calf_sex: calfSex,
         calf_tag: calfTag,
-        register_calf: registerCalf,
+        calf_weight: parseDecimal(calfWeight),
       });
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao registrar o parto");
@@ -92,10 +133,48 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">Registrar parto</DialogTitle>
+          <DialogTitle className="dark:text-slate-100">
+            {presetMother ? `Partos da ${presetMother.tag}` : "Registrar parto"}
+          </DialogTitle>
         </DialogHeader>
+
+        {/* Já registrados — é aqui que se apaga o parto lançado errado */}
+        {motherBirths.length > 0 && (
+          <div className="space-y-1.5 mb-4">
+            <Label>Partos registrados</Label>
+            <ul className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+              {motherBirths.map((b) => (
+                <li key={b.id} className="flex items-center gap-2 px-3 py-1.5">
+                  <Baby className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-slate-800 dark:text-slate-100 truncate">
+                      {b.calf_sex === "macho" ? "Bezerro" : "Bezerra"}
+                      {b.calf_tag ? ` nº ${b.calf_tag}` : ""}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {formatDate(b.birth_date)}
+                      {b.calf_animal_id ? " · no rebanho" : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(b)}
+                    disabled={isPending}
+                    aria-label="Apagar este parto"
+                    className={cn(
+                      ICON_BUTTON,
+                      "text-slate-300 hover:text-red-500 -mr-2 disabled:opacity-50"
+                    )}
+                  >
+                    <Trash2 className={cn("w-4 h-4", deletingId === b.id && "animate-pulse")} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
@@ -103,6 +182,7 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
             {presetMother ? (
               <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-800 dark:text-slate-100">
                 {presetMother.tag}
+                {presetMother.breed_name ? ` · ${presetMother.breed_name}` : ""}
               </div>
             ) : (
               <SearchableSelect
@@ -143,32 +223,37 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
             <SexPicker value={calfSex} onChange={setCalfSex} />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="bt_calf_tag">Número do bezerro</Label>
-            <Input
-              id="bt_calf_tag"
-              value={calfTag}
-              onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
-              placeholder="ex: 1046"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
-              autoComplete="off"
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="bt_calf_tag">Nº do bezerro *</Label>
+              <Input
+                id="bt_calf_tag"
+                value={calfTag}
+                onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
+                placeholder="ex: 1046"
+                className="h-11 sm:h-10 uppercase placeholder:normal-case placeholder:lowercase"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="bt_calf_weight">Peso (kg)</Label>
+              <Input
+                id="bt_calf_weight"
+                value={calfWeight}
+                onChange={(e) => setCalfWeight(formatDecimalInput(e.target.value))}
+                placeholder="ex: 32"
+                inputMode="decimal"
+                className="h-11 sm:h-10 tabular-nums"
+                autoComplete="off"
+              />
+            </div>
           </div>
 
-          <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={registerCalf}
-              onChange={(e) => setRegisterCalf(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-produmar-600"
-            />
-            <span className="text-sm text-slate-700 dark:text-slate-200">
-              Cadastrar o bezerro como animal
-              <span className="block text-[11px] text-slate-400 dark:text-slate-500">
-                Cria a ficha do bezerro já com a data de nascimento e a raça da mãe.
-              </span>
-            </span>
-          </label>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            O bezerro entra no rebanho na hora, atrelado à mãe
+            {presetMother?.breed_name ? ` e já com a raça ${presetMother.breed_name}` : ""}
+            {calfWeight ? ` (${formatWeight(parseDecimal(calfWeight))})` : ""}.
+          </p>
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
@@ -184,10 +269,10 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId }: Props) {
               disabled={isPending}
               className={cn(FOOTER_CANCEL, "h-11 sm:h-10")}
             >
-              Cancelar
+              {motherBirths.length > 0 ? "Fechar" : "Cancelar"}
             </Button>
             <Button type="submit" disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}>
-              {isPending ? "Salvando..." : "Registrar"}
+              {isPending ? "Salvando..." : "Registrar parto"}
             </Button>
           </DialogFooter>
         </form>

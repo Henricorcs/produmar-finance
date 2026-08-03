@@ -5,6 +5,7 @@ import type {
   AnimalBreed,
   AnimalTreatment,
   AnimalVaccine,
+  AnimalVaccinePending,
   AnimalWithInfo,
 } from "@/lib/types";
 import type { VaccinationRow } from "@/components/animais/animais-page-client";
@@ -14,28 +15,37 @@ export const dynamic = "force-dynamic";
 export default async function AnimaisPage() {
   const supabase = createClient();
 
-  const [animalsRes, breedsRes, vaccinesRes, vaccinationsRes, treatmentsRes, birthsRes] =
-    await Promise.all([
-      supabase.from("v_animals").select("*").order("tag", { ascending: true }),
-      supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
-      supabase.from("animal_vaccines").select("*").order("name", { ascending: true }),
-      supabase
-        .from("animal_vaccinations")
-        .select("*, animal_vaccines(name, recurrence_months), animals(tag)")
-        .order("applied_at", { ascending: false })
-        .limit(1000),
-      supabase
-        .from("animal_treatments")
-        .select("*")
-        .order("applied_at", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(500),
-      supabase
-        .from("animal_births")
-        .select("*")
-        .order("birth_date", { ascending: false })
-        .limit(500),
-    ]);
+  const [
+    animalsRes,
+    breedsRes,
+    vaccinesRes,
+    vaccinationsRes,
+    treatmentsRes,
+    birthsRes,
+    pendingRes,
+  ] = await Promise.all([
+    supabase.from("v_animals").select("*").order("tag", { ascending: true }),
+    supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
+    supabase.from("animal_vaccines").select("*").order("name", { ascending: true }),
+    supabase
+      .from("animal_vaccinations")
+      .select("*, animal_vaccines(name, recurrence_months), animals(tag)")
+      .order("applied_at", { ascending: false })
+      .limit(1000),
+    supabase
+      .from("animal_treatments")
+      .select("*")
+      .order("applied_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(500),
+    supabase
+      .from("animal_births")
+      .select("*")
+      .order("birth_date", { ascending: false })
+      .limit(500),
+    // pendências marcadas na mão (migration 044 — sem ela a tela segue funcionando)
+    supabase.from("animal_vaccine_pending").select("*").limit(2000),
+  ]);
 
   return (
     <AnimaisPageClient
@@ -45,6 +55,7 @@ export default async function AnimaisPage() {
       vaccinations={(vaccinationsRes.data as VaccinationRow[]) ?? []}
       treatments={(treatmentsRes.data as AnimalTreatment[]) ?? []}
       births={(birthsRes.data as AnimalBirth[]) ?? []}
+      pendings={(pendingRes.data as AnimalVaccinePending[]) ?? []}
     />
   );
 }

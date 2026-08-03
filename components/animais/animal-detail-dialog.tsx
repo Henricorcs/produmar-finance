@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Baby, ImageIcon, Pencil, Printer, Stethoscope, Syringe, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Baby,
+  ChevronRight,
+  ImageIcon,
+  Pencil,
+  Printer,
+  Stethoscope,
+  Syringe,
+  Trash2,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -52,9 +62,19 @@ interface Props {
   treatments: AnimalTreatment[];
   /** Partos deste animal (uma linha por bezerro). */
   births: AnimalBirth[];
+  /** Quando este animal é um bezerro cadastrado por um parto: esse parto. */
+  motherBirth?: AnimalBirth | null;
+  /** Número da mãe (vem junto com motherBirth). */
+  motherTag?: string | null;
+  /** `animalId|vaccineId` marcados como pendentes na mão. */
+  pendingKeys: Set<string>;
   onEdit: (animal: AnimalWithInfo) => void;
   /** Abre o protocolo de vacinação, já marcando as vacinas indicadas. */
   onVaccinate: (animal: AnimalWithInfo, vaccineIds?: string[]) => void;
+  /** Marca/desmarca "esta vacina está pendente neste animal". */
+  onTogglePending: (animal: AnimalWithInfo, vaccine: AnimalVaccine, pending: boolean) => void;
+  /** Abre a ficha de outro animal (mãe ou bezerro). */
+  onOpenAnimal: (id: string) => void;
   onTreatment: (animal: AnimalWithInfo) => void;
   onBirth: (animal: AnimalWithInfo) => void;
 }
@@ -69,8 +89,13 @@ export function AnimalDetailDialog({
   vaccines,
   treatments,
   births,
+  motherBirth,
+  motherTag,
+  pendingKeys,
   onEdit,
   onVaccinate,
+  onTogglePending,
+  onOpenAnimal,
   onTreatment,
   onBirth,
 }: Props) {
@@ -136,10 +161,20 @@ export function AnimalDetailDialog({
     });
   }
 
-  function handleDeleteBirth(id: string) {
-    if (!confirm("Remover este parto? O bezerro cadastrado continua no rebanho.")) return;
+  /** Parto lançado errado: apaga e, se quiser, tira o bezerro do rebanho junto. */
+  function handleDeleteBirth(b: AnimalBirth) {
+    const calf = b.calf_tag ? `nº ${b.calf_tag}` : "sem número";
+    if (!confirm(`Apagar o parto de ${formatDate(b.birth_date)} (bezerro ${calf})?`)) return;
+    const alsoCalf = b.calf_animal_id
+      ? confirm(
+          `Tirar também o bezerro ${calf} do rebanho?\n\n` +
+            "OK = apaga o parto e o bezerro.\n" +
+            "Cancelar = apaga só o parto e o bezerro continua cadastrado."
+        )
+      : false;
     startTransition(async () => {
-      await deleteBirth(id);
+      const r = await deleteBirth(b.id, alsoCalf);
+      if (r && "error" in r) alert(r.error);
     });
   }
 
@@ -163,13 +198,16 @@ export function AnimalDetailDialog({
       .sort((a, b) => (a.applied_at < b.applied_at ? 1 : -1));
     const last = applications[0] ?? null;
     const { status, nextDate } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
-    return { vaccine: v, last, status, nextDate };
+    return { vaccine: v, last, status, nextDate, marked: pendingKeys.has(`${animal.id}|${v.id}`) };
   });
 
-  /** Vacinas atrasadas ou nunca aplicadas — já vêm marcadas no protocolo. */
+  /** Vacinas que faltam aplicar — já vêm marcadas no protocolo. */
   const pendingVaccineIds = vaccineRows
-    .filter((r) => r.status !== "em_dia")
+    .filter((r) => r.status !== "em_dia" || r.marked)
     .map((r) => r.vaccine.id);
+
+  /** Quantas foram marcadas na mão como pendentes (o que o dono decidiu). */
+  const markedCount = vaccineRows.filter((r) => r.marked).length;
 
   const vaccineNameById = new Map(vaccines.map((v) => [v.id, v.name]));
 
@@ -274,7 +312,7 @@ export function AnimalDetailDialog({
           </div>
           <button
             type="button"
-            onClick={() => handleDeleteBirth(b.id)}
+            onClick={() => handleDeleteBirth(b)}
             disabled={isPending}
             aria-label="Remover parto"
             className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
@@ -288,7 +326,7 @@ export function AnimalDetailDialog({
 
   const sections: { value: Section; label: string; count?: number }[] = [
     { value: "ficha", label: "Ficha" },
-    { value: "vacinas", label: "Vacinas", count: animal.vaccines_due },
+    { value: "vacinas", label: "Vacinas", count: markedCount },
     { value: "historico", label: "Histórico", count: events.length },
   ];
 
@@ -368,6 +406,16 @@ export function AnimalDetailDialog({
                 />
                 <InfoRow label="Idade" value={formatAge(animal.age_months)} />
                 <InfoRow label="Peso" value={weightKg > 0 ? formatWeight(weightKg) : "—"} />
+                {/* Bezerro cadastrado pelo parto: de quem ele é */}
+                {motherBirth && (
+                  <InfoLinkRow
+                    label="Mãe"
+                    value={motherTag ? `Nº ${motherTag}` : "—"}
+                    onOpen={
+                      motherTag ? () => onOpenAnimal(motherBirth.mother_id) : undefined
+                    }
+                  />
+                )}
                 {animal.sex === "femea" && (
                   <InfoRow
                     label="Pariu"
@@ -385,13 +433,38 @@ export function AnimalDetailDialog({
                   value={
                     vaccines.length === 0
                       ? "Sem vacinas cadastradas"
-                      : animal.vaccines_due > 0
-                      ? `${animal.vaccines_due} pendente(s)`
-                      : "Em dia"
+                      : markedCount > 0
+                      ? `${markedCount} marcada(s) como pendente`
+                      : "Sem pendência marcada"
                   }
                 />
                 {animal.notes && <InfoRow label="Obs." value={animal.notes} />}
               </div>
+
+              {/* Crias: cada bezerro que nasceu dela e entrou no rebanho */}
+              {births.length > 0 && (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                  {births.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => b.calf_animal_id && onOpenAnimal(b.calf_animal_id)}
+                      disabled={!b.calf_animal_id}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left disabled:cursor-default active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+                    >
+                      <Baby className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                      <span className="flex-1 min-w-0 text-sm text-slate-800 dark:text-slate-100 truncate">
+                        {b.calf_sex === "macho" ? "Bezerro" : "Bezerra"}
+                        {b.calf_tag ? ` nº ${b.calf_tag}` : ""}
+                        <span className="text-slate-400"> · {formatDate(b.birth_date)}</span>
+                      </span>
+                      {b.calf_animal_id && (
+                        <ChevronRight className="w-4 h-4 text-slate-300 flex-shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Ações principais */}
               <div className="grid grid-cols-2 gap-2">
@@ -406,9 +479,9 @@ export function AnimalDetailDialog({
                 >
                   <Syringe className="w-4 h-4" />
                   Vacinar
-                  {pendingVaccineIds.length > 0 && (
+                  {markedCount > 0 && (
                     <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-white/25 text-white text-[10px] font-semibold flex items-center justify-center">
-                      {pendingVaccineIds.length}
+                      {markedCount}
                     </span>
                   )}
                 </Button>
@@ -461,19 +534,20 @@ export function AnimalDetailDialog({
                     }
                   >
                     <Syringe className="w-4 h-4" />
-                    {pendingVaccineIds.length > 0
-                      ? `Aplicar protocolo (${pendingVaccineIds.length} pendente${
-                          pendingVaccineIds.length > 1 ? "s" : ""
-                        })`
-                      : "Aplicar protocolo"}
+                    Aplicar protocolo
                   </Button>
-                  {vaccineRows.map(({ vaccine, last, status, nextDate }) => {
+                  {vaccineRows.map(({ vaccine, last, status, nextDate, marked }) => {
                     const statusMeta = VACCINE_STATUS_META[status];
                     const rule = doseRuleLabel(vaccine, weightKg);
                     return (
                       <div
                         key={vaccine.id}
-                        className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5"
+                        className={cn(
+                          "rounded-xl border px-3 py-2.5",
+                          marked
+                            ? "border-amber-300 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-950/20"
+                            : "border-slate-200 dark:border-slate-700"
+                        )}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -494,19 +568,41 @@ export function AnimalDetailDialog({
                             )}
                           </div>
                           <span
-                            className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${statusMeta.chip}`}
+                            className={cn(
+                              "text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0",
+                              marked
+                                ? "bg-amber-200 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300"
+                                : statusMeta.chip
+                            )}
                           >
-                            {statusMeta.label}
+                            {marked ? "Pendente" : statusMeta.label}
                           </span>
                         </div>
-                        <Button
-                          variant="outline"
-                          className="w-full mt-2 h-11 sm:h-10"
-                          onClick={() => onVaccinate(animal, [vaccine.id])}
-                        >
-                          <Syringe className="w-4 h-4" />
-                          Aplicar agora
-                        </Button>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <Button
+                            variant="outline"
+                            className="h-11 sm:h-10"
+                            onClick={() => onVaccinate(animal, [vaccine.id])}
+                          >
+                            <Syringe className="w-4 h-4" />
+                            Aplicar
+                          </Button>
+                          {/* quem decide o que fica pendente é o dono do rebanho */}
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => onTogglePending(animal, vaccine, !marked)}
+                            className={cn(
+                              "flex items-center justify-center gap-1.5 h-11 sm:h-10 px-2 rounded-lg border text-sm font-medium transition-colors active:scale-[0.97] disabled:opacity-50",
+                              marked
+                                ? "border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                                : "border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400"
+                            )}
+                          >
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            {marked ? "Tirar pendência" : "Deixar pendente"}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -563,5 +659,31 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="text-slate-500 dark:text-slate-400 flex-shrink-0">{label}</span>
       <span className="font-medium text-slate-800 dark:text-slate-100 text-right">{value}</span>
     </div>
+  );
+}
+
+/** Linha da ficha que leva para outro animal (a mãe do bezerro). */
+function InfoLinkRow({
+  label,
+  value,
+  onOpen,
+}: {
+  label: string;
+  value: string;
+  onOpen?: () => void;
+}) {
+  if (!onOpen) return <InfoRow label={label} value={value} />;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+    >
+      <span className="text-slate-500 dark:text-slate-400 flex-shrink-0">{label}</span>
+      <span className="flex items-center gap-1 font-medium text-produmar-600 dark:text-produmar-400">
+        {value}
+        <ChevronRight className="w-4 h-4" />
+      </span>
+    </button>
   );
 }

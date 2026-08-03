@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   AlertTriangle,
+  ArrowUpDown,
   Beef,
-  ChevronLeft,
   ChevronRight,
   Plus,
   Printer,
@@ -19,6 +19,7 @@ import { cn, formatDate, localDateISO } from "@/lib/utils";
 import {
   applyVaccineProtocol,
   deleteVaccination,
+  setVaccinePending,
 } from "@/app/(app)/animais/actions";
 import { AnimalDialog } from "./animal-dialog";
 import { AnimalDetailDialog } from "./animal-detail-dialog";
@@ -42,6 +43,7 @@ import type {
   AnimalTreatment,
   AnimalVaccination,
   AnimalVaccine,
+  AnimalVaccinePending,
   AnimalWithInfo,
 } from "@/lib/types";
 
@@ -58,13 +60,21 @@ interface Props {
   vaccinations: VaccinationRow[];
   treatments: AnimalTreatment[];
   births: AnimalBirth[];
+  /** Vacinas que o dono marcou como pendentes na mão. */
+  pendings: AnimalVaccinePending[];
 }
 
 type Tab = "rebanho" | "vacinacao";
 type CategoryFilter = "todos" | AnimalCategory;
 
-/** Quantos animais por página na planilha (0 = todos de uma vez). */
-const PAGE_SIZES = [25, 50, 100, 0];
+/** Ordem da planilha. */
+type SortKey = "tag" | "recente" | "alterado";
+
+const SORTS: { value: SortKey; label: string }[] = [
+  { value: "tag", label: "Ordem: nº do animal" },
+  { value: "recente", label: "Ordem: cadastrados por último" },
+  { value: "alterado", label: "Ordem: mexidos por último" },
+];
 
 export function AnimaisPageClient({
   animals,
@@ -73,6 +83,7 @@ export function AnimaisPageClient({
   vaccinations,
   treatments,
   births,
+  pendings,
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -81,8 +92,7 @@ export function AnimaisPageClient({
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
   const [onlyPending, setOnlyPending] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
+  const [sort, setSort] = useState<SortKey>("tag");
 
   // dialogs
   const [animalDialogOpen, setAnimalDialogOpen] = useState(false);
@@ -120,6 +130,24 @@ export function AnimaisPageClient({
     return m;
   }, [births]);
 
+  /** De quem é este bezerro: o parto que o cadastrou (id do bezerro → parto). */
+  const birthByCalf = useMemo(() => {
+    const m = new Map<string, AnimalBirth>();
+    for (const b of births) if (b.calf_animal_id) m.set(b.calf_animal_id, b);
+    return m;
+  }, [births]);
+
+  /** Pendências marcadas na mão: `animalId|vaccineId`. */
+  const pendingKeys = useMemo(
+    () => new Set(pendings.map((p) => `${p.animal_id}|${p.vaccine_id}`)),
+    [pendings]
+  );
+  /** Quantos animais têm alguma vacina marcada como pendente. */
+  const pendingAnimalIds = useMemo(
+    () => new Set(pendings.map((p) => p.animal_id)),
+    [pendings]
+  );
+
   // O detalhe deriva do id — assim a tela reflete os dados recarregados do servidor
   const detailAnimal = useMemo(
     () => (detailAnimalId ? animals.find((a) => a.id === detailAnimalId) ?? null : null),
@@ -150,37 +178,33 @@ export function AnimaisPageClient({
     return c;
   }, [animals]);
 
-  const pendingCount = useMemo(
-    () => animals.filter((a) => a.vaccines_due > 0).length,
-    [animals]
-  );
+  /** Pendente é o que FOI MARCADO — o sistema não decide isso sozinho. */
+  const pendingCount = pendingAnimalIds.size;
+  /** Sem nada marcado o botão do filtro some — o filtro some junto, senão
+   *  a planilha ficaria vazia sem jeito de desligar. */
+  const filterPending = onlyPending && pendingCount > 0;
 
-  // ── Filtro do rebanho ───────────────────────────────────────────────────────
+  // ── Filtro e ordem do rebanho ───────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = search.trim().toUpperCase();
-    return animals.filter((a) => {
+    const list = animals.filter((a) => {
       if (categoryFilter !== "todos" && a.category !== categoryFilter) return false;
-      if (onlyPending && a.vaccines_due === 0) return false;
+      if (filterPending && !pendingAnimalIds.has(a.id)) return false;
       if (!q) return true;
       return a.tag.includes(q) || (a.breed_name ?? "").toUpperCase().includes(q);
     });
-  }, [animals, search, categoryFilter, onlyPending]);
 
-  // ── Páginas da planilha ─────────────────────────────────────────────────────
-  // Com o rebanho grande a lista fica pesada no celular — mostra um pedaço por
-  // vez. O rodapé "levar" continua somando o filtro inteiro, não só a página.
-  const pageCount = pageSize === 0 ? 1 : Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const pageStart = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
-  const pageAnimals = useMemo(
-    () => (pageSize === 0 ? filtered : filtered.slice(pageStart, pageStart + pageSize)),
-    [filtered, pageSize, pageStart]
-  );
+    // nº do animal é texto ("003", "1046") — compara numérico quando dá
+    const byTag = (a: AnimalWithInfo, b: AnimalWithInfo) =>
+      a.tag.localeCompare(b.tag, "pt-BR", { numeric: true, sensitivity: "base" });
+    const desc = (x: string, y: string) => (x < y ? 1 : x > y ? -1 : 0);
 
-  // Mexeu no filtro/busca → volta pra primeira página
-  useEffect(() => {
-    setPage(1);
-  }, [search, categoryFilter, onlyPending, pageSize]);
+    return [...list].sort((a, b) => {
+      if (sort === "recente") return desc(a.created_at, b.created_at) || byTag(a, b);
+      if (sort === "alterado") return desc(a.updated_at, b.updated_at) || byTag(a, b);
+      return byTag(a, b);
+    });
+  }, [animals, search, categoryFilter, filterPending, pendingAnimalIds, sort]);
 
   /**
    * Registro de vacinação: quem foi vacinado, quando, com qual vacina e
@@ -271,6 +295,21 @@ export function AnimaisPageClient({
     });
   }
 
+  /**
+   * "Deixar pendente": marca na mão que esta vacina falta neste animal. É essa
+   * marca que alimenta o filtro "só pendentes" — o sistema não decide sozinho.
+   */
+  function togglePending(animal: AnimalWithInfo, vaccine: AnimalVaccine, pending: boolean) {
+    const key = `${animal.id}|${vaccine.id}`;
+    if (applyingKey) return;
+    setApplyingKey(key);
+    startTransition(async () => {
+      const r = await setVaccinePending(animal.id, vaccine.id, pending);
+      setApplyingKey(null);
+      if (r && "error" in r) alert(r.error ?? "Erro ao marcar a pendência");
+    });
+  }
+
   /** Desfaz a aplicação feita hoje (erro de dedo na planilha). */
   function undoToday(
     animal: AnimalWithInfo,
@@ -300,6 +339,7 @@ export function AnimaisPageClient({
       value: "vacinacao",
       label: "Vacinação",
       icon: Syringe,
+      // só conta o que foi marcado na mão — sem alarme automático
       count: pendingCount,
       alert: pendingCount > 0,
     },
@@ -419,20 +459,22 @@ export function AnimaisPageClient({
           />
 
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setOnlyPending((v) => !v)}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border text-sm font-medium transition-colors active:scale-[0.97]",
-                onlyPending
-                  ? "bg-red-50 border-red-300 text-red-700 dark:bg-red-950/40 dark:border-red-800 dark:text-red-400"
-                  : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-              )}
-            >
-              <AlertTriangle className="w-4 h-4" />
-              Só pendentes
-              {pendingCount > 0 && <span className="opacity-70">{pendingCount}</span>}
-            </button>
+            {/* Ordem da planilha: por número (a de sempre) ou pelo que mexeu por último */}
+            <div className="relative flex-1">
+              <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                aria-label="Ordem da planilha"
+                className="w-full min-h-[44px] pl-9 pr-2 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-produmar-400"
+              >
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               type="button"
               onClick={() => window.open(printHref, "_blank")}
@@ -443,51 +485,56 @@ export function AnimaisPageClient({
             </button>
           </div>
 
+          {/* Só aparece quando existe pendência marcada na mão */}
+          {pendingCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setOnlyPending((v) => !v)}
+              className={cn(
+                "w-full flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border text-sm font-medium transition-colors active:scale-[0.97]",
+                onlyPending
+                  ? "bg-red-50 border-red-300 text-red-700 dark:bg-red-950/40 dark:border-red-800 dark:text-red-400"
+                  : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+              )}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              Só os marcados como pendente
+              <span className="opacity-70">{pendingCount}</span>
+            </button>
+          )}
+
           {/* A planilha fica sempre na tela: a primeira linha é de digitação —
               cadastra o animal sem abrir formulário. */}
           <RebanhoTable
-            animals={pageAnimals}
-            totalsAnimals={filtered}
+            animals={filtered}
             breeds={breeds}
             vaccines={vaccines}
             vaccinations={vaccinations}
             birthsByMother={birthsByMother}
             treatmentsByAnimal={treatmentsByAnimal}
+            pendingKeys={pendingKeys}
             onOpenAnimal={(id) => setDetailAnimalId(id)}
             onApplyNow={applyNow}
             onUndo={undoToday}
             onBirth={(a) => openBirth(a)}
             applyingKey={applyingKey}
-            scrollToTopKey={currentPage}
             emptyMessage={
               filtered.length > 0
                 ? undefined
                 : animals.length === 0
                 ? "Nenhum animal ainda — digite o número na linha acima e aperte Enter."
-                : onlyPending
-                ? "Ninguém com vacina pendente."
+                : filterPending
+                ? "Ninguém marcado como pendente."
                 : "Nada encontrado com esse filtro."
             }
           />
-
-          {filtered.length > 0 && (
-            <Pagination
-              page={currentPage}
-              pageCount={pageCount}
-              pageSize={pageSize}
-              total={filtered.length}
-              from={pageStart + 1}
-              to={pageStart + pageAnimals.length}
-              onPage={setPage}
-              onPageSize={setPageSize}
-            />
-          )}
-
           <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
             Digite na primeira linha para cadastrar (Enter salva). Em &quot;Pariu&quot;, a data
-            do parto abre a escolha M ou F do bezerro. Célula vermelha = vacina atrasada ou
-            nunca aplicada, com os ml a aplicar — toque nela para registrar. Passe o mouse no
-            tratamento para ver o remédio; no celular, toque no animal.
+            do parto pede M ou F e o número do bezerro — ele entra no rebanho atrelado à mãe;
+            toque na coluna para ver os partos da vaca e apagar o que entrou errado. Célula
+            vermelha = os ml a aplicar (vacina nunca dada ou vencida); toque nela para
+            registrar. Para deixar uma vacina pendente de propósito, abra o animal na aba
+            Vacinas — o que for marcado ganha a tarja laranja e entra no filtro de pendentes.
           </p>
         </div>
       )}
@@ -521,7 +568,7 @@ export function AnimaisPageClient({
             >
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               <span className="flex-1 text-left">
-                {pendingCount} animal(is) com vacina pendente
+                {pendingCount} animal(is) marcado(s) como pendente
               </span>
               <ChevronRight className="w-4 h-4 flex-shrink-0" />
             </button>
@@ -580,11 +627,21 @@ export function AnimaisPageClient({
         vaccines={vaccines}
         treatments={detailTreatments}
         births={detailBirths}
+        motherBirth={detailAnimalId ? birthByCalf.get(detailAnimalId) ?? null : null}
+        motherTag={
+          detailAnimalId
+            ? animals.find((a) => a.id === birthByCalf.get(detailAnimalId)?.mother_id)?.tag ??
+              null
+            : null
+        }
+        pendingKeys={pendingKeys}
         onEdit={(a) => {
           setDetailAnimalId(null);
           openEdit(a);
         }}
         onVaccinate={(a, vaccineIds) => openProtocol(a, vaccineIds)}
+        onTogglePending={togglePending}
+        onOpenAnimal={(id) => setDetailAnimalId(id)}
         onTreatment={(a) => openTreatment(a)}
         onBirth={(a) => openBirth(a)}
       />
@@ -608,6 +665,7 @@ export function AnimaisPageClient({
         onClose={() => setBirthOpen(false)}
         mothers={females}
         presetMotherId={birthPresetId}
+        births={births}
       />
       <AnimalVaccinesDialog
         open={vaccinesOpen}
@@ -624,29 +682,27 @@ export function AnimaisPageClient({
 // tooltip. No celular desliza para o lado com a coluna do número fixa.
 function RebanhoTable({
   animals,
-  totalsAnimals,
   breeds,
   vaccines,
   vaccinations,
   birthsByMother,
   treatmentsByAnimal,
+  pendingKeys,
   onOpenAnimal,
   onApplyNow,
   onUndo,
   onBirth,
   applyingKey,
-  scrollToTopKey,
   emptyMessage,
 }: {
-  /** Só os animais da página atual. */
   animals: AnimalWithInfo[];
-  /** Todos os do filtro — é sobre eles que o rodapé calcula quanto levar. */
-  totalsAnimals: AnimalWithInfo[];
   breeds: AnimalBreed[];
   vaccines: AnimalVaccine[];
   vaccinations: VaccinationRow[];
   birthsByMother: Map<string, AnimalBirth[]>;
   treatmentsByAnimal: Map<string, AnimalTreatment[]>;
+  /** `animalId|vaccineId` marcados como pendentes na mão. */
+  pendingKeys: Set<string>;
   onOpenAnimal: (id: string) => void;
   /** Um toque na célula = vacina aplicada na hora. */
   onApplyNow: (animal: AnimalWithInfo, vaccine: AnimalVaccine) => void;
@@ -656,17 +712,9 @@ function RebanhoTable({
   onBirth: (animal: AnimalWithInfo) => void;
   /** Chave `animalId|vaccineId` sendo salva no momento. */
   applyingKey: string | null;
-  /** Muda de página → a planilha volta pro topo. */
-  scrollToTopKey: number;
   /** Mostrado numa linha quando o filtro não devolve ninguém. */
   emptyMessage?: string;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 });
-  }, [scrollToTopKey]);
-
   // última aplicação por animal+vacina
   const lastByKey = useMemo(() => {
     const m = new Map<string, VaccinationRow>();
@@ -686,7 +734,7 @@ function RebanhoTable({
       vaccines.map((v) => {
         let count = 0;
         let ml = 0;
-        for (const a of totalsAnimals) {
+        for (const a of animals) {
           const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
           const { status } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
           if (status === "em_dia") continue;
@@ -696,7 +744,7 @@ function RebanhoTable({
         }
         return { count, ml: Math.round(ml * 10) / 10 };
       }),
-    [totalsAnimals, vaccines, lastByKey]
+    [animals, vaccines, lastByKey]
   );
 
   /* O cabeçalho acompanha a rolagem: descendo a planilha o nome das vacinas
@@ -705,10 +753,7 @@ function RebanhoTable({
     "sticky top-0 z-20 bg-slate-50 dark:bg-slate-800 font-semibold shadow-[0_1px_0_0_#e2e8f0] dark:shadow-[0_1px_0_0_#334155]";
 
   return (
-    <div
-      ref={scrollRef}
-      className="overflow-auto max-h-[70dvh] -mx-4 sm:mx-0 border-y sm:border border-slate-200 dark:border-slate-700 sm:rounded-xl bg-white dark:bg-slate-900"
-    >
+    <div className="overflow-auto max-h-[70dvh] -mx-4 sm:mx-0 border-y sm:border border-slate-200 dark:border-slate-700 sm:rounded-xl bg-white dark:bg-slate-900">
       <table className="w-full text-[15px] min-w-[940px]">
         <thead>
           <tr className="text-left text-[13px] text-slate-600 dark:text-slate-300">
@@ -794,7 +839,9 @@ function RebanhoTable({
                         onBirth(a);
                       }}
                       title={
-                        birthsTitle(abirths) ?? "Registrar parto (data e sexo do bezerro)"
+                        abirths.length > 0
+                          ? `${birthsTitle(abirths)}\n\n(toque para ver, registrar ou apagar um parto)`
+                          : "Registrar parto — o bezerro entra no rebanho junto"
                       }
                       className="min-h-[40px] px-2 rounded-lg text-[15px] hover:bg-produmar-50 dark:hover:bg-slate-800 active:scale-[0.95] transition-all"
                     >
@@ -821,16 +868,21 @@ function RebanhoTable({
                   const dose = suggestedDoseMl(v, weightKg);
                   const saving = applyingKey === key;
                   const appliedToday = !!last && last.applied_at === today;
+                  // marcada na mão como pendente → tarja laranja por cima
+                  const marked = pendingKeys.has(key);
                   return (
                     <td
                       key={v.id}
+                      title={marked ? `${v.name} marcada como pendente` : undefined}
                       className={cn(
                         "px-1 py-1 text-center whitespace-nowrap",
                         due && "bg-red-50 dark:bg-red-950/30",
-                        appliedToday && "bg-emerald-50 dark:bg-emerald-950/30"
+                        appliedToday && "bg-emerald-50 dark:bg-emerald-950/30",
+                        marked &&
+                          "bg-amber-100 dark:bg-amber-900/40 ring-2 ring-inset ring-amber-400"
                       )}
                     >
-                      {due ? (
+                      {due || (marked && !appliedToday) ? (
                         // um toque = aplicado, com a dose e o remédio do cadastro
                         <button
                           type="button"
@@ -841,8 +893,15 @@ function RebanhoTable({
                           }}
                           title={`Aplicar ${v.name}${
                             dose ? ` (${formatMl(dose)})` : ""
-                          } no animal ${a.tag} — registra na hora`}
-                          className="min-h-[40px] px-2 rounded-lg font-bold text-[17px] text-red-700 dark:text-red-400 tabular-nums hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-[0.95] transition-all disabled:opacity-50"
+                          } no animal ${a.tag} — registra na hora${
+                            marked ? " e tira a pendência" : ""
+                          }`}
+                          className={cn(
+                            "min-h-[40px] px-2 rounded-lg font-bold text-[17px] tabular-nums active:scale-[0.95] transition-all disabled:opacity-50",
+                            marked
+                              ? "text-amber-800 dark:text-amber-300 hover:bg-amber-200/70 dark:hover:bg-amber-800/50"
+                              : "text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40"
+                          )}
                         >
                           {saving ? "…" : dose ? formatMl(dose) : "aplicar"}
                         </button>
@@ -900,7 +959,7 @@ function RebanhoTable({
                 Levar
               </td>
               <td colSpan={4} className="px-2 py-2.5 text-right text-[13px] text-slate-500 dark:text-slate-400">
-                total das pendentes (todas as páginas) →
+                total do que falta aplicar →
               </td>
               {vaccines.map((v, i) => (
                 <td key={v.id} className="px-1 py-2 text-center whitespace-nowrap">
@@ -949,95 +1008,6 @@ function treatmentsTitle(ts: AnimalTreatment[]): string | undefined {
         }${t.dose ? ` (${t.dose})` : ""}`
     )
     .join("\n");
-}
-
-// ── Páginas da planilha ─────────────────────────────────────────────────────
-/**
- * Navegação por páginas: setas para andar de uma em uma e um seletor para
- * pular direto pra página que quiser (mais rápido no celular do que uma
- * fileira de numerinhos). "Todos" volta a mostrar o rebanho inteiro.
- */
-function Pagination({
-  page,
-  pageCount,
-  pageSize,
-  total,
-  from,
-  to,
-  onPage,
-  onPageSize,
-}: {
-  page: number;
-  pageCount: number;
-  pageSize: number;
-  total: number;
-  from: number;
-  to: number;
-  onPage: (p: number) => void;
-  onPageSize: (s: number) => void;
-}) {
-  const navCls =
-    "flex items-center justify-center w-12 h-11 rounded-xl border border-slate-200 bg-white text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 transition-all active:scale-[0.95] disabled:opacity-40";
-  const selectCls =
-    "h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-produmar-400";
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onPage(page - 1)}
-          disabled={page <= 1}
-          aria-label="Página anterior"
-          className={navCls}
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-
-        <select
-          value={page}
-          onChange={(e) => onPage(Number(e.target.value))}
-          aria-label="Ir para a página"
-          className={cn(selectCls, "flex-1 text-center")}
-          disabled={pageCount <= 1}
-        >
-          {Array.from({ length: pageCount }).map((_, i) => (
-            <option key={i} value={i + 1}>
-              Página {i + 1} de {pageCount}
-            </option>
-          ))}
-        </select>
-
-        <button
-          type="button"
-          onClick={() => onPage(page + 1)}
-          disabled={page >= pageCount}
-          aria-label="Próxima página"
-          className={navCls}
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm tabular-nums text-slate-500 dark:text-slate-400">
-          {from}–{to} de {total}
-        </p>
-        <select
-          value={pageSize}
-          onChange={(e) => onPageSize(Number(e.target.value))}
-          aria-label="Animais por página"
-          className={selectCls}
-        >
-          {PAGE_SIZES.map((s) => (
-            <option key={s} value={s}>
-              {s === 0 ? "Todos" : `${s} por página`}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
 }
 
 // ── Campo de busca ──────────────────────────────────────────────────────────

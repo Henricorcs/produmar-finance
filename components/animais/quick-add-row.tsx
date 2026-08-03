@@ -30,9 +30,10 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   const [sex, setSex] = useState<AnimalSex>("femea");
   const [breedId, setBreedId] = useState("");
   const [weight, setWeight] = useState("");
-  // parto (só para fêmea): data + sexo do bezerro
+  // parto (só para fêmea): data + sexo e número do bezerro (ele entra no rebanho)
   const [calvedAt, setCalvedAt] = useState("");
   const [calfSex, setCalfSex] = useState<AnimalSex | null>(null);
+  const [calfTag, setCalfTag] = useState("");
   const tagRef = useRef<HTMLInputElement>(null);
 
   const isFemale = sex === "femea";
@@ -49,6 +50,10 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
       setError("Marque se o bezerro é macho (M) ou fêmea (F)");
       return;
     }
+    if (isFemale && calvedAt && !calfTag.trim()) {
+      setError("Informe o número do bezerro — ele entra no rebanho junto com o parto");
+      return;
+    }
 
     startTransition(async () => {
       const r = await createAnimal({
@@ -62,13 +67,14 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
         return;
       }
 
-      // parto informado na linha → grava junto, já com o sexo do bezerro
+      // parto informado na linha → grava junto e o bezerro entra no rebanho
       const animalId = (r as { animalId?: string }).animalId;
       if (isFemale && calvedAt && calfSex && animalId) {
         const b = await createBirth({
           mother_id: animalId,
           birth_date: calvedAt,
           calf_sex: calfSex,
+          calf_tag: calfTag,
         });
         if (b && "error" in b) {
           setError(`Animal salvo, mas o parto falhou: ${b.error}`);
@@ -81,6 +87,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
       setWeight("");
       setCalvedAt("");
       setCalfSex(null);
+      setCalfTag("");
       tagRef.current?.focus();
     });
   }
@@ -205,15 +212,35 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
                 disabled={isPending}
               />
               {calvedAt ? (
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   <SexToggle value={calfSex} onPick={setCalfSex} disabled={isPending} />
+                  {/* o bezerro entra no rebanho junto — precisa do número dele */}
+                  <input
+                    value={calfTag}
+                    onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
+                    onKeyDown={onEnter}
+                    placeholder="nº do bezerro"
+                    aria-label="Número do bezerro"
+                    className={cn(
+                      inputCls,
+                      "uppercase placeholder:normal-case placeholder:font-normal placeholder:text-produmar-500/70"
+                    )}
+                    autoComplete="off"
+                    disabled={isPending}
+                  />
                   <p
                     className={cn(
                       "text-[11px] leading-none pl-0.5",
-                      calfSex ? "text-slate-400" : "text-produmar-600 font-medium"
+                      calfSex && calfTag.trim()
+                        ? "text-slate-400"
+                        : "text-produmar-600 font-medium"
                     )}
                   >
-                    {calfSex ? "sexo do bezerro" : "bezerro: M ou F?"}
+                    {!calfSex
+                      ? "bezerro: M ou F?"
+                      : !calfTag.trim()
+                      ? "falta o nº do bezerro"
+                      : "bezerro entra no rebanho"}
                   </p>
                 </div>
               ) : (

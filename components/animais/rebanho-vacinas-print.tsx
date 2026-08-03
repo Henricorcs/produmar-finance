@@ -141,7 +141,7 @@ export function RebanhoVacinasPrint({
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 {animals.length} animais
-                {filterLabel ? ` · ${filterLabel}` : ""} · {pendingCount} com vacina pendente
+                {filterLabel ? ` · ${filterLabel}` : ""} · {pendingCount} com vacina a aplicar
               </p>
               <p className="text-[11px] text-slate-500">{formatDate(new Date())}</p>
             </div>

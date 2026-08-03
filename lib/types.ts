@@ -758,6 +758,20 @@ export interface AnimalVaccination {
   created_at: string;
 }
 
+/**
+ * Vacina que o dono marcou como pendente NA MÃO para um animal. A marca sai
+ * sozinha quando a vacina é aplicada.
+ */
+export interface AnimalVaccinePending {
+  id: string;
+  animal_id: string;
+  vaccine_id: string;
+  /** Por que ficou pendente (opcional). */
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 /** Linha da view v_animals (animal + raça, idade, categoria e vacinação). */
 export interface AnimalWithInfo extends Animal {
   breed_name: string | null;
