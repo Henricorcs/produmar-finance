@@ -57,8 +57,13 @@ export function TabsNav() {
 
   return (
     <>
-      {/* ── Desktop: sticky top tab bar ───────────────────────────── */}
-      <nav className="hidden sm:block bg-white dark:bg-slate-900 border-b border-produmar-100 dark:border-slate-800 sticky top-0 z-30">
+      {/* ── Desktop: sticky top tab bar ─────────────────────────────
+          data-topnav: quem flutua no topo (o cabeçalho da planilha do
+          rebanho) mede esta barra para parar logo abaixo dela. */}
+      <nav
+        data-topnav
+        className="hidden sm:block bg-white dark:bg-slate-900 border-b border-produmar-100 dark:border-slate-800 sticky top-0 z-30"
+      >
         <div className="max-w-7xl mx-auto px-2 lg:px-4">
           <div className="flex gap-0 overflow-x-auto scrollbar-hide -mb-px">
             <Link

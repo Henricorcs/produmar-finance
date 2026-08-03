@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -715,6 +715,47 @@ function RebanhoTable({
   /** Mostrado numa linha quando o filtro não devolve ninguém. */
   emptyMessage?: string;
 }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLTableSectionElement>(null);
+
+  /**
+   * Cabeçalho flutuante. A planilha rola com a PÁGINA (nada de caixa com
+   * rolagem própria — o patrão desce a tela até o fim), mas descendo a lista
+   * o nome das vacinas tem que continuar à vista: o cabeçalho desce junto,
+   * empurrado na medida do que já passou do topo. Não dá pra usar `sticky`
+   * aqui porque o quadro rola de lado (coluna do Nº fixa) e isso prende o
+   * sticky à caixa, não à tela.
+   */
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const head = headRef.current;
+    if (!wrap || !head) return;
+
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const box = wrap.getBoundingClientRect();
+      // no desktop a barra de abas fica colada no topo; para logo abaixo dela
+      const nav = document.querySelector("[data-topnav]");
+      const top = nav ? nav.getBoundingClientRect().bottom : 0;
+      const limit = box.height - head.getBoundingClientRect().height;
+      const y = Math.max(0, Math.min(top - box.top, limit));
+      head.style.transform = y > 0 ? `translate3d(0, ${y}px, 0)` : "";
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [animals.length, vaccines.length]);
+
   // última aplicação por animal+vacina
   const lastByKey = useMemo(() => {
     const m = new Map<string, VaccinationRow>();
@@ -747,15 +788,18 @@ function RebanhoTable({
     [animals, vaccines, lastByKey]
   );
 
-  /* O cabeçalho acompanha a rolagem: descendo a planilha o nome das vacinas
-     continua na tela, senão não dá pra saber de qual coluna é o ml. */
+  /* Fundo opaco e sombra: o cabeçalho passa por cima das linhas enquanto desce. */
   const headCls =
-    "sticky top-0 z-20 bg-slate-50 dark:bg-slate-800 font-semibold shadow-[0_1px_0_0_#e2e8f0] dark:shadow-[0_1px_0_0_#334155]";
+    "bg-slate-50 dark:bg-slate-800 font-semibold shadow-[0_1px_0_0_#e2e8f0] dark:shadow-[0_1px_0_0_#334155]";
 
   return (
-    <div className="overflow-auto max-h-[70dvh] -mx-4 sm:mx-0 border-y sm:border border-slate-200 dark:border-slate-700 sm:rounded-xl bg-white dark:bg-slate-900">
+    <div
+      ref={wrapRef}
+      className="overflow-x-auto -mx-4 sm:mx-0 border-y sm:border border-slate-200 dark:border-slate-700 sm:rounded-xl bg-white dark:bg-slate-900"
+    >
       <table className="w-full text-[15px] min-w-[940px]">
-        <thead>
+        {/* relative + z-20: fica por cima das linhas ao ser empurrado para baixo */}
+        <thead ref={headRef} className="relative z-20 will-change-transform">
           <tr className="text-left text-[13px] text-slate-600 dark:text-slate-300">
             <th className={cn(headCls, "sticky left-0 z-30 px-3 py-2.5")}>Nº</th>
             <th className={cn(headCls, "px-2 py-2.5")}>Cat.</th>
