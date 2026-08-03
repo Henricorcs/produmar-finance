@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
   Beef,
+  ChevronLeft,
   ChevronRight,
   Plus,
   Printer,
@@ -62,6 +63,9 @@ interface Props {
 type Tab = "rebanho" | "vacinacao";
 type CategoryFilter = "todos" | AnimalCategory;
 
+/** Quantos animais por página na planilha (0 = todos de uma vez). */
+const PAGE_SIZES = [25, 50, 100, 0];
+
 export function AnimaisPageClient({
   animals,
   breeds,
@@ -77,6 +81,8 @@ export function AnimaisPageClient({
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
   const [onlyPending, setOnlyPending] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
 
   // dialogs
   const [animalDialogOpen, setAnimalDialogOpen] = useState(false);
@@ -159,6 +165,22 @@ export function AnimaisPageClient({
       return a.tag.includes(q) || (a.breed_name ?? "").toUpperCase().includes(q);
     });
   }, [animals, search, categoryFilter, onlyPending]);
+
+  // ── Páginas da planilha ─────────────────────────────────────────────────────
+  // Com o rebanho grande a lista fica pesada no celular — mostra um pedaço por
+  // vez. O rodapé "levar" continua somando o filtro inteiro, não só a página.
+  const pageCount = pageSize === 0 ? 1 : Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+  const pageAnimals = useMemo(
+    () => (pageSize === 0 ? filtered : filtered.slice(pageStart, pageStart + pageSize)),
+    [filtered, pageSize, pageStart]
+  );
+
+  // Mexeu no filtro/busca → volta pra primeira página
+  useEffect(() => {
+    setPage(1);
+  }, [search, categoryFilter, onlyPending, pageSize]);
 
   /**
    * Registro de vacinação: quem foi vacinado, quando, com qual vacina e
@@ -424,7 +446,8 @@ export function AnimaisPageClient({
           {/* A planilha fica sempre na tela: a primeira linha é de digitação —
               cadastra o animal sem abrir formulário. */}
           <RebanhoTable
-            animals={filtered}
+            animals={pageAnimals}
+            totalsAnimals={filtered}
             breeds={breeds}
             vaccines={vaccines}
             vaccinations={vaccinations}
@@ -435,6 +458,7 @@ export function AnimaisPageClient({
             onUndo={undoToday}
             onBirth={(a) => openBirth(a)}
             applyingKey={applyingKey}
+            scrollToTopKey={currentPage}
             emptyMessage={
               filtered.length > 0
                 ? undefined
@@ -445,6 +469,20 @@ export function AnimaisPageClient({
                 : "Nada encontrado com esse filtro."
             }
           />
+
+          {filtered.length > 0 && (
+            <Pagination
+              page={currentPage}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              total={filtered.length}
+              from={pageStart + 1}
+              to={pageStart + pageAnimals.length}
+              onPage={setPage}
+              onPageSize={setPageSize}
+            />
+          )}
+
           <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
             Digite na primeira linha para cadastrar (Enter salva). Em &quot;Pariu&quot;, a data
             do parto abre a escolha M ou F do bezerro. Célula vermelha = vacina atrasada ou
@@ -586,6 +624,7 @@ export function AnimaisPageClient({
 // tooltip. No celular desliza para o lado com a coluna do número fixa.
 function RebanhoTable({
   animals,
+  totalsAnimals,
   breeds,
   vaccines,
   vaccinations,
@@ -596,9 +635,13 @@ function RebanhoTable({
   onUndo,
   onBirth,
   applyingKey,
+  scrollToTopKey,
   emptyMessage,
 }: {
+  /** Só os animais da página atual. */
   animals: AnimalWithInfo[];
+  /** Todos os do filtro — é sobre eles que o rodapé calcula quanto levar. */
+  totalsAnimals: AnimalWithInfo[];
   breeds: AnimalBreed[];
   vaccines: AnimalVaccine[];
   vaccinations: VaccinationRow[];
@@ -613,9 +656,17 @@ function RebanhoTable({
   onBirth: (animal: AnimalWithInfo) => void;
   /** Chave `animalId|vaccineId` sendo salva no momento. */
   applyingKey: string | null;
+  /** Muda de página → a planilha volta pro topo. */
+  scrollToTopKey: number;
   /** Mostrado numa linha quando o filtro não devolve ninguém. */
   emptyMessage?: string;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [scrollToTopKey]);
+
   // última aplicação por animal+vacina
   const lastByKey = useMemo(() => {
     const m = new Map<string, VaccinationRow>();
@@ -635,7 +686,7 @@ function RebanhoTable({
       vaccines.map((v) => {
         let count = 0;
         let ml = 0;
-        for (const a of animals) {
+        for (const a of totalsAnimals) {
           const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
           const { status } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
           if (status === "em_dia") continue;
@@ -645,22 +696,28 @@ function RebanhoTable({
         }
         return { count, ml: Math.round(ml * 10) / 10 };
       }),
-    [animals, vaccines, lastByKey]
+    [totalsAnimals, vaccines, lastByKey]
   );
 
+  /* O cabeçalho acompanha a rolagem: descendo a planilha o nome das vacinas
+     continua na tela, senão não dá pra saber de qual coluna é o ml. */
+  const headCls =
+    "sticky top-0 z-20 bg-slate-50 dark:bg-slate-800 font-semibold shadow-[0_1px_0_0_#e2e8f0] dark:shadow-[0_1px_0_0_#334155]";
+
   return (
-    <div className="overflow-x-auto -mx-4 sm:mx-0 border-y sm:border border-slate-200 dark:border-slate-700 sm:rounded-xl bg-white dark:bg-slate-900">
+    <div
+      ref={scrollRef}
+      className="overflow-auto max-h-[70dvh] -mx-4 sm:mx-0 border-y sm:border border-slate-200 dark:border-slate-700 sm:rounded-xl bg-white dark:bg-slate-900"
+    >
       <table className="w-full text-[15px] min-w-[940px]">
         <thead>
-          <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-[13px] text-slate-600 dark:text-slate-300">
-            <th className="sticky left-0 z-10 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 font-semibold">
-              Nº
-            </th>
-            <th className="px-2 py-2.5 font-semibold">Cat.</th>
-            <th className="px-2 py-2.5 font-semibold">Raça</th>
-            <th className="px-2 py-2.5 font-semibold">Peso</th>
+          <tr className="text-left text-[13px] text-slate-600 dark:text-slate-300">
+            <th className={cn(headCls, "sticky left-0 z-30 px-3 py-2.5")}>Nº</th>
+            <th className={cn(headCls, "px-2 py-2.5")}>Cat.</th>
+            <th className={cn(headCls, "px-2 py-2.5")}>Raça</th>
+            <th className={cn(headCls, "px-2 py-2.5")}>Peso</th>
             <th
-              className="px-2 py-2.5 font-semibold"
+              className={cn(headCls, "px-2 py-2.5")}
               title="Quantos bezerros pariu (M = macho, F = fêmea)"
             >
               Pariu
@@ -668,7 +725,7 @@ function RebanhoTable({
             {vaccines.map((v) => (
               <th
                 key={v.id}
-                className="px-2 py-3 font-semibold text-center text-sm whitespace-nowrap"
+                className={cn(headCls, "px-2 py-3 text-center text-sm whitespace-nowrap")}
               >
                 {v.name}
                 {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
@@ -679,7 +736,7 @@ function RebanhoTable({
                 )}
               </th>
             ))}
-            <th className="px-2 py-2.5 font-semibold">Tratamento</th>
+            <th className={cn(headCls, "px-2 py-2.5")}>Tratamento</th>
           </tr>
         </thead>
         <tbody>
@@ -843,7 +900,7 @@ function RebanhoTable({
                 Levar
               </td>
               <td colSpan={4} className="px-2 py-2.5 text-right text-[13px] text-slate-500 dark:text-slate-400">
-                total das pendentes →
+                total das pendentes (todas as páginas) →
               </td>
               {vaccines.map((v, i) => (
                 <td key={v.id} className="px-1 py-2 text-center whitespace-nowrap">
@@ -892,6 +949,95 @@ function treatmentsTitle(ts: AnimalTreatment[]): string | undefined {
         }${t.dose ? ` (${t.dose})` : ""}`
     )
     .join("\n");
+}
+
+// ── Páginas da planilha ─────────────────────────────────────────────────────
+/**
+ * Navegação por páginas: setas para andar de uma em uma e um seletor para
+ * pular direto pra página que quiser (mais rápido no celular do que uma
+ * fileira de numerinhos). "Todos" volta a mostrar o rebanho inteiro.
+ */
+function Pagination({
+  page,
+  pageCount,
+  pageSize,
+  total,
+  from,
+  to,
+  onPage,
+  onPageSize,
+}: {
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
+  from: number;
+  to: number;
+  onPage: (p: number) => void;
+  onPageSize: (s: number) => void;
+}) {
+  const navCls =
+    "flex items-center justify-center w-12 h-11 rounded-xl border border-slate-200 bg-white text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 transition-all active:scale-[0.95] disabled:opacity-40";
+  const selectCls =
+    "h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-produmar-400";
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1}
+          aria-label="Página anterior"
+          className={navCls}
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+
+        <select
+          value={page}
+          onChange={(e) => onPage(Number(e.target.value))}
+          aria-label="Ir para a página"
+          className={cn(selectCls, "flex-1 text-center")}
+          disabled={pageCount <= 1}
+        >
+          {Array.from({ length: pageCount }).map((_, i) => (
+            <option key={i} value={i + 1}>
+              Página {i + 1} de {pageCount}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          onClick={() => onPage(page + 1)}
+          disabled={page >= pageCount}
+          aria-label="Próxima página"
+          className={navCls}
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm tabular-nums text-slate-500 dark:text-slate-400">
+          {from}–{to} de {total}
+        </p>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSize(Number(e.target.value))}
+          aria-label="Animais por página"
+          className={selectCls}
+        >
+          {PAGE_SIZES.map((s) => (
+            <option key={s} value={s}>
+              {s === 0 ? "Todos" : `${s} por página`}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
 }
 
 // ── Campo de busca ──────────────────────────────────────────────────────────
