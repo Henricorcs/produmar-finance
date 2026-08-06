@@ -557,6 +557,17 @@ export interface ProductStockBalance {
 export type ToolCondition = "otimo" | "bom" | "regular" | "ruim";
 export type ToolStatus = "disponivel" | "em_uso" | "manutencao" | "baixada";
 
+/** Almoxarifado onde o patrimônio fica guardado (garagem, depósito...). */
+export interface ToolWarehouse {
+  id: string;
+  name: string;
+  location: string | null;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface Tool {
   id: string;
   tool_number: number;
@@ -565,6 +576,8 @@ export interface Tool {
   condition: ToolCondition;
   photo_path: string | null;
   active: boolean;
+  /** Almoxarifado onde o item fica guardado. */
+  warehouse_id: string | null;
   /** Saldo total de unidades deste item. */
   quantity: number;
   /** Tipo de unidade (unidade, peça, jogo, par...). Texto livre. */
@@ -639,6 +652,8 @@ export interface ToolUnit {
 
 /** Linha da view v_tool_status (patrimônio + status e saldos derivados). */
 export interface ToolWithStatus extends Tool {
+  /** Nome do almoxarifado (join da view). */
+  warehouse_name: string | null;
   status: ToolStatus;
   open_loan_id: string | null;
   current_borrower: string | null;
@@ -752,6 +767,23 @@ export interface AnimalVaccination {
   /** Marca da vacina usada nesta aplicação. */
   brand: string | null;
   /** Agrupa as vacinas aplicadas no mesmo protocolo. */
+  protocol_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Pesagem do animal. Uma linha por dia pesado — o protocolo de vacinação
+ * costuma gravar uma (protocol_id preenchido), mas dá para pesar avulso.
+ */
+export interface AnimalWeight {
+  id: string;
+  animal_id: string;
+  weighed_at: string;
+  /** Peso em kg naquele dia. */
+  weight: number;
+  /** Protocolo de vacinação em que o peso foi tirado (null = pesagem avulsa). */
   protocol_id: string | null;
   notes: string | null;
   created_by: string | null;

@@ -20,7 +20,7 @@ import type { Obra, ToolWithStatus } from "@/lib/types";
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Patrimônio com saldo disponível para baixar. */
+  /** Patrimônio com saldo disponível para emprestar. */
   availableTools: ToolWithStatus[];
   /** Pré-seleciona o item (quando aberto a partir do card/detalhe). */
   presetToolId?: string | null;
@@ -73,7 +73,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
       return;
     }
     if (!borrower.trim()) {
-      setError("Informe quem está retirando");
+      setError("Informe quem está levando emprestado");
       return;
     }
     const qty = Math.max(1, Math.floor(Number(quantity) || 1));
@@ -94,18 +94,18 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
         receiver_signature: signature,
       });
       if (r && "error" in r) {
-        setError(r.error ?? "Erro ao registrar retirada");
+        setError(r.error ?? "Erro ao registrar o empréstimo");
         return;
       }
 
-      // foto é opcional — sobe depois de criar a retirada
+      // foto é opcional — sobe depois de criar o empréstimo
       const loanId = (r as { loanId?: string }).loanId;
       if (photo && loanId) {
         const fd = new FormData();
         fd.append("file", photo);
         const up = await uploadLoanReceiverPhoto(loanId, fd);
         if (up && "error" in up) {
-          setError(`Retirada registrada, mas a foto falhou: ${up.error}`);
+          setError(`Empréstimo registrado, mas a foto falhou: ${up.error}`);
           return;
         }
       }
@@ -117,7 +117,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">Baixar patrimônio</DialogTitle>
+          <DialogTitle className="dark:text-slate-100">Emprestar patrimônio</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -175,12 +175,12 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="co_borrower">Quem está retirando *</Label>
+            <Label htmlFor="co_borrower">Quem está levando *</Label>
             <Input
               id="co_borrower"
               value={borrower}
               onChange={(e) => setBorrower(e.target.value.toUpperCase())}
-              placeholder="nome de quem pegou"
+              placeholder="nome de quem pegou emprestado"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
             />
@@ -292,7 +292,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
               Cancelar
             </Button>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Registrando..." : "Baixar"}
+              {isPending ? "Registrando..." : "Emprestar"}
             </Button>
           </DialogFooter>
         </form>

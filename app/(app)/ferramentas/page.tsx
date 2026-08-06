@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { FerramentasPageClient } from "@/components/ferramentas/ferramentas-page-client";
-import type { Obra, ToolUnit, ToolWithStatus } from "@/lib/types";
+import type { Obra, ToolUnit, ToolWarehouse, ToolWithStatus } from "@/lib/types";
 import type {
   LoanRow,
   MaintenanceRow,
@@ -12,8 +12,15 @@ export const dynamic = "force-dynamic";
 export default async function FerramentasPage() {
   const supabase = createClient();
 
-  const [toolsRes, loansRes, maintenanceRes, writeoffsRes, unitsRes, obrasRes] =
-    await Promise.all([
+  const [
+    toolsRes,
+    loansRes,
+    maintenanceRes,
+    writeoffsRes,
+    unitsRes,
+    warehousesRes,
+    obrasRes,
+  ] = await Promise.all([
       supabase.from("v_tool_status").select("*").order("name", { ascending: true }),
       supabase
         .from("tool_loans")
@@ -32,6 +39,8 @@ export default async function FerramentasPage() {
         .order("created_at", { ascending: false })
         .limit(200),
       supabase.from("tool_units").select("*").order("name", { ascending: true }),
+      // almoxarifados (migration 045 — sem ela a tela segue funcionando)
+      supabase.from("tool_warehouses").select("*").order("name", { ascending: true }),
       supabase.from("obras").select("*").eq("active", true).order("name"),
     ]);
 
@@ -42,6 +51,7 @@ export default async function FerramentasPage() {
       maintenance={(maintenanceRes.data as MaintenanceRow[]) ?? []}
       writeoffs={(writeoffsRes.data as WriteoffRow[]) ?? []}
       units={(unitsRes.data as ToolUnit[]) ?? []}
+      warehouses={(warehousesRes.data as ToolWarehouse[]) ?? []}
       obras={(obrasRes.data as Obra[]) ?? []}
     />
   );

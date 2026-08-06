@@ -133,6 +133,57 @@ export async function inviteUser(
   return { ok: true };
 }
 
+/**
+ * Admin muda o perfil de acesso de um usuário (ex.: financeiro → admin).
+ *
+ * O perfil vive em dois lugares: em profiles.role (que manda nas policies do
+ * banco) e no user_metadata do auth (que o middleware lê para liberar rota).
+ * Os dois têm que andar juntos — senão o usuário vira admin no banco e continua
+ * barrado na tela, ou o contrário.
+ *
+ * As categorias e os módulos liberados não são mexidos: quem for promovido a
+ * admin passa a ver tudo de qualquer jeito, e voltando ao perfil antigo as
+ * liberações continuam valendo.
+ */
+export async function updateUserRole(
+  targetUserId: string,
+  role: UserRole
+): Promise<{ error: string } | { ok: true }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
+
+  if (!["admin", "financeiro", "visualizador", "operador"].includes(role))
+    return { error: "Perfil de acesso inválido" };
+
+  // rebaixar a si mesmo tira o próprio acesso de admin e tranca a porta por dentro
+  if (targetUserId === user.id)
+    return { error: "Você não pode mudar seu próprio perfil de acesso" };
+
+  const admin = createAdminClient();
+
+  const { error } = await admin.from("profiles").update({ role }).eq("id", targetUserId);
+  if (error) return { error: error.message };
+
+  const { data: target } = await admin.auth.admin.getUserById(targetUserId);
+  const { error: metaError } = await admin.auth.admin.updateUserById(targetUserId, {
+    user_metadata: { ...(target?.user?.user_metadata ?? {}), role },
+  });
+  if (metaError) return { error: metaError.message };
+
+  revalidatePath("/configuracoes");
+  return { ok: true };
+}
+
 /** Admin atualiza as categorias de máquina liberadas para um operador. */
 export async function updateOperatorCategories(
   targetUserId: string,

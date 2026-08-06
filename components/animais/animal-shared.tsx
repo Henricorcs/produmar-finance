@@ -110,6 +110,80 @@ export function formatMl(ml: number | null): string {
   return `${n % 1 === 0 ? n.toFixed(0) : n.toFixed(1).replace(".", ",")} ml`;
 }
 
+// ── Peso e ganho (quanto engordou e em quanto tempo) ─────────────────────────
+
+/** Dias entre duas datas YYYY-MM-DD (sempre >= 0). */
+export function daysBetween(fromISO: string, toISO: string): number {
+  const [y1, m1, d1] = fromISO.split("-").map(Number);
+  const [y2, m2, d2] = toISO.split("-").map(Number);
+  const a = new Date(y1, m1 - 1, d1).getTime();
+  const b = new Date(y2, m2 - 1, d2).getTime();
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+}
+
+/** Período em texto curto: "62 dias", "3 meses e 10 dias", "1 ano e 2 meses". */
+export function formatPeriod(days: number): string {
+  if (days <= 0) return "no mesmo dia";
+  if (days < 60) return `${days} ${days === 1 ? "dia" : "dias"}`;
+  const months = Math.floor(days / 30);
+  if (months < 12) {
+    const rest = days - months * 30;
+    return rest > 0 ? `${months} meses e ${rest} dias` : `${months} meses`;
+  }
+  const years = Math.floor(months / 12);
+  const restMonths = months % 12;
+  const y = `${years} ${years === 1 ? "ano" : "anos"}`;
+  return restMonths > 0 ? `${y} e ${restMonths} meses` : y;
+}
+
+/** Ganho em kg com sinal: "+25 kg", "-8 kg", "sem mudança". */
+export function formatGain(kg: number): string {
+  const n = Math.round(kg * 10) / 10;
+  if (n === 0) return "sem mudança";
+  const txt = `${Math.abs(n) % 1 === 0 ? Math.abs(n).toFixed(0) : Math.abs(n).toFixed(1).replace(".", ",")} kg`;
+  return n > 0 ? `+${txt}` : `-${txt}`;
+}
+
+export type WeighingLike = { weighed_at: string; weight: number };
+
+export interface WeightGain {
+  /** Diferença de peso em kg (pode ser negativa — o boi emagreceu). */
+  diff: number;
+  days: number;
+  /** Ganho médio diário em kg/dia (null quando as pesagens são do mesmo dia). */
+  perDay: number | null;
+  /** "+25 kg em 62 dias · 0,40 kg/dia" — pronto para a tela. */
+  label: string;
+}
+
+/**
+ * Quanto o animal ganhou de uma pesagem para a outra e em quanto tempo.
+ * É o que o dono quer ver a cada protocolo: engordou quanto, em quantos dias.
+ */
+export function weightGain(from: WeighingLike, to: WeighingLike): WeightGain {
+  const diff = Number(to.weight) - Number(from.weight);
+  const days = daysBetween(from.weighed_at, to.weighed_at);
+  const perDay = days > 0 ? Math.round((diff / days) * 100) / 100 : null;
+  const gmd = perDay != null ? ` · ${perDay.toFixed(2).replace(".", ",")} kg/dia` : "";
+  return {
+    diff,
+    days,
+    perDay,
+    label: `${formatGain(diff)} em ${formatPeriod(days)}${gmd}`,
+  };
+}
+
+/** Pesagem anterior a uma data (a mais recente antes dela). */
+export function previousWeighing<T extends WeighingLike>(
+  weights: T[],
+  beforeISO: string
+): T | null {
+  const older = weights
+    .filter((w) => w.weighed_at < beforeISO)
+    .sort((a, b) => (a.weighed_at < b.weighed_at ? 1 : -1));
+  return older[0] ?? null;
+}
+
 // ── Dose da vacina ───────────────────────────────────────────────────────────
 
 type DoseRule = Pick<

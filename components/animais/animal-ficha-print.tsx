@@ -12,6 +12,7 @@ import {
   pariuLabel,
   suggestedDoseMl,
   vaccineStatusFor,
+  weightGain,
   SEX_LABELS,
 } from "./animal-shared";
 import type {
@@ -19,6 +20,7 @@ import type {
   AnimalTreatment,
   AnimalVaccination,
   AnimalVaccine,
+  AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
 
@@ -30,6 +32,8 @@ interface Props {
   treatments?: AnimalTreatment[];
   /** Partos deste animal (uma linha por bezerro). */
   births?: AnimalBirth[];
+  /** Pesagens deste animal (da mais nova para a mais velha). */
+  weights?: AnimalWeight[];
   /** URL assinada da foto principal (opcional). */
   photoUrl?: string | null;
   /** Dispara a impressão sozinho ao abrir. */
@@ -50,6 +54,7 @@ export function AnimalFichaPrint({
   vaccinations,
   treatments = [],
   births = [],
+  weights = [],
   photoUrl,
   autoPrint,
 }: Props) {
@@ -75,6 +80,32 @@ export function AnimalFichaPrint({
   const history = [...vaccinations].sort((a, b) => (a.applied_at < b.applied_at ? 1 : -1));
   const vaccineNameById = new Map(vaccines.map((v) => [v.id, v.name]));
 
+  // pesagens: da mais nova para a mais velha, com o ganho de uma para a outra
+  const weighings = [...weights].sort((a, b) => (a.weighed_at < b.weighed_at ? 1 : -1));
+  const gainRows = weighings.map((w, i) => {
+    const prev = weighings[i + 1];
+    return {
+      weight: w,
+      gain: prev
+        ? weightGain(
+            { weighed_at: prev.weighed_at, weight: Number(prev.weight) },
+            { weighed_at: w.weighed_at, weight: Number(w.weight) }
+          )
+        : null,
+    };
+  });
+  /** Ganho da primeira até a última pesagem — o resumo do cabeçalho. */
+  const lifeGain =
+    weighings.length > 1
+      ? weightGain(
+          {
+            weighed_at: weighings[weighings.length - 1].weighed_at,
+            weight: Number(weighings[weighings.length - 1].weight),
+          },
+          { weighed_at: weighings[0].weighed_at, weight: Number(weighings[0].weight) }
+        )
+      : null;
+
   const info: { label: string; value: string }[] = [
     { label: "Número", value: animal.tag },
     { label: "Categoria", value: categoryLabel(animal.category, animal.sex) },
@@ -84,6 +115,7 @@ export function AnimalFichaPrint({
     { label: "Idade", value: formatAge(animal.age_months) },
     { label: "Peso", value: weightKg > 0 ? formatWeight(weightKg) : "—" },
   ];
+  if (lifeGain) info.push({ label: "Ganho", value: lifeGain.label });
   if (animal.sex === "femea") {
     info.push({
       label: "Pariu",
@@ -316,6 +348,35 @@ export function AnimalFichaPrint({
                           : "—"}
                       </td>
                       <td className="py-1.5 px-2">{b.calf_tag ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── Pesagens (quanto ganhou de uma para a outra) ──────────── */}
+          {gainRows.length > 0 && (
+            <div className="avoid-break">
+              <h2 className="text-[14px] font-bold text-produmar-700 uppercase tracking-wide mb-1.5">
+                Pesagens
+              </h2>
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600 text-left">
+                    <th className="py-1.5 px-2 font-semibold w-[22%]">Data</th>
+                    <th className="py-1.5 px-2 font-semibold w-[20%]">Peso</th>
+                    <th className="py-1.5 px-2 font-semibold">Ganho desde a anterior</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gainRows.map(({ weight: w, gain }) => (
+                    <tr key={w.id} className="border-b border-slate-100">
+                      <td className="py-1.5 px-2 tabular-nums">{formatDate(w.weighed_at)}</td>
+                      <td className="py-1.5 px-2 tabular-nums font-semibold">
+                        {formatWeight(Number(w.weight))}
+                      </td>
+                      <td className="py-1.5 px-2">{gain ? gain.label : "1ª pesagem"}</td>
                     </tr>
                   ))}
                 </tbody>

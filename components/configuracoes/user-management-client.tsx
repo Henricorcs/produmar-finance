@@ -10,6 +10,7 @@ import {
   removeUser,
   updateOperatorCategories,
   updateUserModules,
+  updateUserRole,
 } from "@/app/(app)/configuracoes/actions";
 import { machineCategoryLabel } from "@/lib/utils";
 import { APP_MODULES } from "@/lib/modules";
@@ -60,14 +61,37 @@ export function UserManagementClient({ users, currentUserId }: Props) {
   const [catsDraft, setCatsDraft] = useState<string[]>([]);
   const [editingModsId, setEditingModsId] = useState<string | null>(null);
   const [modsDraft, setModsDraft] = useState<string[]>([]);
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [roleDraft, setRoleDraft] = useState<UserRole>("financeiro");
   const [pending, startTransition] = useTransition();
   const [savingCats, startSaveCats] = useTransition();
   const [savingMods, startSaveMods] = useTransition();
+  const [savingRole, startSaveRole] = useTransition();
 
   function startEditCats(u: Profile) {
     setEditingModsId(null);
+    setEditingRoleId(null);
     setEditingCatsId(u.id);
     setCatsDraft(u.allowed_categories ?? []);
+  }
+
+  /** Trocar o perfil de acesso (ex.: promover um financeiro a admin). */
+  function startEditRole(u: Profile) {
+    setEditingCatsId(null);
+    setEditingModsId(null);
+    setEditingRoleId(u.id);
+    setRoleDraft(u.role);
+  }
+
+  function saveRole(userId: string) {
+    startSaveRole(async () => {
+      const res = await updateUserRole(userId, roleDraft);
+      if ("error" in res) {
+        alert(res.error);
+        return;
+      }
+      setEditingRoleId(null);
+    });
   }
 
   function saveCats(userId: string) {
@@ -83,6 +107,7 @@ export function UserManagementClient({ users, currentUserId }: Props) {
 
   function startEditMods(u: Profile) {
     setEditingCatsId(null);
+    setEditingRoleId(null);
     setEditingModsId(u.id);
     setModsDraft(u.allowed_modules ?? []);
   }
@@ -185,11 +210,22 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                     </p>
                   )}
                 </div>
-                <span
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${ROLE_BADGE[u.role]}`}
-                >
-                  {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
-                </span>
+                {/* O selo do perfil é o botão de mudar a permissão */}
+                {isMe ? (
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${ROLE_BADGE[u.role]}`}
+                  >
+                    {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => (editingRoleId === u.id ? setEditingRoleId(null) : startEditRole(u))}
+                    title="Mudar permissão"
+                    className={`text-[10px] font-semibold px-2 py-1 rounded-full flex-shrink-0 transition-opacity hover:opacity-80 ${ROLE_BADGE[u.role]}`}
+                  >
+                    {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
+                  </button>
+                )}
                 {isOperador && (
                   <button
                     onClick={() => (editingCatsId === u.id ? setEditingCatsId(null) : startEditCats(u))}
@@ -219,6 +255,59 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                   </button>
                 )}
               </div>
+
+              {/* Editor do perfil de acesso (admin, financeiro, operador...) */}
+              {!isMe && editingRoleId === u.id && (
+                <div className="mt-2 ml-11 space-y-2 rounded-lg border border-produmar-100 dark:border-slate-700 bg-produmar-50/30 dark:bg-slate-800/40 p-3">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {ROLES.map((r) => {
+                      const active = roleDraft === r.value;
+                      return (
+                        <button
+                          key={r.value}
+                          type="button"
+                          onClick={() => setRoleDraft(r.value)}
+                          className={`py-2 px-2 text-xs rounded-lg border font-medium transition-colors text-left leading-tight ${
+                            active
+                              ? "bg-produmar-600 border-produmar-600 text-white"
+                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span className="block font-semibold">{r.label}</span>
+                          <span className="block text-[10px] font-normal opacity-70 mt-0.5">
+                            {r.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                      {roleDraft === "admin"
+                        ? "Admin acessa tudo, inclusive esta tela."
+                        : "Vale na hora — ele já entra com o novo acesso."}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingRoleId(null)}
+                        className="px-3 h-8 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+                      >
+                        Cancelar
+                      </button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={savingRole || roleDraft === u.role}
+                        onClick={() => saveRole(u.id)}
+                      >
+                        <Check className="w-3 h-3" />
+                        {savingRole ? "Salvando…" : "Salvar"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Editor de categorias do operador */}
               {isOperador && editingCatsId === u.id && (

@@ -64,7 +64,7 @@ export function formatMoneyInput(raw: string): string {
   return cleaned;
 }
 
-/** Data + hora curtas (retiradas usam timestamp, não só data). */
+/** Data + hora curtas (empréstimos usam timestamp, não só data). */
 export function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",

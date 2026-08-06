@@ -102,7 +102,7 @@ export function ToolDetailDialog({
     });
   }
 
-  // fotos de quem recebeu, uma por retirada
+  // fotos de quem recebeu, uma por empréstimo
   useEffect(() => {
     setReceiverPhotoUrls({});
     if (!open) return;
@@ -129,7 +129,7 @@ export function ToolDetailDialog({
     const t = tool!;
     if (
       !confirm(
-        `Excluir "${t.name}"? Isso apaga também todo o histórico de baixas, manutenções e inutilizações. Para registrar uma perda sem apagar o cadastro, use "Inutilizar".`
+        `Excluir "${t.name}"? Isso apaga também todo o histórico de empréstimos, manutenções e inutilizações. Para registrar uma perda sem apagar o cadastro, use "Inutilizar".`
       )
     )
       return;
@@ -146,7 +146,7 @@ export function ToolDetailDialog({
     });
   }
 
-  // histórico unificado (baixas + manutenções + inutilizações), mais recente primeiro
+  // histórico unificado (empréstimos + manutenções + inutilizações), mais recente primeiro
   const events: { key: string; date: string; node: React.ReactNode }[] = [
     ...loans.map((l) => ({
       key: `loan-${l.id}`,
@@ -158,7 +158,7 @@ export function ToolDetailDialog({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm text-slate-800 dark:text-slate-100">
-              <span className="font-medium">{l.borrower_name}</span> baixou
+              <span className="font-medium">{l.borrower_name}</span> pegou emprestado
               {l.quantity > 1 ? ` ${l.quantity} ${tool!.unit}` : ""}
               {l.destination ? ` · ${l.destination}` : ""}
               {l.obra_id && obraNameById.get(l.obra_id) ? ` · Obra: ${obraNameById.get(l.obra_id)}` : ""}
@@ -166,7 +166,7 @@ export function ToolDetailDialog({
             <p className="text-[11px] text-slate-400">
               {fmtDateTime(l.checked_out_at)}
               {l.returned_at
-                ? ` → devolvida ${fmtDateTime(l.returned_at)}${
+                ? ` → devolvido ${fmtDateTime(l.returned_at)}${
                     l.return_condition ? ` (${CONDITION_LABELS[l.return_condition]})` : ""
                   }`
                 : " · em aberto"}
@@ -304,6 +304,7 @@ export function ToolDetailDialog({
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-sm">
             <InfoRow label="Nº" value={`#${tool.tool_number}`} />
             {tool.code && <InfoRow label="Código" value={tool.code} />}
+            <InfoRow label="Almoxarifado" value={tool.warehouse_name ?? "—"} />
             <InfoRow label="Estado" value={CONDITION_LABELS[tool.condition]} />
             <InfoRow
               label="Saldo"
@@ -326,7 +327,7 @@ export function ToolDetailDialog({
             <div className="grid grid-cols-2 gap-2">
               <Button onClick={() => onCheckout(tool)}>
                 <ArrowRightLeft className="w-4 h-4" />
-                Baixar
+                Emprestar
               </Button>
               <Button
                 variant="outline"
@@ -362,7 +363,7 @@ export function ToolDetailDialog({
             </h3>
             {events.length === 0 ? (
               <p className="text-sm text-slate-400 dark:text-slate-500 py-2">
-                Nenhuma baixa, manutenção ou inutilização ainda.
+                Nenhum empréstimo, manutenção ou inutilização ainda.
               </p>
             ) : (
               <div className="space-y-2.5">{events.map((e) => <div key={e.key}>{e.node}</div>)}</div>

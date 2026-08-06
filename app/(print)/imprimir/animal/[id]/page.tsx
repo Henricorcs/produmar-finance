@@ -6,6 +6,7 @@ import type {
   AnimalTreatment,
   AnimalVaccination,
   AnimalVaccine,
+  AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
 
@@ -38,7 +39,7 @@ export default async function ImprimirFichaAnimalPage({ params }: Props) {
     );
   }
 
-  const [vaccinesRes, vaccinationsRes, treatmentsRes, birthsRes] = await Promise.all([
+  const [vaccinesRes, vaccinationsRes, treatmentsRes, birthsRes, weightsRes] = await Promise.all([
     supabase.from("animal_vaccines").select("*").order("name", { ascending: true }),
     supabase
       .from("animal_vaccinations")
@@ -55,6 +56,12 @@ export default async function ImprimirFichaAnimalPage({ params }: Props) {
       .select("*")
       .eq("mother_id", animal.id)
       .order("birth_date", { ascending: false }),
+    // pesagens (migration 046 — sem ela a ficha sai sem o quadro de ganho)
+    supabase
+      .from("animal_weights")
+      .select("*")
+      .eq("animal_id", animal.id)
+      .order("weighed_at", { ascending: false }),
   ]);
 
   // foto principal com URL assinada (a impressão precisa da imagem acessível)
@@ -73,6 +80,7 @@ export default async function ImprimirFichaAnimalPage({ params }: Props) {
       vaccinations={(vaccinationsRes.data as AnimalVaccination[]) ?? []}
       treatments={(treatmentsRes.data as AnimalTreatment[]) ?? []}
       births={(birthsRes.data as AnimalBirth[]) ?? []}
+      weights={(weightsRes.data as AnimalWeight[]) ?? []}
       photoUrl={photoUrl}
     />
   );

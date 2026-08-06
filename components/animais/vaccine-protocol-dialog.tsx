@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { Check, Settings2, Syringe } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { Check, History, RefreshCw, Settings2, Syringe } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { cn, localDateISO } from "@/lib/utils";
+import { cn, formatDate, localDateISO } from "@/lib/utils";
 import { applyVaccineProtocol } from "@/app/(app)/animais/actions";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import {
@@ -22,20 +22,33 @@ import {
   FOOTER_SUBMIT,
   INLINE_LINK,
   STICKY_FOOTER,
+  VACCINE_STATUS_META,
   categoryLabel,
   doseRuleLabel,
   formatDecimalInput,
   formatWeight,
   parseDecimal,
+  previousWeighing,
   suggestedDoseMl,
+  vaccineStatusFor,
+  weightGain,
 } from "./animal-shared";
-import type { AnimalVaccine, AnimalWithInfo } from "@/lib/types";
+import type {
+  AnimalVaccination,
+  AnimalVaccine,
+  AnimalWeight,
+  AnimalWithInfo,
+} from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   animals: AnimalWithInfo[];
   vaccines: AnimalVaccine[];
+  /** Todas as aplicações do rebanho — daqui sai o que está vencido. */
+  vaccinations: AnimalVaccination[];
+  /** Todas as pesagens — daqui sai o ganho desde a última vez. */
+  weights?: AnimalWeight[];
   /** Pré-seleciona o animal (quando aberto pela ficha). */
   presetAnimalId?: string | null;
   /** Vacinas já marcadas ao abrir (ex.: "Aplicar" numa vacina da ficha). */
@@ -52,25 +65,32 @@ type ProtocolItem = {
 
 type ItemMap = Record<string, ProtocolItem>;
 
-function newItem(vaccine: AnimalVaccine, weightKg: number): ProtocolItem {
+function newItem(vaccine: AnimalVaccine, weightKg: number, brand?: string | null): ProtocolItem {
   const suggested = suggestedDoseMl(vaccine, weightKg);
   return {
     dose: suggested ? String(suggested).replace(".", ",") : "",
-    brand: vaccine.default_brand ?? "",
+    brand: brand ?? vaccine.default_brand ?? "",
     doseEdited: false,
   };
 }
 
 /**
  * Protocolo de vacinação: marca várias vacinas de uma vez para o mesmo animal.
- * A dose em ml já vem sugerida (fixa ou calculada pelo peso) e a marca vem
- * preenchida com a marca padrão da vacina — as duas podem ser trocadas.
+ *
+ * Como a vacinação é periódica, ao abrir já vêm marcadas as vacinas que estão
+ * VENCIDAS ou que nunca foram dadas — é só conferir e aplicar. Dá para repetir
+ * o último protocolo do animal com um toque.
+ *
+ * O animal também é pesado nessa ida ao curral: o campo de peso mostra na hora
+ * quanto ele ganhou desde a última pesagem e em quanto tempo.
  */
 export function VaccineProtocolDialog({
   open,
   onClose,
   animals,
   vaccines,
+  vaccinations,
+  weights = [],
   presetAnimalId,
   presetVaccineIds,
 }: Props) {
@@ -80,24 +100,117 @@ export function VaccineProtocolDialog({
   const [animalId, setAnimalId] = useState("");
   const [appliedAt, setAppliedAt] = useState("");
   const [items, setItems] = useState<ItemMap>({});
+  const [weight, setWeight] = useState("");
   const [notes, setNotes] = useState("");
   const [vaccinesOpen, setVaccinesOpen] = useState(false);
 
   const presetKey = (presetVaccineIds ?? []).join(",");
 
+  // ── Situação de cada vacina para o animal escolhido ────────────────────────
+  const animalVaccinations = useMemo(
+    () => (animalId ? vaccinations.filter((v) => v.animal_id === animalId) : []),
+    [animalId, vaccinations]
+  );
+
+  const statusByVaccine = useMemo(() => {
+    const m = new Map<
+      string,
+      { last: AnimalVaccination | null; status: ReturnType<typeof vaccineStatusFor>["status"]; nextDate: string | null }
+    >();
+    for (const v of vaccines) {
+      const apps = animalVaccinations
+        .filter((x) => x.vaccine_id === v.id)
+        .sort((a, b) => (a.applied_at < b.applied_at ? 1 : -1));
+      const last = apps[0] ?? null;
+      const { status, nextDate } = vaccineStatusFor(
+        last?.applied_at ?? null,
+        v.recurrence_months
+      );
+      m.set(v.id, { last, status, nextDate });
+    }
+    return m;
+  }, [vaccines, animalVaccinations]);
+
+  /** Vacinas vencidas ou nunca aplicadas — o que o animal veio tomar. */
+  const dueVaccines = useMemo(
+    () => vaccines.filter((v) => statusByVaccine.get(v.id)?.status !== "em_dia"),
+    [vaccines, statusByVaccine]
+  );
+
+  /** Último protocolo do animal (para repetir exatamente o que foi dado). */
+  const lastProtocol = useMemo(() => {
+    if (animalVaccinations.length === 0) return null;
+    const sorted = [...animalVaccinations].sort((a, b) =>
+      a.applied_at < b.applied_at ? 1 : -1
+    );
+    const top = sorted[0];
+    const key = top.protocol_id ?? top.id;
+    return {
+      appliedAt: top.applied_at,
+      items: sorted.filter((v) => (v.protocol_id ?? v.id) === key),
+    };
+  }, [animalVaccinations]);
+
+  // ── Peso: o que está digitado manda na dose e no ganho ─────────────────────
+  const animal = animalId ? animals.find((a) => a.id === animalId) ?? null : null;
+  const typedWeight = parseDecimal(weight);
+  const weightKg = typedWeight > 0 ? typedWeight : Number(animal?.weight ?? 0);
+
+  const lastWeighing = useMemo(() => {
+    if (!animalId) return null;
+    return previousWeighing(
+      weights.filter((w) => w.animal_id === animalId),
+      appliedAt || localDateISO()
+    );
+  }, [animalId, weights, appliedAt]);
+
+  /** Quanto ganhou desde a última pesagem — some assim que o peso é digitado. */
+  const gain = useMemo(() => {
+    if (!lastWeighing || typedWeight <= 0) return null;
+    return weightGain(
+      { weighed_at: lastWeighing.weighed_at, weight: Number(lastWeighing.weight) },
+      { weighed_at: appliedAt || localDateISO(), weight: typedWeight }
+    );
+  }, [lastWeighing, typedWeight, appliedAt]);
+
+  // ── Montagem dos itens ─────────────────────────────────────────────────────
+  function buildItems(vaccineIds: string[], kg: number, brands?: Map<string, string | null>): ItemMap {
+    const next: ItemMap = {};
+    for (const vid of vaccineIds) {
+      const v = vaccines.find((x) => x.id === vid);
+      if (v) next[vid] = newItem(v, kg, brands?.get(vid));
+    }
+    return next;
+  }
+
   useEffect(() => {
     if (!open) return;
     const aid = presetAnimalId ?? "";
-    const weight = Number(animals.find((a) => a.id === aid)?.weight ?? 0);
+    const a = animals.find((x) => x.id === aid) ?? null;
+    const kg = Number(a?.weight ?? 0);
 
-    const init: ItemMap = {};
-    for (const vid of presetKey ? presetKey.split(",") : []) {
-      const v = vaccines.find((x) => x.id === vid);
-      if (v) init[vid] = newItem(v, weight);
-    }
+    // com vacinas indicadas usa elas; senão marca sozinho o que está vencido
+    const presetIds = presetKey ? presetKey.split(",") : [];
+    const ids =
+      presetIds.length > 0
+        ? presetIds
+        : aid
+          ? vaccines
+              .filter((v) => {
+                const apps = vaccinations
+                  .filter((x) => x.animal_id === aid && x.vaccine_id === v.id)
+                  .sort((x, y) => (x.applied_at < y.applied_at ? 1 : -1));
+                return (
+                  vaccineStatusFor(apps[0]?.applied_at ?? null, v.recurrence_months).status !==
+                  "em_dia"
+                );
+              })
+              .map((v) => v.id)
+          : [];
 
     setAnimalId(aid);
-    setItems(init);
+    setItems(buildItems(ids, kg));
+    setWeight(kg > 0 ? String(kg).replace(".", ",") : "");
     setAppliedAt(localDateISO());
     setNotes("");
     setError(null);
@@ -105,10 +218,26 @@ export function VaccineProtocolDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, presetAnimalId, presetKey]);
 
-  const animal = animalId ? animals.find((a) => a.id === animalId) ?? null : null;
-  const weightKg = Number(animal?.weight ?? 0);
+  /** Trocar o animal na mão: recomeça com o peso e as pendências dele. */
+  function chooseAnimal(id: string) {
+    setAnimalId(id);
+    const a = animals.find((x) => x.id === id) ?? null;
+    const kg = Number(a?.weight ?? 0);
+    setWeight(kg > 0 ? String(kg).replace(".", ",") : "");
+    const ids = vaccines
+      .filter((v) => {
+        const apps = vaccinations
+          .filter((x) => x.animal_id === id && x.vaccine_id === v.id)
+          .sort((x, y) => (x.applied_at < y.applied_at ? 1 : -1));
+        return (
+          vaccineStatusFor(apps[0]?.applied_at ?? null, v.recurrence_months).status !== "em_dia"
+        );
+      })
+      .map((v) => v.id);
+    setItems(buildItems(ids, kg));
+  }
 
-  // Trocar o animal recalcula as doses sugeridas (menos as digitadas na mão)
+  // Mexer no peso recalcula as doses por peso (menos as digitadas na mão)
   useEffect(() => {
     setItems((prev) => {
       const next: ItemMap = {};
@@ -124,7 +253,7 @@ export function VaccineProtocolDialog({
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animalId, weightKg]);
+  }, [weightKg]);
 
   function toggle(vaccine: AnimalVaccine) {
     setItems((prev) => {
@@ -145,8 +274,30 @@ export function VaccineProtocolDialog({
     });
   }
 
+  /** Marca só o que está vencido / nunca aplicado. */
+  function markDue() {
+    setItems(buildItems(dueVaccines.map((v) => v.id), weightKg));
+  }
+
+  /** Repete o último protocolo do animal, com as mesmas marcas. */
+  function repeatLast() {
+    if (!lastProtocol) return;
+    const brands = new Map<string, string | null>(
+      lastProtocol.items.map((i) => [i.vaccine_id, i.brand])
+    );
+    setItems(
+      buildItems(
+        lastProtocol.items.map((i) => i.vaccine_id),
+        weightKg,
+        brands
+      )
+    );
+  }
+
   function patchItem(vaccineId: string, patch: Partial<ProtocolItem>) {
-    setItems((prev) => (prev[vaccineId] ? { ...prev, [vaccineId]: { ...prev[vaccineId], ...patch } } : prev));
+    setItems((prev) =>
+      prev[vaccineId] ? { ...prev, [vaccineId]: { ...prev[vaccineId], ...patch } } : prev
+    );
   }
 
   const selectedCount = Object.keys(items).length;
@@ -168,6 +319,7 @@ export function VaccineProtocolDialog({
       const r = await applyVaccineProtocol({
         animal_id: animalId,
         applied_at: appliedAt || localDateISO(),
+        weight_kg: typedWeight > 0 ? typedWeight : null,
         notes,
         items: Object.entries(items).map(([vaccine_id, item]) => ({
           vaccine_id,
@@ -175,10 +327,11 @@ export function VaccineProtocolDialog({
           brand: item.brand,
         })),
       });
-      if (r && "error" in r) {
-        setError(r.error ?? "Erro ao registrar o protocolo");
+      if (r && "error" in r && r.error) {
+        setError(r.error);
         return;
       }
+      if (r && "warning" in r && r.warning) alert(r.warning);
       onClose();
     });
   }
@@ -204,7 +357,7 @@ export function VaccineProtocolDialog({
               <SearchableSelect
                 items={animals}
                 value={animalId}
-                onChange={setAnimalId}
+                onChange={chooseAnimal}
                 getId={(a) => a.id}
                 getLabel={(a) => a.tag}
                 renderItem={(a) => (
@@ -232,6 +385,44 @@ export function VaccineProtocolDialog({
               onChange={(e) => setAppliedAt(e.target.value)}
               className="h-11 sm:h-10"
             />
+          </div>
+
+          {/* Pesagem do dia — o ganho aparece na hora */}
+          <div className="space-y-1.5">
+            <Label htmlFor="pr_weight">Peso de hoje (kg)</Label>
+            <Input
+              id="pr_weight"
+              value={weight}
+              onChange={(e) => setWeight(formatDecimalInput(e.target.value))}
+              placeholder="ex: 320"
+              className="h-11 text-base tabular-nums sm:h-10 sm:text-sm"
+              inputMode="decimal"
+              autoComplete="off"
+            />
+            {lastWeighing ? (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Última pesagem {formatWeight(Number(lastWeighing.weight))} em{" "}
+                {formatDate(lastWeighing.weighed_at)}
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Primeira pesagem — a partir dela dá para ver o ganho a cada protocolo.
+              </p>
+            )}
+            {gain && (
+              <p
+                className={cn(
+                  "text-sm font-medium",
+                  gain.diff > 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : gain.diff < 0
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-slate-500 dark:text-slate-400"
+                )}
+              >
+                {gain.label}
+              </p>
+            )}
           </div>
 
           {/* Vacinas do protocolo — só marcar e conferir a quantidade */}
@@ -262,6 +453,33 @@ export function VaccineProtocolDialog({
               </div>
             </div>
 
+            {/* Atalhos da revacinação: o que venceu e o que foi dado da última vez */}
+            {animalId && (dueVaccines.length > 0 || lastProtocol) && (
+              <div className="flex gap-2">
+                {dueVaccines.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={markDue}
+                    className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] px-2 rounded-xl border border-red-200 bg-red-50 text-xs font-medium text-red-700 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-400 active:scale-[0.97] transition-transform"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+                    Vencidas ({dueVaccines.length})
+                  </button>
+                )}
+                {lastProtocol && (
+                  <button
+                    type="button"
+                    onClick={repeatLast}
+                    title={`Mesmas vacinas de ${formatDate(lastProtocol.appliedAt)}`}
+                    className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] px-2 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 active:scale-[0.97] transition-transform"
+                  >
+                    <History className="w-3.5 h-3.5 flex-shrink-0" />
+                    Repetir último
+                  </button>
+                )}
+              </div>
+            )}
+
             {vaccines.length === 0 ? (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 py-2">
                 Nenhuma vacina cadastrada. Use &quot;Gerenciar&quot; para cadastrar.
@@ -272,6 +490,8 @@ export function VaccineProtocolDialog({
                   const item = items[v.id];
                   const checked = !!item;
                   const hint = doseRuleLabel(v, weightKg);
+                  const info = statusByVaccine.get(v.id);
+                  const statusMeta = info ? VACCINE_STATUS_META[info.status] : null;
                   return (
                     <div
                       key={v.id}
@@ -299,12 +519,32 @@ export function VaccineProtocolDialog({
                           <span className="block text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
                             {v.name}
                           </span>
+                          {/* Periodicidade: quando foi a última e quando vence */}
+                          {animalId && info && (
+                            <span className="block text-[10px] text-slate-400 truncate">
+                              {info.last
+                                ? `última ${formatDate(info.last.applied_at)}`
+                                : "nunca aplicada"}
+                              {info.nextDate ? ` · vence ${formatDate(info.nextDate)}` : ""}
+                              {!v.recurrence_months ? " · dose única" : ""}
+                            </span>
+                          )}
                           {hint && (
                             <span className="block text-[10px] text-slate-400 truncate">
                               {hint}
                             </span>
                           )}
                         </span>
+                        {animalId && statusMeta && (
+                          <span
+                            className={cn(
+                              "text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0",
+                              statusMeta.chip
+                            )}
+                          >
+                            {statusMeta.label}
+                          </span>
+                        )}
                       </button>
 
                       {checked && (
@@ -389,8 +629,8 @@ export function VaccineProtocolDialog({
               {isPending
                 ? "Salvando..."
                 : selectedCount > 1
-                ? `Aplicar ${selectedCount} vacinas`
-                : "Aplicar"}
+                  ? `Aplicar ${selectedCount} vacinas`
+                  : "Aplicar"}
             </Button>
           </DialogFooter>
         </form>

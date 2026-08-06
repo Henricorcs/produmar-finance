@@ -28,13 +28,17 @@ import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import { TreatmentDialog } from "./treatment-dialog";
 import { BirthDialog } from "./birth-dialog";
 import { QuickAddRow } from "./quick-add-row";
+import { WeightDialog } from "./weight-dialog";
 import {
   categoryLabel,
+  formatGain,
   formatMl,
+  formatPeriod,
   formatWeight,
   pariuLabel,
   suggestedDoseMl,
   vaccineStatusFor,
+  weightGain,
 } from "./animal-shared";
 import type {
   AnimalBirth,
@@ -44,6 +48,7 @@ import type {
   AnimalVaccination,
   AnimalVaccine,
   AnimalVaccinePending,
+  AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
 
@@ -62,6 +67,8 @@ interface Props {
   births: AnimalBirth[];
   /** Vacinas que o dono marcou como pendentes na mão. */
   pendings: AnimalVaccinePending[];
+  /** Pesagens do rebanho — daqui sai o ganho de peso de cada animal. */
+  weights?: AnimalWeight[];
 }
 
 type Tab = "rebanho" | "vacinacao";
@@ -84,6 +91,7 @@ export function AnimaisPageClient({
   treatments,
   births,
   pendings,
+  weights = [],
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -108,6 +116,8 @@ export function AnimaisPageClient({
   const [treatmentPresetId, setTreatmentPresetId] = useState<string | null>(null);
   const [birthOpen, setBirthOpen] = useState(false);
   const [birthPresetId, setBirthPresetId] = useState<string | null>(null);
+  const [weightOpen, setWeightOpen] = useState(false);
+  const [weightPresetId, setWeightPresetId] = useState<string | null>(null);
 
   // ── Índices por animal ──────────────────────────────────────────────────────
   const treatmentsByAnimal = useMemo(() => {
@@ -129,6 +139,18 @@ export function AnimaisPageClient({
     }
     return m;
   }, [births]);
+
+  /** Pesagens por animal, da mais nova para a mais velha. */
+  const weightsByAnimal = useMemo(() => {
+    const m = new Map<string, AnimalWeight[]>();
+    for (const w of weights) {
+      const arr = m.get(w.animal_id);
+      if (arr) arr.push(w);
+      else m.set(w.animal_id, [w]);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => (a.weighed_at < b.weighed_at ? 1 : -1));
+    return m;
+  }, [weights]);
 
   /** De quem é este bezerro: o parto que o cadastrou (id do bezerro → parto). */
   const birthByCalf = useMemo(() => {
@@ -161,6 +183,7 @@ export function AnimaisPageClient({
     ? treatmentsByAnimal.get(detailAnimalId) ?? []
     : [];
   const detailBirths = detailAnimalId ? birthsByMother.get(detailAnimalId) ?? [] : [];
+  const detailWeights = detailAnimalId ? weightsByAnimal.get(detailAnimalId) ?? [] : [];
 
   const females = useMemo(() => animals.filter((a) => a.sex === "femea"), [animals]);
 
@@ -267,6 +290,10 @@ export function AnimaisPageClient({
   function openBirth(animal?: AnimalWithInfo | null) {
     setBirthPresetId(animal?.id ?? null);
     setBirthOpen(true);
+  }
+  function openWeight(animal?: AnimalWithInfo | null) {
+    setWeightPresetId(animal?.id ?? null);
+    setWeightOpen(true);
   }
 
   /**
@@ -512,11 +539,13 @@ export function AnimaisPageClient({
             vaccinations={vaccinations}
             birthsByMother={birthsByMother}
             treatmentsByAnimal={treatmentsByAnimal}
+            weightsByAnimal={weightsByAnimal}
             pendingKeys={pendingKeys}
             onOpenAnimal={(id) => setDetailAnimalId(id)}
             onApplyNow={applyNow}
             onUndo={undoToday}
             onBirth={(a) => openBirth(a)}
+            onWeigh={(a) => openWeight(a)}
             applyingKey={applyingKey}
             emptyMessage={
               filtered.length > 0
@@ -531,10 +560,12 @@ export function AnimaisPageClient({
           <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
             Digite na primeira linha para cadastrar (Enter salva). Em &quot;Pariu&quot;, a data
             do parto pede M ou F e o número do bezerro — ele entra no rebanho atrelado à mãe;
-            toque na coluna para ver os partos da vaca e apagar o que entrou errado. Célula
-            vermelha = os ml a aplicar (vacina nunca dada ou vencida); toque nela para
-            registrar. Para deixar uma vacina pendente de propósito, abra o animal na aba
-            Vacinas — o que for marcado ganha a tarja laranja e entra no filtro de pendentes.
+            toque na coluna para ver os partos da vaca e apagar o que entrou errado. Toque no
+            peso para pesar de novo: embaixo dele fica quanto o animal ganhou desde a última
+            pesagem e em quanto tempo. Célula vermelha = os ml a aplicar (vacina nunca dada ou
+            vencida); toque nela para registrar. Para deixar uma vacina pendente de propósito,
+            abra o animal na aba Vacinas — o que for marcado ganha a tarja laranja e entra no
+            filtro de pendentes.
           </p>
         </div>
       )}
@@ -627,6 +658,7 @@ export function AnimaisPageClient({
         vaccines={vaccines}
         treatments={detailTreatments}
         births={detailBirths}
+        weights={detailWeights}
         motherBirth={detailAnimalId ? birthByCalf.get(detailAnimalId) ?? null : null}
         motherTag={
           detailAnimalId
@@ -644,14 +676,24 @@ export function AnimaisPageClient({
         onOpenAnimal={(id) => setDetailAnimalId(id)}
         onTreatment={(a) => openTreatment(a)}
         onBirth={(a) => openBirth(a)}
+        onWeigh={(a) => openWeight(a)}
       />
       <VaccineProtocolDialog
         open={protocolOpen}
         onClose={() => setProtocolOpen(false)}
         animals={animals}
         vaccines={vaccines}
+        vaccinations={vaccinations}
+        weights={weights}
         presetAnimalId={protocolPreset.animalId}
         presetVaccineIds={protocolPreset.vaccineIds}
+      />
+      <WeightDialog
+        open={weightOpen}
+        onClose={() => setWeightOpen(false)}
+        animals={animals}
+        weights={weights}
+        presetAnimalId={weightPresetId}
       />
       <TreatmentDialog
         open={treatmentOpen}
@@ -687,11 +729,13 @@ function RebanhoTable({
   vaccinations,
   birthsByMother,
   treatmentsByAnimal,
+  weightsByAnimal,
   pendingKeys,
   onOpenAnimal,
   onApplyNow,
   onUndo,
   onBirth,
+  onWeigh,
   applyingKey,
   emptyMessage,
 }: {
@@ -701,6 +745,8 @@ function RebanhoTable({
   vaccinations: VaccinationRow[];
   birthsByMother: Map<string, AnimalBirth[]>;
   treatmentsByAnimal: Map<string, AnimalTreatment[]>;
+  /** Pesagens por animal, da mais nova para a mais velha. */
+  weightsByAnimal: Map<string, AnimalWeight[]>;
   /** `animalId|vaccineId` marcados como pendentes na mão. */
   pendingKeys: Set<string>;
   onOpenAnimal: (id: string) => void;
@@ -710,6 +756,8 @@ function RebanhoTable({
   onUndo: (animal: AnimalWithInfo, vaccine: AnimalVaccine, last: VaccinationRow) => void;
   /** Abre o registro de parto daquela mãe. */
   onBirth: (animal: AnimalWithInfo) => void;
+  /** Abre a pesagem daquele animal. */
+  onWeigh: (animal: AnimalWithInfo) => void;
   /** Chave `animalId|vaccineId` sendo salva no momento. */
   applyingKey: string | null;
   /** Mostrado numa linha quando o filtro não devolve ninguém. */
@@ -848,6 +896,15 @@ function RebanhoTable({
             const abirths = birthsByMother.get(a.id) ?? [];
             const atreatments = treatmentsByAnimal.get(a.id) ?? [];
             const lastTreatment = atreatments[0] ?? null;
+            // ganho da última pesagem para a anterior: engordou quanto e em quanto tempo
+            const aweights = weightsByAnimal.get(a.id) ?? [];
+            const gain =
+              aweights.length > 1
+                ? weightGain(
+                    { weighed_at: aweights[1].weighed_at, weight: Number(aweights[1].weight) },
+                    { weighed_at: aweights[0].weighed_at, weight: Number(aweights[0].weight) }
+                  )
+                : null;
             return (
               <tr
                 key={a.id}
@@ -867,8 +924,45 @@ function RebanhoTable({
                 <td className="px-2 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
                   {a.breed_name ?? "—"}
                 </td>
-                <td className="px-2 py-3 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300">
-                  {weightKg > 0 ? formatWeight(weightKg) : "—"}
+                {/* Peso — toque para pesar; embaixo, o ganho da última pesagem */}
+                <td className="px-1 py-1 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-300">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onWeigh(a);
+                    }}
+                    title={
+                      gain
+                        ? `${weightsTitle(aweights)}\n\n(toque para pesar de novo)`
+                        : "Registrar o peso de hoje"
+                    }
+                    className="min-h-[40px] px-2 rounded-lg text-left hover:bg-produmar-50 dark:hover:bg-slate-800 active:scale-[0.95] transition-all"
+                  >
+                    {weightKg > 0 ? (
+                      <>
+                        <span className="block text-[15px]">{formatWeight(weightKg)}</span>
+                        {gain && (
+                          <span
+                            className={cn(
+                              "block text-[13px]",
+                              gain.diff > 0
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : gain.diff < 0
+                                  ? "text-red-600 dark:text-red-400"
+                                  : "text-slate-400"
+                            )}
+                          >
+                            {formatGain(gain.diff)} · {formatPeriod(gain.days)}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-produmar-600 dark:text-produmar-400 font-medium">
+                        + peso
+                      </span>
+                    )}
+                  </button>
                 </td>
                 {/* Pariu — clicável na fêmea: abre o parto (data + M/F do bezerro) */}
                 <td
@@ -1026,6 +1120,25 @@ function RebanhoTable({
       </table>
     </div>
   );
+}
+
+/** Tooltip nativo com o histórico de pesagens (data — peso — ganho). */
+function weightsTitle(ws: AnimalWeight[]): string | undefined {
+  if (ws.length === 0) return undefined;
+  return ws
+    .map((w, i) => {
+      const prev = ws[i + 1];
+      const g = prev
+        ? ` — ${
+            weightGain(
+              { weighed_at: prev.weighed_at, weight: Number(prev.weight) },
+              { weighed_at: w.weighed_at, weight: Number(w.weight) }
+            ).label
+          }`
+        : "";
+      return `${formatDate(w.weighed_at)} — ${formatWeight(Number(w.weight))}${g}`;
+    })
+    .join("\n");
 }
 
 /** Tooltip nativo com todos os partos (data — sexo — nº). */

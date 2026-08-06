@@ -72,7 +72,7 @@ export const APP_MODULES: AppModule[] = [
   {
     slug: "ferramentas",
     name: "Patrimônio",
-    description: "Controle de patrimônio: saldo, valor e inutilizações",
+    description: "Almoxarifados, empréstimos, saldo e valor do patrimônio",
     href: "/ferramentas",
     icon: Wrench,
     accentIcon:

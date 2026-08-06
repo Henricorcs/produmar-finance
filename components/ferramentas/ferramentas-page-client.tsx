@@ -15,6 +15,8 @@ import {
   TrendingUp,
   TrendingDown,
   RotateCcw,
+  Settings2,
+  Warehouse,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +32,7 @@ import {
   type FinishTarget,
 } from "./maintenance-dialog";
 import { ToolDetailDialog } from "./tool-detail-dialog";
+import { WarehousesDialog } from "./warehouses-dialog";
 import { CONDITION_LABELS, STATUS_META, fmtDateTime, lossValue } from "./tool-shared";
 import type {
   Obra,
@@ -37,6 +40,7 @@ import type {
   ToolMaintenance,
   ToolStatus,
   ToolUnit,
+  ToolWarehouse,
   ToolWithStatus,
   ToolWriteoff,
 } from "@/lib/types";
@@ -66,11 +70,15 @@ interface Props {
   maintenance: MaintenanceRow[];
   writeoffs: WriteoffRow[];
   units: ToolUnit[];
+  /** Almoxarifados cadastrados (migration 045). */
+  warehouses?: ToolWarehouse[];
   obras?: Obra[];
 }
 
 type Tab = "ferramentas" | "em_uso" | "manutencao" | "historico";
 type StatusFilter = "todas" | ToolStatus;
+/** Almoxarifado escolhido: todos, um id, ou os itens sem almoxarifado. */
+type WarehouseFilter = "todos" | "sem" | (string & {});
 
 export function FerramentasPageClient({
   tools,
@@ -78,11 +86,14 @@ export function FerramentasPageClient({
   maintenance,
   writeoffs,
   units,
+  warehouses = [],
   obras = [],
 }: Props) {
   const [tab, setTab] = useState<Tab>("ferramentas");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todas");
+  const [warehouseFilter, setWarehouseFilter] = useState<WarehouseFilter>("todos");
+  const [warehousesOpen, setWarehousesOpen] = useState(false);
 
   // dialogs
   const [toolDialogOpen, setToolDialogOpen] = useState(false);
@@ -95,6 +106,37 @@ export function FerramentasPageClient({
   const [maintenancePresetId, setMaintenancePresetId] = useState<string | null>(null);
   const [finishTarget, setFinishTarget] = useState<FinishTarget | null>(null);
   const [detailToolId, setDetailToolId] = useState<string | null>(null);
+
+  // ── Almoxarifado escolhido: tudo na tela passa a ser só dele ───────────────
+  const scopedTools = useMemo(() => {
+    if (warehouseFilter === "todos") return tools;
+    if (warehouseFilter === "sem") return tools.filter((t) => !t.warehouse_id);
+    return tools.filter((t) => t.warehouse_id === warehouseFilter);
+  }, [tools, warehouseFilter]);
+
+  const scopedIds = useMemo(() => new Set(scopedTools.map((t) => t.id)), [scopedTools]);
+  const scopedLoans = useMemo(
+    () => loans.filter((l) => scopedIds.has(l.tool_id)),
+    [loans, scopedIds]
+  );
+  const scopedMaintenance = useMemo(
+    () => maintenance.filter((m) => scopedIds.has(m.tool_id)),
+    [maintenance, scopedIds]
+  );
+  const scopedWriteoffs = useMemo(
+    () => writeoffs.filter((w) => scopedIds.has(w.tool_id)),
+    [writeoffs, scopedIds]
+  );
+
+  /** Quantos itens em cada almoxarifado (usado nos chips e no cadastro). */
+  const countByWarehouse = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const t of tools) if (t.warehouse_id) c[t.warehouse_id] = (c[t.warehouse_id] ?? 0) + 1;
+    return c;
+  }, [tools]);
+
+  /** Itens que ficaram sem almoxarifado (ex.: o almoxarifado foi removido). */
+  const orphanCount = useMemo(() => tools.filter((t) => !t.warehouse_id).length, [tools]);
 
   // O detalhe deriva do id — assim a tela reflete os dados recarregados do servidor
   const detailTool = useMemo(
@@ -114,40 +156,40 @@ export function FerramentasPageClient({
     [detailToolId, writeoffs]
   );
 
-  // itens com saldo disponível para baixar / inutilizar / manutenção
+  // itens com saldo disponível para emprestar / inutilizar / manutenção
   const availableTools = useMemo(
-    () => tools.filter((t) => t.status === "disponivel"),
-    [tools]
+    () => scopedTools.filter((t) => t.status === "disponivel"),
+    [scopedTools]
   );
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
   const countBy = useMemo(() => {
     const c: Record<ToolStatus, number> = { disponivel: 0, em_uso: 0, manutencao: 0, baixada: 0 };
-    for (const t of tools) c[t.status]++;
+    for (const t of scopedTools) c[t.status]++;
     return c;
-  }, [tools]);
+  }, [scopedTools]);
 
-  // retiradas em aberto (uma linha por baixa)
-  const openLoans = useMemo(() => loans.filter((l) => !l.returned_at), [loans]);
+  // empréstimos em aberto (uma linha por empréstimo)
+  const openLoans = useMemo(() => scopedLoans.filter((l) => !l.returned_at), [scopedLoans]);
   const openMaintenanceRows = useMemo(
-    () => maintenance.filter((m) => !m.finished_at),
-    [maintenance]
+    () => scopedMaintenance.filter((m) => !m.finished_at),
+    [scopedMaintenance]
   );
 
   // ── Resumo financeiro ─────────────────────────────────────────────────────────
   const invested = useMemo(
-    () => tools.reduce((sum, t) => sum + t.quantity * t.unit_value, 0),
-    [tools]
+    () => scopedTools.reduce((sum, t) => sum + t.quantity * t.unit_value, 0),
+    [scopedTools]
   );
   const losses = useMemo(
-    () => writeoffs.reduce((sum, w) => sum + lossValue(w.quantity, w.tools), 0),
-    [writeoffs]
+    () => scopedWriteoffs.reduce((sum, w) => sum + lossValue(w.quantity, w.tools), 0),
+    [scopedWriteoffs]
   );
 
   // ── Filtro da lista de patrimônio ────────────────────────────────────────────
   const filteredTools = useMemo(() => {
     const q = search.trim().toUpperCase();
-    return tools.filter((t) => {
+    return scopedTools.filter((t) => {
       if (statusFilter === "todas" ? t.status === "baixada" : t.status !== statusFilter)
         return false;
       if (!q) return true;
@@ -157,7 +199,7 @@ export function FerramentasPageClient({
         (t.current_borrower ?? "").includes(q)
       );
     });
-  }, [tools, search, statusFilter]);
+  }, [scopedTools, search, statusFilter]);
 
   // ── Ações auxiliares ────────────────────────────────────────────────────────
   function openCheckout(tool?: ToolWithStatus) {
@@ -209,17 +251,38 @@ export function FerramentasPageClient({
       value: "ferramentas",
       label: "Patrim.",
       icon: Hammer,
-      count: tools.filter((t) => t.status !== "baixada").length,
+      count: scopedTools.filter((t) => t.status !== "baixada").length,
     },
-    { value: "em_uso", label: "Em uso", icon: ArrowRightLeft, count: openLoans.length },
+    { value: "em_uso", label: "Empr.", icon: ArrowRightLeft, count: openLoans.length },
     { value: "manutencao", label: "Manut.", icon: Wrench, count: openMaintenanceRows.length },
     {
       value: "historico",
       label: "Histórico",
       icon: History,
-      count: loans.length + maintenance.length + writeoffs.length,
+      count: scopedLoans.length + scopedMaintenance.length + scopedWriteoffs.length,
     },
   ];
+
+  /** Abas do topo: Todos + cada almoxarifado (+ órfãos, quando houver). */
+  const warehouseTabs: { value: WarehouseFilter; label: string; count: number }[] = [
+    { value: "todos", label: "Todos", count: tools.length },
+    ...warehouses.map((w) => ({
+      value: w.id as WarehouseFilter,
+      label: w.name,
+      count: countByWarehouse[w.id] ?? 0,
+    })),
+    ...(orphanCount > 0
+      ? [{ value: "sem" as WarehouseFilter, label: "Sem almox.", count: orphanCount }]
+      : []),
+  ];
+
+  /** Nome do almoxarifado atual — vira o subtítulo da tela. */
+  const currentWarehouseName =
+    warehouseFilter === "todos"
+      ? null
+      : warehouseFilter === "sem"
+        ? "Sem almoxarifado"
+        : warehouses.find((w) => w.id === warehouseFilter)?.name ?? null;
 
   const statusFilters: { value: StatusFilter; label: string }[] = [
     { value: "todas", label: "Todos" },
@@ -237,8 +300,10 @@ export function FerramentasPageClient({
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">
             Patrimônio
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Controle de saldo, valor e inutilizações
+          <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+            {currentWarehouseName
+              ? `Almoxarifado ${currentWarehouseName}`
+              : "Empréstimos, saldo, valor e inutilizações"}
           </p>
         </div>
         <Button
@@ -251,6 +316,52 @@ export function FerramentasPageClient({
           <Plus className="w-4 h-4" />
           Novo
         </Button>
+      </div>
+
+      {/* Almoxarifado — a primeira escolha da tela: tudo abaixo é só dele */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <Warehouse className="w-3.5 h-3.5" />
+            Almoxarifado
+          </span>
+          <button
+            type="button"
+            onClick={() => setWarehousesOpen(true)}
+            className="flex items-center gap-1 min-h-[44px] px-2 -my-2 text-xs font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Gerenciar
+          </button>
+        </div>
+
+        {warehouses.length === 0 ? (
+          <button
+            type="button"
+            onClick={() => setWarehousesOpen(true)}
+            className="w-full flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 text-sm text-slate-500 dark:text-slate-400"
+          >
+            <Plus className="w-4 h-4" />
+            Cadastrar o primeiro almoxarifado
+          </button>
+        ) : (
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+            {warehouseTabs.map((w) => (
+              <button
+                key={w.value}
+                onClick={() => setWarehouseFilter(w.value)}
+                className={`flex-shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl text-sm font-medium border transition-colors ${
+                  warehouseFilter === w.value
+                    ? "bg-produmar-600 border-produmar-600 text-white"
+                    : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                }`}
+              >
+                {w.label}
+                <span className="opacity-60 tabular-nums">{w.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Resumo financeiro */}
@@ -343,10 +454,14 @@ export function FerramentasPageClient({
           </div>
 
           {filteredTools.length === 0 ? (
-            tools.length === 0 ? (
+            scopedTools.length === 0 ? (
               <EmptyState
                 icon={Hammer}
-                text="Nenhum patrimônio cadastrado ainda."
+                text={
+                  currentWarehouseName
+                    ? `Nada guardado em ${currentWarehouseName} ainda.`
+                    : "Nenhum patrimônio cadastrado ainda."
+                }
                 hint="Cadastre o primeiro para começar o controle."
                 action={
                   <Button
@@ -387,7 +502,7 @@ export function FerramentasPageClient({
       {tab === "manutencao" && (
         <ManutencaoTab
           rows={openMaintenanceRows}
-          tools={tools}
+          tools={scopedTools}
           onNew={() => openMaintenanceFor()}
           onFinish={(row) =>
             setFinishTarget({
@@ -400,7 +515,11 @@ export function FerramentasPageClient({
       )}
 
       {tab === "historico" && (
-        <HistoricoTab loans={loans} maintenance={maintenance} writeoffs={writeoffs} />
+        <HistoricoTab
+          loans={scopedLoans}
+          maintenance={scopedMaintenance}
+          writeoffs={scopedWriteoffs}
+        />
       )}
 
       {/* Dialogs */}
@@ -409,6 +528,16 @@ export function FerramentasPageClient({
         onClose={() => setToolDialogOpen(false)}
         tool={editTool}
         units={units}
+        warehouses={warehouses}
+        defaultWarehouseId={
+          warehouseFilter === "todos" || warehouseFilter === "sem" ? null : warehouseFilter
+        }
+      />
+      <WarehousesDialog
+        open={warehousesOpen}
+        onClose={() => setWarehousesOpen(false)}
+        warehouses={warehouses}
+        countByWarehouse={countByWarehouse}
       />
       <CheckoutDialog
         open={checkoutOpen}
@@ -516,6 +645,7 @@ function ToolCard({
           <p className="text-[11px] text-slate-400 mt-0.5">
             #{tool.tool_number}
             {tool.code ? ` · ${tool.code}` : ""} · {CONDITION_LABELS[tool.condition]}
+            {tool.warehouse_name ? ` · ${tool.warehouse_name}` : ""}
           </p>
         </div>
         <span
@@ -566,7 +696,7 @@ function ToolCard({
             className="flex items-center justify-center gap-1.5 text-xs font-semibold px-2.5 py-2 rounded-lg bg-produmar-600 hover:bg-produmar-700 text-white transition-colors"
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
-            Baixar
+            Emprestar
           </button>
           <button
             onClick={(e) => {
@@ -598,7 +728,7 @@ function ToolCard({
   );
 }
 
-// ── Aba: Em uso (cada retirada em aberto) ────────────────────────────────────
+// ── Aba: Emprestados (cada empréstimo em aberto) ─────────────────────────────
 function EmUsoTab({
   loans,
   onCheckout,
@@ -613,15 +743,15 @@ function EmUsoTab({
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={onCheckout}>
           <ArrowRightLeft className="w-3.5 h-3.5" />
-          Nova baixa
+          Novo empréstimo
         </Button>
       </div>
 
       {loans.length === 0 ? (
         <EmptyState
           icon={ArrowRightLeft}
-          text="Nenhuma retirada em aberto."
-          hint="Tudo devolvido — registre uma baixa quando alguém pegar algo."
+          text="Nenhum empréstimo em aberto."
+          hint="Tudo devolvido — registre um empréstimo quando alguém pegar algo."
         />
       ) : (
         <div className="space-y-2">
@@ -745,7 +875,7 @@ function ManutencaoTab({
   );
 }
 
-// ── Aba: Histórico (baixas + manutenções + inutilizações) ────────────────────
+// ── Aba: Histórico (empréstimos + manutenções + inutilizações) ───────────────
 function HistoricoTab({
   loans,
   maintenance,
@@ -867,7 +997,7 @@ function HistoricoTab({
       <EmptyState
         icon={History}
         text="Nenhum registro ainda."
-        hint="Baixas, devoluções, manutenções e inutilizações aparecem aqui."
+        hint="Empréstimos, devoluções, manutenções e inutilizações aparecem aqui."
       />
     );
   }

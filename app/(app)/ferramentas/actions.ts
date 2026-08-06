@@ -28,6 +28,8 @@ export interface ToolInput {
   unit?: string | null;
   unit_value?: number | null;
   replacement_value?: number | null;
+  /** Almoxarifado onde o item fica guardado. */
+  warehouse_id?: string | null;
   notes?: string | null;
 }
 
@@ -62,6 +64,7 @@ export async function createTool(input: ToolInput) {
       unit: normUnit(input.unit),
       unit_value: normMoney(input.unit_value),
       replacement_value: normMoney(input.replacement_value),
+      warehouse_id: input.warehouse_id || null,
       notes: clean(input.notes),
       created_by: user.id,
     })
@@ -89,6 +92,7 @@ export async function updateTool(id: string, input: ToolInput) {
       unit: normUnit(input.unit),
       unit_value: normMoney(input.unit_value),
       replacement_value: normMoney(input.replacement_value),
+      warehouse_id: input.warehouse_id || null,
       notes: clean(input.notes),
     })
     .eq("id", id);
@@ -98,7 +102,7 @@ export async function updateTool(id: string, input: ToolInput) {
   return { ok: true };
 }
 
-/** Exclui o patrimônio e todo o histórico (retiradas, manutenções e inutilizações, por cascade). */
+/** Exclui o patrimônio e todo o histórico (empréstimos, manutenções e inutilizações, por cascade). */
 export async function deleteTool(id: string) {
   const supabase = createClient();
 
@@ -245,7 +249,7 @@ export async function deleteToolPhoto(photoId: string) {
   return { ok: true };
 }
 
-/** Gera uma URL assinada (1h) para exibir uma foto avulsa (ex.: recebedor da retirada). */
+/** Gera uma URL assinada (1h) para exibir uma foto avulsa (ex.: quem pegou emprestado). */
 export async function getToolPhotoUrl(storagePath: string) {
   const supabase = createClient();
   const { data, error } = await supabase.storage
@@ -256,7 +260,9 @@ export async function getToolPhotoUrl(storagePath: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RETIRADA E DEVOLUÇÃO
+// EMPRÉSTIMO E DEVOLUÇÃO
+// (a tabela continua tool_loans — só o rótulo na tela mudou de "baixa"
+//  para "empréstimo", que é o que sempre foi: sai e volta)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function checkoutTool(input: {
@@ -277,7 +283,7 @@ export async function checkoutTool(input: {
 
   const borrower = clean(input.borrower_name);
   if (!input.tool_id) return { error: "Selecione o patrimônio" };
-  if (!borrower) return { error: "Informe quem está retirando" };
+  if (!borrower) return { error: "Informe quem está levando emprestado" };
 
   const qty = normQuantity(input.quantity);
 
@@ -308,12 +314,12 @@ export async function checkoutTool(input: {
     .select("id")
     .single();
 
-  if (error || !data) return { error: error?.message ?? "Erro ao registrar retirada" };
+  if (error || !data) return { error: error?.message ?? "Erro ao registrar o empréstimo" };
   revalidate();
   return { ok: true, loanId: data.id as string };
 }
 
-/** Foto de quem recebeu a ferramenta, tirada no momento da retirada. */
+/** Foto de quem recebeu a ferramenta, tirada no momento do empréstimo. */
 export async function uploadLoanReceiverPhoto(loanId: string, formData: FormData) {
   const supabase = createClient();
   const {
@@ -362,8 +368,8 @@ export async function returnTool(input: {
     .select("id, tool_id, returned_at")
     .eq("id", input.loan_id)
     .maybeSingle();
-  if (!loan) return { error: "Retirada não encontrada" };
-  if (loan.returned_at) return { error: "Esta retirada já foi devolvida" };
+  if (!loan) return { error: "Empréstimo não encontrado" };
+  if (loan.returned_at) return { error: "Este empréstimo já foi devolvido" };
 
   const { error } = await supabase
     .from("tool_loans")
@@ -414,7 +420,7 @@ export async function openMaintenance(input: {
     .maybeSingle();
   if (!t) return { error: "Patrimônio não encontrado" };
   if ((t.in_use_qty ?? 0) > 0)
-    return { error: "Devolva as retiradas em aberto antes de enviar para manutenção" };
+    return { error: "Receba de volta os empréstimos em aberto antes de enviar para manutenção" };
   if (t.status === "manutencao")
     return { error: "Este item já está em manutenção" };
 
@@ -562,6 +568,90 @@ export async function deleteToolUnit(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("tool_units").delete().eq("id", id);
   if (error) return { error: error.message };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALMOXARIFADOS (onde o patrimônio fica guardado)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface WarehouseInput {
+  name: string;
+  location?: string | null;
+  notes?: string | null;
+}
+
+/** A tabela vem da migration 045 — sem ela o erro do Postgres não diz nada. */
+function warehouseError(error: { code?: string; message: string }): string {
+  if (error.code === "23505") return "Já existe um almoxarifado com esse nome";
+  if (error.code === "42P01" || error.message.includes("tool_warehouses"))
+    return "Rode a migration 045 no Supabase para usar os almoxarifados";
+  return error.message;
+}
+
+export async function createWarehouse(input: WarehouseInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome do almoxarifado" };
+
+  const { data, error } = await supabase
+    .from("tool_warehouses")
+    .insert({
+      name,
+      location: clean(input.location),
+      notes: clean(input.notes),
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error ? warehouseError(error) : "Erro ao cadastrar" };
+  revalidate();
+  return { ok: true, warehouseId: data.id as string };
+}
+
+export async function updateWarehouse(id: string, input: WarehouseInput) {
+  const supabase = createClient();
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome do almoxarifado" };
+
+  const { error } = await supabase
+    .from("tool_warehouses")
+    .update({ name, location: clean(input.location), notes: clean(input.notes) })
+    .eq("id", id);
+
+  if (error) return { error: warehouseError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Remove o almoxarifado. Os itens guardados nele NÃO são apagados — ficam sem
+ * almoxarifado (aparecem em "Sem almoxarifado") até serem realocados.
+ */
+export async function deleteWarehouse(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("tool_warehouses").delete().eq("id", id);
+  if (error) return { error: warehouseError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Move um item de patrimônio para outro almoxarifado. */
+export async function moveToolToWarehouse(toolId: string, warehouseId: string | null) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("tools")
+    .update({ warehouse_id: warehouseId || null })
+    .eq("id", toolId);
+  if (error) return { error: warehouseError(error) };
   revalidate();
   return { ok: true };
 }

@@ -6,6 +6,7 @@ import type {
   AnimalTreatment,
   AnimalVaccine,
   AnimalVaccinePending,
+  AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
 import type { VaccinationRow } from "@/components/animais/animais-page-client";
@@ -23,6 +24,7 @@ export default async function AnimaisPage() {
     treatmentsRes,
     birthsRes,
     pendingRes,
+    weightsRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -45,6 +47,12 @@ export default async function AnimaisPage() {
       .limit(500),
     // pendências marcadas na mão (migration 044 — sem ela a tela segue funcionando)
     supabase.from("animal_vaccine_pending").select("*").limit(2000),
+    // pesagens (migration 046 — sem ela a tela segue funcionando, só sem ganho)
+    supabase
+      .from("animal_weights")
+      .select("*")
+      .order("weighed_at", { ascending: false })
+      .limit(3000),
   ]);
 
   return (
@@ -56,6 +64,7 @@ export default async function AnimaisPage() {
       treatments={(treatmentsRes.data as AnimalTreatment[]) ?? []}
       births={(birthsRes.data as AnimalBirth[]) ?? []}
       pendings={(pendingRes.data as AnimalVaccinePending[]) ?? []}
+      weights={(weightsRes.data as AnimalWeight[]) ?? []}
     />
   );
 }

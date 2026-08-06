@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createTool, updateTool, uploadToolPhotos } from "@/app/(app)/ferramentas/actions";
 import { ConditionPicker, parseMoney, formatMoneyInput } from "./tool-shared";
 import { ToolUnitsDialog } from "./tool-units-dialog";
-import type { Tool, ToolCondition, ToolUnit } from "@/lib/types";
+import type { Tool, ToolCondition, ToolUnit, ToolWarehouse } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -25,9 +25,20 @@ interface Props {
   tool: Tool | null;
   /** Tipos de unidade cadastrados. */
   units: ToolUnit[];
+  /** Almoxarifados cadastrados. */
+  warehouses: ToolWarehouse[];
+  /** Almoxarifado que a tela está mostrando — já vem escolhido no cadastro. */
+  defaultWarehouseId?: string | null;
 }
 
-export function ToolDialog({ open, onClose, tool, units }: Props) {
+export function ToolDialog({
+  open,
+  onClose,
+  tool,
+  units,
+  warehouses,
+  defaultWarehouseId,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +49,7 @@ export function ToolDialog({ open, onClose, tool, units }: Props) {
   const [unit, setUnit] = useState("unidade");
   const [unitValue, setUnitValue] = useState("");
   const [replacementValue, setReplacementValue] = useState("");
+  const [warehouseId, setWarehouseId] = useState("");
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [unitsOpen, setUnitsOpen] = useState(false);
@@ -58,10 +70,16 @@ export function ToolDialog({ open, onClose, tool, units }: Props) {
         ? tool.replacement_value.toFixed(2).replace(".", ",")
         : ""
     );
+    // item novo já nasce no almoxarifado que está sendo mostrado na tela
+    setWarehouseId(
+      tool?.warehouse_id ?? defaultWarehouseId ?? warehouses[0]?.id ?? ""
+    );
     setNotes(tool?.notes ?? "");
     setPhotos([]);
     setError(null);
-  }, [open, tool]);
+    // `warehouses` muda a cada refresh do servidor; abrir o diálogo é o gatilho
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, tool, defaultWarehouseId]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -82,6 +100,7 @@ export function ToolDialog({ open, onClose, tool, units }: Props) {
         unit,
         unit_value: parseMoney(unitValue),
         replacement_value: parseMoney(replacementValue),
+        warehouse_id: warehouseId || null,
         notes,
       };
       const r = tool ? await updateTool(tool.id, input) : await createTool(input);
@@ -137,6 +156,30 @@ export function ToolDialog({ open, onClose, tool, units }: Props) {
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
             />
+          </div>
+
+          {/* Onde fica guardado */}
+          <div className="space-y-1.5">
+            <Label htmlFor="tool_warehouse">Almoxarifado</Label>
+            <select
+              id="tool_warehouse"
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+              className="w-full h-11 text-base rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-slate-800 dark:text-slate-100 sm:h-10 sm:text-sm"
+            >
+              <option value="">Sem almoxarifado</option>
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+            {warehouses.length === 0 && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Nenhum almoxarifado cadastrado ainda — use &quot;Almoxarifados&quot; na tela
+                de patrimônio.
+              </p>
+            )}
           </div>
 
           {/* Quantidade + unidade */}

@@ -8,6 +8,7 @@ import {
   ImageIcon,
   Pencil,
   Printer,
+  Scale,
   Stethoscope,
   Syringe,
   Trash2,
@@ -23,6 +24,7 @@ import { cn, formatDate } from "@/lib/utils";
 import {
   deleteAnimal,
   deleteAnimalPhoto,
+  deleteAnimalWeight,
   deleteBirth,
   deleteTreatment,
   deleteVaccination,
@@ -34,19 +36,24 @@ import {
   ICON_BUTTON,
   SEX_LABELS,
   VACCINE_STATUS_META,
+  addMonths,
   categoryLabel,
   doseRuleLabel,
   formatAge,
   formatMl,
+  formatPeriod,
   formatWeight,
   pariuLabel,
+  previousWeighing,
   vaccineStatusFor,
+  weightGain,
 } from "./animal-shared";
 import type {
   AnimalBirth,
   AnimalTreatment,
   AnimalVaccination,
   AnimalVaccine,
+  AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
 
@@ -62,6 +69,8 @@ interface Props {
   treatments: AnimalTreatment[];
   /** Partos deste animal (uma linha por bezerro). */
   births: AnimalBirth[];
+  /** Pesagens deste animal (da mais nova para a mais velha). */
+  weights?: AnimalWeight[];
   /** Quando este animal é um bezerro cadastrado por um parto: esse parto. */
   motherBirth?: AnimalBirth | null;
   /** Número da mãe (vem junto com motherBirth). */
@@ -77,6 +86,8 @@ interface Props {
   onOpenAnimal: (id: string) => void;
   onTreatment: (animal: AnimalWithInfo) => void;
   onBirth: (animal: AnimalWithInfo) => void;
+  /** Abre a pesagem avulsa deste animal. */
+  onWeigh: (animal: AnimalWithInfo) => void;
 }
 
 type Section = "ficha" | "vacinas" | "historico";
@@ -89,6 +100,7 @@ export function AnimalDetailDialog({
   vaccines,
   treatments,
   births,
+  weights = [],
   motherBirth,
   motherTag,
   pendingKeys,
@@ -98,6 +110,7 @@ export function AnimalDetailDialog({
   onOpenAnimal,
   onTreatment,
   onBirth,
+  onWeigh,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [section, setSection] = useState<Section>("ficha");
@@ -178,6 +191,20 @@ export function AnimalDetailDialog({
     });
   }
 
+  /** Pesagem lançada errada: apaga e o peso atual volta para a anterior. */
+  function handleDeleteWeight(w: AnimalWeight) {
+    if (
+      !confirm(
+        `Apagar a pesagem de ${formatDate(w.weighed_at)} (${formatWeight(Number(w.weight))})?`
+      )
+    )
+      return;
+    startTransition(async () => {
+      const r = await deleteAnimalWeight(w.id);
+      if (r && "error" in r) alert(r.error);
+    });
+  }
+
   /** Remove o protocolo inteiro quando as vacinas foram aplicadas juntas. */
   function handleDeleteGroup(protocolId: string | null, id: string, count: number) {
     const msg =
@@ -209,7 +236,42 @@ export function AnimalDetailDialog({
   /** Quantas foram marcadas na mão como pendentes (o que o dono decidiu). */
   const markedCount = vaccineRows.filter((r) => r.marked).length;
 
-  const vaccineNameById = new Map(vaccines.map((v) => [v.id, v.name]));
+  const vaccineById = new Map(vaccines.map((v) => [v.id, v]));
+
+  // ── Pesagens: o quanto engordou e em quanto tempo ─────────────────────────
+  /** Da mais nova para a mais velha (a lista já vem assim, mas garantimos). */
+  const sortedWeights = [...weights].sort((a, b) =>
+    a.weighed_at < b.weighed_at ? 1 : -1
+  );
+  const lastWeighing = sortedWeights[0] ?? null;
+  const firstWeighing = sortedWeights[sortedWeights.length - 1] ?? null;
+
+  /** Ganho da vida toda: da primeira pesagem até a última. */
+  const lifeGain =
+    firstWeighing && lastWeighing && firstWeighing.id !== lastWeighing.id
+      ? weightGain(
+          { weighed_at: firstWeighing.weighed_at, weight: Number(firstWeighing.weight) },
+          { weighed_at: lastWeighing.weighed_at, weight: Number(lastWeighing.weight) }
+        )
+      : null;
+
+  /** Peso tirado em cada protocolo (protocol_id → pesagem). */
+  const weightByProtocol = new Map(
+    sortedWeights.filter((w) => w.protocol_id).map((w) => [w.protocol_id as string, w])
+  );
+
+  /** Ganho de uma pesagem para a anterior. */
+  function gainFor(w: AnimalWeight) {
+    const prev = previousWeighing(
+      sortedWeights.map((x) => ({ ...x, weight: Number(x.weight) })),
+      w.weighed_at
+    );
+    if (!prev) return null;
+    return weightGain(
+      { weighed_at: prev.weighed_at, weight: Number(prev.weight) },
+      { weighed_at: w.weighed_at, weight: Number(w.weight) }
+    );
+  }
 
   // Vacinas aplicadas juntas viram UM evento no histórico (o protocolo).
   const groups = Object.values(
@@ -220,10 +282,15 @@ export function AnimalDetailDialog({
     }, {})
   );
 
-  // Histórico unificado: vacinas (por protocolo) + tratamentos + partos
+  // Histórico unificado: vacinas (por protocolo) + pesagens + tratamentos + partos
   const events: { key: string; date: string; node: React.ReactNode }[] = [
     ...groups.map((group) => {
       const first = group[0];
+      // peso tirado nesse mesmo protocolo — e quanto ganhou desde o anterior
+      const protocolWeight = first.protocol_id
+        ? weightByProtocol.get(first.protocol_id) ?? null
+        : null;
+      const protocolGain = protocolWeight ? gainFor(protocolWeight) : null;
       return {
         key: `vc-${first.protocol_id ?? first.id}`,
         date: first.applied_at,
@@ -237,14 +304,46 @@ export function AnimalDetailDialog({
                 {group.length > 1 ? `Protocolo · ${group.length} vacinas` : "Vacina aplicada"}
               </p>
               <ul className="mt-0.5 space-y-0.5">
-                {group.map((v) => (
-                  <li key={v.id} className="text-sm text-slate-500 dark:text-slate-400">
-                    {vaccineNameById.get(v.vaccine_id) ?? "—"}
-                    {v.dose_ml ? ` · ${formatMl(Number(v.dose_ml))}` : ""}
-                    {v.brand ? ` · ${v.brand}` : ""}
-                  </li>
-                ))}
+                {group.map((v) => {
+                  const vaccine = vaccineById.get(v.vaccine_id);
+                  // vacinação é periódica: mostra quando esta dose vence
+                  const next = vaccine?.recurrence_months
+                    ? addMonths(v.applied_at, vaccine.recurrence_months)
+                    : null;
+                  return (
+                    <li key={v.id} className="text-sm text-slate-500 dark:text-slate-400">
+                      {vaccine?.name ?? "—"}
+                      {v.dose_ml ? ` · ${formatMl(Number(v.dose_ml))}` : ""}
+                      {v.brand ? ` · ${v.brand}` : ""}
+                      {next && (
+                        <span className="text-slate-400"> · reforço {formatDate(next)}</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
+              {/* Pesagem do dia do protocolo: engordou quanto, em quanto tempo */}
+              {protocolWeight && (
+                <p className="text-sm">
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Peso {formatWeight(Number(protocolWeight.weight))}
+                  </span>
+                  {protocolGain && (
+                    <span
+                      className={cn(
+                        "ml-1 font-medium",
+                        protocolGain.diff > 0
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : protocolGain.diff < 0
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-slate-400"
+                      )}
+                    >
+                      · {protocolGain.label}
+                    </span>
+                  )}
+                </p>
+              )}
               <p className="text-sm text-slate-400">
                 {formatDate(first.applied_at)}
                 {first.notes ? ` · ${first.notes}` : ""}
@@ -263,6 +362,55 @@ export function AnimalDetailDialog({
         ),
       };
     }),
+    // pesagens avulsas (as do protocolo já aparecem dentro dele)
+    ...sortedWeights
+      .filter((w) => !w.protocol_id)
+      .map((w) => {
+        const g = gainFor(w);
+        return {
+          key: `wg-${w.id}`,
+          date: w.weighed_at,
+          node: (
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg bg-sky-50 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 flex-shrink-0">
+                <Scale className="w-3.5 h-3.5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-slate-800 dark:text-slate-100">
+                  Pesagem · {formatWeight(Number(w.weight))}
+                </p>
+                {g && (
+                  <p
+                    className={cn(
+                      "text-sm font-medium",
+                      g.diff > 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : g.diff < 0
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-slate-400"
+                    )}
+                  >
+                    {g.label}
+                  </p>
+                )}
+                <p className="text-sm text-slate-400">
+                  {formatDate(w.weighed_at)}
+                  {w.notes ? ` · ${w.notes}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDeleteWeight(w)}
+                disabled={isPending}
+                aria-label="Remover pesagem"
+                className={cn(ICON_BUTTON, "text-slate-300 hover:text-red-500 -mr-2")}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ),
+        };
+      }),
     ...treatments.map((t) => ({
       key: `tr-${t.id}`,
       date: t.applied_at,
@@ -405,7 +553,26 @@ export function AnimalDetailDialog({
                   value={animal.birth_date ? formatDate(animal.birth_date) : "—"}
                 />
                 <InfoRow label="Idade" value={formatAge(animal.age_months)} />
-                <InfoRow label="Peso" value={weightKg > 0 ? formatWeight(weightKg) : "—"} />
+                <InfoRow
+                  label="Peso"
+                  value={
+                    weightKg > 0
+                      ? `${formatWeight(weightKg)}${
+                          lastWeighing ? ` · pesado em ${formatDate(lastWeighing.weighed_at)}` : ""
+                        }`
+                      : "—"
+                  }
+                />
+                {/* Quanto engordou da primeira pesagem até agora */}
+                {lifeGain && <InfoRow label="Ganho total" value={lifeGain.label} />}
+                {sortedWeights.length > 1 && (
+                  <InfoRow
+                    label="Pesagens"
+                    value={`${sortedWeights.length} em ${formatPeriod(
+                      lifeGain?.days ?? 0
+                    )}`}
+                  />
+                )}
                 {/* Bezerro cadastrado pelo parto: de quem ele é */}
                 {motherBirth && (
                   <InfoLinkRow
@@ -495,7 +662,15 @@ export function AnimalDetailDialog({
                 </Button>
                 <Button
                   variant="outline"
-                  className={cn("h-12 sm:h-10", animal.sex !== "femea" && "col-span-2")}
+                  className="h-12 sm:h-10"
+                  onClick={() => onWeigh(animal)}
+                >
+                  <Scale className="w-4 h-4" />
+                  Pesar
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-12 sm:h-10"
                   onClick={() => onTreatment(animal)}
                 >
                   <Stethoscope className="w-4 h-4" />
@@ -504,7 +679,7 @@ export function AnimalDetailDialog({
                 {animal.sex === "femea" && (
                   <Button
                     variant="outline"
-                    className="h-12 sm:h-10"
+                    className="h-12 sm:h-10 col-span-2"
                     onClick={() => onBirth(animal)}
                   >
                     <Baby className="w-4 h-4" />
@@ -615,7 +790,7 @@ export function AnimalDetailDialog({
             <div>
               {events.length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500 py-2">
-                  Nenhuma vacina, tratamento ou parto registrado.
+                  Nenhuma vacina, pesagem, tratamento ou parto registrado.
                 </p>
               ) : (
                 <div className="space-y-2.5">

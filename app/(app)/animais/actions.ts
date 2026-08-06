@@ -64,15 +64,41 @@ export async function createAnimal(input: AnimalInput) {
     .single();
 
   if (error || !data) return { error: error ? dupTagError(error) : "Erro ao cadastrar" };
+
+  // o peso do cadastro é a primeira pesagem (hoje) — dela sai o ganho daqui pra frente
+  const weight = normWeight(input.weight);
+  if (weight > 0) {
+    await saveWeight(supabase, {
+      animal_id: data.id as string,
+      weight,
+      weighed_at: new Date().toISOString().split("T")[0],
+      notes: "PESO DO CADASTRO",
+      created_by: user.id,
+    });
+  }
+
   revalidate();
   return { ok: true, animalId: data.id as string };
 }
 
 export async function updateAnimal(id: string, input: AnimalInput) {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
 
   const tag = clean(input.tag);
   if (!tag) return { error: "Informe o número do animal" };
+
+  // peso de antes: só vira pesagem nova quando ele realmente mudou
+  const { data: before } = await supabase
+    .from("animals")
+    .select("weight")
+    .eq("id", id)
+    .maybeSingle();
+
+  const weight = normWeight(input.weight);
 
   const { error } = await supabase
     .from("animals")
@@ -81,12 +107,22 @@ export async function updateAnimal(id: string, input: AnimalInput) {
       sex: input.sex,
       birth_date: input.birth_date || null,
       breed_id: input.breed_id || null,
-      weight: normWeight(input.weight),
+      weight,
       notes: clean(input.notes),
     })
     .eq("id", id);
 
   if (error) return { error: dupTagError(error) };
+
+  if (weight > 0 && Number(before?.weight ?? 0) !== weight) {
+    await saveWeight(supabase, {
+      animal_id: id,
+      weight,
+      weighed_at: new Date().toISOString().split("T")[0],
+      created_by: user.id,
+    });
+  }
+
   revalidate();
   return { ok: true };
 }
@@ -390,11 +426,17 @@ export interface ProtocolItemInput {
 /**
  * Aplica um PROTOCOLO: várias vacinas no mesmo animal, na mesma data.
  * As linhas compartilham um protocol_id para o histórico mostrar agrupado.
+ *
+ * O animal passa na balança na mesma ida ao curral: `weight_kg` grava a pesagem
+ * do dia junto do protocolo (é dela que sai "engordou X kg em Y dias") e vira o
+ * peso atual do animal — o que calcula a dose por peso da próxima vez.
  */
 export async function applyVaccineProtocol(input: {
   animal_id: string;
   applied_at?: string | null;
   items: ProtocolItemInput[];
+  /** Peso do animal no dia do protocolo, em kg (opcional). */
+  weight_kg?: number | null;
   notes?: string | null;
 }) {
   const supabase = createClient();
@@ -437,8 +479,21 @@ export async function applyVaccineProtocol(input: {
     .eq("animal_id", input.animal_id)
     .in("vaccine_id", Array.from(uniqueIds));
 
+  // a pesagem é opcional: se falhar, a vacinação já está registrada — avisa e segue
+  let warning: string | undefined;
+  if (input.weight_kg && input.weight_kg > 0) {
+    const w = await saveWeight(supabase, {
+      animal_id: input.animal_id,
+      weight: input.weight_kg,
+      weighed_at: appliedAt,
+      protocol_id: protocolId,
+      created_by: user.id,
+    });
+    if (w.error) warning = `Vacinas registradas, mas o peso não: ${w.error}`;
+  }
+
   revalidate();
-  return { ok: true, protocolId };
+  return { ok: true, protocolId, warning };
 }
 
 export async function deleteVaccination(id: string) {
@@ -449,7 +504,11 @@ export async function deleteVaccination(id: string) {
   return { ok: true };
 }
 
-/** Apaga o protocolo inteiro (todas as vacinas aplicadas juntas). */
+/**
+ * Apaga o protocolo inteiro (todas as vacinas aplicadas juntas). A pesagem
+ * daquele dia FICA — o boi foi pesado de verdade; ela só perde o vínculo com o
+ * protocolo e vira uma pesagem avulsa no histórico.
+ */
 export async function deleteVaccinationProtocol(protocolId: string) {
   const supabase = createClient();
   const { error } = await supabase
@@ -457,6 +516,120 @@ export async function deleteVaccinationProtocol(protocolId: string) {
     .delete()
     .eq("protocol_id", protocolId);
   if (error) return { error: error.message };
+
+  await supabase
+    .from("animal_weights")
+    .update({ protocol_id: null })
+    .eq("protocol_id", protocolId);
+
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PESAGENS (quanto o animal ganhou e em quanto tempo)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A tabela vem da migration 046 — sem ela o erro do Postgres não diz nada. */
+function weightsTableError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.message.includes("animal_weights"))
+    return "Rode a migration 046 no Supabase para registrar as pesagens";
+  return error.message;
+}
+
+type Supabase = ReturnType<typeof createClient>;
+
+/**
+ * Grava a pesagem (uma por animal por dia — repesar no mesmo dia corrige) e
+ * deixa animals.weight igual à pesagem mais recente: é o peso atual que calcula
+ * a dose em ml por peso.
+ */
+async function saveWeight(
+  supabase: Supabase,
+  row: {
+    animal_id: string;
+    weight: number;
+    weighed_at: string;
+    protocol_id?: string | null;
+    notes?: string | null;
+    created_by: string;
+  }
+): Promise<{ error?: string }> {
+  const { error } = await supabase.from("animal_weights").upsert(
+    {
+      animal_id: row.animal_id,
+      weighed_at: row.weighed_at,
+      weight: row.weight,
+      protocol_id: row.protocol_id ?? null,
+      notes: row.notes ?? null,
+      created_by: row.created_by,
+    },
+    { onConflict: "animal_id,weighed_at" }
+  );
+  if (error) return { error: weightsTableError(error) };
+
+  await syncCurrentWeight(supabase, row.animal_id);
+  return {};
+}
+
+/** Peso atual do animal = última pesagem registrada. */
+async function syncCurrentWeight(supabase: Supabase, animalId: string) {
+  const { data: last } = await supabase
+    .from("animal_weights")
+    .select("weight")
+    .eq("animal_id", animalId)
+    .order("weighed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (last) {
+    await supabase.from("animals").update({ weight: last.weight }).eq("id", animalId);
+  }
+}
+
+/** Pesagem avulsa (fora do protocolo de vacinação). */
+export async function recordAnimalWeight(input: {
+  animal_id: string;
+  weight: number;
+  weighed_at?: string | null;
+  notes?: string | null;
+}) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.animal_id) return { error: "Selecione o animal" };
+  if (!input.weight || input.weight <= 0) return { error: "Informe o peso em kg" };
+
+  const r = await saveWeight(supabase, {
+    animal_id: input.animal_id,
+    weight: input.weight,
+    weighed_at: input.weighed_at || new Date().toISOString().split("T")[0],
+    notes: clean(input.notes),
+    created_by: user.id,
+  });
+  if (r.error) return { error: r.error };
+
+  revalidate();
+  return { ok: true };
+}
+
+/** Apaga uma pesagem lançada errado e volta o peso atual para a anterior. */
+export async function deleteAnimalWeight(id: string) {
+  const supabase = createClient();
+
+  const { data: row } = await supabase
+    .from("animal_weights")
+    .select("id, animal_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  const { error } = await supabase.from("animal_weights").delete().eq("id", id);
+  if (error) return { error: weightsTableError(error) };
+
+  if (row?.animal_id) await syncCurrentWeight(supabase, row.animal_id as string);
+
   revalidate();
   return { ok: true };
 }
@@ -575,6 +748,18 @@ export async function createBirth(input: BirthInput) {
     // desfaz o cadastro do bezerro para não deixar animal órfão
     await supabase.from("animals").delete().eq("id", calfAnimalId);
     return { error: error.message };
+  }
+
+  // peso de nascimento vira a primeira pesagem: o ganho do bezerro conta daí
+  const calfWeight = normWeight(input.calf_weight);
+  if (calfWeight > 0) {
+    await saveWeight(supabase, {
+      animal_id: calfAnimalId,
+      weight: calfWeight,
+      weighed_at: input.birth_date,
+      notes: "PESO AO NASCER",
+      created_by: user.id,
+    });
   }
 
   revalidate();
