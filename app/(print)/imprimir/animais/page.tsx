@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { RebanhoVacinasPrint } from "@/components/animais/rebanho-vacinas-print";
+import { SPECIES_META, categoryPlural } from "@/components/animais/animal-shared";
 import type {
   AnimalBirth,
   AnimalCategory,
+  AnimalSpecies,
   AnimalVaccination,
   AnimalVaccine,
   AnimalWithInfo,
@@ -11,20 +13,17 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-const CATEGORY_LABELS: Record<AnimalCategory, string> = {
-  boi: "Bois",
-  vaca: "Vacas",
-  bezerro: "Bezerros",
-};
+const CATEGORIES: AnimalCategory[] = ["boi", "vaca", "bezerro"];
 
 interface Props {
-  searchParams: { categoria?: string; pendentes?: string };
+  searchParams: { tipo?: string; categoria?: string; pendentes?: string };
 }
 
 /**
  * Guia de vacinação do rebanho — lista com uma linha por animal e uma coluna
- * por vacina. Aceita os mesmos filtros da tela: ?categoria=vaca|boi|bezerro e
- * ?pendentes=1 (só quem tem vacina MARCADA NA MÃO como pendente).
+ * por vacina. Aceita os mesmos filtros da tela: ?tipo=bovino|equino|caprino|
+ * ovino, ?categoria=vaca|boi|bezerro e ?pendentes=1 (só quem tem vacina
+ * MARCADA NA MÃO como pendente).
  */
 export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   const supabase = createClient();
@@ -35,10 +34,13 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   if (!user) redirect("/login");
 
   const categoria = searchParams.categoria as AnimalCategory | undefined;
+  const tipo = searchParams.tipo as AnimalSpecies | undefined;
+  const especie = tipo && tipo in SPECIES_META ? tipo : null;
   const onlyPending = searchParams.pendentes === "1";
 
   let query = supabase.from("v_animals").select("*").order("tag", { ascending: true });
-  if (categoria && categoria in CATEGORY_LABELS) query = query.eq("category", categoria);
+  if (categoria && CATEGORIES.includes(categoria)) query = query.eq("category", categoria);
+  if (especie) query = query.eq("species", especie);
 
   const [animalsRes, vaccinesRes, vaccinationsRes, birthsRes, pendingRes] = await Promise.all([
     query,
@@ -64,7 +66,8 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   }
 
   const filterLabel = [
-    categoria && categoria in CATEGORY_LABELS ? CATEGORY_LABELS[categoria] : null,
+    especie ? SPECIES_META[especie].plural : null,
+    categoria && CATEGORIES.includes(categoria) ? categoryPlural(categoria, especie) : null,
     onlyPending ? "só os marcados como pendente" : null,
   ]
     .filter(Boolean)

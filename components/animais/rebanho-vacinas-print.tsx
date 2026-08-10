@@ -183,7 +183,7 @@ export function RebanhoVacinasPrint({
                     <tr key={a.id}>
                       <td className="py-1.5 px-1.5 border border-slate-200 font-bold">{a.tag}</td>
                       <td className="py-1.5 px-1.5 border border-slate-200">
-                        {categoryLabel(a.category, a.sex)}
+                        {categoryLabel(a.category, a.sex, a.species)}
                       </td>
                       <td className="py-1.5 px-1.5 border border-slate-200 capitalize">
                         {a.breed_name ?? "—"}

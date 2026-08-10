@@ -4,8 +4,15 @@ import { useRef, useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createAnimal, createBirth } from "@/app/(app)/animais/actions";
-import { formatDecimalInput, parseDecimal } from "./animal-shared";
-import type { AnimalBreed, AnimalSex } from "@/lib/types";
+import {
+  SPECIES_META,
+  SPECIES_OPTIONS,
+  formatDecimalInput,
+  parseDecimal,
+  speciesOf,
+  youngNoun,
+} from "./animal-shared";
+import type { AnimalBreed, AnimalSex, AnimalSpecies } from "@/lib/types";
 
 interface Props {
   breeds: AnimalBreed[];
@@ -16,10 +23,10 @@ interface Props {
 /**
  * Linha de digitação direta no topo da planilha — cadastra o animal sem abrir
  * formulário. Cada campo fica na sua coluna:
- *   • Cat.  → sexo (F/M) do animal
- *   • Pariu → o parto: a data (que é o nascimento do bezerro) e, ao
- *     preenchê-la, o sexo do bezerro
- * Enter salva. Sexo e raça ficam para o próximo — um lote entra só
+ *   • Cat.  → tipo (bovino, equino...) e sexo (F/M) do animal
+ *   • Pariu → o parto: a data (que é o nascimento da cria) e, ao
+ *     preenchê-la, o sexo da cria
+ * Enter salva. Tipo, sexo e raça ficam para o próximo — um lote entra só
  * digitando número e peso.
  */
 export function QuickAddRow({ breeds, vaccinesCount }: Props) {
@@ -28,6 +35,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
 
   const [tag, setTag] = useState("");
   const [sex, setSex] = useState<AnimalSex>("femea");
+  const [species, setSpecies] = useState<AnimalSpecies>("bovino");
   const [breedId, setBreedId] = useState("");
   const [weight, setWeight] = useState("");
   // parto (só para fêmea): data + sexo e número do bezerro (ele entra no rebanho)
@@ -37,6 +45,18 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   const tagRef = useRef<HTMLInputElement>(null);
 
   const isFemale = sex === "femea";
+  /** A raça é do tipo escolhido — nelore não aparece para uma égua. */
+  const speciesBreeds = breeds.filter((b) => speciesOf(b.species) === species);
+  /** Como se chama a cria deste tipo: bezerro, potro, cabrito, cordeiro. */
+  const calf = youngNoun(species, calfSex);
+
+  /** Trocou o tipo: a raça de antes é de outro bicho, sai da frente. */
+  function pickSpecies(v: AnimalSpecies) {
+    setSpecies(v);
+    if (breedId && !breeds.some((b) => b.id === breedId && speciesOf(b.species) === v)) {
+      setBreedId("");
+    }
+  }
 
   function submit() {
     if (isPending) return;
@@ -47,11 +67,11 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
       return;
     }
     if (isFemale && calvedAt && !calfSex) {
-      setError("Marque se o bezerro é macho (M) ou fêmea (F)");
+      setError(`Marque se o ${calf} é macho (M) ou fêmea (F)`);
       return;
     }
     if (isFemale && calvedAt && !calfTag.trim()) {
-      setError("Informe o número do bezerro — ele entra no rebanho junto com o parto");
+      setError(`Informe o número do ${calf} — ele entra no rebanho junto com o parto`);
       return;
     }
 
@@ -59,6 +79,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
       const r = await createAnimal({
         tag,
         sex,
+        species,
         breed_id: breedId || null,
         weight: parseDecimal(weight),
       });
@@ -82,7 +103,7 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
         }
       }
 
-      // pronto pro próximo: mantém sexo e raça (lote), limpa o resto
+      // pronto pro próximo: mantém tipo, sexo e raça (lote), limpa o resto
       setTag("");
       setWeight("");
       setCalvedAt("");
@@ -156,12 +177,28 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
           />
         </td>
 
-        {/* Cat. → sexo do animal (a categoria sai daí + da idade) */}
-        <td className="px-1 py-2">
-          <SexToggle value={sex} onPick={setSex} disabled={isPending} />
+        {/* Cat. → tipo e sexo do animal (a categoria sai daí + da idade) */}
+        <td className="px-1 py-2 min-w-[104px]">
+          <div className="space-y-1">
+            <SexToggle value={sex} onPick={setSex} disabled={isPending} />
+            <select
+              value={species}
+              onChange={(e) => pickSpecies(e.target.value as AnimalSpecies)}
+              aria-label="Tipo do animal"
+              title="Tipo do animal"
+              className={inputCls}
+              disabled={isPending}
+            >
+              {SPECIES_OPTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </td>
 
-        {/* Raça */}
+        {/* Raça (só as do tipo escolhido) */}
         <td className="px-1 py-2 min-w-[110px]">
           <select
             value={breedId}
@@ -170,8 +207,12 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
             className={inputCls}
             disabled={isPending}
           >
-            <option value="">raça...</option>
-            {breeds.map((b) => (
+            <option value="">
+              {speciesBreeds.length === 0
+                ? `sem raça de ${SPECIES_META[species].label.toLowerCase()}`
+                : "raça..."}
+            </option>
+            {speciesBreeds.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
@@ -219,8 +260,8 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
                     value={calfTag}
                     onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
                     onKeyDown={onEnter}
-                    placeholder="nº do bezerro"
-                    aria-label="Número do bezerro"
+                    placeholder={`nº do ${calf}`}
+                    aria-label={`Número do ${calf}`}
                     className={cn(
                       inputCls,
                       "uppercase placeholder:normal-case placeholder:font-normal placeholder:text-produmar-500/70"
@@ -237,10 +278,10 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
                     )}
                   >
                     {!calfSex
-                      ? "bezerro: M ou F?"
+                      ? `${calf}: M ou F?`
                       : !calfTag.trim()
-                      ? "falta o nº do bezerro"
-                      : "bezerro entra no rebanho"}
+                      ? `falta o nº do ${calf}`
+                      : `${calf} entra no rebanho`}
                   </p>
                 </div>
               ) : (

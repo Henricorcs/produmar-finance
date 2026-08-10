@@ -19,12 +19,14 @@ import {
   FOOTER_CANCEL,
   FOOTER_SUBMIT,
   ICON_BUTTON,
+  SPECIES_META,
   STICKY_FOOTER,
   SexPicker,
   categoryLabel,
   formatDecimalInput,
   formatWeight,
   parseDecimal,
+  speciesOf,
 } from "./animal-shared";
 import type { AnimalBirth, AnimalSex, AnimalWithInfo } from "@/lib/types";
 
@@ -40,9 +42,10 @@ interface Props {
 }
 
 /**
- * Partos da vaca: a lista do que já foi lançado (com o botão de apagar, para
- * quando o parto entra errado) e o registro de um novo. Ao registrar, o
- * bezerro já entra no rebanho atrelado à mãe — número e peso são dele.
+ * Partos da mãe: a lista do que já foi lançado (com o botão de apagar, para
+ * quando o parto entra errado) e o registro de um novo. Ao registrar, a cria
+ * já entra no rebanho atrelada à mãe — número e peso são dela. O nome dela na
+ * tela sai do tipo da mãe: bezerro, potro, cabrito ou cordeiro.
  */
 export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [] }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -69,6 +72,12 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
     ? mothers.find((a) => a.id === presetMotherId) ?? null
     : null;
 
+  /** A cria é do tipo da mãe: bezerro de vaca, potro de égua, cabrito de cabra. */
+  const mother = presetMother ?? mothers.find((a) => a.id === motherId) ?? null;
+  const names = SPECIES_META[speciesOf(mother?.species)];
+  /** "bezerro"/"potro" — o nome da cria nos textos da tela. */
+  const young = names.youngMale.toLowerCase();
+
   /** Partos da mãe escolhida, do mais novo para o mais antigo. */
   const motherBirths = motherId
     ? births
@@ -78,14 +87,14 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
 
   function handleDelete(b: AnimalBirth) {
     const calf = b.calf_tag ? `nº ${b.calf_tag}` : "sem número";
-    if (!confirm(`Apagar o parto de ${formatDate(b.birth_date)} (bezerro ${calf})?`)) return;
+    if (!confirm(`Apagar o parto de ${formatDate(b.birth_date)} (${young} ${calf})?`)) return;
 
-    // o bezerro entrou no rebanho por causa deste parto — pergunta se sai junto
+    // a cria entrou no rebanho por causa deste parto — pergunta se sai junto
     const alsoCalf = b.calf_animal_id
       ? confirm(
-          `Tirar também o bezerro ${calf} do rebanho?\n\n` +
-            "OK = apaga o parto e o bezerro.\n" +
-            "Cancelar = apaga só o parto e o bezerro continua cadastrado."
+          `Tirar também o ${young} ${calf} do rebanho?\n\n` +
+            `OK = apaga o parto e o ${young}.\n` +
+            `Cancelar = apaga só o parto e o ${young} continua cadastrado.`
         )
       : false;
 
@@ -111,7 +120,7 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
       return;
     }
     if (!calfTag.trim()) {
-      setError("Informe o número do bezerro — ele entra no rebanho junto com o parto");
+      setError(`Informe o número do ${young} — ele entra no rebanho junto com o parto`);
       return;
     }
 
@@ -150,7 +159,7 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
                   <Baby className="w-4 h-4 text-amber-500 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-slate-800 dark:text-slate-100 truncate">
-                      {b.calf_sex === "macho" ? "Bezerro" : "Bezerra"}
+                      {b.calf_sex === "macho" ? names.youngMale : names.youngFemale}
                       {b.calf_tag ? ` nº ${b.calf_tag}` : ""}
                     </p>
                     <p className="text-[11px] text-slate-400">
@@ -195,7 +204,7 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <span className="truncate">{a.tag}</span>
                     <span className="text-[10px] text-slate-400 flex-shrink-0">
-                      {categoryLabel(a.category, a.sex)}
+                      {categoryLabel(a.category, a.sex, a.species)}
                       {a.breed_name ? ` · ${a.breed_name}` : ""}
                     </span>
                   </div>
@@ -219,13 +228,13 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
           </div>
 
           <div className="space-y-1.5">
-            <Label>Sexo do bezerro *</Label>
+            <Label>Sexo do {young} *</Label>
             <SexPicker value={calfSex} onChange={setCalfSex} />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <Label htmlFor="bt_calf_tag">Nº do bezerro *</Label>
+              <Label htmlFor="bt_calf_tag">Nº do {young} *</Label>
               <Input
                 id="bt_calf_tag"
                 value={calfTag}
@@ -250,8 +259,9 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
           </div>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            O bezerro entra no rebanho na hora, atrelado à mãe
-            {presetMother?.breed_name ? ` e já com a raça ${presetMother.breed_name}` : ""}
+            O {young} entra no rebanho na hora, atrelado à mãe e já como{" "}
+            {names.label.toLowerCase()}
+            {mother?.breed_name ? ` da raça ${mother.breed_name}` : ""}
             {calfWeight ? ` (${formatWeight(parseDecimal(calfWeight))})` : ""}.
           </p>
 

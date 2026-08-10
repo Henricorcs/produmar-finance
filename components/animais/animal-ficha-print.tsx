@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { formatDate } from "@/lib/utils";
 import {
+  SPECIES_META,
   VACCINE_STATUS_META,
   categoryLabel,
   doseRuleLabel,
@@ -10,6 +11,7 @@ import {
   formatMl,
   formatWeight,
   pariuLabel,
+  speciesOf,
   suggestedDoseMl,
   vaccineStatusFor,
   weightGain,
@@ -108,7 +110,8 @@ export function AnimalFichaPrint({
 
   const info: { label: string; value: string }[] = [
     { label: "Número", value: animal.tag },
-    { label: "Categoria", value: categoryLabel(animal.category, animal.sex) },
+    { label: "Tipo", value: SPECIES_META[speciesOf(animal.species)].label },
+    { label: "Categoria", value: categoryLabel(animal.category, animal.sex, animal.species) },
     { label: "Sexo", value: SEX_LABELS[animal.sex] },
     { label: "Raça", value: animal.breed_name ?? "—" },
     { label: "Nascimento", value: animal.birth_date ? formatDate(animal.birth_date) : "—" },
@@ -186,7 +189,7 @@ export function AnimalFichaPrint({
                 {animal.tag}
               </p>
               <p className="text-[11px] text-slate-500">
-                {categoryLabel(animal.category, animal.sex)}
+                {categoryLabel(animal.category, animal.sex, animal.species)}
                 {animal.breed_name ? ` · ${animal.breed_name}` : ""}
               </p>
             </div>
@@ -332,7 +335,7 @@ export function AnimalFichaPrint({
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 text-left">
                     <th className="py-1.5 px-2 font-semibold">Data</th>
-                    <th className="py-1.5 px-2 font-semibold">Bezerro</th>
+                    <th className="py-1.5 px-2 font-semibold">Cria</th>
                     <th className="py-1.5 px-2 font-semibold">Nº</th>
                   </tr>
                 </thead>

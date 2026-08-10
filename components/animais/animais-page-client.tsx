@@ -30,12 +30,16 @@ import { BirthDialog } from "./birth-dialog";
 import { QuickAddRow } from "./quick-add-row";
 import { WeightDialog } from "./weight-dialog";
 import {
+  SPECIES_META,
+  SPECIES_OPTIONS,
   categoryLabel,
+  categoryPlural,
   formatGain,
   formatMl,
   formatPeriod,
   formatWeight,
   pariuLabel,
+  speciesOf,
   suggestedDoseMl,
   vaccineStatusFor,
   weightGain,
@@ -44,6 +48,7 @@ import type {
   AnimalBirth,
   AnimalBreed,
   AnimalCategory,
+  AnimalSpecies,
   AnimalTreatment,
   AnimalVaccination,
   AnimalVaccine,
@@ -73,6 +78,8 @@ interface Props {
 
 type Tab = "rebanho" | "vacinacao";
 type CategoryFilter = "todos" | AnimalCategory;
+/** Filtro pelo tipo do animal — só aparece quando o rebanho tem mais de um. */
+type SpeciesFilter = "todos" | AnimalSpecies;
 
 /** Ordem da planilha. */
 type SortKey = "tag" | "recente" | "alterado";
@@ -98,6 +105,7 @@ export function AnimaisPageClient({
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("rebanho");
   const [search, setSearch] = useState("");
+  const [speciesFilter, setSpeciesFilter] = useState<SpeciesFilter>("todos");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
   const [onlyPending, setOnlyPending] = useState(false);
   const [sort, setSort] = useState<SortKey>("tag");
@@ -194,12 +202,46 @@ export function AnimaisPageClient({
     return Array.from(set).sort();
   }, [treatments]);
 
+  // ── Tipo do animal (bovino, equino, caprino, ovino) ─────────────────────────
+  /** Quantos animais de cada tipo — o filtro só mostra o que existe. */
+  const speciesCounts = useMemo(() => {
+    const c = new Map<AnimalSpecies, number>();
+    for (const a of animals) {
+      const s = speciesOf(a.species);
+      c.set(s, (c.get(s) ?? 0) + 1);
+    }
+    return c;
+  }, [animals]);
+
+  const speciesPresent = useMemo(
+    () => SPECIES_OPTIONS.map((s) => s.value).filter((s) => (speciesCounts.get(s) ?? 0) > 0),
+    [speciesCounts]
+  );
+
+  /** Rebanho de um tipo só (o de sempre): não tem o que filtrar. */
+  const showSpecies = speciesPresent.length > 1;
+  const species: SpeciesFilter = showSpecies ? speciesFilter : "todos";
+
+  /** Animais do tipo escolhido — base das contagens e da planilha. */
+  const speciesAnimals = useMemo(
+    () => (species === "todos" ? animals : animals.filter((a) => speciesOf(a.species) === species)),
+    [animals, species]
+  );
+
+  /**
+   * De quem são os nomes das categorias. Com um tipo escolhido (ou um rebanho
+   * de um tipo só) usa os dele — "Vacas", "Éguas". Misturado sem escolha, o
+   * nome genérico: "Fêmeas", "Machos", "Filhotes".
+   */
+  const labelSpecies: AnimalSpecies | null =
+    species !== "todos" ? species : speciesPresent.length === 1 ? speciesPresent[0] : null;
+
   // ── Contagens ───────────────────────────────────────────────────────────────
   const countBy = useMemo(() => {
     const c: Record<AnimalCategory, number> = { boi: 0, vaca: 0, bezerro: 0 };
-    for (const a of animals) c[a.category]++;
+    for (const a of speciesAnimals) c[a.category]++;
     return c;
-  }, [animals]);
+  }, [speciesAnimals]);
 
   /** Pendente é o que FOI MARCADO — o sistema não decide isso sozinho. */
   const pendingCount = pendingAnimalIds.size;
@@ -210,11 +252,17 @@ export function AnimaisPageClient({
   // ── Filtro e ordem do rebanho ───────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = search.trim().toUpperCase();
-    const list = animals.filter((a) => {
+    const list = speciesAnimals.filter((a) => {
       if (categoryFilter !== "todos" && a.category !== categoryFilter) return false;
       if (filterPending && !pendingAnimalIds.has(a.id)) return false;
       if (!q) return true;
-      return a.tag.includes(q) || (a.breed_name ?? "").toUpperCase().includes(q);
+      return (
+        a.tag.includes(q) ||
+        (a.breed_name ?? "").toUpperCase().includes(q) ||
+        // procurar por "equino" ou por "égua" também acha
+        SPECIES_META[speciesOf(a.species)].plural.toUpperCase().includes(q) ||
+        categoryLabel(a.category, a.sex, a.species).toUpperCase().includes(q)
+      );
     });
 
     // nº do animal é texto ("003", "1046") — compara numérico quando dá
@@ -227,7 +275,7 @@ export function AnimaisPageClient({
       if (sort === "alterado") return desc(a.updated_at, b.updated_at) || byTag(a, b);
       return byTag(a, b);
     });
-  }, [animals, search, categoryFilter, filterPending, pendingAnimalIds, sort]);
+  }, [speciesAnimals, search, categoryFilter, filterPending, pendingAnimalIds, sort]);
 
   /**
    * Registro de vacinação: quem foi vacinado, quando, com qual vacina e
@@ -264,11 +312,12 @@ export function AnimaisPageClient({
   /** Link da impressão do rebanho respeitando os filtros da tela. */
   const printHref = useMemo(() => {
     const params = new URLSearchParams();
+    if (species !== "todos") params.set("tipo", species);
     if (categoryFilter !== "todos") params.set("categoria", categoryFilter);
     if (onlyPending) params.set("pendentes", "1");
     const qs = params.toString();
     return `/imprimir/animais${qs ? `?${qs}` : ""}`;
-  }, [categoryFilter, onlyPending]);
+  }, [species, categoryFilter, onlyPending]);
 
   // ── Ações auxiliares ────────────────────────────────────────────────────────
   function openNewAnimal() {
@@ -373,10 +422,24 @@ export function AnimaisPageClient({
   ];
 
   const categoryFilters: { value: CategoryFilter; label: string; count: number }[] = [
+    { value: "todos", label: "Todos", count: speciesAnimals.length },
+    { value: "vaca", label: categoryPlural("vaca", labelSpecies), count: countBy.vaca },
+    { value: "boi", label: categoryPlural("boi", labelSpecies), count: countBy.boi },
+    {
+      value: "bezerro",
+      label: categoryPlural("bezerro", labelSpecies),
+      count: countBy.bezerro,
+    },
+  ];
+
+  /** Filtro por tipo: "Todos" + só os tipos que existem no rebanho. */
+  const speciesFilters: { value: SpeciesFilter; label: string; count: number }[] = [
     { value: "todos", label: "Todos", count: animals.length },
-    { value: "vaca", label: "Vacas", count: countBy.vaca },
-    { value: "boi", label: "Bois", count: countBy.boi },
-    { value: "bezerro", label: "Bezerros", count: countBy.bezerro },
+    ...speciesPresent.map((s) => ({
+      value: s as SpeciesFilter,
+      label: SPECIES_META[s].plural,
+      count: speciesCounts.get(s) ?? 0,
+    })),
   ];
 
   return (
@@ -439,6 +502,32 @@ export function AnimaisPageClient({
           Botões, inputs e selects não herdam text-transform — daí as variantes. */}
       {tab === "rebanho" && (
         <div className="space-y-4 uppercase [&_button]:uppercase [&_input]:uppercase [&_select]:uppercase [&_input::placeholder]:uppercase">
+          {/* Filtro por tipo — só quando o rebanho tem mais de um bicho */}
+          {showSpecies && (
+            <div className="flex flex-wrap gap-1.5">
+              {speciesFilters.map((f) => {
+                const active = speciesFilter === f.value;
+                return (
+                  <button
+                    key={f.value}
+                    onClick={() => setSpeciesFilter(f.value)}
+                    className={cn(
+                      "flex items-center gap-1.5 min-h-[40px] px-3 rounded-full border text-xs font-medium transition-colors active:scale-[0.97]",
+                      active
+                        ? "bg-produmar-600 border-produmar-600 text-white"
+                        : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                    )}
+                  >
+                    {f.label}
+                    <span className={cn("tabular-nums", active ? "opacity-80" : "opacity-60")}>
+                      {f.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Filtro por categoria — também serve de resumo do rebanho */}
           <div className="grid grid-cols-4 gap-1.5">
             {categoryFilters.map((f) => {
@@ -482,7 +571,7 @@ export function AnimaisPageClient({
           <SearchField
             value={search}
             onChange={setSearch}
-            placeholder="Buscar pelo número ou raça..."
+            placeholder="Buscar pelo número, raça ou tipo..."
           />
 
           <div className="flex gap-2">
@@ -558,9 +647,11 @@ export function AnimaisPageClient({
             }
           />
           <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
-            Digite na primeira linha para cadastrar (Enter salva). Em &quot;Pariu&quot;, a data
-            do parto pede M ou F e o número do bezerro — ele entra no rebanho atrelado à mãe;
-            toque na coluna para ver os partos da vaca e apagar o que entrou errado. Toque no
+            Digite na primeira linha para cadastrar (Enter salva); na coluna &quot;Cat.&quot;
+            escolha o tipo do animal — bovino, equino, caprino ou ovino — e ele manda no nome
+            da categoria e nas raças da lista. Em &quot;Pariu&quot;, a data do parto pede M ou F
+            e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
+            toque na coluna para ver os partos da mãe e apagar o que entrou errado. Toque no
             peso para pesar de novo: embaixo dele fica quanto o animal ganhou desde a última
             pesagem e em quanto tempo. Célula vermelha = os ml a aplicar (vacina nunca dada ou
             vencida); toque nela para registrar. Para deixar uma vacina pendente de propósito,
@@ -919,7 +1010,7 @@ function RebanhoTable({
                   {a.tag}
                 </td>
                 <td className="px-2 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
-                  {categoryLabel(a.category, a.sex)}
+                  {categoryLabel(a.category, a.sex, a.species)}
                 </td>
                 <td className="px-2 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
                   {a.breed_name ?? "—"}

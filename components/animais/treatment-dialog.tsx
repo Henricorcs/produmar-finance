@@ -117,7 +117,7 @@ export function TreatmentDialog({
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <span className="truncate">{a.tag}</span>
                     <span className="text-[10px] text-slate-400 flex-shrink-0">
-                      {categoryLabel(a.category, a.sex)}
+                      {categoryLabel(a.category, a.sex, a.species)}
                       {a.breed_name ? ` · ${a.breed_name}` : ""}
                     </span>
                   </div>

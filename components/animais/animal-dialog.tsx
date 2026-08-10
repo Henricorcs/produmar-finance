@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Camera, X, Settings2 } from "lucide-react";
 import {
   Dialog,
@@ -19,13 +19,16 @@ import {
   FOOTER_CANCEL,
   FOOTER_SUBMIT,
   INLINE_LINK,
+  SPECIES_META,
   STICKY_FOOTER,
   SexPicker,
+  SpeciesPicker,
   parseDecimal,
   formatDecimalInput,
+  speciesOf,
 } from "./animal-shared";
 import { AnimalBreedsDialog } from "./animal-breeds-dialog";
-import type { Animal, AnimalBreed, AnimalSex } from "@/lib/types";
+import type { Animal, AnimalBreed, AnimalSex, AnimalSpecies } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -42,6 +45,7 @@ export function AnimalDialog({ open, onClose, animal, breeds }: Props) {
 
   const [tag, setTag] = useState("");
   const [sex, setSex] = useState<AnimalSex>("femea");
+  const [species, setSpecies] = useState<AnimalSpecies>("bovino");
   const [birthDate, setBirthDate] = useState("");
   const [breedId, setBreedId] = useState("");
   const [weight, setWeight] = useState("");
@@ -54,6 +58,7 @@ export function AnimalDialog({ open, onClose, animal, breeds }: Props) {
     if (!open) return;
     setTag(animal?.tag ?? "");
     setSex(animal?.sex ?? "femea");
+    setSpecies(speciesOf(animal?.species));
     setBirthDate(animal?.birth_date ?? "");
     setBreedId(animal?.breed_id ?? "");
     setWeight(animal && animal.weight ? String(animal.weight).replace(".", ",") : "");
@@ -61,6 +66,20 @@ export function AnimalDialog({ open, onClose, animal, breeds }: Props) {
     setPhotos([]);
     setError(null);
   }, [open, animal]);
+
+  /** Cada raça é de um tipo — a lista segue o tipo escolhido. */
+  const speciesBreeds = useMemo(
+    () => breeds.filter((b) => speciesOf(b.species) === species),
+    [breeds, species]
+  );
+
+  /** Trocou o tipo: a raça de antes é de outro bicho, sai da frente. */
+  function pickSpecies(v: AnimalSpecies) {
+    setSpecies(v);
+    if (breedId && !breeds.some((b) => b.id === breedId && speciesOf(b.species) === v)) {
+      setBreedId("");
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,6 +94,7 @@ export function AnimalDialog({ open, onClose, animal, breeds }: Props) {
       const input = {
         tag,
         sex,
+        species,
         birth_date: birthDate || null,
         breed_id: breedId || null,
         weight: parseDecimal(weight),
@@ -124,6 +144,11 @@ export function AnimalDialog({ open, onClose, animal, breeds }: Props) {
           </div>
 
           <div className="space-y-1.5">
+            <Label>Tipo *</Label>
+            <SpeciesPicker value={species} onChange={pickSpecies} />
+          </div>
+
+          <div className="space-y-1.5">
             <Label>Sexo *</Label>
             <SexPicker value={sex} onChange={setSex} />
           </div>
@@ -168,12 +193,18 @@ export function AnimalDialog({ open, onClose, animal, breeds }: Props) {
               className="w-full h-11 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-slate-800 dark:text-slate-100 sm:h-10"
             >
               <option value="">Sem raça</option>
-              {breeds.map((t) => (
+              {speciesBreeds.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
               ))}
             </select>
+            {speciesBreeds.length === 0 && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Nenhuma raça de {SPECIES_META[species].label.toLowerCase()} cadastrada —
+                use &quot;Gerenciar&quot; para adicionar.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -267,6 +298,7 @@ export function AnimalDialog({ open, onClose, animal, breeds }: Props) {
           open={breedsOpen}
           onClose={() => setBreedsOpen(false)}
           breeds={breeds}
+          species={species}
         />
       </DialogContent>
     </Dialog>

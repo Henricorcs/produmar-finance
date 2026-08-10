@@ -1,6 +1,11 @@
 "use client";
 
-import type { AnimalCategory, AnimalSex, AnimalVaccine } from "@/lib/types";
+import type {
+  AnimalCategory,
+  AnimalSex,
+  AnimalSpecies,
+  AnimalVaccine,
+} from "@/lib/types";
 
 // ── Layout (celular) ─────────────────────────────────────────────────────────
 
@@ -43,27 +48,141 @@ export const SEX_LABELS: Record<AnimalSex, string> = {
   femea: "Fêmea",
 };
 
+// ── Tipo do animal (espécie) ─────────────────────────────────────────────────
+
+/**
+ * Cada tipo dá nome às três categorias do rebanho. As chaves da categoria são
+ * o papel do animal (macho adulto / fêmea adulta / filhote) — aqui elas viram
+ * boi, cavalo, bode ou carneiro conforme o tipo.
+ */
+interface SpeciesNames {
+  /** "Bovino" — como aparece na ficha e no cadastro. */
+  label: string;
+  /** "Bovinos" — como aparece no filtro. */
+  plural: string;
+  chip: string;
+  /** Macho adulto: Boi, Cavalo, Bode, Carneiro. */
+  male: string;
+  /** Fêmea adulta: Vaca, Égua, Cabra, Ovelha. */
+  female: string;
+  /** Filhote macho: Bezerro, Potro, Cabrito, Cordeiro. */
+  youngMale: string;
+  /** Filhote fêmea: Bezerra, Potra, Cabrita, Cordeira. */
+  youngFemale: string;
+  /** Plurais dos filtros. */
+  males: string;
+  females: string;
+  young: string;
+}
+
+export const SPECIES_META: Record<AnimalSpecies, SpeciesNames> = {
+  bovino: {
+    label: "Bovino",
+    plural: "Bovinos",
+    chip: "bg-produmar-100 text-produmar-700 dark:bg-produmar-900/40 dark:text-produmar-300",
+    male: "Boi",
+    female: "Vaca",
+    youngMale: "Bezerro",
+    youngFemale: "Bezerra",
+    males: "Bois",
+    females: "Vacas",
+    young: "Bezerros",
+  },
+  equino: {
+    label: "Equino",
+    plural: "Equinos",
+    chip: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+    male: "Cavalo",
+    female: "Égua",
+    youngMale: "Potro",
+    youngFemale: "Potra",
+    males: "Cavalos",
+    females: "Éguas",
+    young: "Potros",
+  },
+  caprino: {
+    label: "Caprino",
+    plural: "Caprinos",
+    chip: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+    male: "Bode",
+    female: "Cabra",
+    youngMale: "Cabrito",
+    youngFemale: "Cabrita",
+    males: "Bodes",
+    females: "Cabras",
+    young: "Cabritos",
+  },
+  ovino: {
+    label: "Ovino",
+    plural: "Ovinos",
+    chip: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
+    male: "Carneiro",
+    female: "Ovelha",
+    youngMale: "Cordeiro",
+    youngFemale: "Cordeira",
+    males: "Carneiros",
+    females: "Ovelhas",
+    young: "Cordeiros",
+  },
+};
+
+export const SPECIES_OPTIONS: { value: AnimalSpecies; label: string }[] = (
+  Object.keys(SPECIES_META) as AnimalSpecies[]
+).map((value) => ({ value, label: SPECIES_META[value].label }));
+
+/**
+ * O tipo do animal, com bovino de rede de segurança: enquanto a migration 047
+ * não roda no Supabase a coluna não vem, e tudo que existe hoje é bovino.
+ */
+export function speciesOf(species?: AnimalSpecies | null): AnimalSpecies {
+  return species && species in SPECIES_META ? species : "bovino";
+}
+
 // ── Categoria (derivada na view) ─────────────────────────────────────────────
 
-export const CATEGORY_META: Record<AnimalCategory, { label: string; chip: string }> = {
+export const CATEGORY_META: Record<AnimalCategory, { chip: string }> = {
   boi: {
-    label: "Boi",
     chip: "bg-produmar-100 text-produmar-700 dark:bg-produmar-900/40 dark:text-produmar-300",
   },
   vaca: {
-    label: "Vaca",
     chip: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
   },
   bezerro: {
-    label: "Bezerro",
     chip: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
   },
 };
 
-/** Rótulo da categoria já flexionado pelo sexo (bezerro/bezerra). */
-export function categoryLabel(category: AnimalCategory, sex: AnimalSex): string {
-  if (category === "bezerro") return sex === "femea" ? "Bezerra" : "Bezerro";
-  return CATEGORY_META[category].label;
+/** Rótulo da categoria pelo tipo e pelo sexo: Vaca, Égua, Cabrito, Cordeira... */
+export function categoryLabel(
+  category: AnimalCategory,
+  sex: AnimalSex,
+  species?: AnimalSpecies | null
+): string {
+  const s = SPECIES_META[speciesOf(species)];
+  if (category === "bezerro") return sex === "femea" ? s.youngFemale : s.youngMale;
+  return category === "vaca" ? s.female : s.male;
+}
+
+/**
+ * Rótulo plural da categoria para os filtros: "Vacas", "Éguas", "Cabritos".
+ * Sem tipo escolhido (rebanho misturado) usa o nome genérico — "Fêmeas",
+ * "Machos", "Filhotes" — que serve para todos.
+ */
+export function categoryPlural(
+  category: AnimalCategory,
+  species: AnimalSpecies | null
+): string {
+  if (!species) {
+    return category === "vaca" ? "Fêmeas" : category === "boi" ? "Machos" : "Filhotes";
+  }
+  const s = SPECIES_META[speciesOf(species)];
+  return category === "vaca" ? s.females : category === "boi" ? s.males : s.young;
+}
+
+/** Como se chama o filhote deste tipo, em minúscula: "bezerro", "potra"... */
+export function youngNoun(species?: AnimalSpecies | null, sex?: AnimalSex | null): string {
+  const s = SPECIES_META[speciesOf(species)];
+  return (sex === "femea" ? s.youngFemale : s.youngMale).toLowerCase();
 }
 
 // ── Formatação ───────────────────────────────────────────────────────────────
@@ -287,6 +406,35 @@ export function vaccineStatusFor(
     today.getDate()
   ).padStart(2, "0")}`;
   return { status: nextDate > todayISO ? "em_dia" : "atrasada", nextDate };
+}
+
+// ── Seletor de tipo (chips 2x2, bom de tocar no celular) ─────────────────────
+
+export function SpeciesPicker({
+  value,
+  onChange,
+}: {
+  value: AnimalSpecies;
+  onChange: (v: AnimalSpecies) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+      {SPECIES_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`min-h-[44px] px-2 text-sm rounded-lg border font-medium transition-colors active:scale-[0.97] ${
+            value === opt.value
+              ? "bg-produmar-50 border-produmar-300 text-produmar-700 dark:bg-produmar-950/40 dark:border-produmar-700 dark:text-produmar-300"
+              : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // ── Seletor de sexo (chips, bom de tocar no celular) ─────────────────────────

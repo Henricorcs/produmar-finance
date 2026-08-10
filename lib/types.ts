@@ -677,13 +677,21 @@ export interface ToolWithStatus extends Tool {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type AnimalSex = "macho" | "femea";
-/** Categoria derivada na view v_animals (idade < 12 meses = bezerro). */
+/** Tipo do animal (espécie). Tudo que foi cadastrado antes é bovino. */
+export type AnimalSpecies = "bovino" | "equino" | "caprino" | "ovino";
+/**
+ * Categoria derivada na view v_animals (idade < 12 meses = bezerro). As chaves
+ * são o PAPEL do animal, não o nome dele: `bezerro` = filhote, `boi` = macho
+ * adulto, `vaca` = fêmea adulta. Quem dá nome conforme o tipo é `categoryLabel`
+ * (potro, cabrito, cordeiro...).
+ */
 export type AnimalCategory = "boi" | "vaca" | "bezerro";
 
-/** Raça do animal — cadastro editável. */
+/** Raça do animal — cadastro editável, uma raça pertence a um tipo. */
 export interface AnimalBreed {
   id: string;
   name: string;
+  species: AnimalSpecies;
   created_at: string;
 }
 
@@ -692,6 +700,8 @@ export interface Animal {
   /** Número do animal (brinco). */
   tag: string;
   sex: AnimalSex;
+  /** Tipo do animal (bovino, equino, caprino, ovino). */
+  species: AnimalSpecies;
   birth_date: string | null;
   breed_id: string | null;
   /** Peso atual em kg. */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Plus, Pencil, Trash2, X, Check, Tag } from "lucide-react";
 import {
   Dialog,
@@ -12,23 +12,45 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { createBreed, renameBreed, deleteBreed } from "@/app/(app)/animais/actions";
-import { ICON_BUTTON } from "./animal-shared";
-import type { AnimalBreed } from "@/lib/types";
+import { ICON_BUTTON, SPECIES_META, SpeciesPicker, speciesOf } from "./animal-shared";
+import type { AnimalBreed, AnimalSpecies } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   breeds: AnimalBreed[];
+  /** Tipo do animal que abriu o cadastro — a lista já vem nele. */
+  species?: AnimalSpecies;
 }
 
-/** Mini-CRUD de raças (adicionar / renomear / remover). */
-export function AnimalBreedsDialog({ open, onClose, breeds }: Props) {
+/** Exemplo de raça de cada tipo (só o placeholder do campo). */
+const BREED_PLACEHOLDER: Record<AnimalSpecies, string> = {
+  bovino: "nome (ex: nelore, angus)",
+  equino: "nome (ex: mangalarga, crioulo)",
+  caprino: "nome (ex: boer, saanen)",
+  ovino: "nome (ex: santa inês, dorper)",
+};
+
+/** Mini-CRUD de raças (adicionar / renomear / remover), separado por tipo. */
+export function AnimalBreedsDialog({ open, onClose, breeds, species = "bovino" }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
+  /** Tipo da raça sendo cadastrada — começa no tipo do animal. */
+  const [formSpecies, setFormSpecies] = useState<AnimalSpecies>(species);
+
+  /** Só as raças do tipo escolhido: nelore não some no meio das de ovino. */
+  const speciesBreeds = breeds.filter((b) => speciesOf(b.species) === formSpecies);
+
+  // abriu de novo → volta para o tipo do animal que está sendo cadastrado
+  useEffect(() => {
+    if (!open) return;
+    setFormSpecies(species);
+    reset();
+  }, [open, species]);
 
   function reset() {
     setName("");
@@ -54,7 +76,7 @@ export function AnimalBreedsDialog({ open, onClose, breeds }: Props) {
     startTransition(async () => {
       const r = editingId
         ? await renameBreed(editingId, name)
-        : await createBreed(name);
+        : await createBreed(name, formSpecies);
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao salvar");
         return;
@@ -81,13 +103,24 @@ export function AnimalBreedsDialog({ open, onClose, breeds }: Props) {
         </DialogHeader>
 
         <div className="space-y-3">
+          {/* Cada tipo tem as suas raças — o seletor troca a lista */}
+          <SpeciesPicker
+            value={formSpecies}
+            onChange={(v) => {
+              setFormSpecies(v);
+              setEditingId(null);
+              setName("");
+              setError(null);
+            }}
+          />
+
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {breeds.length === 0 && (
+            {speciesBreeds.length === 0 && (
               <p className="text-xs text-slate-400 dark:text-slate-500 py-3">
-                Nenhuma raça cadastrada.
+                Nenhuma raça de {SPECIES_META[formSpecies].label.toLowerCase()} cadastrada.
               </p>
             )}
-            {breeds.map((t) => (
+            {speciesBreeds.map((t) => (
               <div key={t.id} className="flex items-center gap-3 py-2.5">
                 <div className="w-8 h-8 rounded-lg bg-produmar-50 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
                   <Tag className="w-4 h-4 text-produmar-600 dark:text-produmar-400" />
@@ -127,7 +160,7 @@ export function AnimalBreedsDialog({ open, onClose, breeds }: Props) {
               onClick={() => setShowForm(true)}
             >
               <Plus className="w-4 h-4" />
-              Nova raça
+              Nova raça de {SPECIES_META[formSpecies].label.toLowerCase()}
             </Button>
           ) : (
             <form
@@ -137,7 +170,7 @@ export function AnimalBreedsDialog({ open, onClose, breeds }: Props) {
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value.toLowerCase())}
-                placeholder="nome (ex: nelore, angus)"
+                placeholder={BREED_PLACEHOLDER[formSpecies]}
                 className="h-11 sm:h-9 sm:text-sm"
                 autoFocus
               />

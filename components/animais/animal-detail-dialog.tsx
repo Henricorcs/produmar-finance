@@ -35,6 +35,7 @@ import {
   CATEGORY_META,
   ICON_BUTTON,
   SEX_LABELS,
+  SPECIES_META,
   VACCINE_STATUS_META,
   addMonths,
   categoryLabel,
@@ -45,6 +46,7 @@ import {
   formatWeight,
   pariuLabel,
   previousWeighing,
+  speciesOf,
   vaccineStatusFor,
   weightGain,
 } from "./animal-shared";
@@ -154,6 +156,8 @@ export function AnimalDetailDialog({
 
   const meta = CATEGORY_META[animal.category];
   const weightKg = Number(animal.weight);
+  /** Nomes do tipo do animal — dão o "bezerro/potro/cabrito" de cada texto. */
+  const names = SPECIES_META[speciesOf(animal.species)];
 
   function handleDelete() {
     const a = animal!;
@@ -174,15 +178,16 @@ export function AnimalDetailDialog({
     });
   }
 
-  /** Parto lançado errado: apaga e, se quiser, tira o bezerro do rebanho junto. */
+  /** Parto lançado errado: apaga e, se quiser, tira a cria do rebanho junto. */
   function handleDeleteBirth(b: AnimalBirth) {
+    const young = names.youngMale.toLowerCase();
     const calf = b.calf_tag ? `nº ${b.calf_tag}` : "sem número";
-    if (!confirm(`Apagar o parto de ${formatDate(b.birth_date)} (bezerro ${calf})?`)) return;
+    if (!confirm(`Apagar o parto de ${formatDate(b.birth_date)} (${young} ${calf})?`)) return;
     const alsoCalf = b.calf_animal_id
       ? confirm(
-          `Tirar também o bezerro ${calf} do rebanho?\n\n` +
-            "OK = apaga o parto e o bezerro.\n" +
-            "Cancelar = apaga só o parto e o bezerro continua cadastrado."
+          `Tirar também o ${young} ${calf} do rebanho?\n\n` +
+            `OK = apaga o parto e o ${young}.\n` +
+            `Cancelar = apaga só o parto e o ${young} continua cadastrado.`
         )
       : false;
     startTransition(async () => {
@@ -449,7 +454,10 @@ export function AnimalDetailDialog({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm text-slate-800 dark:text-slate-100">
-              Pariu {b.calf_sex === "macho" ? "um bezerro (macho)" : "uma bezerra (fêmea)"}
+              Pariu{" "}
+              {b.calf_sex === "macho"
+                ? `um ${names.youngMale.toLowerCase()} (macho)`
+                : `uma ${names.youngFemale.toLowerCase()} (fêmea)`}
               {b.calf_tag ? ` · nº ${b.calf_tag}` : ""}
               {b.calf_animal_id ? " · cadastrado" : ""}
             </p>
@@ -485,7 +493,12 @@ export function AnimalDetailDialog({
           <DialogTitle className="dark:text-slate-100 flex items-center gap-2 flex-wrap pr-6">
             Animal {animal.tag}
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${meta.chip}`}>
-              {categoryLabel(animal.category, animal.sex)}
+              {categoryLabel(animal.category, animal.sex, animal.species)}
+            </span>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${names.chip}`}
+            >
+              {names.label}
             </span>
           </DialogTitle>
         </DialogHeader>
@@ -546,6 +559,7 @@ export function AnimalDetailDialog({
               {/* Informações */}
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-base">
                 <InfoRow label="Número" value={animal.tag} />
+                <InfoRow label="Tipo" value={names.label} />
                 <InfoRow label="Sexo" value={SEX_LABELS[animal.sex]} />
                 <InfoRow label="Raça" value={animal.breed_name ?? "—"} />
                 <InfoRow
@@ -621,7 +635,7 @@ export function AnimalDetailDialog({
                     >
                       <Baby className="w-4 h-4 text-amber-500 flex-shrink-0" />
                       <span className="flex-1 min-w-0 text-sm text-slate-800 dark:text-slate-100 truncate">
-                        {b.calf_sex === "macho" ? "Bezerro" : "Bezerra"}
+                        {b.calf_sex === "macho" ? names.youngMale : names.youngFemale}
                         {b.calf_tag ? ` nº ${b.calf_tag}` : ""}
                         <span className="text-slate-400"> · {formatDate(b.birth_date)}</span>
                       </span>

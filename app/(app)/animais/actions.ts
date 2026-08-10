@@ -3,7 +3,7 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { AnimalSex } from "@/lib/types";
+import type { AnimalSex, AnimalSpecies } from "@/lib/types";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -23,7 +23,19 @@ function normWeight(v?: number | null): number {
 
 function dupTagError(error: { code?: string; message: string }): string {
   if (error.code === "23505") return "Já existe um animal com esse número";
+  return speciesColumnError(error);
+}
+
+/** A coluna do tipo vem da migration 047 — sem ela o erro não diz nada. */
+function speciesColumnError(error: { code?: string; message: string }): string {
+  if (error.message.includes("species"))
+    return "Rode a migration 047 no Supabase para usar o tipo do animal";
   return error.message;
+}
+
+/** Tipo do animal — o que não vier marcado é bovino, como sempre foi. */
+function normSpecies(v?: AnimalSpecies | null): AnimalSpecies {
+  return v && ["bovino", "equino", "caprino", "ovino"].includes(v) ? v : "bovino";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +45,8 @@ function dupTagError(error: { code?: string; message: string }): string {
 export interface AnimalInput {
   tag: string;
   sex: AnimalSex;
+  /** Tipo do animal (bovino, equino, caprino, ovino). */
+  species?: AnimalSpecies | null;
   birth_date?: string | null;
   breed_id?: string | null;
   weight?: number | null;
@@ -54,6 +68,7 @@ export async function createAnimal(input: AnimalInput) {
     .insert({
       tag,
       sex: input.sex,
+      species: normSpecies(input.species),
       birth_date: input.birth_date || null,
       breed_id: input.breed_id || null,
       weight: normWeight(input.weight),
@@ -105,6 +120,7 @@ export async function updateAnimal(id: string, input: AnimalInput) {
     .update({
       tag,
       sex: input.sex,
+      species: normSpecies(input.species),
       birth_date: input.birth_date || null,
       breed_id: input.breed_id || null,
       weight,
@@ -303,15 +319,18 @@ function normName(v: string): string {
 
 function dupNameError(error: { code?: string; message: string }, what: string): string {
   if (error.code === "23505") return `${what} já existe`;
-  return error.message;
+  return speciesColumnError(error);
 }
 
-export async function createBreed(name: string) {
+/** A raça é de um tipo só: nelore é de bovino, mangalarga é de equino. */
+export async function createBreed(name: string, species?: AnimalSpecies | null) {
   const supabase = createClient();
   const n = normName(name);
   if (!n) return { error: "Informe o nome da raça" };
 
-  const { error } = await supabase.from("animal_breeds").insert({ name: n });
+  const { error } = await supabase
+    .from("animal_breeds")
+    .insert({ name: n, species: normSpecies(species) });
   if (error) return { error: dupNameError(error, "Essa raça") };
   revalidate();
   return { ok: true };
@@ -696,8 +715,8 @@ export interface BirthInput {
 /**
  * Registra o parto E cadastra o bezerro no rebanho na mesma hora, atrelado à
  * mãe (animal_births.calf_animal_id): a ficha do bezerro mostra de quem ele é
- * e a da mãe lista as crias. O bezerro herda a raça da mãe e nasce com a data
- * do parto — a categoria "bezerro" sai daí sozinha (view v_animals).
+ * e a da mãe lista as crias. A cria herda o tipo e a raça da mãe e nasce com a
+ * data do parto — a categoria de filhote sai daí sozinha (view v_animals).
  */
 export async function createBirth(input: BirthInput) {
   const supabase = createClient();
@@ -713,9 +732,10 @@ export async function createBirth(input: BirthInput) {
   const calfTag = clean(input.calf_tag);
   if (!calfTag) return { error: "Informe o número do bezerro" };
 
+  // a cria puxa da mãe o tipo e a raça — potro nasce de égua, bezerro de vaca
   const { data: mother } = await supabase
     .from("animals")
-    .select("breed_id")
+    .select("breed_id, species")
     .eq("id", input.mother_id)
     .maybeSingle();
 
@@ -724,6 +744,7 @@ export async function createBirth(input: BirthInput) {
     .insert({
       tag: calfTag,
       sex: input.calf_sex,
+      species: normSpecies(mother?.species as AnimalSpecies | null),
       birth_date: input.birth_date,
       breed_id: mother?.breed_id ?? null,
       weight: normWeight(input.calf_weight),
