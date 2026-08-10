@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createAnimal, createBirth } from "@/app/(app)/animais/actions";
@@ -16,6 +16,8 @@ import type { AnimalBreed, AnimalSex, AnimalSpecies } from "@/lib/types";
 
 interface Props {
   breeds: AnimalBreed[];
+  /** Tipo escolhido no filtro da tela (null = "todos os tipos"). */
+  species?: AnimalSpecies | null;
   /** Quantas colunas de vacina a planilha tem (ficam vazias nesta linha). */
   vaccinesCount: number;
 }
@@ -29,13 +31,13 @@ interface Props {
  * Enter salva. Tipo, sexo e raça ficam para o próximo — um lote entra só
  * digitando número e peso.
  */
-export function QuickAddRow({ breeds, vaccinesCount }: Props) {
+export function QuickAddRow({ breeds, species: filterSpecies, vaccinesCount }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const [tag, setTag] = useState("");
   const [sex, setSex] = useState<AnimalSex>("femea");
-  const [species, setSpecies] = useState<AnimalSpecies>("bovino");
+  const [species, setSpecies] = useState<AnimalSpecies>(filterSpecies ?? "bovino");
   const [breedId, setBreedId] = useState("");
   const [weight, setWeight] = useState("");
   // parto (só para fêmea): data + sexo e número do bezerro (ele entra no rebanho)
@@ -50,12 +52,22 @@ export function QuickAddRow({ breeds, vaccinesCount }: Props) {
   /** Como se chama a cria deste tipo: bezerro, potro, cabrito, cordeiro. */
   const calf = youngNoun(species, calfSex);
 
+  /**
+   * Filtrou a tela por um tipo? A linha cadastra nesse tipo — senão o animal
+   * novo sumiria da planilha assim que entrasse. Trocar o seletor aqui embaixo
+   * continua valendo (a escolha do dedo ganha até mudar o filtro de novo).
+   */
+  useEffect(() => {
+    if (!filterSpecies) return;
+    setSpecies(filterSpecies);
+    setBreedId("");
+  }, [filterSpecies]);
+
   /** Trocou o tipo: a raça de antes é de outro bicho, sai da frente. */
   function pickSpecies(v: AnimalSpecies) {
+    if (v === species) return;
     setSpecies(v);
-    if (breedId && !breeds.some((b) => b.id === breedId && speciesOf(b.species) === v)) {
-      setBreedId("");
-    }
+    setBreedId("");
   }
 
   function submit() {

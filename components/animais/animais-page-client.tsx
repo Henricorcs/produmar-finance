@@ -105,7 +105,7 @@ export function AnimaisPageClient({
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("rebanho");
   const [search, setSearch] = useState("");
-  const [speciesFilter, setSpeciesFilter] = useState<SpeciesFilter>("todos");
+  const [species, setSpecies] = useState<SpeciesFilter>("todos");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
   const [onlyPending, setOnlyPending] = useState(false);
   const [sort, setSort] = useState<SortKey>("tag");
@@ -217,10 +217,6 @@ export function AnimaisPageClient({
     () => SPECIES_OPTIONS.map((s) => s.value).filter((s) => (speciesCounts.get(s) ?? 0) > 0),
     [speciesCounts]
   );
-
-  /** Rebanho de um tipo só (o de sempre): não tem o que filtrar. */
-  const showSpecies = speciesPresent.length > 1;
-  const species: SpeciesFilter = showSpecies ? speciesFilter : "todos";
 
   /** Animais do tipo escolhido — base das contagens e da planilha. */
   const speciesAnimals = useMemo(
@@ -432,13 +428,17 @@ export function AnimaisPageClient({
     },
   ];
 
-  /** Filtro por tipo: "Todos" + só os tipos que existem no rebanho. */
+  /**
+   * Filtro por tipo — manda em quem aparece na planilha. Os quatro tipos ficam
+   * sempre à vista (mesmo zerados): é por aqui que se escolhe o rebanho que se
+   * quer ver, e é ele que a linha de cadastro segue.
+   */
   const speciesFilters: { value: SpeciesFilter; label: string; count: number }[] = [
-    { value: "todos", label: "Todos", count: animals.length },
-    ...speciesPresent.map((s) => ({
-      value: s as SpeciesFilter,
-      label: SPECIES_META[s].plural,
-      count: speciesCounts.get(s) ?? 0,
+    { value: "todos", label: "Todos os tipos", count: animals.length },
+    ...SPECIES_OPTIONS.map((s) => ({
+      value: s.value as SpeciesFilter,
+      label: SPECIES_META[s.value].plural,
+      count: speciesCounts.get(s.value) ?? 0,
     })),
   ];
 
@@ -502,31 +502,33 @@ export function AnimaisPageClient({
           Botões, inputs e selects não herdam text-transform — daí as variantes. */}
       {tab === "rebanho" && (
         <div className="space-y-4 uppercase [&_button]:uppercase [&_input]:uppercase [&_select]:uppercase [&_input::placeholder]:uppercase">
-          {/* Filtro por tipo — só quando o rebanho tem mais de um bicho */}
-          {showSpecies && (
-            <div className="flex flex-wrap gap-1.5">
-              {speciesFilters.map((f) => {
-                const active = speciesFilter === f.value;
-                return (
-                  <button
-                    key={f.value}
-                    onClick={() => setSpeciesFilter(f.value)}
-                    className={cn(
-                      "flex items-center gap-1.5 min-h-[40px] px-3 rounded-full border text-xs font-medium transition-colors active:scale-[0.97]",
-                      active
-                        ? "bg-produmar-600 border-produmar-600 text-white"
-                        : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-                    )}
-                  >
-                    {f.label}
-                    <span className={cn("tabular-nums", active ? "opacity-80" : "opacity-60")}>
-                      {f.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {/* Qual tipo de animal aparece na planilha */}
+          <div className="flex flex-wrap gap-1.5">
+            {speciesFilters.map((f) => {
+              const active = species === f.value;
+              /* tipo que ninguém tem ainda: fica apagado, mas dá pra escolher */
+              const empty = f.count === 0 && !active;
+              return (
+                <button
+                  key={f.value}
+                  onClick={() => setSpecies(f.value)}
+                  className={cn(
+                    "flex items-center gap-1.5 min-h-[40px] px-3 rounded-full border text-xs font-medium transition-colors active:scale-[0.97]",
+                    active
+                      ? "bg-produmar-600 border-produmar-600 text-white"
+                      : empty
+                      ? "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-600"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  )}
+                >
+                  {f.label}
+                  <span className={cn("tabular-nums", active ? "opacity-80" : "opacity-60")}>
+                    {f.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
           {/* Filtro por categoria — também serve de resumo do rebanho */}
           <div className="grid grid-cols-4 gap-1.5">
@@ -624,6 +626,7 @@ export function AnimaisPageClient({
           <RebanhoTable
             animals={filtered}
             breeds={breeds}
+            quickAddSpecies={species === "todos" ? null : species}
             vaccines={vaccines}
             vaccinations={vaccinations}
             birthsByMother={birthsByMother}
@@ -643,6 +646,8 @@ export function AnimaisPageClient({
                 ? "Nenhum animal ainda — digite o número na linha acima e aperte Enter."
                 : filterPending
                 ? "Ninguém marcado como pendente."
+                : species !== "todos" && speciesAnimals.length === 0
+                ? `Nenhum ${SPECIES_META[species].label.toLowerCase()} no rebanho ainda — a linha acima já está pronta para cadastrar o primeiro.`
                 : "Nada encontrado com esse filtro."
             }
           />
@@ -740,6 +745,7 @@ export function AnimaisPageClient({
         onClose={() => setAnimalDialogOpen(false)}
         animal={editAnimal}
         breeds={breeds}
+        defaultSpecies={species === "todos" ? null : species}
       />
       <AnimalDetailDialog
         open={!!detailAnimal}
@@ -816,6 +822,7 @@ export function AnimaisPageClient({
 function RebanhoTable({
   animals,
   breeds,
+  quickAddSpecies,
   vaccines,
   vaccinations,
   birthsByMother,
@@ -832,6 +839,8 @@ function RebanhoTable({
 }: {
   animals: AnimalWithInfo[];
   breeds: AnimalBreed[];
+  /** Tipo escolhido no filtro — a linha de cadastro já entra nele. */
+  quickAddSpecies: AnimalSpecies | null;
   vaccines: AnimalVaccine[];
   vaccinations: VaccinationRow[];
   birthsByMother: Map<string, AnimalBirth[]>;
@@ -969,7 +978,11 @@ function RebanhoTable({
         </thead>
         <tbody>
           {/* Linha de digitação — cadastrar sem clicar em "Novo" */}
-          <QuickAddRow breeds={breeds} vaccinesCount={vaccines.length} />
+          <QuickAddRow
+            breeds={breeds}
+            species={quickAddSpecies}
+            vaccinesCount={vaccines.length}
+          />
 
           {emptyMessage && (
             <tr className="border-t border-slate-100 dark:border-slate-800">
