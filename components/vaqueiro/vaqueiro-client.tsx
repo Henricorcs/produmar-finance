@@ -1,0 +1,262 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Baby, Camera, Check, RotateCcw, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { cn, formatDate, localDateISO } from "@/lib/utils";
+import { registerCalfBirth } from "@/app/(app)/vaqueiro/actions";
+import { SexPicker, categoryLabel } from "@/components/animais/animal-shared";
+import type { AnimalSex, AnimalWithInfo } from "@/lib/types";
+
+interface Props {
+  mothers: AnimalWithInfo[];
+}
+
+interface RegisteredEntry {
+  id: string;
+  tag: string;
+  sex: AnimalSex;
+  motherTag: string;
+  at: string;
+}
+
+export function VaqueiroClient({ mothers }: Props) {
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const [motherId, setMotherId] = useState("");
+  const [calfSex, setCalfSex] = useState<AnimalSex>("femea");
+  const [calfTag, setCalfTag] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [registeredToday, setRegisteredToday] = useState<RegisteredEntry[]>([]);
+
+  const today = localDateISO();
+
+  // Libera a URL do objeto quando troca ou some a foto — evita vazar memória.
+  useEffect(() => {
+    return () => {
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
+    };
+  }, [photoUrl]);
+
+  function handlePhotoChange(file: File | null) {
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setPhoto(file);
+    setPhotoUrl(file ? URL.createObjectURL(file) : null);
+  }
+
+  function resetForm() {
+    setMotherId("");
+    setCalfSex("femea");
+    setCalfTag("");
+    handlePhotoChange(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!motherId) return setError("Selecione a mãe");
+    if (!photo) return setError("Tire uma foto do bezerro");
+    if (!calfTag.trim()) return setError("Informe o número do bezerro");
+
+    const mother = mothers.find((m) => m.id === motherId);
+
+    const fd = new FormData();
+    fd.append("mother_id", motherId);
+    fd.append("birth_date", today);
+    fd.append("calf_sex", calfSex);
+    fd.append("calf_tag", calfTag);
+    fd.append("photo", photo);
+
+    startTransition(async () => {
+      const r = await registerCalfBirth(fd);
+      if (r && "error" in r) {
+        setError(r.error ?? "Erro ao registrar o nascimento");
+        return;
+      }
+      setRegisteredToday((prev) => [
+        {
+          id: r.calfAnimalId,
+          tag: calfTag.toUpperCase(),
+          sex: calfSex,
+          motherTag: mother?.tag ?? "—",
+          at: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+        },
+        ...prev,
+      ]);
+      setSuccess(`Bezerro nº ${calfTag.toUpperCase()} registrado!`);
+      resetForm();
+    });
+  }
+
+  return (
+    <div className="space-y-4 pb-24">
+      <div className="flex items-center gap-3 pt-1">
+        <div className="w-11 h-11 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
+          <Baby className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div>
+          <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+            Nascimento de bezerro
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Hoje, {formatDate(today)}
+          </p>
+        </div>
+      </div>
+
+      {success && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3">
+          <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{success}</p>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Registrar novo bezerro</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-1.5">
+              <Label>Foto do bezerro *</Label>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => handlePhotoChange(e.target.files?.[0] ?? null)}
+              />
+              {photoUrl ? (
+                <div className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photoUrl}
+                    alt="Foto do bezerro"
+                    className="w-full h-56 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handlePhotoChange(null)}
+                    aria-label="Remover foto"
+                    className="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="absolute bottom-2 right-2 h-10 px-3 rounded-full bg-black/60 text-white text-xs font-medium flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Tirar outra
+                  </button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-24 flex-col gap-1.5 border-dashed"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Camera className="w-6 h-6" />
+                  <span className="text-sm">Tirar foto do bezerro</span>
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Mãe *</Label>
+              <SearchableSelect
+                items={mothers}
+                value={motherId}
+                onChange={setMotherId}
+                getId={(a) => a.id}
+                getLabel={(a) => a.tag}
+                renderItem={(a) => (
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <span className="truncate">{a.tag}</span>
+                    <span className="text-[10px] text-slate-400 flex-shrink-0">
+                      {categoryLabel(a.category, a.sex, a.species)}
+                      {a.breed_name ? ` · ${a.breed_name}` : ""}
+                    </span>
+                  </div>
+                )}
+                placeholder="Selecione a mãe..."
+                searchPlaceholder="Buscar pelo número..."
+                emptyMessage="Nenhuma fêmea cadastrada"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Sexo do bezerro *</Label>
+              <SexPicker value={calfSex} onChange={setCalfSex} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="vq_calf_tag">Número do bezerro *</Label>
+              <Input
+                id="vq_calf_tag"
+                value={calfTag}
+                onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
+                placeholder="ex: 1046"
+                className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+                autoComplete="off"
+              />
+            </div>
+
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+                {error}
+              </p>
+            )}
+
+            <Button
+              type="submit"
+              disabled={isPending}
+              className="w-full h-14 text-base font-semibold"
+            >
+              {isPending ? "Salvando..." : "Registrar nascimento"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {registeredToday.length > 0 && (
+        <div className="space-y-1.5">
+          <Label>Registrados agora</Label>
+          <ul className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+            {registeredToday.map((r) => (
+              <li key={r.id} className="flex items-center gap-3 px-4 py-2.5">
+                <Baby
+                  className={cn(
+                    "w-4 h-4 flex-shrink-0",
+                    r.sex === "macho" ? "text-sky-500" : "text-rose-500"
+                  )}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                    Nº {r.tag} · {r.sex === "macho" ? "Macho" : "Fêmea"}
+                  </p>
+                  <p className="text-[11px] text-slate-400">Mãe {r.motherTag} · {r.at}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}

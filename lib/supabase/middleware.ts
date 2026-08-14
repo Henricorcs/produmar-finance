@@ -59,6 +59,14 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
+    // Vaqueiro: só a tela de nascimento de bezerro. Nada de hub, módulos ou
+    // configurações — perfil fechado, sem exceção.
+    if (role === "vaqueiro" && !path.startsWith("/vaqueiro") && !isPublicRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/vaqueiro";
+      return NextResponse.redirect(url);
+    }
+
     // Operador: sempre acessa /operador e /imprimir (comprovantes). Se tiver
     // módulos liberados, também acessa o hub, as configurações e esses módulos.
     if (role === "operador" && !isPublicRoute) {
@@ -80,9 +88,15 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    // Módulos liberados por usuário — admin/operador/visualizador não se aplicam
-    // (admin vê tudo; os outros já foram tratados acima). Vazio = sem restrição.
-    if (role !== "admin" && role !== "operador" && role !== "visualizador" && !isPublicRoute) {
+    // Módulos liberados por usuário — admin/operador/visualizador/vaqueiro não se
+    // aplicam (admin vê tudo; os outros já foram tratados acima). Vazio = sem restrição.
+    if (
+      role !== "admin" &&
+      role !== "operador" &&
+      role !== "visualizador" &&
+      role !== "vaqueiro" &&
+      !isPublicRoute
+    ) {
       const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;
       if (isModuleBlocked(path, allowedModules)) {
         const url = request.nextUrl.clone();

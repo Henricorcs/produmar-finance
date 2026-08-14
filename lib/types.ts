@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "financeiro" | "visualizador" | "operador";
+export type UserRole = "admin" | "financeiro" | "visualizador" | "operador" | "vaqueiro";
 export type TransactionType = "entrada" | "saida";
 export type TransactionStatus = "pendente" | "pago" | "recebido" | "vencido" | "cancelado";
 export type InvoiceSource = "xml" | "pdf" | "manual";

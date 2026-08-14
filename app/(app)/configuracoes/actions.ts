@@ -105,7 +105,7 @@ export async function inviteUser(
 
   if (!email) return { error: "Email obrigatório" };
   if (!password || password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };
-  if (!["admin", "financeiro", "visualizador", "operador"].includes(role))
+  if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro"].includes(role))
     return { error: "Perfil de acesso inválido" };
 
   const admin = createAdminClient();
@@ -162,7 +162,7 @@ export async function updateUserRole(
     .single();
   if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
 
-  if (!["admin", "financeiro", "visualizador", "operador"].includes(role))
+  if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro"].includes(role))
     return { error: "Perfil de acesso inválido" };
 
   // rebaixar a si mesmo tira o próprio acesso de admin e tranca a porta por dentro
