@@ -13,6 +13,7 @@ import {
   HardHat,
   ClipboardList,
   Beef,
+  PackageOpen,
   type LucideIcon,
 } from "lucide-react";
 
@@ -78,6 +79,16 @@ export const APP_MODULES: AppModule[] = [
     accentIcon:
       "bg-amber-50 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400",
     tabs: [{ href: "/ferramentas", label: "Patrimônio", short: "Patrim.", icon: Wrench }],
+  },
+  {
+    slug: "estoque",
+    name: "Estoque",
+    description: "Material de consumo: cano, emenda, cola — entradas e saídas",
+    href: "/almoxarifado",
+    icon: PackageOpen,
+    accentIcon:
+      "bg-sky-50 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400",
+    tabs: [{ href: "/almoxarifado", label: "Estoque", short: "Estoque", icon: PackageOpen }],
   },
   {
     slug: "obras",

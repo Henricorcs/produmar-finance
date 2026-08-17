@@ -35,6 +35,31 @@ export function formatBRLFull(value: number): string {
   }).format(value);
 }
 
+/** Parse de valor em R$ digitado (1.234,56 → 1234.56). */
+export function parseMoney(s: string): number {
+  if (!s) return 0;
+  const n = parseFloat(s.replace(/\./g, "").replace(",", "."));
+  return isNaN(n) ? 0 : n;
+}
+
+/** Máscara de digitação de dinheiro: mantém só dígitos e uma vírgula com 2 casas. */
+export function formatMoneyInput(raw: string): string {
+  const cleaned = raw.replace(/[^\d,]/g, "");
+  const parts = cleaned.split(",");
+  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
+  if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
+  return cleaned;
+}
+
+/**
+ * Quantidade legível: sem casas sobrando e com separador brasileiro
+ * (12 → "12", 0.5 → "0,5", 1234.25 → "1.234,25"). Estoque trabalha com até
+ * 3 casas porque nem tudo é contado em peça inteira (metro de cano, kg).
+ */
+export function formatQty(value: number): string {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(value);
+}
+
 /**
  * Horímetro com vírgula automática: o usuário digita só os números e a última
  * casa vira o décimo (ex.: "12305" → "1230,5"). NÃO usa separador de milhar,

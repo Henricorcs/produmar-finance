@@ -843,3 +843,73 @@ export interface AnimalWithInfo extends Animal {
   vaccines_ok: number;
   vaccines_due: number;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ESTOQUE — material de consumo (cano, emenda, cola...)
+// ═══════════════════════════════════════════════════════════════════════════
+// Diferente do Patrimônio: aqui o material é consumível, sai e não volta.
+// O saldo nunca é gravado — nasce da soma dos movimentos (view v_supply_stock).
+
+export type SupplyMovementType = "entrada" | "saida" | "ajuste";
+/** Status derivado do saldo: zerado > baixo (<= mínimo) > ok. */
+export type SupplyStatus = "ok" | "baixo" | "zerado";
+
+/** Agrupamento dos itens (hidráulica, elétrica...) — vira o filtro do topo. */
+export interface SupplyCategory {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface SupplyItem {
+  id: string;
+  item_number: number;
+  name: string;
+  code: string | null;
+  category_id: string | null;
+  /** Unidade de medida (un, m, kg, L, pç, rolo, barra...). */
+  unit: string;
+  /** Avisa quando o saldo chega nesse ponto. 0 = sem aviso. */
+  min_quantity: number;
+  /** Prateleira / onde fica guardado. */
+  location: string | null;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupplyMovement {
+  id: string;
+  item_id: string;
+  type: SupplyMovementType;
+  /** entrada/saída: sempre positivo. Ajuste: assinado (negativo reduz). */
+  quantity: number;
+  /** Quanto custou a unidade (entradas). */
+  unit_cost: number | null;
+  /** Quem pegou (saída) ou de quem veio (entrada). */
+  person: string | null;
+  /** Pra onde foi. */
+  destination: string | null;
+  movement_date: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Linha da view v_supply_stock (item + saldo, custo médio, valor e status). */
+export interface SupplyItemWithStock extends SupplyItem {
+  category_name: string | null;
+  /** Saldo atual = entradas − saídas ± ajustes. */
+  current_quantity: number;
+  total_in: number;
+  total_out: number;
+  /** Custo médio das entradas com custo informado (null quando não há). */
+  avg_unit_cost: number | null;
+  /** Saldo × custo médio. */
+  stock_value: number;
+  last_movement_at: string | null;
+  status: SupplyStatus;
+}

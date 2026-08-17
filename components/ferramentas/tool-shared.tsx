@@ -2,6 +2,10 @@
 
 import type { ToolCondition, ToolStatus } from "@/lib/types";
 
+// Os helpers de dinheiro vivem em lib/utils (o Estoque também usa). Reexportados
+// aqui para os diálogos de patrimônio continuarem importando de um lugar só.
+export { parseMoney, formatMoneyInput } from "@/lib/utils";
+
 export const CONDITION_OPTIONS: { value: ToolCondition; label: string }[] = [
   { value: "otimo", label: "Ótimo" },
   { value: "bom", label: "Bom" },
@@ -46,22 +50,6 @@ export function lossValue(
   if (!tool) return 0;
   const per = tool.replacement_value > 0 ? tool.replacement_value : tool.unit_value;
   return quantity * per;
-}
-
-/** Parse de valor em R$ digitado (1.234,56 → 1234.56). */
-export function parseMoney(s: string): number {
-  if (!s) return 0;
-  const n = parseFloat(s.replace(/\./g, "").replace(",", "."));
-  return isNaN(n) ? 0 : n;
-}
-
-/** Máscara de digitação de dinheiro: mantém só dígitos e uma vírgula com 2 casas. */
-export function formatMoneyInput(raw: string): string {
-  const cleaned = raw.replace(/[^\d,]/g, "");
-  const parts = cleaned.split(",");
-  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
-  if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
-  return cleaned;
 }
 
 /** Data + hora curtas (empréstimos usam timestamp, não só data). */
