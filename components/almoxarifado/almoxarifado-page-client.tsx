@@ -12,6 +12,7 @@ import {
   Tag,
   AlertTriangle,
   Wallet,
+  HardHat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,11 +22,14 @@ import { MovementDialog } from "./movement-dialog";
 import { AdjustDialog } from "./adjust-dialog";
 import { ItemDetailDialog } from "./item-detail-dialog";
 import { CategoriesDialog } from "./categories-dialog";
+import { ObraDialog } from "./obra-dialog";
+import { ObraCard, ObraDetailDialog } from "./obra-detail-dialog";
 import { MOVEMENT_META, STATUS_META, fmtDateTime, num } from "./supply-shared";
 import type {
   SupplyCategory,
   SupplyItemWithStock,
   SupplyMovement,
+  SupplyObraUsage,
   SupplyStatus,
 } from "@/lib/types";
 
@@ -38,14 +42,21 @@ interface Props {
   items: SupplyItemWithStock[];
   movements: MovementRow[];
   categories: SupplyCategory[];
+  /** Obras do módulo (migration 051). */
+  obras?: SupplyObraUsage[];
 }
 
-type Tab = "estoque" | "movimentos";
+type Tab = "estoque" | "obras" | "movimentos";
 /** Categoria escolhida: todas, um id, ou os itens sem categoria. */
 type CategoryFilter = "todas" | "sem" | (string & {});
 type StatusFilter = "todos" | SupplyStatus;
 
-export function AlmoxarifadoPageClient({ items, movements, categories }: Props) {
+export function AlmoxarifadoPageClient({
+  items,
+  movements,
+  categories,
+  obras = [],
+}: Props) {
   const [tab, setTab] = useState<Tab>("estoque");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todas");
@@ -57,6 +68,12 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
   const [movementType, setMovementType] = useState<"entrada" | "saida">("entrada");
   const [movementOpen, setMovementOpen] = useState(false);
   const [movementPresetId, setMovementPresetId] = useState<string | null>(null);
+  const [movementPresetObraId, setMovementPresetObraId] = useState<string | null>(null);
+  const [obraDialogOpen, setObraDialogOpen] = useState(false);
+  const [editObra, setEditObra] = useState<SupplyObraUsage | null>(null);
+  const [detailObraId, setDetailObraId] = useState<string | null>(null);
+  /** O cadastro de obra foi aberto de dentro do lançamento? */
+  const [creatingObraFromMovement, setCreatingObraFromMovement] = useState(false);
   const [adjustItemId, setAdjustItemId] = useState<string | null>(null);
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
@@ -97,6 +114,15 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
     () => (adjustItemId ? items.find((i) => i.id === adjustItemId) ?? null : null),
     [adjustItemId, items]
   );
+  const detailObra = useMemo(
+    () => (detailObraId ? obras.find((o) => o.id === detailObraId) ?? null : null),
+    [detailObraId, obras]
+  );
+  /** Nome da obra por id — a consulta de movimentos não faz join com obras. */
+  const obraNameById = useMemo(
+    () => new Map(obras.map((o) => [o.id, o.name])),
+    [obras]
+  );
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
   const countBy = useMemo(() => {
@@ -135,9 +161,14 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
   }, [scopedItems, search, statusFilter]);
 
   // ── Ações auxiliares ────────────────────────────────────────────────────────
-  function openMovement(type: "entrada" | "saida", item?: SupplyItemWithStock) {
+  function openMovement(
+    type: "entrada" | "saida",
+    item?: SupplyItemWithStock,
+    obraId?: string
+  ) {
     setMovementType(type);
     setMovementPresetId(item?.id ?? null);
+    setMovementPresetObraId(obraId ?? null);
     setMovementOpen(true);
   }
   function openNewItem() {
@@ -145,11 +176,21 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
     setCreatingFromMovement(false);
     setItemDialogOpen(true);
   }
-  /** "Cadastrar item novo" de dentro do lançamento: o diálogo sobe por cima. */
+  /** "Cadastrar novo item" de dentro do lançamento: o diálogo sobe por cima. */
   function openNewItemFromMovement() {
     setEditItem(null);
     setCreatingFromMovement(true);
     setItemDialogOpen(true);
+  }
+  function openNewObra() {
+    setEditObra(null);
+    setCreatingObraFromMovement(false);
+    setObraDialogOpen(true);
+  }
+  function openNewObraFromMovement() {
+    setEditObra(null);
+    setCreatingObraFromMovement(true);
+    setObraDialogOpen(true);
   }
 
   const categoryTabs: { value: CategoryFilter; label: string; count: number }[] = [
@@ -174,7 +215,7 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
   const statusFilters: { value: StatusFilter; label: string }[] = [
     { value: "todos", label: "Todos" },
     { value: "ok", label: "Em estoque" },
-    { value: "baixo", label: "Acabando" },
+    { value: "baixo", label: "Estoque baixo" },
     { value: "zerado", label: "Zerados" },
   ];
 
@@ -263,13 +304,13 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
       <div className="grid grid-cols-2 gap-2">
         <SummaryCard
           icon={Wallet}
-          label="Valor parado"
+          label="Valor em estoque"
           value={formatBRL(stockValue)}
           tone="emerald"
         />
         <SummaryCard
           icon={AlertTriangle}
-          label="Precisa comprar"
+          label="Abaixo do mínimo"
           value={String(countBy.baixo + countBy.zerado)}
           tone={countBy.baixo + countBy.zerado > 0 ? "amber" : "slate"}
         />
@@ -280,7 +321,7 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
         <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 p-3 space-y-2">
           <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5" />
-            Repor {needsRestock.length === 1 ? "1 item" : `${needsRestock.length} itens`}
+            Repor {needsRestock.length === 1 ? "1 material" : `${needsRestock.length} materiais`}
           </p>
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
             {needsRestock.slice(0, 12).map((i) => (
@@ -307,6 +348,7 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
         {(
           [
             { value: "estoque", label: "Estoque", icon: PackageOpen, count: scopedItems.length },
+            { value: "obras", label: "Obras", icon: HardHat, count: obras.length },
             {
               value: "movimentos",
               label: "Movimentos",
@@ -343,7 +385,7 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar item..."
+              placeholder="Buscar material..."
               className="pl-9"
               autoComplete="off"
             />
@@ -373,10 +415,10 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
                 icon={PackageOpen}
                 text={
                   currentCategoryName
-                    ? `Nada em ${currentCategoryName} ainda.`
-                    : "Nenhum item cadastrado ainda."
+                    ? `Nenhum material em ${currentCategoryName}.`
+                    : "Nenhum material cadastrado."
                 }
-                hint="Cadastre cano, emenda, cola — o que você usa e acaba."
+                hint="Cadastre o que você usa e acaba: cano, emenda, cola."
                 action={
                   <Button size="sm" onClick={openNewItem}>
                     <Plus className="w-4 h-4" /> Novo item
@@ -402,7 +444,17 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
         </div>
       )}
 
-      {tab === "movimentos" && <MovimentosTab movements={scopedMovements} />}
+      {tab === "obras" && (
+        <ObrasTab
+          obras={obras}
+          onNew={openNewObra}
+          onOpen={(o) => setDetailObraId(o.id)}
+        />
+      )}
+
+      {tab === "movimentos" && (
+        <MovimentosTab movements={scopedMovements} obraNameById={obraNameById} />
+      )}
 
       {/* Dialogs */}
       <ItemDialog
@@ -425,8 +477,37 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
         onClose={() => setMovementOpen(false)}
         type={movementType}
         items={items}
+        obras={obras}
         presetItemId={movementPresetId}
+        presetObraId={movementPresetObraId}
         onCreateItem={openNewItemFromMovement}
+        onCreateObra={openNewObraFromMovement}
+      />
+      <ObraDialog
+        open={obraDialogOpen}
+        onClose={() => setObraDialogOpen(false)}
+        obra={editObra}
+        onCreated={(obraId) => {
+          // veio do lançamento: a obra recém-criada já entra selecionada nele
+          if (creatingObraFromMovement) setMovementPresetObraId(obraId);
+          setCreatingObraFromMovement(false);
+        }}
+      />
+      <ObraDetailDialog
+        open={!!detailObra}
+        onClose={() => setDetailObraId(null)}
+        obra={detailObra}
+        items={items}
+        onNewSaida={(o) => {
+          setDetailObraId(null);
+          openMovement("saida", undefined, o.id);
+        }}
+        onEdit={(o) => {
+          setDetailObraId(null);
+          setEditObra(o);
+          setCreatingObraFromMovement(false);
+          setObraDialogOpen(true);
+        }}
       />
       <AdjustDialog
         open={!!adjustItem}
@@ -555,13 +636,67 @@ function ItemCard({
   );
 }
 
+// ── Aba: Obras ───────────────────────────────────────────────────────────────
+function ObrasTab({
+  obras,
+  onNew,
+  onOpen,
+}: {
+  obras: SupplyObraUsage[];
+  onNew: () => void;
+  onOpen: (obra: SupplyObraUsage) => void;
+}) {
+  const total = obras.reduce((sum, o) => sum + num(o.total_value), 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        {obras.length > 0 && (
+          <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+            {formatBRL(total)} em material
+          </p>
+        )}
+        <Button variant="outline" size="sm" onClick={onNew} className="ml-auto">
+          <Plus className="w-3.5 h-3.5" />
+          Nova obra
+        </Button>
+      </div>
+
+      {obras.length === 0 ? (
+        <EmptyState
+          icon={HardHat}
+          text="Nenhuma obra cadastrada."
+          hint="Cadastre as obras para saber quanto de material cada uma consumiu."
+          action={
+            <Button size="sm" onClick={onNew}>
+              <Plus className="w-4 h-4" /> Nova obra
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {obras.map((o) => (
+            <ObraCard key={o.id} obra={o} onOpen={() => onOpen(o)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Aba: Movimentos ──────────────────────────────────────────────────────────
-function MovimentosTab({ movements }: { movements: MovementRow[] }) {
+function MovimentosTab({
+  movements,
+  obraNameById,
+}: {
+  movements: MovementRow[];
+  obraNameById: Map<string, string>;
+}) {
   if (movements.length === 0) {
     return (
       <EmptyState
         icon={History}
-        text="Nenhum movimento ainda."
+        text="Nenhuma movimentação registrada."
         hint="Entradas, saídas e conferências aparecem aqui."
       />
     );
@@ -573,6 +708,7 @@ function MovimentosTab({ movements }: { movements: MovementRow[] }) {
         const meta = MOVEMENT_META[m.type];
         const qty = num(m.quantity);
         const unit = m.supply_items?.unit ?? "";
+        const obraName = m.obra_id ? obraNameById.get(m.obra_id) : null;
         return (
           <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
             <div
@@ -593,7 +729,8 @@ function MovimentosTab({ movements }: { movements: MovementRow[] }) {
               <p className="text-[11px] text-slate-400 truncate">
                 {fmtDateTime(m.created_at)}
                 {m.person ? ` · ${m.person}` : ""}
-                {m.destination ? ` → ${m.destination}` : ""}
+                {obraName ? ` · ${obraName}` : ""}
+                {m.destination ? ` · ${m.destination}` : ""}
                 {m.notes ? ` · ${m.notes}` : ""}
               </p>
             </div>

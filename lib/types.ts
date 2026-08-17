@@ -893,14 +893,40 @@ export interface SupplyMovement {
   unit_cost: number | null;
   /** Quem pegou (saída) ou de quem veio (entrada). */
   person: string | null;
-  /** Pra onde foi. */
+  /** Em que foi usado (texto livre). */
   destination: string | null;
+  /** Obra do Estoque a que a saída foi atrelada (tabela supply_obras). */
+  obra_id: string | null;
   /** Comprovante no bucket attachments (nota na entrada, quem levou na saída). */
   photo_path: string | null;
   movement_date: string;
   notes: string | null;
   created_by: string | null;
   created_at: string;
+}
+
+/**
+ * Obra DO ESTOQUE — lista própria do módulo, para saber quanto de material
+ * cada obra consumiu. Não tem relação com o módulo Obras (public.obras).
+ */
+export interface SupplyObra {
+  id: string;
+  name: string;
+  client: string | null;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Linha da view v_supply_obra_usage (obra + consumo de material). */
+export interface SupplyObraUsage extends SupplyObra {
+  /** Quantos materiais diferentes saíram para esta obra. */
+  items_count: number;
+  movements_count: number;
+  /** Soma das saídas × custo médio do item. */
+  total_value: number;
+  last_usage_at: string | null;
 }
 
 /** Linha da view v_supply_stock (item + saldo, custo médio, valor e status). */

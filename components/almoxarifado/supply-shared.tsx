@@ -32,7 +32,7 @@ export const STATUS_META: Record<SupplyStatus, { label: string; chip: string; do
     dot: "bg-emerald-500",
   },
   baixo: {
-    label: "Acabando",
+    label: "Estoque baixo",
     chip: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
     dot: "bg-amber-500",
   },

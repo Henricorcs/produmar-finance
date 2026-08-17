@@ -102,7 +102,7 @@ export function ItemDetailDialog({
   }
 
   function handleDeleteMovement(m: MovementRow) {
-    if (!confirm("Apagar este lançamento? O saldo do item volta ao que era.")) return;
+    if (!confirm("Excluir esta movimentação? O saldo volta ao que era antes.")) return;
     startTransition(async () => {
       const r = await deleteSupplyMovement(m.id);
       if (r && "error" in r) alert(r.error);
@@ -143,8 +143,8 @@ export function ItemDetailDialog({
             </p>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
               {avgCost != null
-                ? `${formatBRL(avgCost)} / ${item.unit} · ${formatBRL(num(item.stock_value))} parado`
-                : "Sem custo lançado"}
+                ? `${formatBRL(avgCost)} / ${item.unit} · ${formatBRL(num(item.stock_value))} em estoque`
+                : "Sem custo registrado"}
             </p>
           </div>
 
@@ -173,14 +173,14 @@ export function ItemDetailDialog({
 
           {/* Ficha */}
           <dl className="grid grid-cols-2 gap-2 text-xs">
-            <Fact label="Entrou" value={`${formatQty(num(item.total_in))} ${item.unit}`} />
-            <Fact label="Saiu" value={`${formatQty(num(item.total_out))} ${item.unit}`} />
+            <Fact label="Entradas" value={`${formatQty(num(item.total_in))} ${item.unit}`} />
+            <Fact label="Saídas" value={`${formatQty(num(item.total_out))} ${item.unit}`} />
             <Fact
-              label="Avisar em"
+              label="Estoque mínimo"
               value={
                 item.min_quantity > 0
                   ? `${formatQty(num(item.min_quantity))} ${item.unit}`
-                  : "sem aviso"
+                  : "não definido"
               }
             />
             <Fact
@@ -190,7 +190,7 @@ export function ItemDetailDialog({
             />
             {item.location && (
               <div className="col-span-2">
-                <Fact label="Onde fica" icon={MapPin} value={item.location} />
+                <Fact label="Localização" icon={MapPin} value={item.location} />
               </div>
             )}
           </dl>
@@ -198,11 +198,11 @@ export function ItemDetailDialog({
           {/* Histórico do item */}
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Últimos lançamentos
+              Últimas movimentações
             </p>
             {movements.length === 0 ? (
               <p className="text-xs text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
-                Nada lançado ainda.
+                Nenhuma movimentação registrada.
               </p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 max-h-56 overflow-y-auto">

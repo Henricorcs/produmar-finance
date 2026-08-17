@@ -28,9 +28,10 @@ function normQty(v?: number | null): number {
  */
 function supplyError(error: { code?: string; message: string }): string {
   if (error.code === "23505") return "Já existe um registro com esse nome";
-  // coluna que falta = as fotos, que vieram depois (migration 050)
-  if (error.code === "42703" || error.message.includes("photo_path"))
+  if (error.message.includes("photo_path"))
     return "Rode a migration 050 no Supabase para usar as fotos";
+  if (error.message.includes("supply_obras") || error.message.includes("obra_id"))
+    return "Rode a migration 051 no Supabase para usar as obras";
   if (
     error.code === "42P01" ||
     error.message.includes("supply_items") ||
@@ -305,6 +306,7 @@ export interface SupplyMovementInput {
   unit_cost?: number | null;
   person?: string | null;
   destination?: string | null;
+  obra_id?: string | null;
   movement_date?: string | null;
   notes?: string | null;
 }
@@ -334,7 +336,7 @@ export async function createSupplyMovement(input: SupplyMovementInput) {
     const available = Number(stock?.current_quantity ?? 0);
     if (qty > available)
       return {
-        error: `Só tem ${available} ${stock?.unit ?? ""} em estoque`.trim(),
+        error: `Saldo insuficiente (disponível: ${available} ${stock?.unit ?? ""})`.trim(),
       };
   }
 
@@ -348,6 +350,7 @@ export async function createSupplyMovement(input: SupplyMovementInput) {
         input.type === "entrada" && input.unit_cost ? Math.max(0, input.unit_cost) : null,
       person: clean(input.person),
       destination: clean(input.destination),
+      obra_id: input.type === "saida" ? input.obra_id || null : null,
       movement_date: input.movement_date || undefined,
       notes: clean(input.notes),
       created_by: user.id,
@@ -386,7 +389,7 @@ export async function adjustSupplyStock(input: {
 
   const counted = normQty(input.counted_quantity);
   const diff = Math.round((counted - Number(stock.current_quantity ?? 0)) * 1000) / 1000;
-  if (diff === 0) return { error: "O saldo já é esse — nada a ajustar" };
+  if (diff === 0) return { error: "O saldo já está correto — nada a ajustar" };
 
   const { error } = await supabase.from("supply_movements").insert({
     item_id: input.item_id,
@@ -447,6 +450,85 @@ export async function renameSupplyCategory(id: string, name: string) {
 export async function deleteSupplyCategory(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("supply_categories").delete().eq("id", id);
+  if (error) return { error: supplyError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OBRAS DO ESTOQUE
+// (lista própria do módulo — nada a ver com a tabela obras do módulo Obras)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SupplyObraInput {
+  name: string;
+  client?: string | null;
+  notes?: string | null;
+}
+
+export async function createSupplyObra(input: SupplyObraInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome da obra" };
+
+  const { data, error } = await supabase
+    .from("supply_obras")
+    .insert({
+      name,
+      client: clean(input.client),
+      notes: clean(input.notes),
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error ? supplyError(error) : "Erro ao cadastrar" };
+  revalidate();
+  return { ok: true, obraId: data.id as string };
+}
+
+export async function updateSupplyObra(id: string, input: SupplyObraInput) {
+  const supabase = createClient();
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome da obra" };
+
+  const { error } = await supabase
+    .from("supply_obras")
+    .update({ name, client: clean(input.client), notes: clean(input.notes) })
+    .eq("id", id);
+
+  if (error) return { error: supplyError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Todas as saídas de uma obra, sem o limite da listagem da página — o detalhe
+ * da obra precisa do consumo inteiro para os totais baterem com o card.
+ */
+export async function getSupplyObraMovements(obraId: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("supply_movements")
+    .select("id, item_id, quantity, person, destination, created_at, supply_items(name, unit)")
+    .eq("obra_id", obraId)
+    .eq("type", "saida")
+    .order("created_at", { ascending: false });
+
+  if (error) return { error: supplyError(error) };
+  return { movements: data ?? [] };
+}
+
+/** Remove a obra. As saídas dela NÃO somem — ficam sem obra. */
+export async function deleteSupplyObra(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("supply_obras").delete().eq("id", id);
   if (error) return { error: supplyError(error) };
   revalidate();
   return { ok: true };

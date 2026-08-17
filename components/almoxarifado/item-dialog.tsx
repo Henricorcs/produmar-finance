@@ -186,7 +186,7 @@ export function ItemDialog({
               </datalist>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="si_min">Avisar em</Label>
+              <Label htmlFor="si_min">Estoque mínimo</Label>
               <Input
                 id="si_min"
                 value={minQuantity}
@@ -239,7 +239,7 @@ export function ItemDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="si_location">Onde fica</Label>
+              <Label htmlFor="si_location">Localização</Label>
               <Input
                 id="si_location"
                 value={location}
@@ -252,8 +252,7 @@ export function ItemDialog({
           </div>
 
           <PhotoField
-            label="Foto do item"
-            hint="Ajuda a reconhecer na prateleira o que o nome sozinho não diz."
+            label="Foto do material"
             file={photo}
             onChange={setPhoto}
             currentUrl={currentPhotoUrl}
@@ -264,7 +263,7 @@ export function ItemDialog({
           {!item && (
             <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-produmar-50/40 dark:bg-slate-800/40 border border-produmar-100 dark:border-slate-700">
               <div className="space-y-1.5">
-                <Label htmlFor="si_initial">Quantidade em estoque</Label>
+                <Label htmlFor="si_initial">Saldo inicial</Label>
                 <Input
                   id="si_initial"
                   value={initialQty}

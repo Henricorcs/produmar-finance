@@ -77,7 +77,7 @@ export function AdjustDialog({ open, onClose, item }: Props) {
             <span className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center">
               <ClipboardCheck className="w-4 h-4" />
             </span>
-            Conferir estoque
+            Conferência de estoque
           </DialogTitle>
         </DialogHeader>
 
@@ -87,12 +87,12 @@ export function AdjustDialog({ open, onClose, item }: Props) {
               {item.name}
             </p>
             <p className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
-              Sistema diz: {formatQty(item.current_quantity)} {item.unit}
+              Saldo no sistema: {formatQty(item.current_quantity)} {item.unit}
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="aj_counted">Quanto tem de verdade ({item.unit}) *</Label>
+            <Label htmlFor="aj_counted">Quantidade contada ({item.unit}) *</Label>
             <Input
               id="aj_counted"
               value={counted}

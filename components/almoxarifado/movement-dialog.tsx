@@ -19,7 +19,7 @@ import {
   uploadSupplyMovementPhoto,
 } from "@/app/(app)/almoxarifado/actions";
 import { PhotoField, formatQtyInput, parseQty } from "./supply-shared";
-import type { SupplyItemWithStock } from "@/lib/types";
+import type { SupplyItemWithStock, SupplyObraUsage } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -27,10 +27,16 @@ interface Props {
   /** "entrada" = chegou material. "saida" = alguém levou pra usar. */
   type: "entrada" | "saida";
   items: SupplyItemWithStock[];
+  /** Obras do módulo — a saída pode ser atrelada a uma delas. */
+  obras?: SupplyObraUsage[];
   /** Pré-seleciona o item (quando aberto pelo card ou pelo detalhe). */
   presetItemId?: string | null;
+  /** Pré-seleciona a obra (quando aberto pela aba Obras). */
+  presetObraId?: string | null;
   /** Abre o cadastro de item sem sair do lançamento. */
   onCreateItem?: () => void;
+  /** Abre o cadastro de obra sem sair do lançamento. */
+  onCreateObra?: () => void;
 }
 
 export function MovementDialog({
@@ -38,8 +44,11 @@ export function MovementDialog({
   onClose,
   type,
   items,
+  obras = [],
   presetItemId,
+  presetObraId,
   onCreateItem,
+  onCreateObra,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +58,7 @@ export function MovementDialog({
   const [unitCost, setUnitCost] = useState("");
   const [person, setPerson] = useState("");
   const [destination, setDestination] = useState("");
+  const [obraId, setObraId] = useState("");
   const [date, setDate] = useState(localDateISO());
   const [photo, setPhoto] = useState<File | null>(null);
 
@@ -67,10 +77,11 @@ export function MovementDialog({
     setUnitCost("");
     setPerson("");
     setDestination("");
+    setObraId(presetObraId ?? "");
     setDate(localDateISO());
     setPhoto(null);
     setError(null);
-  }, [open, presetItemId]);
+  }, [open, presetItemId, presetObraId]);
 
   const selected = items.find((i) => i.id === itemId) ?? null;
   const available = selected?.current_quantity ?? 0;
@@ -89,11 +100,11 @@ export function MovementDialog({
       return;
     }
     if (isSaida && qty > available) {
-      setError(`Só tem ${formatQty(available)} ${selected?.unit ?? ""} em estoque`);
+      setError(`Saldo insuficiente (disponível: ${formatQty(available)} ${selected?.unit ?? ""})`);
       return;
     }
     if (isSaida && !person.trim()) {
-      setError("Informe quem está levando");
+      setError("Informe quem retirou o material");
       return;
     }
 
@@ -105,6 +116,7 @@ export function MovementDialog({
         unit_cost: isSaida ? null : parseMoney(unitCost),
         person,
         destination: isSaida ? destination : null,
+        obra_id: isSaida ? obraId || null : null,
         movement_date: date,
       });
       if (r && "error" in r) {
@@ -181,7 +193,7 @@ export function MovementDialog({
                   isSaida ? "Nenhum item com saldo em estoque" : "Nenhum item cadastrado"
                 }
                 onCreateNew={onCreateItem}
-                createNewLabel="Cadastrar item novo"
+                createNewLabel="Cadastrar novo item"
               />
             )}
           </div>
@@ -234,29 +246,57 @@ export function MovementDialog({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="mv_person">{isSaida ? "Quem está levando *" : "De quem veio"}</Label>
+            <Label htmlFor="mv_person">{isSaida ? "Retirado por *" : "Fornecedor"}</Label>
             <Input
               id="mv_person"
               value={person}
               onChange={(e) => setPerson(e.target.value.toUpperCase())}
-              placeholder={isSaida ? "nome de quem pegou" : "fornecedor (opcional)"}
+              placeholder={isSaida ? "nome de quem retirou" : "opcional"}
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
             />
           </div>
 
           {isSaida && (
-            <div className="space-y-1.5">
-              <Label htmlFor="mv_destination">Pra onde vai</Label>
-              <Input
-                id="mv_destination"
-                value={destination}
-                onChange={(e) => setDestination(e.target.value.toUpperCase())}
-                placeholder="obra / cliente / local (opcional)"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
-                autoComplete="off"
-              />
-            </div>
+            <>
+              <div className="space-y-1.5">
+                <Label>Obra</Label>
+                <SearchableSelect
+                  items={obras}
+                  value={obraId}
+                  onChange={setObraId}
+                  getId={(o) => o.id}
+                  getLabel={(o) => o.name}
+                  renderItem={(o) => (
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <span className="truncate">{o.name}</span>
+                      {o.client && (
+                        <span className="text-[10px] text-slate-400 flex-shrink-0 truncate max-w-[7rem]">
+                          {o.client}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  placeholder="Nenhuma obra (opcional)"
+                  searchPlaceholder="Buscar obra..."
+                  emptyMessage="Nenhuma obra cadastrada"
+                  onCreateNew={onCreateObra}
+                  createNewLabel="Cadastrar nova obra"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="mv_destination">Uso</Label>
+                <Input
+                  id="mv_destination"
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value.toUpperCase())}
+                  placeholder="onde ou em que foi aplicado (opcional)"
+                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoComplete="off"
+                />
+              </div>
+            </>
           )}
 
           <div className="space-y-1.5">
@@ -270,12 +310,7 @@ export function MovementDialog({
           </div>
 
           <PhotoField
-            label="Foto"
-            hint={
-              isSaida
-                ? "Quem levou, o material saindo — o que ajudar a lembrar depois."
-                : "Nota fiscal ou o material que chegou."
-            }
+            label={isSaida ? "Comprovante" : "Nota fiscal"}
             file={photo}
             onChange={setPhoto}
           />
