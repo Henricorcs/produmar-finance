@@ -30,6 +30,8 @@ function supplyError(error: { code?: string; message: string }): string {
   if (error.code === "23505") return "Já existe um registro com esse nome";
   if (error.message.includes("photo_path"))
     return "Rode a migration 050 no Supabase para usar as fotos";
+  if (error.message.includes("supply_requests"))
+    return "Rode a migration 052 no Supabase para receber os envios do técnico";
   if (error.message.includes("supply_obras") || error.message.includes("obra_id"))
     return "Rode a migration 051 no Supabase para usar as obras";
   if (
@@ -557,6 +559,92 @@ export async function getSupplyObraMovements(obraId: string) {
 
   if (error) return { error: supplyError(error) };
   return { movements: data ?? [] };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOLICITAÇÕES DO TÉCNICO (migration 052)
+// O técnico avisa o que usou; nada sai do estoque até o chefe dar baixa aqui.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ApproveSupplyRequestInput {
+  /** Item de verdade do cadastro — o técnico pode ter só escrito o nome. */
+  item_id: string;
+  quantity: number;
+  obra_id?: string | null;
+  destination?: string | null;
+  /** Quem usou o material (vem preenchido com quem enviou o recado). */
+  person?: string | null;
+  movement_date?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Dá baixa no que o técnico avisou: nasce a saída em supply_movements (com a
+ * mesma checagem de saldo do lançamento normal) e o recado morre. A foto que
+ * ele mandou passa a ser o comprovante da saída.
+ */
+export async function approveSupplyRequest(
+  requestId: string,
+  input: ApproveSupplyRequestInput
+) {
+  const supabase = createClient();
+
+  const { data: req, error: reqErr } = await supabase
+    .from("supply_requests")
+    .select("photo_path")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (reqErr) return { error: supplyError(reqErr) };
+  if (!req) return { error: "Envio não encontrado — talvez já tenha sido resolvido" };
+
+  const mov = await createSupplyMovement({
+    item_id: input.item_id,
+    type: "saida",
+    quantity: input.quantity,
+    person: input.person,
+    destination: input.destination,
+    obra_id: input.obra_id,
+    movement_date: input.movement_date,
+    notes: input.notes,
+  });
+  if ("error" in mov) return mov;
+
+  // a foto continua no storage: agora ela é o comprovante do lançamento
+  if (req.photo_path && mov.movementId) {
+    await supabase
+      .from("supply_movements")
+      .update({ photo_path: req.photo_path })
+      .eq("id", mov.movementId);
+  }
+
+  const { error } = await supabase.from("supply_requests").delete().eq("id", requestId);
+  if (error) return { error: supplyError(error) };
+
+  revalidate();
+  revalidatePath("/tecnico");
+  return { ok: true };
+}
+
+/** Descarta o recado (errado, duplicado) — nada sai do estoque. */
+export async function rejectSupplyRequest(requestId: string) {
+  const supabase = createClient();
+
+  const { data: req } = await supabase
+    .from("supply_requests")
+    .select("photo_path")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  const { error } = await supabase.from("supply_requests").delete().eq("id", requestId);
+  if (error) return { error: supplyError(error) };
+
+  if (req?.photo_path) {
+    await supabase.storage.from("attachments").remove([req.photo_path as string]);
+  }
+
+  revalidate();
+  revalidatePath("/tecnico");
+  return { ok: true };
 }
 
 /** Remove a obra. As saídas dela NÃO somem — ficam sem obra. */

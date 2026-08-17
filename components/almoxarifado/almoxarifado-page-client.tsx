@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Plus,
   Search,
   PackageOpen,
   ArrowDownToLine,
   ArrowUpFromLine,
+  ChevronRight,
+  ClipboardCheck,
   History,
   Settings2,
   Tag,
@@ -17,8 +19,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatBRL, formatQty } from "@/lib/utils";
-import { deleteSupplyMovement } from "@/app/(app)/almoxarifado/actions";
+import { formatBRL, formatDate, formatQty } from "@/lib/utils";
+import {
+  deleteSupplyMovement,
+  getSupplyPhotoUrls,
+  rejectSupplyRequest,
+} from "@/app/(app)/almoxarifado/actions";
 import { ItemDialog } from "./item-dialog";
 import { MovementDialog } from "./movement-dialog";
 import { AdjustDialog } from "./adjust-dialog";
@@ -26,12 +32,14 @@ import { ItemDetailDialog } from "./item-detail-dialog";
 import { CategoriesDialog } from "./categories-dialog";
 import { ObraDialog } from "./obra-dialog";
 import { ObraCard, ObraDetailDialog } from "./obra-detail-dialog";
+import { SupplyRequestDialog } from "./request-dialog";
 import { MOVEMENT_META, STATUS_META, fmtDateTime, num } from "./supply-shared";
 import type {
   SupplyCategory,
   SupplyItemWithStock,
   SupplyMovement,
   SupplyObraUsage,
+  SupplyRequestRow,
   SupplyStatus,
 } from "@/lib/types";
 
@@ -46,9 +54,11 @@ interface Props {
   categories: SupplyCategory[];
   /** Obras do módulo (migration 051). */
   obras?: SupplyObraUsage[];
+  /** O que os técnicos avisaram que usaram, esperando baixa (migration 052). */
+  requests?: SupplyRequestRow[];
 }
 
-type Tab = "estoque" | "obras" | "movimentos";
+type Tab = "estoque" | "obras" | "movimentos" | "pendentes";
 /** Categoria escolhida: todas, um id, ou os itens sem categoria. */
 type CategoryFilter = "todas" | "sem" | (string & {});
 type StatusFilter = "todos" | SupplyStatus;
@@ -58,8 +68,10 @@ export function AlmoxarifadoPageClient({
   movements,
   categories,
   obras = [],
+  requests = [],
 }: Props) {
   const [tab, setTab] = useState<Tab>("estoque");
+  const [isRejecting, startRejecting] = useTransition();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todas");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
@@ -81,6 +93,10 @@ export function AlmoxarifadoPageClient({
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   /** O cadastro foi aberto de dentro do lançamento? Então o item novo já entra nele. */
   const [creatingFromMovement, setCreatingFromMovement] = useState(false);
+  const [approveRequestId, setApproveRequestId] = useState<string | null>(null);
+  const [rejectingRequestId, setRejectingRequestId] = useState<string | null>(null);
+  /** Miniaturas das fotos que os técnicos mandaram (URLs assinadas). */
+  const [requestThumbs, setRequestThumbs] = useState<Record<string, string>>({});
 
   // ── Categoria escolhida: tudo na tela passa a ser só dela ──────────────────
   const scopedItems = useMemo(() => {
@@ -125,6 +141,46 @@ export function AlmoxarifadoPageClient({
     () => new Map(obras.map((o) => [o.id, o.name])),
     [obras]
   );
+  const approveRequest = useMemo(
+    () => (approveRequestId ? requests.find((r) => r.id === approveRequestId) ?? null : null),
+    [approveRequestId, requests]
+  );
+
+  // uma ida ao servidor resolve as fotos de todos os envios pendentes
+  const requestPhotoPaths = useMemo(
+    () => requests.map((r) => r.photo_path).filter((p): p is string => !!p).join(","),
+    [requests]
+  );
+  useEffect(() => {
+    if (!requestPhotoPaths) {
+      setRequestThumbs({});
+      return;
+    }
+    let cancelled = false;
+    getSupplyPhotoUrls(requestPhotoPaths.split(",")).then((r) => {
+      if (cancelled || !("urls" in r)) return;
+      setRequestThumbs(r.urls);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [requestPhotoPaths]);
+
+  function handleRejectRequest(r: SupplyRequestRow) {
+    const nome = r.supply_items?.name ?? r.item_text ?? "material";
+    if (
+      !confirm(
+        `Descartar o aviso de ${nome}? Nada sai do estoque e o técnico deixa de ver o envio.`
+      )
+    )
+      return;
+    setRejectingRequestId(r.id);
+    startRejecting(async () => {
+      const res = await rejectSupplyRequest(r.id);
+      setRejectingRequestId(null);
+      if (res && "error" in res) alert(res.error);
+    });
+  }
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
   const countBy = useMemo(() => {
@@ -261,6 +317,31 @@ export function AlmoxarifadoPageClient({
         </button>
       </div>
 
+      {/* O técnico avisou que usou material — só cai do estoque quando o chefe
+          dá baixa, então isso não pode ficar escondido numa aba. */}
+      {requests.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setTab("pendentes")}
+          className="w-full flex items-center gap-3 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 text-left active:scale-[0.99] transition-transform"
+        >
+          <span className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+            <ClipboardCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-semibold text-amber-800 dark:text-amber-300">
+              {requests.length === 1
+                ? "1 material esperando baixa"
+                : `${requests.length} materiais esperando baixa`}
+            </span>
+            <span className="block text-[11px] text-amber-700/80 dark:text-amber-400/70 truncate">
+              Os técnicos avisaram o que usaram — confira e dê baixa.
+            </span>
+          </span>
+          <ChevronRight className="w-4 h-4 text-amber-500 flex-shrink-0" />
+        </button>
+      )}
+
       {/* Categorias */}
       {(categories.length > 0 || items.length > 0) && (
         <div className="space-y-1.5">
@@ -363,9 +444,17 @@ export function AlmoxarifadoPageClient({
               icon: History,
               count: scopedMovements.length,
             },
+            {
+              value: "pendentes",
+              label: "Pendentes",
+              icon: ClipboardCheck,
+              count: requests.length,
+            },
           ] as const
         ).map((t) => {
           const Icon = t.icon;
+          // pendente é o único contador que pede ação: fica em destaque
+          const alerta = t.value === "pendentes" && t.count > 0;
           return (
             <button
               key={t.value}
@@ -373,13 +462,23 @@ export function AlmoxarifadoPageClient({
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 px-1 py-1.5 rounded-md transition-colors ${
                 tab === t.value
                   ? "bg-white dark:bg-slate-700 text-produmar-700 dark:text-produmar-400 shadow-sm"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  : alerta
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               }`}
             >
               <Icon className="w-4 h-4" />
               <span className="text-[11px] font-medium leading-none flex items-center gap-1">
                 {t.label}
-                <span className="opacity-50">{t.count}</span>
+                <span
+                  className={
+                    alerta
+                      ? "px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold tabular-nums"
+                      : "opacity-50"
+                  }
+                >
+                  {t.count}
+                </span>
               </span>
             </button>
           );
@@ -464,6 +563,16 @@ export function AlmoxarifadoPageClient({
         <MovimentosTab movements={scopedMovements} obraNameById={obraNameById} />
       )}
 
+      {tab === "pendentes" && (
+        <PendentesTab
+          requests={requests}
+          thumbs={requestThumbs}
+          rejectingId={isRejecting ? rejectingRequestId : null}
+          onApprove={(r) => setApproveRequestId(r.id)}
+          onReject={handleRejectRequest}
+        />
+      )}
+
       {/* Dialogs */}
       <ItemDialog
         open={itemDialogOpen}
@@ -515,6 +624,16 @@ export function AlmoxarifadoPageClient({
           setDetailObraId(null);
           openEditObra(o);
         }}
+      />
+      <SupplyRequestDialog
+        open={!!approveRequest}
+        onClose={() => setApproveRequestId(null)}
+        request={approveRequest}
+        items={items}
+        obras={obras}
+        photoUrl={
+          approveRequest?.photo_path ? requestThumbs[approveRequest.photo_path] ?? null : null
+        }
       />
       <AdjustDialog
         open={!!adjustItem}
@@ -687,6 +806,132 @@ function ObrasTab({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Aba: Pendentes (o que os técnicos avisaram que usaram) ───────────────────
+function PendentesTab({
+  requests,
+  thumbs,
+  rejectingId,
+  onApprove,
+  onReject,
+}: {
+  requests: SupplyRequestRow[];
+  thumbs: Record<string, string>;
+  rejectingId: string | null;
+  onApprove: (r: SupplyRequestRow) => void;
+  onReject: (r: SupplyRequestRow) => void;
+}) {
+  if (requests.length === 0) {
+    return (
+      <EmptyState
+        icon={ClipboardCheck}
+        text="Nada esperando baixa."
+        hint="O material que os técnicos avisarem pelo celular aparece aqui — mais antigo primeiro."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {requests.map((r) => (
+        <RequestCard
+          key={r.id}
+          request={r}
+          photoUrl={r.photo_path ? thumbs[r.photo_path] ?? null : null}
+          rejecting={rejectingId === r.id}
+          onApprove={() => onApprove(r)}
+          onReject={() => onReject(r)}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Cartão de um aviso do técnico — o chefe dá baixa ou descarta. */
+function RequestCard({
+  request,
+  photoUrl,
+  rejecting,
+  onApprove,
+  onReject,
+}: {
+  request: SupplyRequestRow;
+  photoUrl: string | null;
+  rejecting: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const nome = request.supply_items?.name ?? request.item_text ?? "—";
+  const unit = request.supply_items?.unit ?? "";
+  const lugar = request.supply_obras?.name ?? null;
+  /** Material escrito na mão: o chefe ainda tem que casar com o cadastro. */
+  const foraDoCadastro = !request.item_id;
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-3">
+      <div className="flex items-center gap-3">
+        {photoUrl ? (
+          <a href={photoUrl} target="_blank" rel="noreferrer" className="flex-shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photoUrl}
+              alt={nome}
+              className="w-14 h-14 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+            />
+          </a>
+        ) : (
+          <div className="w-14 h-14 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+            <HardHat className="w-6 h-6 text-amber-400" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate tabular-nums">
+            {formatQty(num(request.quantity))} {unit} · {nome}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+            {lugar ?? "sem obra"}
+            {request.destination ? ` · ${request.destination}` : ""}
+          </p>
+          <p className="text-[11px] text-slate-400 truncate">
+            {request.sent_by_name ? `${request.sent_by_name} · ` : ""}
+            {formatDate(request.used_date)}
+          </p>
+        </div>
+      </div>
+
+      {(foraDoCadastro || request.notes) && (
+        <div className="space-y-1.5">
+          {foraDoCadastro && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2.5 py-1.5">
+              Escrito na mão — escolha o material do cadastro ao dar baixa.
+            </p>
+          )}
+          {request.notes && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-1.5">
+              {request.notes}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1 h-10"
+          onClick={onReject}
+          disabled={rejecting}
+        >
+          Descartar
+        </Button>
+        <Button type="button" className="flex-[2] h-10" onClick={onApprove} disabled={rejecting}>
+          <ArrowUpFromLine className="w-4 h-4" />
+          Dar baixa
+        </Button>
+      </div>
     </div>
   );
 }

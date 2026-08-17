@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef } from "lucide-react";
+import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +29,7 @@ const ROLES: { value: UserRole; label: string; desc: string }[] = [
   { value: "operador",    label: "Operador",    desc: "Painel de ordens de serviço"    },
   { value: "visualizador",label: "Visualizador",desc: "Somente leitura"                },
   { value: "vaqueiro",    label: "Vaqueiro",    desc: "Só o nascimento de bezerro"     },
+  { value: "tecnico",     label: "Técnico",     desc: "Só avisar o material que usou"  },
 ];
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -37,6 +38,7 @@ const ROLE_BADGE: Record<UserRole, string> = {
   operador:     "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400",
   visualizador: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400",
   vaqueiro:     "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400",
+  tecnico:      "bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-400",
 };
 
 const ROLE_ICON: Record<UserRole, React.ComponentType<{ className?: string }>> = {
@@ -45,6 +47,7 @@ const ROLE_ICON: Record<UserRole, React.ComponentType<{ className?: string }>> =
   operador:     Wrench,
   visualizador: Eye,
   vaqueiro:     Beef,
+  tecnico:      PackageOpen,
 };
 
 interface Props {

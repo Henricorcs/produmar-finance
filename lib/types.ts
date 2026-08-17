@@ -1,4 +1,10 @@
-export type UserRole = "admin" | "financeiro" | "visualizador" | "operador" | "vaqueiro";
+export type UserRole =
+  | "admin"
+  | "financeiro"
+  | "visualizador"
+  | "operador"
+  | "vaqueiro"
+  | "tecnico";
 export type TransactionType = "entrada" | "saida";
 export type TransactionStatus = "pendente" | "pago" | "recebido" | "vencido" | "cancelado";
 export type InvoiceSource = "xml" | "pdf" | "manual";
@@ -942,4 +948,35 @@ export interface SupplyItemWithStock extends SupplyItem {
   stock_value: number;
   last_movement_at: string | null;
   status: SupplyStatus;
+}
+
+/**
+ * Material que o técnico avisou que usou (migration 052). NÃO mexe no saldo:
+ * é só o recado. O chefe confere na aba "Pendentes" do Estoque e dá baixa —
+ * é aí que nasce a saída de verdade em supply_movements.
+ */
+export interface SupplyRequest {
+  id: string;
+  /** Item escolhido da lista (null quando o técnico digitou o nome). */
+  item_id: string | null;
+  /** Material escrito na mão, quando não estava na lista. */
+  item_text: string | null;
+  quantity: number;
+  /** Obra escolhida da lista (null quando só disse onde aplicou). */
+  obra_id: string | null;
+  /** Onde aplicou, texto livre ("poste da esquina"). */
+  destination: string | null;
+  used_date: string;
+  notes: string | null;
+  photo_path: string | null;
+  /** Nome de quem enviou, gravado no envio. */
+  sent_by_name: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Solicitação + nome do item e da obra (join da consulta da página). */
+export interface SupplyRequestRow extends SupplyRequest {
+  supply_items: { name: string; unit: string } | null;
+  supply_obras: { name: string } | null;
 }

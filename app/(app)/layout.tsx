@@ -22,6 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const isVisualizador = profile?.role === "visualizador";
   const isOperador     = profile?.role === "operador";
   const isVaqueiro     = profile?.role === "vaqueiro";
+  const isTecnico      = profile?.role === "tecnico";
 
   // Layout simplificado para visualizador — sem nav, sem notificações
   if (isVisualizador) {
@@ -33,9 +34,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // Vaqueiro: só a tela de nascimento de bezerro — sem nav, sem notificações,
+  // Vaqueiro e técnico: uma tela só, um formulário — sem nav, sem notificações,
   // container estreito (é um formulário, não um painel).
-  if (isVaqueiro) {
+  if (isVaqueiro || isTecnico) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
         <Topbar profile={profile} notifications={[]} />

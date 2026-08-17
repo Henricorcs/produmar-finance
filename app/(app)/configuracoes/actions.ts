@@ -5,6 +5,17 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AlertType, UserRole } from "@/lib/types";
 
+/**
+ * Os perfis de acesso vivem num enum do banco (user_role). Quando o perfil é
+ * novo e a migration não rodou, o Postgres reclama de "invalid input value for
+ * enum" — que não diz a ninguém o que fazer.
+ */
+function roleError(error: { message: string }): string {
+  if (error.message.includes("user_role"))
+    return "Rode a migration 052 no Supabase para usar o perfil Técnico";
+  return error.message;
+}
+
 export async function saveAlertConfig(
   alertType: AlertType,
   enabled: boolean,
@@ -105,7 +116,7 @@ export async function inviteUser(
 
   if (!email) return { error: "Email obrigatório" };
   if (!password || password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };
-  if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro"].includes(role))
+  if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro", "tecnico"].includes(role))
     return { error: "Perfil de acesso inválido" };
 
   const admin = createAdminClient();
@@ -120,7 +131,7 @@ export async function inviteUser(
 
   if (createError) return { error: createError.message };
 
-  await admin.from("profiles").upsert({
+  const { error: profileError } = await admin.from("profiles").upsert({
     id: data.user.id,
     email,
     full_name: fullName || null,
@@ -128,6 +139,13 @@ export async function inviteUser(
     allowed_categories: allowedCategories,
     allowed_modules: allowedModules,
   });
+
+  // Sem a linha em profiles o usuário nasce quebrado: entra no login e nenhuma
+  // tela sabe quem ele é. Melhor desfazer o convite e dizer o que faltou.
+  if (profileError) {
+    await admin.auth.admin.deleteUser(data.user.id);
+    return { error: roleError(profileError) };
+  }
 
   revalidatePath("/configuracoes");
   return { ok: true };
@@ -162,7 +180,7 @@ export async function updateUserRole(
     .single();
   if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
 
-  if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro"].includes(role))
+  if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro", "tecnico"].includes(role))
     return { error: "Perfil de acesso inválido" };
 
   // rebaixar a si mesmo tira o próprio acesso de admin e tranca a porta por dentro
@@ -172,7 +190,7 @@ export async function updateUserRole(
   const admin = createAdminClient();
 
   const { error } = await admin.from("profiles").update({ role }).eq("id", targetUserId);
-  if (error) return { error: error.message };
+  if (error) return { error: roleError(error) };
 
   const { data: target } = await admin.auth.admin.getUserById(targetUserId);
   const { error: metaError } = await admin.auth.admin.updateUserById(targetUserId, {

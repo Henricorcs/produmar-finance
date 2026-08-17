@@ -67,6 +67,14 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
+    // Técnico: só a tela de "usei este material". Ele avisa o que gastou na
+    // obra; o saldo só cai quando o chefe dá baixa. Nada de hub nem módulos.
+    if (role === "tecnico" && !path.startsWith("/tecnico") && !isPublicRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/tecnico";
+      return NextResponse.redirect(url);
+    }
+
     // Operador: sempre acessa /operador e /imprimir (comprovantes). Se tiver
     // módulos liberados, também acessa o hub, as configurações e esses módulos.
     if (role === "operador" && !isPublicRoute) {
@@ -88,13 +96,15 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    // Módulos liberados por usuário — admin/operador/visualizador/vaqueiro não se
-    // aplicam (admin vê tudo; os outros já foram tratados acima). Vazio = sem restrição.
+    // Módulos liberados por usuário — admin/operador/visualizador/vaqueiro/tecnico
+    // não se aplicam (admin vê tudo; os outros já foram tratados acima).
+    // Vazio = sem restrição.
     if (
       role !== "admin" &&
       role !== "operador" &&
       role !== "visualizador" &&
       role !== "vaqueiro" &&
+      role !== "tecnico" &&
       !isPublicRoute
     ) {
       const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;
