@@ -404,11 +404,45 @@ export async function adjustSupplyStock(input: {
   return { ok: true };
 }
 
-/** Apaga um movimento lançado errado — o saldo se acerta sozinho. */
+/**
+ * Cancela um movimento lançado errado — o saldo se acerta sozinho, porque ele é
+ * derivado dos movimentos. Cancelar uma ENTRADA que o pessoal já consumiu
+ * deixaria o saldo negativo: nesse caso o certo é conferir o estoque.
+ */
 export async function deleteSupplyMovement(id: string) {
   const supabase = createClient();
+
+  const { data: mov } = await supabase
+    .from("supply_movements")
+    .select("item_id, type, quantity, photo_path")
+    .eq("id", id)
+    .maybeSingle();
+  if (!mov) return { error: "Movimentação não encontrada" };
+
+  if (mov.type !== "saida") {
+    const { data: stock } = await supabase
+      .from("v_supply_stock")
+      .select("current_quantity, unit")
+      .eq("id", mov.item_id)
+      .maybeSingle();
+    const after =
+      Math.round((Number(stock?.current_quantity ?? 0) - Number(mov.quantity)) * 1000) / 1000;
+    if (after < 0)
+      return {
+        error:
+          `Não dá para cancelar: o saldo ficaria em ${after} ${stock?.unit ?? ""}`.trim() +
+          ". Esse material já saiu do estoque — use Conferir para acertar a quantidade.",
+      };
+  }
+
   const { error } = await supabase.from("supply_movements").delete().eq("id", id);
   if (error) return { error: supplyError(error) };
+
+  // o comprovante vai junto — sem o lançamento ele não serve mais pra nada
+  if (mov.photo_path) {
+    await supabase.storage.from("attachments").remove([mov.photo_path as string]);
+  }
+
   revalidate();
   return { ok: true };
 }

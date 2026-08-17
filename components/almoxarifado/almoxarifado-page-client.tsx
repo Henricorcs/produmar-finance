@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   Plus,
   Search,
@@ -10,6 +10,7 @@ import {
   History,
   Settings2,
   Tag,
+  Trash2,
   AlertTriangle,
   Wallet,
   HardHat,
@@ -17,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBRL, formatQty } from "@/lib/utils";
+import { deleteSupplyMovement } from "@/app/(app)/almoxarifado/actions";
 import { ItemDialog } from "./item-dialog";
 import { MovementDialog } from "./movement-dialog";
 import { AdjustDialog } from "./adjust-dialog";
@@ -190,6 +192,12 @@ export function AlmoxarifadoPageClient({
   function openNewObraFromMovement() {
     setEditObra(null);
     setCreatingObraFromMovement(true);
+    setObraDialogOpen(true);
+  }
+  /** Editar a obra escolhida sem fechar o lançamento que está sendo digitado. */
+  function openEditObra(obra: SupplyObraUsage) {
+    setEditObra(obra);
+    setCreatingObraFromMovement(false);
     setObraDialogOpen(true);
   }
 
@@ -482,6 +490,7 @@ export function AlmoxarifadoPageClient({
         presetObraId={movementPresetObraId}
         onCreateItem={openNewItemFromMovement}
         onCreateObra={openNewObraFromMovement}
+        onEditObra={openEditObra}
       />
       <ObraDialog
         open={obraDialogOpen}
@@ -504,9 +513,7 @@ export function AlmoxarifadoPageClient({
         }}
         onEdit={(o) => {
           setDetailObraId(null);
-          setEditObra(o);
-          setCreatingObraFromMovement(false);
-          setObraDialogOpen(true);
+          openEditObra(o);
         }}
       />
       <AdjustDialog
@@ -692,6 +699,23 @@ function MovimentosTab({
   movements: MovementRow[];
   obraNameById: Map<string, string>;
 }) {
+  const [isPending, startTransition] = useTransition();
+
+  /** Lançou errado? Cancelar apaga o movimento e o saldo volta ao que era. */
+  function cancelMovement(m: MovementRow) {
+    const resumo = `${MOVEMENT_META[m.type].label} de ${formatQty(
+      Math.abs(num(m.quantity))
+    )} ${m.supply_items?.unit ?? ""} · ${m.supply_items?.name ?? "material"}`;
+    if (
+      !confirm(`Cancelar esta movimentação?\n\n${resumo}\n\nO saldo volta ao que era antes.`)
+    )
+      return;
+    startTransition(async () => {
+      const r = await deleteSupplyMovement(m.id);
+      if (r && "error" in r) alert(r.error);
+    });
+  }
+
   if (movements.length === 0) {
     return (
       <EmptyState
@@ -710,7 +734,7 @@ function MovimentosTab({
         const unit = m.supply_items?.unit ?? "";
         const obraName = m.obra_id ? obraNameById.get(m.obra_id) : null;
         return (
-          <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+          <div key={m.id} className="flex items-center gap-2.5 px-4 py-2.5">
             <div
               className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.bg}`}
             >
@@ -739,6 +763,15 @@ function MovimentosTab({
               {formatQty(Math.abs(qty))}
               <span className="text-[10px] font-medium opacity-70 ml-0.5">{unit}</span>
             </p>
+            <button
+              onClick={() => cancelMovement(m)}
+              disabled={isPending}
+              aria-label="Cancelar movimentação"
+              title="Cancelar movimentação"
+              className="w-10 h-10 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:text-slate-500 dark:hover:bg-red-950/30 flex-shrink-0 -mr-2 transition-colors disabled:opacity-40"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         );
       })}

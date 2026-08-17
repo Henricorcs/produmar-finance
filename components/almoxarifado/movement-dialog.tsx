@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { ArrowDownToLine, ArrowUpFromLine, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,8 @@ interface Props {
   onCreateItem?: () => void;
   /** Abre o cadastro de obra sem sair do lançamento. */
   onCreateObra?: () => void;
+  /** Abre a edição da obra escolhida sem sair do lançamento. */
+  onEditObra?: (obra: SupplyObraUsage) => void;
 }
 
 export function MovementDialog({
@@ -49,6 +51,7 @@ export function MovementDialog({
   presetObraId,
   onCreateItem,
   onCreateObra,
+  onEditObra,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +64,8 @@ export function MovementDialog({
   const [obraId, setObraId] = useState("");
   const [date, setDate] = useState(localDateISO());
   const [photo, setPhoto] = useState<File | null>(null);
+  /** Item travado: o lançamento foi aberto a partir de um item específico. */
+  const [lockedItemId, setLockedItemId] = useState<string | null>(null);
 
   const isSaida = type === "saida";
 
@@ -70,20 +75,37 @@ export function MovementDialog({
     [items, isSaida]
   );
 
+  /**
+   * O formulário só é zerado quando o lançamento ABRE. Cadastrar um item ou uma
+   * obra no meio do caminho muda o preset — e isso não pode apagar o que a
+   * pessoa já tinha digitado: só entra selecionado o que acabou de nascer.
+   */
+  const wasOpen = useRef(false);
   useEffect(() => {
+    const justOpened = open && !wasOpen.current;
+    wasOpen.current = open;
     if (!open) return;
-    setItemId(presetItemId ?? "");
-    setQuantity("");
-    setUnitCost("");
-    setPerson("");
-    setDestination("");
-    setObraId(presetObraId ?? "");
-    setDate(localDateISO());
-    setPhoto(null);
-    setError(null);
+
+    if (justOpened) {
+      setItemId(presetItemId ?? "");
+      setLockedItemId(presetItemId ?? null);
+      setObraId(presetObraId ?? "");
+      setQuantity("");
+      setUnitCost("");
+      setPerson("");
+      setDestination("");
+      setDate(localDateISO());
+      setPhoto(null);
+      setError(null);
+      return;
+    }
+
+    if (presetItemId) setItemId(presetItemId);
+    if (presetObraId) setObraId(presetObraId);
   }, [open, presetItemId, presetObraId]);
 
   const selected = items.find((i) => i.id === itemId) ?? null;
+  const selectedObra = obras.find((o) => o.id === obraId) ?? null;
   const available = selected?.current_quantity ?? 0;
 
   function handleSubmit(e: React.FormEvent) {
@@ -163,7 +185,7 @@ export function MovementDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label>Item *</Label>
-            {presetItemId && selected ? (
+            {lockedItemId && selected ? (
               <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2.5">
                 <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
                   {selected.name}
@@ -260,7 +282,20 @@ export function MovementDialog({
           {isSaida && (
             <>
               <div className="space-y-1.5">
-                <Label>Obra</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Obra</Label>
+                  {/* Errou o nome/cliente da obra? Conserta aqui mesmo. */}
+                  {selectedObra && onEditObra && (
+                    <button
+                      type="button"
+                      onClick={() => onEditObra(selectedObra)}
+                      className="flex items-center gap-1 min-h-[44px] px-2 -my-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Editar obra
+                    </button>
+                  )}
+                </div>
                 <SearchableSelect
                   items={obras}
                   value={obraId}

@@ -102,7 +102,7 @@ export function ItemDetailDialog({
   }
 
   function handleDeleteMovement(m: MovementRow) {
-    if (!confirm("Excluir esta movimentação? O saldo volta ao que era antes.")) return;
+    if (!confirm("Cancelar esta movimentação? O saldo volta ao que era antes.")) return;
     startTransition(async () => {
       const r = await deleteSupplyMovement(m.id);
       if (r && "error" in r) alert(r.error);
@@ -253,8 +253,9 @@ export function ItemDetailDialog({
                       <button
                         onClick={() => handleDeleteMovement(m)}
                         disabled={isPending}
-                        aria-label="Apagar lançamento"
-                        className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 dark:text-slate-600 flex-shrink-0 -mr-1"
+                        aria-label="Cancelar movimentação"
+                        title="Cancelar movimentação"
+                        className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 dark:text-slate-500 flex-shrink-0 -mr-1"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
