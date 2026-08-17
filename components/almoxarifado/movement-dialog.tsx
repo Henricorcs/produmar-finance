@@ -14,8 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { formatMoneyInput, formatQty, localDateISO, parseMoney } from "@/lib/utils";
-import { createSupplyMovement } from "@/app/(app)/almoxarifado/actions";
-import { formatQtyInput, parseQty } from "./supply-shared";
+import {
+  createSupplyMovement,
+  uploadSupplyMovementPhoto,
+} from "@/app/(app)/almoxarifado/actions";
+import { PhotoField, formatQtyInput, parseQty } from "./supply-shared";
 import type { SupplyItemWithStock } from "@/lib/types";
 
 interface Props {
@@ -26,9 +29,18 @@ interface Props {
   items: SupplyItemWithStock[];
   /** Pré-seleciona o item (quando aberto pelo card ou pelo detalhe). */
   presetItemId?: string | null;
+  /** Abre o cadastro de item sem sair do lançamento. */
+  onCreateItem?: () => void;
 }
 
-export function MovementDialog({ open, onClose, type, items, presetItemId }: Props) {
+export function MovementDialog({
+  open,
+  onClose,
+  type,
+  items,
+  presetItemId,
+  onCreateItem,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +50,7 @@ export function MovementDialog({ open, onClose, type, items, presetItemId }: Pro
   const [person, setPerson] = useState("");
   const [destination, setDestination] = useState("");
   const [date, setDate] = useState(localDateISO());
+  const [photo, setPhoto] = useState<File | null>(null);
 
   const isSaida = type === "saida";
 
@@ -55,6 +68,7 @@ export function MovementDialog({ open, onClose, type, items, presetItemId }: Pro
     setPerson("");
     setDestination("");
     setDate(localDateISO());
+    setPhoto(null);
     setError(null);
   }, [open, presetItemId]);
 
@@ -96,6 +110,18 @@ export function MovementDialog({ open, onClose, type, items, presetItemId }: Pro
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao registrar");
         return;
+      }
+
+      // a foto é opcional — sobe depois do lançamento
+      const movementId = (r as { movementId?: string }).movementId;
+      if (photo && movementId) {
+        const fd = new FormData();
+        fd.append("file", photo);
+        const up = await uploadSupplyMovementPhoto(movementId, fd);
+        if (up && "error" in up) {
+          setError(`Lançamento registrado, mas a foto falhou: ${up.error}`);
+          return;
+        }
       }
       onClose();
     });
@@ -154,6 +180,8 @@ export function MovementDialog({ open, onClose, type, items, presetItemId }: Pro
                 emptyMessage={
                   isSaida ? "Nenhum item com saldo em estoque" : "Nenhum item cadastrado"
                 }
+                onCreateNew={onCreateItem}
+                createNewLabel="Cadastrar item novo"
               />
             )}
           </div>
@@ -240,6 +268,18 @@ export function MovementDialog({ open, onClose, type, items, presetItemId }: Pro
               onChange={(e) => setDate(e.target.value)}
             />
           </div>
+
+          <PhotoField
+            label="Foto"
+            hint={
+              isSaida
+                ? "Quem levou, o material saindo — o que ajudar a lembrar depois."
+                : "Nota fiscal ou o material que chegou."
+            }
+            file={photo}
+            onChange={setPhoto}
+          />
+
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">

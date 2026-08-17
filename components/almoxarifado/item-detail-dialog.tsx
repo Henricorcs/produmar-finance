@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -18,7 +18,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatBRL, formatQty } from "@/lib/utils";
-import { deleteSupplyItem, deleteSupplyMovement } from "@/app/(app)/almoxarifado/actions";
+import {
+  deleteSupplyItem,
+  deleteSupplyMovement,
+  getSupplyPhotoUrls,
+} from "@/app/(app)/almoxarifado/actions";
 import { MOVEMENT_META, STATUS_META, fmtDateTime, num } from "./supply-shared";
 import type { SupplyItemWithStock } from "@/lib/types";
 import type { MovementRow } from "./almoxarifado-page-client";
@@ -46,10 +50,38 @@ export function ItemDetailDialog({
   onEdit,
 }: Props) {
   const [isPending, startTransition] = useTransition();
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+
+  // uma ida ao servidor resolve a foto do item e as dos lançamentos
+  const itemPhotoPath = item?.photo_path ?? null;
+  const movementPhotoPaths = movements
+    .map((m) => m.photo_path)
+    .filter((p): p is string => !!p)
+    .join(",");
+
+  useEffect(() => {
+    setPhotoUrls({});
+    if (!open) return;
+    const paths = [
+      ...(itemPhotoPath ? [itemPhotoPath] : []),
+      ...(movementPhotoPaths ? movementPhotoPaths.split(",") : []),
+    ];
+    if (paths.length === 0) return;
+
+    let cancelled = false;
+    getSupplyPhotoUrls(paths).then((r) => {
+      if (cancelled || !("urls" in r)) return;
+      setPhotoUrls(r.urls);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, itemPhotoPath, movementPhotoPaths]);
 
   if (!item) return null;
 
   const meta = STATUS_META[item.status];
+  const itemPhotoUrl = itemPhotoPath ? photoUrls[itemPhotoPath] ?? null : null;
   const avgCost = item.avg_unit_cost != null ? num(item.avg_unit_cost) : null;
 
   function handleDeleteItem() {
@@ -89,6 +121,15 @@ export function ItemDetailDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {itemPhotoUrl && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={itemPhotoUrl}
+              alt={item.name}
+              className="w-full h-40 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
+            />
+          )}
+
           {/* Saldo */}
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
             <span
@@ -168,6 +209,7 @@ export function ItemDetailDialog({
                 {movements.slice(0, 30).map((m) => {
                   const mm = MOVEMENT_META[m.type];
                   const qty = num(m.quantity);
+                  const movPhoto = m.photo_path ? photoUrls[m.photo_path] ?? null : null;
                   return (
                     <div key={m.id} className="flex items-center gap-2.5 px-3 py-2">
                       <span
@@ -179,6 +221,23 @@ export function ItemDetailDialog({
                               : "bg-slate-300 dark:bg-slate-600"
                         }`}
                       />
+                      {movPhoto && (
+                        <a
+                          href={movPhoto}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-shrink-0"
+                          aria-label="Abrir foto do lançamento"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={movPhoto}
+                            alt=""
+                            className="w-9 h-9 rounded-md object-cover border border-slate-200 dark:border-slate-700"
+                          />
+                        </a>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-semibold tabular-nums ${mm.text}`}>
                           {m.type === "ajuste" ? (qty >= 0 ? "+" : "−") : mm.sign}

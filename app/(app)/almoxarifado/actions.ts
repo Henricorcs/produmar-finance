@@ -1,8 +1,11 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupplyMovementType } from "@/lib/types";
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function revalidate() {
   revalidatePath("/almoxarifado");
@@ -25,6 +28,9 @@ function normQty(v?: number | null): number {
  */
 function supplyError(error: { code?: string; message: string }): string {
   if (error.code === "23505") return "Já existe um registro com esse nome";
+  // coluna que falta = as fotos, que vieram depois (migration 050)
+  if (error.code === "42703" || error.message.includes("photo_path"))
+    return "Rode a migration 050 no Supabase para usar as fotos";
   if (
     error.code === "42P01" ||
     error.message.includes("supply_items") ||
@@ -132,10 +138,160 @@ export async function updateSupplyItem(id: string, input: SupplyItemInput) {
 /** Exclui o item e todo o histórico de movimentos (por cascade). */
 export async function deleteSupplyItem(id: string) {
   const supabase = createClient();
+
+  // tira do storage a foto do item e as dos lançamentos que somem junto
+  const { data: item } = await supabase
+    .from("supply_items")
+    .select("photo_path")
+    .eq("id", id)
+    .maybeSingle();
+  const { data: movs } = await supabase
+    .from("supply_movements")
+    .select("photo_path")
+    .eq("item_id", id)
+    .not("photo_path", "is", null);
+
+  const paths = [
+    ...(item?.photo_path ? [item.photo_path as string] : []),
+    ...(movs ?? []).map((m) => m.photo_path as string),
+  ];
+  if (paths.length) await supabase.storage.from("attachments").remove(paths);
+
   const { error } = await supabase.from("supply_items").delete().eq("id", id);
   if (error) return { error: supplyError(error) };
   revalidate();
   return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FOTOS (bucket 'attachments', o mesmo de Contas e Patrimônio)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Sobe o arquivo e devolve o caminho no bucket. */
+async function uploadPhoto(
+  supabase: ReturnType<typeof createClient>,
+  folder: string,
+  file: File
+): Promise<{ path: string } | { error: string }> {
+  if (file.size > MAX_FILE_SIZE) return { error: "A foto deve ter no máximo 10 MB" };
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${folder}/${randomUUID()}_${safeName}`;
+
+  const { error } = await supabase.storage.from("attachments").upload(path, file, {
+    contentType: file.type || "application/octet-stream",
+    upsert: false,
+  });
+  if (error) return { error: error.message };
+  return { path };
+}
+
+/** Foto do item. Substitui a anterior (uma foto por item). */
+export async function uploadSupplyItemPhoto(itemId: string, formData: FormData) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Arquivo inválido" };
+
+  const up = await uploadPhoto(supabase, `supply-items/${itemId}`, file);
+  if ("error" in up) return { error: up.error };
+
+  const { data: previous } = await supabase
+    .from("supply_items")
+    .select("photo_path")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from("supply_items")
+    .update({ photo_path: up.path })
+    .eq("id", itemId);
+  if (error) {
+    await supabase.storage.from("attachments").remove([up.path]);
+    return { error: supplyError(error) };
+  }
+
+  if (previous?.photo_path) {
+    await supabase.storage.from("attachments").remove([previous.photo_path]);
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+export async function deleteSupplyItemPhoto(itemId: string) {
+  const supabase = createClient();
+
+  const { data: item } = await supabase
+    .from("supply_items")
+    .select("photo_path")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (!item?.photo_path) return { ok: true };
+
+  const { error } = await supabase
+    .from("supply_items")
+    .update({ photo_path: null })
+    .eq("id", itemId);
+  if (error) return { error: supplyError(error) };
+
+  await supabase.storage.from("attachments").remove([item.photo_path]);
+  revalidate();
+  return { ok: true };
+}
+
+/** Comprovante do lançamento (nota na entrada, quem levou na saída). */
+export async function uploadSupplyMovementPhoto(movementId: string, formData: FormData) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Arquivo inválido" };
+
+  const up = await uploadPhoto(supabase, `supply-movements/${movementId}`, file);
+  if ("error" in up) return { error: up.error };
+
+  const { error } = await supabase
+    .from("supply_movements")
+    .update({ photo_path: up.path })
+    .eq("id", movementId);
+  if (error) {
+    await supabase.storage.from("attachments").remove([up.path]);
+    return { error: supplyError(error) };
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * URLs assinadas (1h) para exibir as fotos. Recebe vários caminhos de uma vez
+ * para o detalhe do item não precisar de uma ida ao servidor por foto.
+ */
+export async function getSupplyPhotoUrls(paths: string[]) {
+  const supabase = createClient();
+  const unique = Array.from(new Set(paths.filter(Boolean)));
+  if (unique.length === 0) return { urls: {} as Record<string, string> };
+
+  const entries = await Promise.all(
+    unique.map(async (path) => {
+      const { data } = await supabase.storage
+        .from("attachments")
+        .createSignedUrl(path, 60 * 60);
+      return [path, data?.signedUrl ?? null] as const;
+    })
+  );
+
+  const urls: Record<string, string> = {};
+  for (const [path, url] of entries) if (url) urls[path] = url;
+  return { urls };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -182,22 +338,26 @@ export async function createSupplyMovement(input: SupplyMovementInput) {
       };
   }
 
-  const { error } = await supabase.from("supply_movements").insert({
-    item_id: input.item_id,
-    type: input.type,
-    quantity: qty,
-    unit_cost:
-      input.type === "entrada" && input.unit_cost ? Math.max(0, input.unit_cost) : null,
-    person: clean(input.person),
-    destination: clean(input.destination),
-    movement_date: input.movement_date || undefined,
-    notes: clean(input.notes),
-    created_by: user.id,
-  });
+  const { data, error } = await supabase
+    .from("supply_movements")
+    .insert({
+      item_id: input.item_id,
+      type: input.type,
+      quantity: qty,
+      unit_cost:
+        input.type === "entrada" && input.unit_cost ? Math.max(0, input.unit_cost) : null,
+      person: clean(input.person),
+      destination: clean(input.destination),
+      movement_date: input.movement_date || undefined,
+      notes: clean(input.notes),
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
 
-  if (error) return { error: supplyError(error) };
+  if (error || !data) return { error: error ? supplyError(error) : "Erro ao registrar" };
   revalidate();
-  return { ok: true };
+  return { ok: true, movementId: data.id as string };
 }
 
 /**

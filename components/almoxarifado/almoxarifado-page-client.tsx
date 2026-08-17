@@ -60,6 +60,8 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
   const [adjustItemId, setAdjustItemId] = useState<string | null>(null);
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  /** O cadastro foi aberto de dentro do lançamento? Então o item novo já entra nele. */
+  const [creatingFromMovement, setCreatingFromMovement] = useState(false);
 
   // ── Categoria escolhida: tudo na tela passa a ser só dela ──────────────────
   const scopedItems = useMemo(() => {
@@ -140,6 +142,13 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
   }
   function openNewItem() {
     setEditItem(null);
+    setCreatingFromMovement(false);
+    setItemDialogOpen(true);
+  }
+  /** "Cadastrar item novo" de dentro do lançamento: o diálogo sobe por cima. */
+  function openNewItemFromMovement() {
+    setEditItem(null);
+    setCreatingFromMovement(true);
     setItemDialogOpen(true);
   }
 
@@ -405,6 +414,11 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
           categoryFilter === "todas" || categoryFilter === "sem" ? null : categoryFilter
         }
         onManageCategories={() => setCategoriesOpen(true)}
+        onCreated={(itemId) => {
+          // veio do lançamento: o item recém-criado já entra selecionado nele
+          if (creatingFromMovement) setMovementPresetId(itemId);
+          setCreatingFromMovement(false);
+        }}
       />
       <MovementDialog
         open={movementOpen}
@@ -412,6 +426,7 @@ export function AlmoxarifadoPageClient({ items, movements, categories }: Props) 
         type={movementType}
         items={items}
         presetItemId={movementPresetId}
+        onCreateItem={openNewItemFromMovement}
       />
       <AdjustDialog
         open={!!adjustItem}

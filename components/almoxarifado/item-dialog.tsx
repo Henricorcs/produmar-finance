@@ -13,8 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatMoneyInput, parseMoney } from "@/lib/utils";
-import { createSupplyItem, updateSupplyItem } from "@/app/(app)/almoxarifado/actions";
-import { UNIT_SUGGESTIONS, formatQtyInput, parseQty } from "./supply-shared";
+import {
+  createSupplyItem,
+  deleteSupplyItemPhoto,
+  getSupplyPhotoUrls,
+  updateSupplyItem,
+  uploadSupplyItemPhoto,
+} from "@/app/(app)/almoxarifado/actions";
+import { PhotoField, UNIT_SUGGESTIONS, formatQtyInput, parseQty } from "./supply-shared";
 import type { SupplyCategory, SupplyItem } from "@/lib/types";
 
 interface Props {
@@ -26,6 +32,8 @@ interface Props {
   /** Categoria que a tela está filtrando — já vem escolhida no cadastro. */
   defaultCategoryId?: string | null;
   onManageCategories: () => void;
+  /** Avisa quem abriu qual item acabou de nascer (ex.: pra já selecionar). */
+  onCreated?: (itemId: string) => void;
 }
 
 export function ItemDialog({
@@ -35,6 +43,7 @@ export function ItemDialog({
   categories,
   defaultCategoryId,
   onManageCategories,
+  onCreated,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +56,8 @@ export function ItemDialog({
   const [location, setLocation] = useState("");
   const [initialQty, setInitialQty] = useState("");
   const [initialCost, setInitialCost] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -58,8 +69,35 @@ export function ItemDialog({
     setLocation(item?.location ?? "");
     setInitialQty("");
     setInitialCost("");
+    setPhoto(null);
     setError(null);
   }, [open, item, defaultCategoryId]);
+
+  // foto já salva do item em edição (URL assinada)
+  useEffect(() => {
+    setCurrentPhotoUrl(null);
+    if (!open || !item?.photo_path) return;
+    let cancelled = false;
+    getSupplyPhotoUrls([item.photo_path]).then((r) => {
+      if (cancelled || !("urls" in r)) return;
+      setCurrentPhotoUrl(r.urls[item.photo_path!] ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, item?.photo_path]);
+
+  function handleRemoveCurrentPhoto() {
+    if (!item) return;
+    startTransition(async () => {
+      const r = await deleteSupplyItemPhoto(item.id);
+      if (r && "error" in r) {
+        setError(r.error ?? "Erro ao remover a foto");
+        return;
+      }
+      setCurrentPhotoUrl(null);
+    });
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -90,6 +128,20 @@ export function ItemDialog({
         setError(r.error ?? "Erro ao salvar");
         return;
       }
+
+      // a foto é opcional — sobe depois do cadastro
+      const itemId = item?.id ?? (r as { itemId?: string }).itemId;
+      if (photo && itemId) {
+        const fd = new FormData();
+        fd.append("file", photo);
+        const up = await uploadSupplyItemPhoto(itemId, fd);
+        if (up && "error" in up) {
+          setError(`Item salvo, mas a foto falhou: ${up.error}`);
+          return;
+        }
+      }
+
+      if (!item && itemId) onCreated?.(itemId);
       onClose();
     });
   }
@@ -198,6 +250,15 @@ export function ItemDialog({
               />
             </div>
           </div>
+
+          <PhotoField
+            label="Foto do item"
+            hint="Ajuda a reconhecer na prateleira o que o nome sozinho não diz."
+            file={photo}
+            onChange={setPhoto}
+            currentUrl={currentPhotoUrl}
+            onRemoveCurrent={handleRemoveCurrentPhoto}
+          />
 
           {/* Só no cadastro: o saldo de partida vira a primeira entrada */}
           {!item && (

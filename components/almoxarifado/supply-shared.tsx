@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { Camera, X } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import type { SupplyMovementType, SupplyStatus } from "@/lib/types";
 
 /** Unidades sugeridas no cadastro — o campo aceita qualquer texto. */
@@ -98,4 +101,100 @@ export function fmtDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * Campo de foto: abre a câmera no celular e mostra a miniatura do que foi
+ * tirado. `currentUrl` é a foto que já está salva (some quando trocam por outra).
+ */
+export function PhotoField({
+  label,
+  hint,
+  file,
+  onChange,
+  currentUrl,
+  onRemoveCurrent,
+}: {
+  label: string;
+  hint?: string;
+  file: File | null;
+  onChange: (file: File | null) => void;
+  currentUrl?: string | null;
+  onRemoveCurrent?: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const shown = preview ?? (file ? null : currentUrl ?? null);
+
+  function clear() {
+    if (file) {
+      onChange(null);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+    onRemoveCurrent?.();
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+      />
+
+      {shown ? (
+        <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={shown}
+            alt={label}
+            className="w-full h-36 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+          />
+          <button
+            type="button"
+            onClick={clear}
+            aria-label="Remover foto"
+            className="absolute top-1.5 right-1.5 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/60 text-white text-xs font-medium hover:bg-black/80"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            Trocar
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="w-full flex items-center justify-center gap-2 min-h-[52px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        >
+          <Camera className="w-4 h-4" />
+          Tirar foto
+        </button>
+      )}
+
+      {hint && <p className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</p>}
+    </div>
+  );
 }

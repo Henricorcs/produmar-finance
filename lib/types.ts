@@ -874,6 +874,8 @@ export interface SupplyItem {
   min_quantity: number;
   /** Prateleira / onde fica guardado. */
   location: string | null;
+  /** Foto do item no bucket attachments (ajuda a reconhecer na prateleira). */
+  photo_path: string | null;
   notes: string | null;
   active: boolean;
   created_by: string | null;
@@ -893,6 +895,8 @@ export interface SupplyMovement {
   person: string | null;
   /** Pra onde foi. */
   destination: string | null;
+  /** Comprovante no bucket attachments (nota na entrada, quem levou na saída). */
+  photo_path: string | null;
   movement_date: string;
   notes: string | null;
   created_by: string | null;
