@@ -736,6 +736,23 @@ export interface AnimalBirth {
   created_at: string;
 }
 
+/**
+ * Solicitação de nascimento enviada pelo vaqueiro pelo celular — a mãe é só o
+ * número que ele digitou (texto livre, não é FK: ele não escolhe da lista).
+ * Fica pendente até o patrão conferir; sem status — a linha existir já é
+ * "pendente" (animal_birth_requests, migration 048).
+ */
+export interface AnimalBirthRequest {
+  id: string;
+  mother_tag: string;
+  calf_tag: string;
+  calf_sex: AnimalSex;
+  birth_date: string;
+  photo_path: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 /** Tratamento — o remédio usado aparece na tela ao passar o mouse. */
 export interface AnimalTreatment {
   id: string;

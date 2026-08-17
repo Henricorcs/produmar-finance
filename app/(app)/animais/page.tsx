@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AnimaisPageClient } from "@/components/animais/animais-page-client";
 import type {
   AnimalBirth,
+  AnimalBirthRequest,
   AnimalBreed,
   AnimalTreatment,
   AnimalVaccine,
@@ -25,6 +26,7 @@ export default async function AnimaisPage() {
     birthsRes,
     pendingRes,
     weightsRes,
+    birthRequestsRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -53,6 +55,12 @@ export default async function AnimaisPage() {
       .select("*")
       .order("weighed_at", { ascending: false })
       .limit(3000),
+    // nascimentos enviados pelo vaqueiro, aguardando o patrão conferir (migration
+    // 048 — sem ela a tela segue funcionando, só sem a aba Nascimentos)
+    supabase
+      .from("animal_birth_requests")
+      .select("*")
+      .order("created_at", { ascending: true }),
   ]);
 
   return (
@@ -65,6 +73,7 @@ export default async function AnimaisPage() {
       births={(birthsRes.data as AnimalBirth[]) ?? []}
       pendings={(pendingRes.data as AnimalVaccinePending[]) ?? []}
       weights={(weightsRes.data as AnimalWeight[]) ?? []}
+      birthRequests={(birthRequestsRes.data as AnimalBirthRequest[]) ?? []}
     />
   );
 }

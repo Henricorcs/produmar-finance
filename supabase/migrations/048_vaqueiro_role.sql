@@ -6,107 +6,80 @@
 -- ============================================================================
 -- Por que:
 --   O vaqueiro é um usuário de baixíssima permissão, só de celular, que só
---   pode fazer UMA coisa: registrar o nascimento de um bezerro (foto, data
---   automática, número da mãe, sexo). Ele não pode ver nem editar mais nada
---   do sistema — nem o resto do rebanho.
+--   pode fazer UMA coisa: enviar um nascimento de bezerro (foto, data
+--   automática, sexo, número do bezerro) para o patrão conferir. Ele NÃO
+--   escolhe a mãe de uma lista — só digita a numeração dela de cabeça, no
+--   curral. Quem casa esse número com o cadastro de verdade é o patrão, na
+--   aba "Nascimentos" de Animais — só aí o bezerro entra no rebanho.
 --
---   Por isso ele NÃO entra em user_can_write_module('animais') (migration
---   039): esse helper libera INSERT/UPDATE/DELETE no módulo inteiro, e um
---   vaqueiro com isso poderia editar ou apagar qualquer animal. Em vez
---   disso, a escrita dele passa só pela função register_calf_birth abaixo —
---   ela mesma confere a permissão e é a ÚNICA porta de entrada. O papel
---   'vaqueiro' não recebe nenhum grant direto de tabela.
+--   Por isso o vaqueiro continua sem user_can_write_module('animais')
+--   (migration 039): esse helper libera INSERT/UPDATE/DELETE no módulo
+--   inteiro, e ele não pode editar nem apagar nada do rebanho. A escrita dele
+--   fica presa a UMA tabela isolada — animal_birth_requests — que não é o
+--   rebanho de verdade, só uma fila de pedidos. Como ele nunca chega perto de
+--   animals/animal_births, uma policy de INSERT comum já basta; não precisa
+--   mais de função security definer para proteger a escrita (versão anterior
+--   desta migration criava register_calf_birth() para isso — não é mais
+--   necessário e a PARTE 2 abaixo já limpa essa função se ela chegou a
+--   existir).
 --
---   Leitura das fêmeas (para escolher a mãe) já funciona sem mudar nada:
---   "animals_read" (migration 041) já libera SELECT para qualquer usuário
---   autenticado.
+--   Leitura das fêmeas (para o patrão escolher a mãe de verdade) já funciona
+--   sem mudar nada: "animals_read" (migration 041) já libera SELECT para
+--   qualquer usuário autenticado.
 -- ============================================================================
 
 -- ============================================================================
 -- PARTE 1: adicionar 'vaqueiro' ao enum user_role
 -- IMPORTANTE: ALTER TYPE ... ADD VALUE precisa ser commitado antes de ser
--- usado na função abaixo. Rode esta parte sozinha primeiro, depois rode a
--- PARTE 2 em uma nova execução do SQL Editor.
+-- usado na PARTE 2. Rode esta parte sozinha primeiro, depois rode a PARTE 2
+-- em uma nova execução do SQL Editor.
 -- ============================================================================
 
 ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'vaqueiro';
 
 -- ============================================================================
--- PARTE 2: função que registra o nascimento (mãe + bezerro + foto)
+-- PARTE 2: solicitação de nascimento (o vaqueiro digita a mãe, o patrão confere)
 -- Rode esta parte em uma SEGUNDA execução do SQL Editor, depois da PARTE 1.
 -- ============================================================================
 
-create or replace function public.register_calf_birth(
-  p_mother_id uuid,
-  p_calf_tag text,
-  p_calf_sex animal_sex,
-  p_birth_date date,
-  p_photo_path text default null,
-  p_notes text default null
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_role       user_role;
-  v_mother_sex animal_sex;
-  v_species    text;
-  v_breed_id   uuid;
-  v_calf_tag   text;
-  v_calf_id    uuid;
-begin
-  select role into v_role from public.profiles where id = auth.uid();
-  if v_role is null or v_role not in ('vaqueiro', 'admin') then
-    raise exception 'Sem permissão para registrar nascimento';
-  end if;
+-- limpa a função da versão anterior desta migration, se chegou a rodar
+-- (idempotente — seguro rodar mesmo que ela nunca tenha existido)
+drop function if exists public.register_calf_birth(uuid, text, animal_sex, date, text, text);
 
-  if p_mother_id is null then
-    raise exception 'Selecione a mãe';
-  end if;
-  if p_calf_sex is null then
-    raise exception 'Informe o sexo do bezerro';
-  end if;
-  if p_birth_date is null then
-    raise exception 'Informe a data do nascimento';
-  end if;
+create table if not exists public.animal_birth_requests (
+  id uuid primary key default uuid_generate_v4(),
 
-  v_calf_tag := upper(btrim(coalesce(p_calf_tag, '')));
-  if v_calf_tag = '' then
-    raise exception 'Informe o número do bezerro';
-  end if;
+  mother_tag text       not null,   -- número da mãe do jeito que o vaqueiro digitou — não é FK
+  calf_tag   text       not null,
+  calf_sex   animal_sex not null,
+  birth_date date       not null default current_date,
 
-  -- a cria puxa da mãe o tipo e a raça (mesma regra de createBirth() na tela de Animais)
-  select sex, species, breed_id into v_mother_sex, v_species, v_breed_id
-  from public.animals
-  where id = p_mother_id;
+  photo_path text,                  -- foto do bezerro (bucket attachments)
 
-  if not found then
-    raise exception 'Mãe não encontrada';
-  end if;
-  if v_mother_sex <> 'femea' then
-    raise exception 'A mãe selecionada não é fêmea';
-  end if;
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
 
-  insert into public.animals (tag, sex, species, birth_date, breed_id, created_by)
-  values (v_calf_tag, p_calf_sex, coalesce(v_species, 'bovino'), p_birth_date, v_breed_id, auth.uid())
-  returning id into v_calf_id;
+-- ── ROW LEVEL SECURITY ───────────────────────────────────────────────────────
+-- Sem coluna de status: a linha existir já significa "pendente". O patrão
+-- resolve apagando a linha — seja lançando de verdade (o bezerro entra no
+-- rebanho e a solicitação some), seja descartando (envio errado/duplicado).
+alter table public.animal_birth_requests enable row level security;
 
-  insert into public.animal_births
-    (mother_id, birth_date, calf_tag, calf_sex, calf_animal_id, notes, created_by)
-  values
-    (p_mother_id, p_birth_date, v_calf_tag, p_calf_sex, v_calf_id, nullif(btrim(coalesce(p_notes, '')), ''), auth.uid());
+drop policy if exists "animal_birth_requests_read"   on public.animal_birth_requests;
+drop policy if exists "animal_birth_requests_insert" on public.animal_birth_requests;
+drop policy if exists "animal_birth_requests_delete" on public.animal_birth_requests;
 
-  if p_photo_path is not null then
-    insert into public.animal_photos (animal_id, path, created_by)
-    values (v_calf_id, p_photo_path, auth.uid());
+-- leitura: qualquer logado (igual ao resto do módulo Animais)
+create policy "animal_birth_requests_read" on public.animal_birth_requests
+  for select using (auth.uid() is not null);
 
-    update public.animals set photo_path = p_photo_path where id = v_calf_id;
-  end if;
+-- envio: só vaqueiro e admin — os dois únicos papéis que chegam em /vaqueiro
+create policy "animal_birth_requests_insert" on public.animal_birth_requests
+  for insert with check (public.current_user_role() in ('vaqueiro', 'admin'));
 
-  return v_calf_id;
-end;
-$$;
-
-grant execute on function public.register_calf_birth(uuid, text, animal_sex, date, text, text) to authenticated;
+-- resolver (lançar ou descartar) pede o mesmo acesso de escrita do resto do
+-- módulo Animais — quem já cadastra/edita o rebanho é quem decide o que fazer
+-- com a solicitação. O vaqueiro não entra aqui: ele só envia, não decide.
+create policy "animal_birth_requests_delete" on public.animal_birth_requests
+  for delete using (public.user_can_write_module('animais'));

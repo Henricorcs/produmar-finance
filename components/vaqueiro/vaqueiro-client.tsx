@@ -6,17 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn, formatDate, localDateISO } from "@/lib/utils";
-import { registerCalfBirth } from "@/app/(app)/vaqueiro/actions";
-import { SexPicker, categoryLabel } from "@/components/animais/animal-shared";
-import type { AnimalSex, AnimalWithInfo } from "@/lib/types";
+import { requestCalfBirth } from "@/app/(app)/vaqueiro/actions";
+import { SexPicker } from "@/components/animais/animal-shared";
+import type { AnimalSex } from "@/lib/types";
 
-interface Props {
-  mothers: AnimalWithInfo[];
-}
-
-interface RegisteredEntry {
+interface SubmittedEntry {
   id: string;
   tag: string;
   sex: AnimalSex;
@@ -24,19 +19,19 @@ interface RegisteredEntry {
   at: string;
 }
 
-export function VaqueiroClient({ mothers }: Props) {
+export function VaqueiroClient() {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [motherId, setMotherId] = useState("");
+  const [motherTag, setMotherTag] = useState("");
   const [calfSex, setCalfSex] = useState<AnimalSex>("femea");
   const [calfTag, setCalfTag] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [registeredToday, setRegisteredToday] = useState<RegisteredEntry[]>([]);
+  const [submittedToday, setSubmittedToday] = useState<SubmittedEntry[]>([]);
 
   const today = localDateISO();
 
@@ -54,7 +49,7 @@ export function VaqueiroClient({ mothers }: Props) {
   }
 
   function resetForm() {
-    setMotherId("");
+    setMotherTag("");
     setCalfSex("femea");
     setCalfTag("");
     handlePhotoChange(null);
@@ -66,36 +61,36 @@ export function VaqueiroClient({ mothers }: Props) {
     setError(null);
     setSuccess(null);
 
-    if (!motherId) return setError("Selecione a mãe");
+    if (!motherTag.trim()) return setError("Informe o número da mãe");
     if (!photo) return setError("Tire uma foto do bezerro");
     if (!calfTag.trim()) return setError("Informe o número do bezerro");
 
-    const mother = mothers.find((m) => m.id === motherId);
-
     const fd = new FormData();
-    fd.append("mother_id", motherId);
+    fd.append("mother_tag", motherTag);
     fd.append("birth_date", today);
     fd.append("calf_sex", calfSex);
     fd.append("calf_tag", calfTag);
     fd.append("photo", photo);
 
     startTransition(async () => {
-      const r = await registerCalfBirth(fd);
+      const r = await requestCalfBirth(fd);
       if (r && "error" in r) {
-        setError(r.error ?? "Erro ao registrar o nascimento");
+        setError(r.error ?? "Erro ao enviar o nascimento");
         return;
       }
-      setRegisteredToday((prev) => [
+      setSubmittedToday((prev) => [
         {
-          id: r.calfAnimalId,
+          id: crypto.randomUUID(),
           tag: calfTag.toUpperCase(),
           sex: calfSex,
-          motherTag: mother?.tag ?? "—",
+          motherTag: motherTag.toUpperCase(),
           at: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
         },
         ...prev,
       ]);
-      setSuccess(`Bezerro nº ${calfTag.toUpperCase()} registrado!`);
+      setSuccess(
+        `Bezerro nº ${calfTag.toUpperCase()} enviado! O patrão confere e lança no rebanho.`
+      );
       resetForm();
     });
   }
@@ -125,7 +120,7 @@ export function VaqueiroClient({ mothers }: Props) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Registrar novo bezerro</CardTitle>
+          <CardTitle className="text-base">Novo bezerro</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -178,26 +173,18 @@ export function VaqueiroClient({ mothers }: Props) {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Mãe *</Label>
-              <SearchableSelect
-                items={mothers}
-                value={motherId}
-                onChange={setMotherId}
-                getId={(a) => a.id}
-                getLabel={(a) => a.tag}
-                renderItem={(a) => (
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="truncate">{a.tag}</span>
-                    <span className="text-[10px] text-slate-400 flex-shrink-0">
-                      {categoryLabel(a.category, a.sex, a.species)}
-                      {a.breed_name ? ` · ${a.breed_name}` : ""}
-                    </span>
-                  </div>
-                )}
-                placeholder="Selecione a mãe..."
-                searchPlaceholder="Buscar pelo número..."
-                emptyMessage="Nenhuma fêmea cadastrada"
+              <Label htmlFor="vq_mother_tag">Número da mãe *</Label>
+              <Input
+                id="vq_mother_tag"
+                value={motherTag}
+                onChange={(e) => setMotherTag(e.target.value.toUpperCase())}
+                placeholder="ex: 1046"
+                className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+                autoComplete="off"
               />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Não precisa ser exato — o patrão confere antes de lançar no rebanho.
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -228,17 +215,17 @@ export function VaqueiroClient({ mothers }: Props) {
               disabled={isPending}
               className="w-full h-14 text-base font-semibold"
             >
-              {isPending ? "Salvando..." : "Registrar nascimento"}
+              {isPending ? "Enviando..." : "Enviar nascimento"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      {registeredToday.length > 0 && (
+      {submittedToday.length > 0 && (
         <div className="space-y-1.5">
-          <Label>Registrados agora</Label>
+          <Label>Enviados agora</Label>
           <ul className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-            {registeredToday.map((r) => (
+            {submittedToday.map((r) => (
               <li key={r.id} className="flex items-center gap-3 px-4 py-2.5">
                 <Baby
                   className={cn(

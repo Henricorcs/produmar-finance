@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
   ArrowUpDown,
+  Baby,
   Beef,
   ChevronRight,
   Plus,
@@ -19,6 +20,8 @@ import { cn, formatDate, localDateISO } from "@/lib/utils";
 import {
   applyVaccineProtocol,
   deleteVaccination,
+  getAnimalThumbnails,
+  rejectBirthRequest,
   setVaccinePending,
 } from "@/app/(app)/animais/actions";
 import { AnimalDialog } from "./animal-dialog";
@@ -27,6 +30,7 @@ import { VaccineProtocolDialog } from "./vaccine-protocol-dialog";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import { TreatmentDialog } from "./treatment-dialog";
 import { BirthDialog } from "./birth-dialog";
+import { BirthRequestDialog } from "./birth-request-dialog";
 import { QuickAddRow } from "./quick-add-row";
 import { WeightDialog } from "./weight-dialog";
 import {
@@ -46,6 +50,7 @@ import {
 } from "./animal-shared";
 import type {
   AnimalBirth,
+  AnimalBirthRequest,
   AnimalBreed,
   AnimalCategory,
   AnimalSpecies,
@@ -74,9 +79,11 @@ interface Props {
   pendings: AnimalVaccinePending[];
   /** Pesagens do rebanho — daqui sai o ganho de peso de cada animal. */
   weights?: AnimalWeight[];
+  /** Nascimentos enviados pelo vaqueiro, aguardando o patrão conferir. */
+  birthRequests: AnimalBirthRequest[];
 }
 
-type Tab = "rebanho" | "vacinacao";
+type Tab = "rebanho" | "vacinacao" | "nascimentos";
 type CategoryFilter = "todos" | AnimalCategory;
 /** Filtro pelo tipo do animal — só aparece quando o rebanho tem mais de um. */
 type SpeciesFilter = "todos" | AnimalSpecies;
@@ -99,6 +106,7 @@ export function AnimaisPageClient({
   births,
   pendings,
   weights = [],
+  birthRequests,
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -126,6 +134,9 @@ export function AnimaisPageClient({
   const [birthPresetId, setBirthPresetId] = useState<string | null>(null);
   const [weightOpen, setWeightOpen] = useState(false);
   const [weightPresetId, setWeightPresetId] = useState<string | null>(null);
+  const [birthRequestThumbs, setBirthRequestThumbs] = useState<Record<string, string>>({});
+  const [resolveRequest, setResolveRequest] = useState<AnimalBirthRequest | null>(null);
+  const [discardingRequestId, setDiscardingRequestId] = useState<string | null>(null);
 
   // ── Índices por animal ──────────────────────────────────────────────────────
   const treatmentsByAnimal = useMemo(() => {
@@ -341,6 +352,36 @@ export function AnimaisPageClient({
     setWeightOpen(true);
   }
 
+  // Miniaturas dos envios do vaqueiro — só busca URL assinada quando a aba é
+  // aberta, para não gastar signed URLs que o patrão nunca vai olhar.
+  useEffect(() => {
+    if (tab !== "nascimentos") return;
+    const paths = birthRequests.map((r) => r.photo_path).filter((p): p is string => !!p);
+    if (paths.length === 0) return;
+    let cancelled = false;
+    getAnimalThumbnails(paths).then((r) => {
+      if (cancelled || !("urls" in r)) return;
+      setBirthRequestThumbs((prev) => ({ ...prev, ...r.urls }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, birthRequests]);
+
+  /** Descarta um envio errado/duplicado do vaqueiro — não vira animal. */
+  function handleDiscardRequest(r: AnimalBirthRequest) {
+    if (
+      !confirm(`Descartar o envio do bezerro nº ${r.calf_tag} (mãe informada: ${r.mother_tag})?`)
+    )
+      return;
+    setDiscardingRequestId(r.id);
+    startTransition(async () => {
+      const res = await rejectBirthRequest(r.id);
+      setDiscardingRequestId(null);
+      if (res && "error" in res) alert(res.error ?? "Erro ao descartar");
+    });
+  }
+
   /**
    * Um toque na célula de ml já registra a vacina: data de hoje, a dose
    * calculada para aquele animal e o remédio do cadastro. Sem diálogo —
@@ -408,6 +449,13 @@ export function AnimaisPageClient({
   }[] = [
     { value: "rebanho", label: "Rebanho", icon: Beef, count: animals.length },
     {
+      value: "nascimentos",
+      label: "Nascimentos",
+      icon: Baby,
+      count: birthRequests.length,
+      alert: birthRequests.length > 0,
+    },
+    {
       value: "vacinacao",
       label: "Vacinação",
       icon: Syringe,
@@ -459,7 +507,7 @@ export function AnimaisPageClient({
       </div>
 
       {/* Abas */}
-      <div className="grid grid-cols-2 gap-1.5 sm:flex">
+      <div className="grid grid-cols-3 gap-1.5 sm:flex">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = tab === t.value;
@@ -739,6 +787,32 @@ export function AnimaisPageClient({
         </>
       )}
 
+      {/* ── Aba: Nascimentos — envios do vaqueiro aguardando conferência ──── */}
+      {tab === "nascimentos" && (
+        <>
+          {birthRequests.length === 0 ? (
+            <EmptyState
+              icon={Baby}
+              text="Nenhum nascimento para conferir."
+              hint="O que o vaqueiro enviar pelo celular aparece aqui — mais antigo primeiro."
+            />
+          ) : (
+            <div className="space-y-2">
+              {birthRequests.map((r) => (
+                <BirthRequestCard
+                  key={r.id}
+                  request={r}
+                  photoUrl={r.photo_path ? birthRequestThumbs[r.photo_path] ?? null : null}
+                  discarding={discardingRequestId === r.id}
+                  onResolve={() => setResolveRequest(r)}
+                  onDiscard={() => handleDiscardRequest(r)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       {/* Dialogs */}
       <AnimalDialog
         open={animalDialogOpen}
@@ -805,6 +879,15 @@ export function AnimaisPageClient({
         mothers={females}
         presetMotherId={birthPresetId}
         births={births}
+      />
+      <BirthRequestDialog
+        open={!!resolveRequest}
+        onClose={() => setResolveRequest(null)}
+        request={resolveRequest}
+        mothers={females}
+        photoUrl={
+          resolveRequest?.photo_path ? birthRequestThumbs[resolveRequest.photo_path] ?? null : null
+        }
       />
       <AnimalVaccinesDialog
         open={vaccinesOpen}
@@ -1362,6 +1445,71 @@ function LogRow({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// ── Card de solicitação de nascimento (envio do vaqueiro) ───────────────────
+function BirthRequestCard({
+  request,
+  photoUrl,
+  discarding,
+  onResolve,
+  onDiscard,
+}: {
+  request: AnimalBirthRequest;
+  photoUrl: string | null;
+  discarding: boolean;
+  onResolve: () => void;
+  onDiscard: () => void;
+}) {
+  const sentAt = new Date(request.created_at).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-3">
+      <div className="flex items-center gap-3">
+        {photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={photoUrl}
+            alt={`Bezerro nº ${request.calf_tag}`}
+            className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-slate-200 dark:border-slate-700"
+          />
+        ) : (
+          <div className="w-14 h-14 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+            <Baby className="w-6 h-6 text-amber-400" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+            Nº {request.calf_tag} · {request.calf_sex === "macho" ? "Macho" : "Fêmea"}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+            Mãe informada: {request.mother_tag}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            {formatDate(request.birth_date)} · enviado {sentAt}
+          </p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1 h-10"
+          onClick={onDiscard}
+          disabled={discarding}
+        >
+          Descartar
+        </Button>
+        <Button type="button" className="flex-[2] h-10" onClick={onResolve} disabled={discarding}>
+          Lançar
+        </Button>
+      </div>
     </div>
   );
 }

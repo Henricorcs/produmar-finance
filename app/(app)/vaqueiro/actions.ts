@@ -8,25 +8,25 @@ import type { AnimalSex } from "@/lib/types";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 /**
- * Sobe a foto do bezerro e registra o nascimento pela função
- * register_calf_birth (migration 048) — ela confere a permissão e faz o
- * insert em animals/animal_births/animal_photos numa vez só. A tela do
- * vaqueiro nunca escreve direto nessas tabelas.
+ * Sobe a foto do bezerro e grava a SOLICITAÇÃO em animal_birth_requests
+ * (migration 048). O vaqueiro só digita o número da mãe — não escolhe da
+ * lista — e nada entra no rebanho ainda: quem confere e lança de verdade é o
+ * patrão, na aba "Nascimentos" de Animais.
  */
-export async function registerCalfBirth(formData: FormData) {
+export async function requestCalfBirth(formData: FormData) {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
 
-  const motherId = String(formData.get("mother_id") ?? "");
+  const motherTag = String(formData.get("mother_tag") ?? "").trim().toUpperCase();
   const birthDate = String(formData.get("birth_date") ?? "");
   const calfSex = String(formData.get("calf_sex") ?? "") as AnimalSex;
-  const calfTag = String(formData.get("calf_tag") ?? "").trim();
+  const calfTag = String(formData.get("calf_tag") ?? "").trim().toUpperCase();
   const photo = formData.get("photo");
 
-  if (!motherId) return { error: "Selecione a mãe" };
+  if (!motherTag) return { error: "Informe o número da mãe" };
   if (!birthDate) return { error: "Informe a data do nascimento" };
   if (calfSex !== "macho" && calfSex !== "femea") return { error: "Informe o sexo do bezerro" };
   if (!calfTag) return { error: "Informe o número do bezerro" };
@@ -44,20 +44,23 @@ export async function registerCalfBirth(formData: FormData) {
     });
   if (upErr) return { error: upErr.message };
 
-  const { data: calfId, error } = await supabase.rpc("register_calf_birth", {
-    p_mother_id: motherId,
-    p_calf_tag: calfTag,
-    p_calf_sex: calfSex,
-    p_birth_date: birthDate,
-    p_photo_path: photoPath,
+  const { error } = await supabase.from("animal_birth_requests").insert({
+    mother_tag: motherTag,
+    calf_tag: calfTag,
+    calf_sex: calfSex,
+    birth_date: birthDate,
+    photo_path: photoPath,
+    created_by: user.id,
   });
 
   if (error) {
     await supabase.storage.from("attachments").remove([photoPath]);
-    if (error.code === "23505") return { error: "Já existe um animal com esse número" };
+    if (error.code === "42P01" || error.message.includes("animal_birth_requests"))
+      return { error: "Rode a migration 048 no Supabase para habilitar o envio" };
     return { error: error.message };
   }
 
   revalidatePath("/vaqueiro");
-  return { ok: true, calfAnimalId: calfId as string };
+  revalidatePath("/animais");
+  return { ok: true };
 }

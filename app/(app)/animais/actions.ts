@@ -814,6 +814,95 @@ export async function deleteBirth(id: string, deleteCalf = false) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SOLICITAÇÕES DE NASCIMENTO (vaqueiro envia pelo celular, patrão confere e lança)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A tabela vem da migration 048 — sem ela o erro do Postgres não diz nada. */
+function birthRequestsTableError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.message.includes("animal_birth_requests"))
+    return "Rode a migration 048 no Supabase para usar as solicitações do vaqueiro";
+  return error.message;
+}
+
+export interface ResolveBirthRequestInput {
+  mother_id: string;
+  birth_date: string;
+  calf_sex: AnimalSex;
+  calf_tag: string;
+}
+
+/**
+ * Confirma a solicitação: lança o parto de verdade com createBirth — a mesma
+ * função do lançamento manual — usando a mãe que o patrão escolheu (não
+ * necessariamente a que o vaqueiro digitou; ele só confere/corrige). Se veio
+ * foto, ela vira a foto do bezerro. Só apaga a solicitação depois que o
+ * lançamento deu certo — se createBirth falhar (ex.: número já existe), a
+ * solicitação fica intacta para tentar de novo.
+ */
+export async function resolveBirthRequest(requestId: string, input: ResolveBirthRequestInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: request, error: reqErr } = await supabase
+    .from("animal_birth_requests")
+    .select("photo_path")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (reqErr) return { error: birthRequestsTableError(reqErr) };
+  if (!request) return { error: "Solicitação não encontrada (já foi resolvida?)" };
+
+  const result = await createBirth({
+    mother_id: input.mother_id,
+    birth_date: input.birth_date,
+    calf_sex: input.calf_sex,
+    calf_tag: input.calf_tag,
+  });
+  if ("error" in result) return result;
+
+  if (request.photo_path) {
+    await supabase.from("animal_photos").insert({
+      animal_id: result.calfAnimalId,
+      path: request.photo_path as string,
+      created_by: user.id,
+    });
+    await supabase
+      .from("animals")
+      .update({ photo_path: request.photo_path })
+      .eq("id", result.calfAnimalId);
+  }
+
+  await supabase.from("animal_birth_requests").delete().eq("id", requestId);
+
+  revalidate();
+  return { ok: true, calfAnimalId: result.calfAnimalId };
+}
+
+/** Descarta a solicitação (duplicada, mãe sem conserto, envio errado etc). */
+export async function rejectBirthRequest(requestId: string) {
+  const supabase = createClient();
+
+  const { data: request, error: reqErr } = await supabase
+    .from("animal_birth_requests")
+    .select("photo_path")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (reqErr) return { error: birthRequestsTableError(reqErr) };
+
+  const { error } = await supabase.from("animal_birth_requests").delete().eq("id", requestId);
+  if (error) return { error: birthRequestsTableError(error) };
+
+  if (request?.photo_path) {
+    await supabase.storage.from("attachments").remove([request.photo_path as string]);
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PENDÊNCIA MARCADA NA MÃO (quem decide o que falta é o dono do rebanho)
 // ─────────────────────────────────────────────────────────────────────────────
 
