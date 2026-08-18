@@ -31,6 +31,7 @@ import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import { TreatmentDialog } from "./treatment-dialog";
 import { BirthDialog } from "./birth-dialog";
 import { BirthRequestDialog } from "./birth-request-dialog";
+import { BirthRequestDetailDialog } from "./birth-request-detail-dialog";
 import { QuickAddRow } from "./quick-add-row";
 import { WeightDialog } from "./weight-dialog";
 import {
@@ -136,6 +137,7 @@ export function AnimaisPageClient({
   const [weightPresetId, setWeightPresetId] = useState<string | null>(null);
   const [birthRequestThumbs, setBirthRequestThumbs] = useState<Record<string, string>>({});
   const [resolveRequest, setResolveRequest] = useState<AnimalBirthRequest | null>(null);
+  const [detailRequest, setDetailRequest] = useState<AnimalBirthRequest | null>(null);
   const [discardingRequestId, setDiscardingRequestId] = useState<string | null>(null);
 
   // ── Índices por animal ──────────────────────────────────────────────────────
@@ -804,6 +806,7 @@ export function AnimaisPageClient({
                   request={r}
                   photoUrl={r.photo_path ? birthRequestThumbs[r.photo_path] ?? null : null}
                   discarding={discardingRequestId === r.id}
+                  onOpen={() => setDetailRequest(r)}
                   onResolve={() => setResolveRequest(r)}
                   onDiscard={() => handleDiscardRequest(r)}
                 />
@@ -879,6 +882,27 @@ export function AnimaisPageClient({
         mothers={females}
         presetMotherId={birthPresetId}
         births={births}
+      />
+      <BirthRequestDetailDialog
+        open={!!detailRequest}
+        onClose={() => setDetailRequest(null)}
+        request={detailRequest}
+        photoUrl={
+          detailRequest?.photo_path ? birthRequestThumbs[detailRequest.photo_path] ?? null : null
+        }
+        mothers={females}
+        discarding={discardingRequestId === detailRequest?.id}
+        onResolve={() => {
+          // fecha o detalhe e cai direto na conferência, sem voltar para a lista
+          const r = detailRequest;
+          setDetailRequest(null);
+          setResolveRequest(r);
+        }}
+        onDiscard={() => {
+          const r = detailRequest;
+          setDetailRequest(null);
+          if (r) handleDiscardRequest(r);
+        }}
       />
       <BirthRequestDialog
         open={!!resolveRequest}
@@ -1454,12 +1478,14 @@ function BirthRequestCard({
   request,
   photoUrl,
   discarding,
+  onOpen,
   onResolve,
   onDiscard,
 }: {
   request: AnimalBirthRequest;
   photoUrl: string | null;
   discarding: boolean;
+  onOpen: () => void;
   onResolve: () => void;
   onDiscard: () => void;
 }) {
@@ -1471,7 +1497,11 @@ function BirthRequestCard({
   });
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-3">
-      <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="w-full flex items-center gap-3 text-left rounded-lg -m-1 p-1 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+      >
         {photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -1496,7 +1526,8 @@ function BirthRequestCard({
             {formatDate(request.birth_date)} · enviado {sentAt}
           </p>
         </div>
-      </div>
+        <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" />
+      </button>
       <div className="flex gap-2">
         <Button
           type="button"
