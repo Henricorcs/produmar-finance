@@ -5,15 +5,40 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AlertType, UserRole } from "@/lib/types";
 
+/** Perfis que chegaram por migration recente — se ela não rodou, o enum user_role não tem o valor. */
+const ROLE_MIGRATION: Partial<Record<UserRole, { migration: string; label: string }>> = {
+  vaqueiro: { migration: "048", label: "Vaqueiro" },
+  tecnico: { migration: "052", label: "Técnico" },
+};
+
 /**
  * Os perfis de acesso vivem num enum do banco (user_role). Quando o perfil é
  * novo e a migration não rodou, o Postgres reclama de "invalid input value for
- * enum" — que não diz a ninguém o que fazer.
+ * enum user_role" — e, se quem barrou foi um trigger do auth, o GoTrue devolve
+ * só um "Database error creating new user". Nenhum dos dois diz a ninguém o que
+ * fazer.
  */
-function roleError(error: { message: string }): string {
-  if (error.message.includes("user_role"))
-    return "Rode a migration 052 no Supabase para usar o perfil Técnico";
-  return error.message;
+function roleError(error: { message?: string | null } | null, role?: UserRole): string {
+  const message = error?.message ?? "";
+  const pending = role ? ROLE_MIGRATION[role] : undefined;
+  const enumRecusou =
+    message.includes("user_role") || message.toLowerCase().includes("database error");
+  if (pending && enumRecusou)
+    return `Rode a migration ${pending.migration} no Supabase para usar o perfil ${pending.label}`;
+  return message || "Erro inesperado no banco de dados";
+}
+
+/**
+ * Server action que estoura vira resposta 500 — e o Next 14 resolve a promise
+ * do cliente com `undefined` em vez de rejeitar, derrubando a tela inteira (ver
+ * `actionError` em lib/action-result). Por isso as actions de admin abaixo
+ * embrulham o cliente de serviço: exceção nenhuma pode escapar daqui.
+ */
+function crashMessage(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  if (message.includes("SUPABASE_SERVICE_ROLE_KEY"))
+    return "Falta a chave de serviço do Supabase (SUPABASE_SERVICE_ROLE_KEY) nas variáveis de ambiente do servidor";
+  return message || "Erro inesperado no servidor";
 }
 
 export async function saveAlertConfig(
@@ -119,32 +144,37 @@ export async function inviteUser(
   if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro", "tecnico"].includes(role))
     return { error: "Perfil de acesso inválido" };
 
-  const admin = createAdminClient();
+  try {
+    const admin = createAdminClient();
 
-  const { data, error: createError } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    // allowed_modules vai no metadata p/ o middleware bloquear rotas sem consultar o banco.
-    user_metadata: { full_name: fullName || null, role, allowed_modules: allowedModules },
-  });
+    const { data, error: createError } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      // allowed_modules vai no metadata p/ o middleware bloquear rotas sem consultar o banco.
+      user_metadata: { full_name: fullName || null, role, allowed_modules: allowedModules },
+    });
 
-  if (createError) return { error: createError.message };
+    if (createError) return { error: roleError(createError, role) };
+    if (!data?.user) return { error: "O Supabase não devolveu o usuário criado" };
 
-  const { error: profileError } = await admin.from("profiles").upsert({
-    id: data.user.id,
-    email,
-    full_name: fullName || null,
-    role,
-    allowed_categories: allowedCategories,
-    allowed_modules: allowedModules,
-  });
+    const { error: profileError } = await admin.from("profiles").upsert({
+      id: data.user.id,
+      email,
+      full_name: fullName || null,
+      role,
+      allowed_categories: allowedCategories,
+      allowed_modules: allowedModules,
+    });
 
-  // Sem a linha em profiles o usuário nasce quebrado: entra no login e nenhuma
-  // tela sabe quem ele é. Melhor desfazer o convite e dizer o que faltou.
-  if (profileError) {
-    await admin.auth.admin.deleteUser(data.user.id);
-    return { error: roleError(profileError) };
+    // Sem a linha em profiles o usuário nasce quebrado: entra no login e nenhuma
+    // tela sabe quem ele é. Melhor desfazer o convite e dizer o que faltou.
+    if (profileError) {
+      await admin.auth.admin.deleteUser(data.user.id);
+      return { error: roleError(profileError, role) };
+    }
+  } catch (e) {
+    return { error: crashMessage(e) };
   }
 
   revalidatePath("/configuracoes");
@@ -187,16 +217,20 @@ export async function updateUserRole(
   if (targetUserId === user.id)
     return { error: "Você não pode mudar seu próprio perfil de acesso" };
 
-  const admin = createAdminClient();
+  try {
+    const admin = createAdminClient();
 
-  const { error } = await admin.from("profiles").update({ role }).eq("id", targetUserId);
-  if (error) return { error: roleError(error) };
+    const { error } = await admin.from("profiles").update({ role }).eq("id", targetUserId);
+    if (error) return { error: roleError(error, role) };
 
-  const { data: target } = await admin.auth.admin.getUserById(targetUserId);
-  const { error: metaError } = await admin.auth.admin.updateUserById(targetUserId, {
-    user_metadata: { ...(target?.user?.user_metadata ?? {}), role },
-  });
-  if (metaError) return { error: metaError.message };
+    const { data: target } = await admin.auth.admin.getUserById(targetUserId);
+    const { error: metaError } = await admin.auth.admin.updateUserById(targetUserId, {
+      user_metadata: { ...(target?.user?.user_metadata ?? {}), role },
+    });
+    if (metaError) return { error: metaError.message };
+  } catch (e) {
+    return { error: crashMessage(e) };
+  }
 
   revalidatePath("/configuracoes");
   return { ok: true };
@@ -224,12 +258,16 @@ export async function updateOperatorCategories(
     ? [...new Set(categories.map((c) => String(c).trim()).filter(Boolean))]
     : [];
 
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("profiles")
-    .update({ allowed_categories: clean })
-    .eq("id", targetUserId);
-  if (error) return { error: error.message };
+  try {
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("profiles")
+      .update({ allowed_categories: clean })
+      .eq("id", targetUserId);
+    if (error) return { error: error.message };
+  } catch (e) {
+    return { error: crashMessage(e) };
+  }
 
   revalidatePath("/configuracoes");
   return { ok: true };
@@ -257,21 +295,25 @@ export async function updateUserModules(
     ? [...new Set(modules.map((m) => String(m).trim()).filter(Boolean))]
     : [];
 
-  const admin = createAdminClient();
+  try {
+    const admin = createAdminClient();
 
-  const { error } = await admin
-    .from("profiles")
-    .update({ allowed_modules: clean })
-    .eq("id", targetUserId);
-  if (error) return { error: error.message };
+    const { error } = await admin
+      .from("profiles")
+      .update({ allowed_modules: clean })
+      .eq("id", targetUserId);
+    if (error) return { error: error.message };
 
-  // Mantém o metadata em sincronia — é o que o middleware lê p/ bloquear rotas.
-  // Preserva as chaves existentes (role, full_name) ao gravar allowed_modules.
-  const { data: target } = await admin.auth.admin.getUserById(targetUserId);
-  const { error: metaError } = await admin.auth.admin.updateUserById(targetUserId, {
-    user_metadata: { ...(target?.user?.user_metadata ?? {}), allowed_modules: clean },
-  });
-  if (metaError) return { error: metaError.message };
+    // Mantém o metadata em sincronia — é o que o middleware lê p/ bloquear rotas.
+    // Preserva as chaves existentes (role, full_name) ao gravar allowed_modules.
+    const { data: target } = await admin.auth.admin.getUserById(targetUserId);
+    const { error: metaError } = await admin.auth.admin.updateUserById(targetUserId, {
+      user_metadata: { ...(target?.user?.user_metadata ?? {}), allowed_modules: clean },
+    });
+    if (metaError) return { error: metaError.message };
+  } catch (e) {
+    return { error: crashMessage(e) };
+  }
 
   revalidatePath("/configuracoes");
   return { ok: true };
@@ -296,9 +338,13 @@ export async function removeUser(
     .single();
   if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
 
-  const admin = createAdminClient();
-  const { error } = await admin.auth.admin.deleteUser(targetUserId);
-  if (error) return { error: error.message };
+  try {
+    const admin = createAdminClient();
+    const { error } = await admin.auth.admin.deleteUser(targetUserId);
+    if (error) return { error: error.message };
+  } catch (e) {
+    return { error: crashMessage(e) };
+  }
 
   revalidatePath("/configuracoes");
   return { ok: true };

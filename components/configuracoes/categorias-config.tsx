@@ -9,6 +9,7 @@ import {
   deleteCategory,
 } from "@/app/(app)/categorias/actions";
 import type { Category } from "@/lib/types";
+import { actionError } from "@/lib/action-result";
 
 const PRESET_COLORS = [
   "#0A4DB8", "#3378F0", "#5A97FF",
@@ -73,7 +74,8 @@ export function CategoriasConfig({ categories }: { categories: Category[] }) {
       ? await updateCategory(editing.id, form)
       : await createCategory(form);
     setLoading(false);
-    if ("error" in result) { setError(result.error ?? "Erro ao salvar."); } else { cancelForm(); }
+    const err = actionError(result);
+    if (err) { setError(err); } else { cancelForm(); }
   }
 
   async function handleDelete(id: string) {

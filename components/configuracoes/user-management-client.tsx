@@ -13,6 +13,7 @@ import {
   updateUserRole,
 } from "@/app/(app)/configuracoes/actions";
 import { machineCategoryLabel } from "@/lib/utils";
+import { actionError } from "@/lib/action-result";
 import { APP_MODULES } from "@/lib/modules";
 import { MACHINE_CATEGORIES, type Profile, type UserRole } from "@/lib/types";
 
@@ -91,9 +92,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
 
   function saveRole(userId: string) {
     startSaveRole(async () => {
-      const res = await updateUserRole(userId, roleDraft);
-      if ("error" in res) {
-        alert(res.error);
+      const err = actionError(await updateUserRole(userId, roleDraft));
+      if (err) {
+        alert(err);
         return;
       }
       setEditingRoleId(null);
@@ -102,9 +103,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
 
   function saveCats(userId: string) {
     startSaveCats(async () => {
-      const res = await updateOperatorCategories(userId, catsDraft);
-      if ("error" in res) {
-        alert(res.error);
+      const err = actionError(await updateOperatorCategories(userId, catsDraft));
+      if (err) {
+        alert(err);
         return;
       }
       setEditingCatsId(null);
@@ -120,9 +121,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
 
   function saveMods(userId: string) {
     startSaveMods(async () => {
-      const res = await updateUserModules(userId, modsDraft);
-      if ("error" in res) {
-        alert(res.error);
+      const err = actionError(await updateUserModules(userId, modsDraft));
+      if (err) {
+        alert(err);
         return;
       }
       setEditingModsId(null);
@@ -147,9 +148,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
     );
 
     startTransition(async () => {
-      const result = await inviteUser(formData);
-      if ("error" in result) {
-        setFormError(result.error);
+      const err = actionError(await inviteUser(formData));
+      if (err) {
+        setFormError(err);
       } else {
         setFormSuccess("Usuário criado com sucesso!");
         setShowForm(false);
@@ -164,9 +165,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
   async function handleDelete(userId: string, name: string) {
     if (!confirm(`Remover o usuário "${name}"? Esta ação não pode ser desfeita.`)) return;
     setDeletingId(userId);
-    const result = await removeUser(userId);
+    const err = actionError(await removeUser(userId));
     setDeletingId(null);
-    if ("error" in result) alert(result.error);
+    if (err) alert(err);
   }
 
   return (
