@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Camera, X } from "lucide-react";
+import { Camera, ImagePlus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +41,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
   const [signature, setSignature] = useState<string | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -226,13 +227,28 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
 
           <div className="space-y-1.5">
             <Label>Foto de quem recebeu</Label>
+            {/* `capture` força a câmera no celular — o segundo input é para quem
+                já tirou a foto antes. */}
             <input
               ref={fileRef}
               type="file"
               accept="image/*"
               capture="environment"
               className="hidden"
-              onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                setPhoto(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+            <input
+              ref={galleryRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                setPhoto(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
             />
             {photo ? (
               <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
@@ -241,10 +257,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
                 </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setPhoto(null);
-                    if (fileRef.current) fileRef.current.value = "";
-                  }}
+                  onClick={() => setPhoto(null)}
                   className="p-1 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
                   aria-label="Remover foto"
                 >
@@ -252,15 +265,26 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
                 </button>
               </div>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => fileRef.current?.click()}
-              >
-                <Camera className="w-4 h-4" />
-                Tirar foto (opcional)
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Camera className="w-4 h-4" />
+                  Tirar foto
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => galleryRef.current?.click()}
+                >
+                  <ImagePlus className="w-4 h-4" />
+                  Escolher foto
+                </Button>
+              </div>
             )}
           </div>
 

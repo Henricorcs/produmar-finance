@@ -36,7 +36,8 @@ interface Props {
  * Confere o que o vaqueiro enviou e lança de verdade no rebanho. O vaqueiro só
  * digitou a numeração da mãe (texto livre); aqui ela é casada com o cadastro
  * de verdade — bate sozinho quando o número existe entre as fêmeas, senão o
- * patrão busca na lista.
+ * patrão busca na lista. O número do bezerro também é dado aqui: quem está no
+ * curral não numera bicho (migration 053).
  */
 export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -96,7 +97,7 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={photoUrl}
-            alt={`Bezerro nº ${request.calf_tag}`}
+            alt={`Bezerro da mãe ${request.mother_tag}`}
             className="w-full h-48 object-cover rounded-xl border border-slate-200 dark:border-slate-700 mb-4"
           />
         )}
@@ -152,9 +153,13 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
               id="brq_calf_tag"
               value={calfTag}
               onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
+              placeholder="ex: 1046"
               className="h-11 sm:h-10 uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
             />
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              O vaqueiro não numera o bezerro — o número é seu, agora.
+            </p>
           </div>
 
           {error && (

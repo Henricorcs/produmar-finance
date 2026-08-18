@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Baby, Camera, Check, RotateCcw, X } from "lucide-react";
+import { Baby, Camera, Check, ImagePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,6 @@ import type { AnimalSex } from "@/lib/types";
 
 interface SubmittedEntry {
   id: string;
-  tag: string;
   sex: AnimalSex;
   motherTag: string;
   at: string;
@@ -26,10 +25,10 @@ export function VaqueiroClient() {
 
   const [motherTag, setMotherTag] = useState("");
   const [calfSex, setCalfSex] = useState<AnimalSex>("femea");
-  const [calfTag, setCalfTag] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
 
   const [submittedToday, setSubmittedToday] = useState<SubmittedEntry[]>([]);
 
@@ -51,9 +50,7 @@ export function VaqueiroClient() {
   function resetForm() {
     setMotherTag("");
     setCalfSex("femea");
-    setCalfTag("");
     handlePhotoChange(null);
-    if (fileRef.current) fileRef.current.value = "";
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -62,14 +59,12 @@ export function VaqueiroClient() {
     setSuccess(null);
 
     if (!motherTag.trim()) return setError("Informe o número da mãe");
-    if (!photo) return setError("Tire uma foto do bezerro");
-    if (!calfTag.trim()) return setError("Informe o número do bezerro");
+    if (!photo) return setError("Coloque uma foto do bezerro");
 
     const fd = new FormData();
     fd.append("mother_tag", motherTag);
     fd.append("birth_date", today);
     fd.append("calf_sex", calfSex);
-    fd.append("calf_tag", calfTag);
     fd.append("photo", photo);
 
     startTransition(async () => {
@@ -81,7 +76,6 @@ export function VaqueiroClient() {
       setSubmittedToday((prev) => [
         {
           id: crypto.randomUUID(),
-          tag: calfTag.toUpperCase(),
           sex: calfSex,
           motherTag: motherTag.toUpperCase(),
           at: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
@@ -89,7 +83,7 @@ export function VaqueiroClient() {
         ...prev,
       ]);
       setSuccess(
-        `Bezerro nº ${calfTag.toUpperCase()} enviado! O patrão confere e lança no rebanho.`
+        `Bezerro da mãe ${motherTag.toUpperCase()} enviado! O patrão dá o número e lança no rebanho.`
       );
       resetForm();
     });
@@ -126,13 +120,28 @@ export function VaqueiroClient() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <Label>Foto do bezerro *</Label>
+              {/* `capture` força a câmera no celular — o segundo input é para a
+                  foto que o vaqueiro já tirou antes de abrir o sistema. */}
               <input
-                ref={fileRef}
+                ref={cameraRef}
                 type="file"
                 accept="image/*"
                 capture="environment"
                 className="hidden"
-                onChange={(e) => handlePhotoChange(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  handlePhotoChange(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
+              />
+              <input
+                ref={galleryRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  handlePhotoChange(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
               />
               {photoUrl ? (
                 <div className="relative">
@@ -150,25 +159,46 @@ export function VaqueiroClient() {
                   >
                     <X className="w-4 h-4" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="absolute bottom-2 right-2 h-10 px-3 rounded-full bg-black/60 text-white text-xs font-medium flex items-center gap-1.5"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Tirar outra
-                  </button>
+                  <div className="absolute bottom-2 right-2 flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => cameraRef.current?.click()}
+                      className="h-10 px-3 rounded-full bg-black/60 text-white text-xs font-medium flex items-center gap-1.5"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      Câmera
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => galleryRef.current?.click()}
+                      className="h-10 px-3 rounded-full bg-black/60 text-white text-xs font-medium flex items-center gap-1.5"
+                    >
+                      <ImagePlus className="w-3.5 h-3.5" />
+                      Galeria
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-24 flex-col gap-1.5 border-dashed"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Camera className="w-6 h-6" />
-                  <span className="text-sm">Tirar foto do bezerro</span>
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 h-24 flex-col gap-1.5 border-dashed"
+                    onClick={() => cameraRef.current?.click()}
+                  >
+                    <Camera className="w-6 h-6" />
+                    <span className="text-sm">Tirar foto</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 h-24 flex-col gap-1.5 border-dashed"
+                    onClick={() => galleryRef.current?.click()}
+                  >
+                    <ImagePlus className="w-6 h-6" />
+                    <span className="text-sm">Escolher foto</span>
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -190,18 +220,9 @@ export function VaqueiroClient() {
             <div className="space-y-1.5">
               <Label>Sexo do bezerro *</Label>
               <SexPicker value={calfSex} onChange={setCalfSex} />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="vq_calf_tag">Número do bezerro *</Label>
-              <Input
-                id="vq_calf_tag"
-                value={calfTag}
-                onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
-                placeholder="ex: 1046"
-                className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
-                autoComplete="off"
-              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                O número do bezerro quem dá é o patrão, na hora de lançar no rebanho.
+              </p>
             </div>
 
             {error && (
@@ -235,9 +256,9 @@ export function VaqueiroClient() {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                    Nº {r.tag} · {r.sex === "macho" ? "Macho" : "Fêmea"}
+                    Bezerro {r.sex === "macho" ? "macho" : "fêmea"} · mãe {r.motherTag}
                   </p>
-                  <p className="text-[11px] text-slate-400">Mãe {r.motherTag} · {r.at}</p>
+                  <p className="text-[11px] text-slate-400">Enviado {r.at}</p>
                 </div>
               </li>
             ))}

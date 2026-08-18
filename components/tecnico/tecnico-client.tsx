@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, Clock, HardHat, List, PackageOpen, Pencil, X } from "lucide-react";
+import { Check, Clock, HardHat, List, PackageOpen, Pencil, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +36,31 @@ interface Props {
 }
 
 /**
- * Tela única do técnico: "usei este material aqui". Nada sai do estoque neste
+ * Uma linha do envio: um material com a quantidade dele. Numa obra o técnico
+ * gasta cano, emenda e cola na mesma ida — cada um vira uma linha destas.
+ */
+interface Linha {
+  /** Chave de render: os materiais podem repetir e o índice muda ao remover. */
+  key: string;
+  itemId: string;
+  /** O material não estava na lista: o técnico escreve o nome. */
+  freeText: boolean;
+  itemText: string;
+  quantity: string;
+}
+
+function novaLinha(): Linha {
+  return {
+    key: typeof crypto !== "undefined" ? crypto.randomUUID() : String(Math.random()),
+    itemId: "",
+    freeText: false,
+    itemText: "",
+    quantity: "",
+  };
+}
+
+/**
+ * Tela única do técnico: "usei estes materiais aqui". Nada sai do estoque neste
  * momento — o envio é um recado que o chefe confere e transforma em saída na
  * aba "Pendentes" do Estoque.
  */
@@ -46,48 +70,65 @@ export function TecnicoClient({ items, obras, pending }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [itemId, setItemId] = useState("");
-  /** O material não estava na lista: o técnico escreve o nome. */
-  const [freeItem, setFreeItem] = useState(false);
-  const [itemText, setItemText] = useState("");
-  const [quantity, setQuantity] = useState("");
+  const [linhas, setLinhas] = useState<Linha[]>(() => [novaLinha()]);
   const [obraId, setObraId] = useState("");
   const [destination, setDestination] = useState("");
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
 
   const today = localDateISO();
-  const selectedItem = useMemo(
-    () => items.find((i) => i.id === itemId) ?? null,
-    [items, itemId]
+  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+
+  function patchLinha(key: string, patch: Partial<Linha>) {
+    setLinhas((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  }
+
+  function addLinha() {
+    setLinhas((prev) => [...prev, novaLinha()]);
+  }
+
+  function removeLinha(key: string) {
+    // sempre sobra uma: a tela sem nenhum campo de material não diz o que fazer
+    setLinhas((prev) => (prev.length === 1 ? [novaLinha()] : prev.filter((l) => l.key !== key)));
+  }
+
+  /** Linhas que o técnico realmente preencheu (as em branco são ignoradas). */
+  const preenchidas = useMemo(
+    () => linhas.filter((l) => l.itemId || l.itemText.trim()),
+    [linhas]
   );
-  const unit = selectedItem?.unit ?? "";
-
-  function useFreeText() {
-    setFreeItem(true);
-    setItemId("");
-  }
-
-  function useList() {
-    setFreeItem(false);
-    setItemText("");
-  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
 
-    if (!itemId && !itemText.trim()) return setError("Diga qual material você usou");
-    if (parseQty(quantity) <= 0) return setError("Informe a quantidade que você usou");
+    if (preenchidas.length === 0) return setError("Diga qual material você usou");
+    const semQtd = preenchidas.find((l) => parseQty(l.quantity) <= 0);
+    if (semQtd) {
+      const nome = itemById.get(semQtd.itemId)?.name ?? semQtd.itemText.trim() ?? "";
+      return setError(
+        nome ? `Informe quanto de ${nome} você usou` : "Informe a quantidade de cada material"
+      );
+    }
     if (!obraId && !destination.trim())
       return setError("Diga a obra ou onde você aplicou o material");
 
-    const nome = selectedItem?.name ?? itemText.trim().toUpperCase();
+    const nomes = preenchidas.map(
+      (l) => itemById.get(l.itemId)?.name ?? l.itemText.trim().toUpperCase()
+    );
+
     const fd = new FormData();
-    fd.append("item_id", itemId);
-    fd.append("item_text", itemText);
-    fd.append("quantity", quantity);
+    fd.append(
+      "items",
+      JSON.stringify(
+        preenchidas.map((l) => ({
+          item_id: l.itemId,
+          item_text: l.itemText,
+          quantity: l.quantity,
+        }))
+      )
+    );
     fd.append("obra_id", obraId);
     fd.append("destination", destination);
     fd.append("notes", notes);
@@ -99,15 +140,16 @@ export function TecnicoClient({ items, obras, pending }: Props) {
         setError(r.error ?? "Erro ao enviar");
         return;
       }
-      // A obra e o lugar ficam: quem está numa obra manda vários materiais
-      // seguidos. Só o material, a quantidade e a foto são zerados.
-      setItemId("");
-      setItemText("");
-      setFreeItem(false);
-      setQuantity("");
+      // A obra e o lugar ficam: quem está numa obra manda vários envios
+      // seguidos. Só os materiais, a observação e a foto são zerados.
+      setLinhas([novaLinha()]);
       setNotes("");
       setPhoto(null);
-      setSuccess(`${nome} enviado! O chefe confere e dá baixa no estoque.`);
+      setSuccess(
+        nomes.length === 1
+          ? `${nomes[0]} enviado! O chefe confere e dá baixa no estoque.`
+          : `${nomes.length} materiais enviados! O chefe confere e dá baixa no estoque.`
+      );
     });
   }
 
@@ -149,77 +191,37 @@ export function TecnicoClient({ items, obras, pending }: Props) {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="tc_item">Material *</Label>
-                {freeItem ? (
-                  <button
-                    type="button"
-                    onClick={useList}
-                    className="flex items-center gap-1 min-h-[44px] px-2 -my-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
-                  >
-                    <List className="w-3 h-3" />
-                    Escolher da lista
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={useFreeText}
-                    className="flex items-center gap-1 min-h-[44px] px-2 -my-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
-                  >
-                    <Pencil className="w-3 h-3" />
-                    Não achei na lista
-                  </button>
+                <Label>Materiais *</Label>
+                {preenchidas.length > 1 && (
+                  <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                    {preenchidas.length} materiais
+                  </span>
                 )}
               </div>
 
-              {freeItem ? (
-                <>
-                  <Input
-                    id="tc_item"
-                    value={itemText}
-                    onChange={(e) => setItemText(e.target.value.toUpperCase())}
-                    placeholder="ex: cano 50mm"
-                    className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
-                    autoComplete="off"
-                  />
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                    Escreva do jeito que você chama — o chefe acha no cadastro.
-                  </p>
-                </>
-              ) : (
-                <SearchableSelect
+              {linhas.map((linha, i) => (
+                <MaterialLinha
+                  key={linha.key}
+                  linha={linha}
+                  numero={i + 1}
+                  total={linhas.length}
                   items={items}
-                  value={itemId}
-                  onChange={setItemId}
-                  getId={(i) => i.id}
-                  getLabel={(i) => i.name}
-                  renderItem={(i) => (
-                    <div className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="truncate">{i.name}</span>
-                      <span className="text-[10px] text-slate-400 flex-shrink-0">{i.unit}</span>
-                    </div>
-                  )}
-                  placeholder="Toque para escolher..."
-                  searchPlaceholder="Buscar material..."
-                  emptyMessage="Nenhum material cadastrado"
-                  onCreateNew={useFreeText}
-                  createNewLabel="Não achei — escrever o nome"
+                  unit={itemById.get(linha.itemId)?.unit ?? ""}
+                  onChange={(patch) => patchLinha(linha.key, patch)}
+                  onRemove={() => removeLinha(linha.key)}
                 />
-              )}
-            </div>
+              ))}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="tc_qty">Quantidade{unit ? ` (${unit})` : ""} *</Label>
-              <Input
-                id="tc_qty"
-                value={quantity}
-                onChange={(e) => setQuantity(formatQtyInput(e.target.value))}
-                placeholder="0"
-                inputMode="decimal"
-                className="h-12 text-lg font-semibold tabular-nums"
-                autoComplete="off"
-              />
+              <button
+                type="button"
+                onClick={addLinha}
+                className="w-full flex items-center justify-center gap-2 min-h-[48px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-sm font-medium text-produmar-600 dark:text-produmar-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Adicionar outro material
+              </button>
             </div>
 
             <div className="space-y-1.5">
@@ -257,7 +259,7 @@ export function TecnicoClient({ items, obras, pending }: Props) {
                 autoComplete="off"
               />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Se a obra não estiver na lista, escreva aqui onde foi.
+                Vale para todos os materiais deste envio.
               </p>
             </div>
 
@@ -350,6 +352,115 @@ export function TecnicoClient({ items, obras, pending }: Props) {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Um material do envio: escolher (ou escrever) e dizer quanto usou. */
+function MaterialLinha({
+  linha,
+  numero,
+  total,
+  items,
+  unit,
+  onChange,
+  onRemove,
+}: {
+  linha: Linha;
+  numero: number;
+  total: number;
+  items: TecnicoItem[];
+  unit: string;
+  onChange: (patch: Partial<Linha>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+          {total > 1 ? `Material ${numero}` : "Material"}
+        </span>
+        <div className="flex items-center gap-1">
+          {linha.freeText ? (
+            <button
+              type="button"
+              onClick={() => onChange({ freeText: false, itemText: "" })}
+              className="flex items-center gap-1 min-h-[36px] px-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
+            >
+              <List className="w-3 h-3" />
+              Escolher da lista
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onChange({ freeText: true, itemId: "" })}
+              className="flex items-center gap-1 min-h-[36px] px-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
+            >
+              <Pencil className="w-3 h-3" />
+              Não achei na lista
+            </button>
+          )}
+          {total > 1 && (
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label={`Tirar o material ${numero}`}
+              className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {linha.freeText ? (
+        <>
+          <Input
+            value={linha.itemText}
+            onChange={(e) => onChange({ itemText: e.target.value.toUpperCase() })}
+            placeholder="ex: cano 50mm"
+            className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+            autoComplete="off"
+          />
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Escreva do jeito que você chama — o chefe acha no cadastro.
+          </p>
+        </>
+      ) : (
+        <SearchableSelect
+          items={items}
+          value={linha.itemId}
+          onChange={(id) => onChange({ itemId: id })}
+          getId={(i) => i.id}
+          getLabel={(i) => i.name}
+          renderItem={(i) => (
+            <div className="flex items-center justify-between gap-2 min-w-0">
+              <span className="truncate">{i.name}</span>
+              <span className="text-[10px] text-slate-400 flex-shrink-0">{i.unit}</span>
+            </div>
+          )}
+          placeholder="Toque para escolher..."
+          searchPlaceholder="Buscar material..."
+          emptyMessage="Nenhum material cadastrado"
+          onCreateNew={() => onChange({ freeText: true, itemId: "" })}
+          createNewLabel="Não achei — escrever o nome"
+        />
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor={`tc_qty_${linha.key}`}>
+          Quantidade{unit ? ` (${unit})` : ""} *
+        </Label>
+        <Input
+          id={`tc_qty_${linha.key}`}
+          value={linha.quantity}
+          onChange={(e) => onChange({ quantity: formatQtyInput(e.target.value) })}
+          placeholder="0"
+          inputMode="decimal"
+          className="h-12 text-lg font-semibold tabular-nums"
+          autoComplete="off"
+        />
+      </div>
     </div>
   );
 }

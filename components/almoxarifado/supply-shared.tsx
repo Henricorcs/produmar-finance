@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, X } from "lucide-react";
+import { Camera, ImagePlus, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import type { SupplyMovementType, SupplyStatus } from "@/lib/types";
 
@@ -104,8 +104,9 @@ export function fmtDateTime(iso: string): string {
 }
 
 /**
- * Campo de foto: abre a câmera no celular e mostra a miniatura do que foi
- * tirado. `currentUrl` é a foto que já está salva (some quando trocam por outra).
+ * Campo de foto: tirar na hora OU pegar uma que já está no celular, e mostra a
+ * miniatura do que foi escolhido. `currentUrl` é a foto que já está salva (some
+ * quando trocam por outra).
  */
 export function PhotoField({
   label,
@@ -122,7 +123,8 @@ export function PhotoField({
   currentUrl?: string | null;
   onRemoveCurrent?: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
 
   useEffect(() => {
@@ -137,10 +139,15 @@ export function PhotoField({
 
   const shown = preview ?? (file ? null : currentUrl ?? null);
 
+  function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    onChange(e.target.files?.[0] ?? null);
+    // zera o input: escolher o MESMO arquivo de novo tem que disparar onChange
+    e.target.value = "";
+  }
+
   function clear() {
     if (file) {
       onChange(null);
-      if (inputRef.current) inputRef.current.value = "";
       return;
     }
     onRemoveCurrent?.();
@@ -149,14 +156,17 @@ export function PhotoField({
   return (
     <div className="space-y-1.5">
       <Label>{label}</Label>
+      {/* Duas portas para a mesma foto: `capture` força a câmera no celular, e
+          quem já fotografou antes precisa de um input sem ele. */}
       <input
-        ref={inputRef}
+        ref={cameraRef}
         type="file"
         accept="image/*"
         capture="environment"
         className="hidden"
-        onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+        onChange={pick}
       />
+      <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={pick} />
 
       {shown ? (
         <div className="relative">
@@ -174,24 +184,44 @@ export function PhotoField({
           >
             <X className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/60 text-white text-xs font-medium hover:bg-black/80"
-          >
-            <Camera className="w-3.5 h-3.5" />
-            Trocar
-          </button>
+          <div className="absolute bottom-1.5 right-1.5 flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => cameraRef.current?.click()}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/60 text-white text-xs font-medium hover:bg-black/80"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              Câmera
+            </button>
+            <button
+              type="button"
+              onClick={() => galleryRef.current?.click()}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/60 text-white text-xs font-medium hover:bg-black/80"
+            >
+              <ImagePlus className="w-3.5 h-3.5" />
+              Galeria
+            </button>
+          </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-2 min-h-[52px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-        >
-          <Camera className="w-4 h-4" />
-          Tirar foto
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => cameraRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-2 min-h-[52px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          >
+            <Camera className="w-4 h-4" />
+            Tirar foto
+          </button>
+          <button
+            type="button"
+            onClick={() => galleryRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-2 min-h-[52px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          >
+            <ImagePlus className="w-4 h-4" />
+            Escolher foto
+          </button>
+        </div>
       )}
 
       {hint && <p className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</p>}

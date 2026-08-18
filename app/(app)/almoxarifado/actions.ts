@@ -3,6 +3,7 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { removeSupplyPhotoIfUnused } from "@/lib/supply-photos";
 import type { SupplyMovementType } from "@/lib/types";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -638,9 +639,8 @@ export async function rejectSupplyRequest(requestId: string) {
   const { error } = await supabase.from("supply_requests").delete().eq("id", requestId);
   if (error) return { error: supplyError(error) };
 
-  if (req?.photo_path) {
-    await supabase.storage.from("attachments").remove([req.photo_path as string]);
-  }
+  // a foto pode ser dos outros materiais do mesmo envio — só apaga se sobrou só ela
+  await removeSupplyPhotoIfUnused(supabase, req?.photo_path as string | null);
 
   revalidate();
   revalidatePath("/tecnico");

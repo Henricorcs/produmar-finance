@@ -751,7 +751,8 @@ export interface AnimalBirth {
 export interface AnimalBirthRequest {
   id: string;
   mother_tag: string;
-  calf_tag: string;
+  /** Vazio no envio do vaqueiro — quem numera é o patrão ao lançar (migration 053). */
+  calf_tag: string | null;
   calf_sex: AnimalSex;
   birth_date: string;
   photo_path: string | null;

@@ -33,6 +33,7 @@ import { CategoriesDialog } from "./categories-dialog";
 import { ObraDialog } from "./obra-dialog";
 import { ObraCard, ObraDetailDialog } from "./obra-detail-dialog";
 import { SupplyRequestDialog } from "./request-dialog";
+import { SupplyRequestDetailDialog } from "./request-detail-dialog";
 import { MOVEMENT_META, STATUS_META, fmtDateTime, num } from "./supply-shared";
 import type {
   SupplyCategory,
@@ -94,6 +95,7 @@ export function AlmoxarifadoPageClient({
   /** O cadastro foi aberto de dentro do lançamento? Então o item novo já entra nele. */
   const [creatingFromMovement, setCreatingFromMovement] = useState(false);
   const [approveRequestId, setApproveRequestId] = useState<string | null>(null);
+  const [detailRequestId, setDetailRequestId] = useState<string | null>(null);
   const [rejectingRequestId, setRejectingRequestId] = useState<string | null>(null);
   /** Miniaturas das fotos que os técnicos mandaram (URLs assinadas). */
   const [requestThumbs, setRequestThumbs] = useState<Record<string, string>>({});
@@ -145,6 +147,10 @@ export function AlmoxarifadoPageClient({
     () => (approveRequestId ? requests.find((r) => r.id === approveRequestId) ?? null : null),
     [approveRequestId, requests]
   );
+  const detailRequest = useMemo(
+    () => (detailRequestId ? requests.find((r) => r.id === detailRequestId) ?? null : null),
+    [detailRequestId, requests]
+  );
 
   // uma ida ao servidor resolve as fotos de todos os envios pendentes
   const requestPhotoPaths = useMemo(
@@ -175,6 +181,7 @@ export function AlmoxarifadoPageClient({
     )
       return;
     setRejectingRequestId(r.id);
+    setDetailRequestId(null);
     startRejecting(async () => {
       const res = await rejectSupplyRequest(r.id);
       setRejectingRequestId(null);
@@ -570,6 +577,7 @@ export function AlmoxarifadoPageClient({
           rejectingId={isRejecting ? rejectingRequestId : null}
           onApprove={(r) => setApproveRequestId(r.id)}
           onReject={handleRejectRequest}
+          onOpen={(r) => setDetailRequestId(r.id)}
         />
       )}
 
@@ -624,6 +632,21 @@ export function AlmoxarifadoPageClient({
           setDetailObraId(null);
           openEditObra(o);
         }}
+      />
+      <SupplyRequestDetailDialog
+        open={!!detailRequest}
+        onClose={() => setDetailRequestId(null)}
+        request={detailRequest}
+        photoUrl={
+          detailRequest?.photo_path ? requestThumbs[detailRequest.photo_path] ?? null : null
+        }
+        rejecting={isRejecting && rejectingRequestId === detailRequest?.id}
+        onApprove={() => {
+          // sai do detalhe direto para a baixa — dois diálogos abertos se atropelam
+          setDetailRequestId(null);
+          if (detailRequest) setApproveRequestId(detailRequest.id);
+        }}
+        onReject={() => detailRequest && handleRejectRequest(detailRequest)}
       />
       <SupplyRequestDialog
         open={!!approveRequest}
@@ -817,12 +840,14 @@ function PendentesTab({
   rejectingId,
   onApprove,
   onReject,
+  onOpen,
 }: {
   requests: SupplyRequestRow[];
   thumbs: Record<string, string>;
   rejectingId: string | null;
   onApprove: (r: SupplyRequestRow) => void;
   onReject: (r: SupplyRequestRow) => void;
+  onOpen: (r: SupplyRequestRow) => void;
 }) {
   if (requests.length === 0) {
     return (
@@ -844,25 +869,32 @@ function PendentesTab({
           rejecting={rejectingId === r.id}
           onApprove={() => onApprove(r)}
           onReject={() => onReject(r)}
+          onOpen={() => onOpen(r)}
         />
       ))}
     </div>
   );
 }
 
-/** Cartão de um aviso do técnico — o chefe dá baixa ou descarta. */
+/**
+ * Cartão de um aviso do técnico — o chefe dá baixa ou descarta. Tocar no cartão
+ * abre o envio inteiro (observação, hora, quem mandou); os dois botões ficam
+ * fora dessa área para ninguém dar baixa querendo só olhar.
+ */
 function RequestCard({
   request,
   photoUrl,
   rejecting,
   onApprove,
   onReject,
+  onOpen,
 }: {
   request: SupplyRequestRow;
   photoUrl: string | null;
   rejecting: boolean;
   onApprove: () => void;
   onReject: () => void;
+  onOpen: () => void;
 }) {
   const nome = request.supply_items?.name ?? request.item_text ?? "—";
   const unit = request.supply_items?.unit ?? "";
@@ -872,16 +904,18 @@ function RequestCard({
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-3">
-      <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="w-full flex items-center gap-3 text-left rounded-lg -m-1 p-1 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+      >
         {photoUrl ? (
-          <a href={photoUrl} target="_blank" rel="noreferrer" className="flex-shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photoUrl}
-              alt={nome}
-              className="w-14 h-14 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
-            />
-          </a>
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={photoUrl}
+            alt={nome}
+            className="w-14 h-14 rounded-lg object-cover border border-slate-200 dark:border-slate-700 flex-shrink-0"
+          />
         ) : (
           <div className="w-14 h-14 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
             <HardHat className="w-6 h-6 text-amber-400" />
@@ -900,7 +934,8 @@ function RequestCard({
             {formatDate(request.used_date)}
           </p>
         </div>
-      </div>
+        <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" />
+      </button>
 
       {(foraDoCadastro || request.notes) && (
         <div className="space-y-1.5">

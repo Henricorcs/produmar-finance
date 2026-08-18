@@ -371,7 +371,7 @@ export function AnimaisPageClient({
   /** Descarta um envio errado/duplicado do vaqueiro — não vira animal. */
   function handleDiscardRequest(r: AnimalBirthRequest) {
     if (
-      !confirm(`Descartar o envio do bezerro nº ${r.calf_tag} (mãe informada: ${r.mother_tag})?`)
+      !confirm(`Descartar o envio do bezerro (mãe informada: ${r.mother_tag})?`)
     )
       return;
     setDiscardingRequestId(r.id);
@@ -1476,7 +1476,7 @@ function BirthRequestCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={photoUrl}
-            alt={`Bezerro nº ${request.calf_tag}`}
+            alt={`Bezerro da mãe ${request.mother_tag}`}
             className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-slate-200 dark:border-slate-700"
           />
         ) : (
@@ -1486,7 +1486,8 @@ function BirthRequestCard({
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-            Nº {request.calf_tag} · {request.calf_sex === "macho" ? "Macho" : "Fêmea"}
+            Bezerro {request.calf_sex === "macho" ? "macho" : "fêmea"}
+            {request.calf_tag ? ` · nº ${request.calf_tag}` : ""}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
             Mãe informada: {request.mother_tag}
