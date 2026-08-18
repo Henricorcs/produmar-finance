@@ -291,7 +291,7 @@ export function TecnicoClient({ items, obras, pending }: Props) {
               disabled={isPending}
               className="w-full h-14 text-base font-semibold"
             >
-              {isPending ? "Enviando..." : "Enviar para o chefe"}
+              {isPending ? "Enviando..." : "Enviar"}
             </Button>
 
             <p className="text-[11px] text-center text-slate-400 dark:text-slate-500">
