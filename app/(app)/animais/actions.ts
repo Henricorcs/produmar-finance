@@ -817,11 +817,17 @@ export async function deleteBirth(id: string, deleteCalf = false) {
 // SOLICITAÇÕES DE NASCIMENTO (vaqueiro envia pelo celular, patrão confere e lança)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A tabela vem da migration 048 — sem ela o erro do Postgres não diz nada. */
+/**
+ * A tabela vem da migration 048 — sem ela o erro do Postgres não diz nada. Só o
+ * código do erro decide: casar pelo nome da tabela na mensagem transformava
+ * qualquer falha (RLS, constraint) num "rode a 048" enganoso.
+ */
 function birthRequestsTableError(error: { code?: string; message: string }): string {
-  if (error.code === "42P01" || error.message.includes("animal_birth_requests"))
-    return "Rode a migration 048 no Supabase para usar as solicitações do vaqueiro";
-  return error.message;
+  if (error.code === "42P01")
+    return "Rode a migration 048 no Supabase — a PARTE 1 e a PARTE 2 em execuções separadas";
+  if (error.code === "PGRST205" || error.message.includes("schema cache"))
+    return "Tabela ainda não visível: recarregue o schema no Supabase (NOTIFY pgrst, 'reload schema')";
+  return error.code ? `${error.message} (${error.code})` : error.message;
 }
 
 export interface ResolveBirthRequestInput {
