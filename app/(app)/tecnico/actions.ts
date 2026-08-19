@@ -19,7 +19,24 @@ function parseQty(raw: unknown): number {
   return Math.round(Math.abs(n) * 1000) / 1000;
 }
 
+/** Leitura de painel (horímetro/km): positiva, uma casa. 0 = não anotou. */
+function parseReading(raw: unknown): number {
+  const n = parseFloat(String(raw ?? "").replace(/\./g, "").replace(",", "."));
+  if (isNaN(n)) return 0;
+  return Math.round(Math.abs(n) * 10) / 10;
+}
+
 function requestError(error: { code?: string; message: string }): string {
+  // colunas do setor/máquina vêm da 057 — sem ela o envio simples continua
+  // funcionando, só o que usa os campos novos é que para aqui
+  if (
+    error.message.includes("sector_id") ||
+    error.message.includes("machine_id") ||
+    error.message.includes("machine_hourmeter") ||
+    error.message.includes("machine_km") ||
+    error.message.includes("fuel_type")
+  )
+    return "Rode a migration 057 no Supabase para usar setor e máquina";
   if (error.code === "42P01" || error.message.includes("supply_requests"))
     return "Rode a migration 052 no Supabase para habilitar o envio";
   if (error.message.includes("supply_requests_tem_material"))
@@ -84,14 +101,37 @@ export async function requestSupplyUsage(formData: FormData) {
 
   const lines = parseLines(formData.get("items"));
   const obraId = String(formData.get("obra_id") ?? "").trim();
+  const sectorId = String(formData.get("sector_id") ?? "").trim();
   const destination = clean(formData.get("destination"));
   const notes = clean(formData.get("notes"));
   const photo = formData.get("photo");
 
+  // Máquina do serviço: tudo opcional. As leituras vão só quando o técnico
+  // anotou — quase sempre ninguém anota, e obrigar era o que fazia ele
+  // desistir de avisar.
+  const machineId = String(formData.get("machine_id") ?? "").trim();
+  const hourmeter = parseReading(formData.get("machine_hourmeter"));
+  const km = parseReading(formData.get("machine_km"));
+  const fuelType = clean(formData.get("fuel_type"));
+
   if (lines.length === 0) return { error: "Diga qual material você usou" };
   if (lines.some((l) => l.quantity <= 0))
     return { error: "Informe a quantidade de cada material" };
-  if (!obraId && !destination) return { error: "Diga a obra ou onde você aplicou" };
+  if (!obraId && !destination) return { error: "Diga o local da obra ou o setor" };
+
+  /**
+   * Campos da migration 057. Só entram no insert quando foram preenchidos:
+   * assim quem ainda não rodou a 057 continua enviando material normalmente, e
+   * o recado de "rode a migration" só aparece para quem usou os campos novos.
+   */
+  const extra: Record<string, unknown> = {};
+  if (sectorId) extra.sector_id = sectorId;
+  if (machineId) {
+    extra.machine_id = machineId;
+    if (hourmeter > 0) extra.machine_hourmeter = hourmeter;
+    if (km > 0) extra.machine_km = km;
+    if (fuelType) extra.fuel_type = fuelType;
+  }
 
   // o nome de quem enviou vai gravado: o chefe precisa saber quem pegou
   const { data: profile } = await supabase
@@ -127,6 +167,7 @@ export async function requestSupplyUsage(formData: FormData) {
       photo_path: photoPath,
       sent_by_name: sentBy,
       created_by: user.id,
+      ...extra,
     }))
   );
 

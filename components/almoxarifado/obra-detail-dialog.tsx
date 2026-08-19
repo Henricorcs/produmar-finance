@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowUpFromLine, HardHat, Pencil, Trash2, User } from "lucide-react";
+import { ArrowUpFromLine, HardHat, MapPin, Pencil, Plus, Trash2, User, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,10 +9,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { formatBRL, formatQty } from "@/lib/utils";
-import { deleteSupplyObra, getSupplyObraMovements } from "@/app/(app)/almoxarifado/actions";
+import { Input } from "@/components/ui/input";
+import { formatBRL, formatQty, upperKeepingCaret } from "@/lib/utils";
+import {
+  createSupplyObraSector,
+  deleteSupplyObra,
+  deleteSupplyObraSector,
+  getSupplyObraMovements,
+} from "@/app/(app)/almoxarifado/actions";
 import { fmtDateTime, num } from "./supply-shared";
-import type { SupplyItemWithStock, SupplyObraUsage } from "@/lib/types";
+import type { SupplyItemWithStock, SupplyObraSector, SupplyObraUsage } from "@/lib/types";
 
 /** Saída da obra — vem da consulta sob demanda, sem o limite da listagem. */
 type ObraMovement = {
@@ -31,14 +37,27 @@ interface Props {
   obra: SupplyObraUsage | null;
   /** Catálogo, para pegar o custo médio de cada material. */
   items: SupplyItemWithStock[];
+  /** Setores de TODAS as obras — o diálogo filtra os desta. */
+  sectors?: SupplyObraSector[];
   onNewSaida: (obra: SupplyObraUsage) => void;
   onEdit: (obra: SupplyObraUsage) => void;
 }
 
-export function ObraDetailDialog({ open, onClose, obra, items, onNewSaida, onEdit }: Props) {
+export function ObraDetailDialog({
+  open,
+  onClose,
+  obra,
+  items,
+  sectors = [],
+  onNewSaida,
+  onEdit,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [movements, setMovements] = useState<ObraMovement[]>([]);
   const [loading, setLoading] = useState(false);
+  /** Setor sendo cadastrado agora, no campo de baixo da lista. */
+  const [newSector, setNewSector] = useState("");
+  const [sectorError, setSectorError] = useState<string | null>(null);
 
   // o consumo inteiro da obra, sem o teto da listagem da página
   const obraId = obra?.id ?? null;
@@ -56,6 +75,12 @@ export function ObraDetailDialog({ open, onClose, obra, items, onNewSaida, onEdi
       cancelled = true;
     };
   }, [open, obraId]);
+
+  /** Os setores desta obra — é o que o técnico vê em "Setor aplicado". */
+  const obraSectors = useMemo(
+    () => sectors.filter((x) => x.obra_id === obra?.id),
+    [sectors, obra?.id]
+  );
 
   const costByItem = useMemo(() => {
     const map = new Map<string, number>();
@@ -87,6 +112,34 @@ export function ObraDetailDialog({ open, onClose, obra, items, onNewSaida, onEdi
   }, [movements, costByItem]);
 
   if (!obra) return null;
+
+  function handleAddSector(e: React.FormEvent) {
+    e.preventDefault();
+    const nome = newSector.trim();
+    if (!nome) return;
+    setSectorError(null);
+    startTransition(async () => {
+      const r = await createSupplyObraSector(obra!.id, nome);
+      if (r && "error" in r) {
+        setSectorError(r.error ?? "Erro ao cadastrar o setor");
+        return;
+      }
+      setNewSector("");
+    });
+  }
+
+  function handleDeleteSector(s: SupplyObraSector) {
+    if (
+      !confirm(
+        `Apagar o setor "${s.name}"? Os envios que já usaram ele continuam guardados, só ficam sem setor.`
+      )
+    )
+      return;
+    startTransition(async () => {
+      const r = await deleteSupplyObraSector(s.id);
+      if (r && "error" in r) setSectorError(r.error ?? "Erro ao apagar o setor");
+    });
+  }
 
   function handleDelete() {
     const o = obra!;
@@ -136,6 +189,58 @@ export function ObraDetailDialog({ open, onClose, obra, items, onNewSaida, onEdi
             <ArrowUpFromLine className="w-4 h-4" />
             Lançar saída para esta obra
           </Button>
+
+          {/* Setores: o subcadastro que o técnico escolhe na tela dele */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+              Setores desta obra
+            </p>
+
+            {obraSectors.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {obraSectors.map((s) => (
+                  <span
+                    key={s.id}
+                    className="flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300"
+                  >
+                    {s.name}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSector(s)}
+                      disabled={isPending}
+                      aria-label={`Apagar o setor ${s.name}`}
+                      className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleAddSector} className="flex gap-2">
+              <Input
+                value={newSector}
+                onChange={(e) => setNewSector(upperKeepingCaret(e))}
+                placeholder="ex: entrada, galpão 2, área externa"
+                className="h-10 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+                autoComplete="off"
+              />
+              <Button type="submit" size="sm" disabled={isPending || !newSector.trim()}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </form>
+
+            {sectorError ? (
+              <p className="text-[11px] text-red-600 dark:text-red-400">{sectorError}</p>
+            ) : (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                É o que o técnico escolhe em &quot;Setor aplicado&quot; quando avisa o
+                material que usou.
+              </p>
+            )}
+          </div>
 
           {/* Consumo por material */}
           <div className="space-y-1.5">

@@ -36,9 +36,11 @@ import { SupplyRequestDialog } from "./request-dialog";
 import { SupplyRequestDetailDialog } from "./request-detail-dialog";
 import { MOVEMENT_META, STATUS_META, fmtDateTime, num } from "./supply-shared";
 import type {
+  Machine,
   SupplyCategory,
   SupplyItemWithStock,
   SupplyMovement,
+  SupplyObraSector,
   SupplyObraUsage,
   SupplyRequestRow,
   SupplyStatus,
@@ -55,6 +57,10 @@ interface Props {
   categories: SupplyCategory[];
   /** Obras do módulo (migration 051). */
   obras?: SupplyObraUsage[];
+  /** Setores de cada obra — subcadastro do chefe (migration 057). */
+  sectors?: SupplyObraSector[];
+  /** Frota: o envio do técnico pode ter vindo com máquina (migration 057). */
+  machines?: Machine[];
   /** O que os técnicos avisaram que usaram, esperando baixa (migration 052). */
   requests?: SupplyRequestRow[];
 }
@@ -69,6 +75,8 @@ export function AlmoxarifadoPageClient({
   movements,
   categories,
   obras = [],
+  sectors = [],
+  machines = [],
   requests = [],
 }: Props) {
   const [tab, setTab] = useState<Tab>("estoque");
@@ -624,6 +632,7 @@ export function AlmoxarifadoPageClient({
         onClose={() => setDetailObraId(null)}
         obra={detailObra}
         items={items}
+        sectors={sectors}
         onNewSaida={(o) => {
           setDetailObraId(null);
           openMovement("saida", undefined, o.id);
@@ -637,6 +646,8 @@ export function AlmoxarifadoPageClient({
         open={!!detailRequest}
         onClose={() => setDetailRequestId(null)}
         request={detailRequest}
+        sectors={sectors}
+        machines={machines}
         photoUrl={
           detailRequest?.photo_path ? requestThumbs[detailRequest.photo_path] ?? null : null
         }
@@ -654,6 +665,7 @@ export function AlmoxarifadoPageClient({
         request={approveRequest}
         items={items}
         obras={obras}
+        sectors={sectors}
         photoUrl={
           approveRequest?.photo_path ? requestThumbs[approveRequest.photo_path] ?? null : null
         }

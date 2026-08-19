@@ -11,12 +11,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatDate, formatQty } from "@/lib/utils";
 import { fmtDateTime, num } from "./supply-shared";
-import type { SupplyRequestRow } from "@/lib/types";
+import type { Machine, SupplyObraSector, SupplyRequestRow } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   request: SupplyRequestRow | null;
+  /** Setores das obras — o nome sai do id (sem join, para não quebrar sem a 057). */
+  sectors?: SupplyObraSector[];
+  /** Frota — mesma ideia: o nome da máquina sai do id. */
+  machines?: Machine[];
   /** Foto que o técnico mandou (URL assinada). */
   photoUrl: string | null;
   rejecting: boolean;
@@ -34,6 +38,8 @@ export function SupplyRequestDetailDialog({
   open,
   onClose,
   request,
+  sectors = [],
+  machines = [],
   photoUrl,
   rejecting,
   onApprove,
@@ -43,6 +49,16 @@ export function SupplyRequestDetailDialog({
 
   const nome = request.supply_items?.name ?? request.item_text ?? "—";
   const unit = request.supply_items?.unit ?? "";
+
+  /** O que veio do serviço em si: setor da obra, máquina e abastecimento. */
+  const setor = sectors.find((x) => x.id === request.sector_id)?.name ?? null;
+  const machine = machines.find((m) => m.id === request.machine_id) ?? null;
+  const maquina = machine ? `${machine.name}${machine.plate ? ` (${machine.plate})` : ""}` : null;
+  const hourmeter = request.machine_hourmeter != null ? num(request.machine_hourmeter) : null;
+  const km = request.machine_km != null ? num(request.machine_km) : null;
+  const leituraRotulo = km != null ? "Km do painel" : "Horímetro";
+  const leitura =
+    km != null ? formatQty(km) : hourmeter != null ? formatQty(hourmeter) : null;
   /** Material escrito na mão: o chefe ainda tem que casar com o cadastro. */
   const foraDoCadastro = !request.item_id;
 
@@ -84,8 +100,11 @@ export function SupplyRequestDetailDialog({
           )}
 
           <dl className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <Linha rotulo="Obra" valor={request.supply_obras?.name ?? "sem obra"} />
-            <Linha rotulo="Onde aplicou" valor={request.destination ?? "—"} />
+            <Linha rotulo="Local da obra" valor={request.supply_obras?.name ?? "sem obra"} />
+            <Linha rotulo="Setor" valor={setor ?? request.destination ?? "—"} />
+            {maquina && <Linha rotulo="Máquina" valor={maquina} />}
+            {leitura && <Linha rotulo={leituraRotulo} valor={leitura} />}
+            {request.fuel_type && <Linha rotulo="Abasteceu" valor={request.fuel_type} />}
             <Linha rotulo="Enviado por" valor={request.sent_by_name ?? "—"} />
             <Linha rotulo="Data do uso" valor={formatDate(request.used_date)} />
             <Linha rotulo="Avisou em" valor={fmtDateTime(request.created_at)} />

@@ -13,10 +13,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatQty, localDateISO } from "@/lib/utils";
+import { formatQty, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { approveSupplyRequest } from "@/app/(app)/almoxarifado/actions";
 import { formatQtyInput, parseQty } from "./supply-shared";
-import type { SupplyItemWithStock, SupplyObraUsage, SupplyRequestRow } from "@/lib/types";
+import type {
+  SupplyItemWithStock,
+  SupplyObraSector,
+  SupplyObraUsage,
+  SupplyRequestRow,
+} from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -24,6 +29,8 @@ interface Props {
   request: SupplyRequestRow | null;
   items: SupplyItemWithStock[];
   obras: SupplyObraUsage[];
+  /** Setores das obras — para o setor do técnico virar o lugar da saída. */
+  sectors?: SupplyObraSector[];
   /** Foto que o técnico mandou (URL assinada). */
   photoUrl: string | null;
 }
@@ -33,7 +40,15 @@ interface Props {
  * nome do material na mão, o campo tenta casar sozinho com o cadastro — senão o
  * chefe escolhe da lista. Só aqui o saldo cai.
  */
-export function SupplyRequestDialog({ open, onClose, request, items, obras, photoUrl }: Props) {
+export function SupplyRequestDialog({
+  open,
+  onClose,
+  request,
+  items,
+  obras,
+  sectors = [],
+  photoUrl,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +80,11 @@ export function SupplyRequestDialog({ open, onClose, request, items, obras, phot
     setItemId(request.item_id ?? match?.id ?? "");
     setQuantity(String(Number(request.quantity)).replace(".", ","));
     setObraId(request.obra_id ?? "");
-    setDestination(request.destination ?? "");
+    // o setor escolhido pelo técnico é o lugar da saída; sem setor, o texto
+    // que ele escreveu na mão
+    setDestination(
+      sectors.find((x) => x.id === request.sector_id)?.name ?? request.destination ?? ""
+    );
     setPerson(request.sent_by_name ?? "");
     setDate(request.used_date || localDateISO());
     setError(null);
@@ -194,7 +213,7 @@ export function SupplyRequestDialog({ open, onClose, request, items, obras, phot
             <Input
               id="sr_person"
               value={person}
-              onChange={(e) => setPerson(e.target.value.toUpperCase())}
+              onChange={(e) => setPerson(upperKeepingCaret(e))}
               placeholder="quem usou o material"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -230,7 +249,7 @@ export function SupplyRequestDialog({ open, onClose, request, items, obras, phot
             <Input
               id="sr_dest"
               value={destination}
-              onChange={(e) => setDestination(e.target.value.toUpperCase())}
+              onChange={(e) => setDestination(upperKeepingCaret(e))}
               placeholder="onde foi aplicado (opcional)"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

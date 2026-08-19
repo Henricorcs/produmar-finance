@@ -33,6 +33,8 @@ function supplyError(error: { code?: string; message: string }): string {
     return "Rode a migration 050 no Supabase para usar as fotos";
   if (error.message.includes("supply_requests"))
     return "Rode a migration 052 no Supabase para receber os envios do técnico";
+  if (error.message.includes("supply_obra_sectors") || error.message.includes("sector_id"))
+    return "Rode a migration 057 no Supabase para usar os setores da obra";
   if (error.message.includes("supply_obras") || error.message.includes("obra_id"))
     return "Rode a migration 051 no Supabase para usar as obras";
   if (
@@ -653,5 +655,49 @@ export async function deleteSupplyObra(id: string) {
   const { error } = await supabase.from("supply_obras").delete().eq("id", id);
   if (error) return { error: supplyError(error) };
   revalidate();
+  revalidatePath("/tecnico");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SETORES DA OBRA (subcadastro — migration 057)
+// ─────────────────────────────────────────────────────────────────────────────
+// O "onde você aplicou" do técnico virou cadastro: o chefe diz quais são os
+// setores de cada obra e o técnico só escolhe. Sem isso cada um escrevia de um
+// jeito e não dava para somar nada por lugar.
+
+export async function createSupplyObraSector(obraId: string, name: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!obraId) return { error: "Obra não informada" };
+  const nome = clean(name);
+  if (!nome) return { error: "Informe o nome do setor" };
+
+  const { data, error } = await supabase
+    .from("supply_obra_sectors")
+    .insert({ obra_id: obraId, name: nome, created_by: user.id })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error ? supplyError(error) : "Erro ao cadastrar" };
+  revalidate();
+  revalidatePath("/tecnico");
+  return { ok: true, sectorId: data.id as string };
+}
+
+/**
+ * Apaga o setor. Os envios que já apontavam para ele NÃO somem — ficam sem
+ * setor (o `on delete set null` da 057).
+ */
+export async function deleteSupplyObraSector(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("supply_obra_sectors").delete().eq("id", id);
+  if (error) return { error: supplyError(error) };
+  revalidate();
+  revalidatePath("/tecnico");
   return { ok: true };
 }

@@ -195,6 +195,12 @@ export interface Product {
 }
 
 export const PRODUCT_UNITS = ["m³", "peça", "carrada"] as const;
+
+/**
+ * Combustíveis que a máquina recebe na rua. Guardado como TEXTO na coluna
+ * (não é enum): incluir um novo é mexer só aqui, sem migration.
+ */
+export const FUEL_TYPES = ["Diesel", "Diesel S-10", "Gasolina", "Etanol", "Arla 32"] as const;
 export type ProductUnit = (typeof PRODUCT_UNITS)[number];
 
 export interface PickupLocation {
@@ -939,6 +945,20 @@ export interface SupplyObra {
   created_at: string;
 }
 
+/**
+ * Setor da obra — subcadastro do chefe (migration 057). É o "onde aplicou" do
+ * técnico virado cadastro: em vez de cada um escrever do seu jeito, escolhe.
+ */
+export interface SupplyObraSector {
+  id: string;
+  obra_id: string;
+  name: string;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
 /** Linha da view v_supply_obra_usage (obra + consumo de material). */
 export interface SupplyObraUsage extends SupplyObra {
   /** Quantos materiais diferentes saíram para esta obra. */
@@ -978,8 +998,18 @@ export interface SupplyRequest {
   quantity: number;
   /** Obra escolhida da lista (null quando só disse onde aplicou). */
   obra_id: string | null;
-  /** Onde aplicou, texto livre ("poste da esquina"). */
+  /** Setor da obra onde aplicou, do cadastro do chefe (migration 057). */
+  sector_id?: string | null;
+  /** Onde aplicou, texto livre ("poste da esquina") — quando não achou o setor. */
   destination: string | null;
+  /** Máquina usada no serviço (migration 057). */
+  machine_id?: string | null;
+  /** Leitura do horímetro na hora — nula quando o técnico não anotou. */
+  machine_hourmeter?: number | null;
+  /** Leitura do km na hora — nula quando o técnico não anotou. */
+  machine_km?: number | null;
+  /** Combustível abastecido; null = não abasteceu. */
+  fuel_type?: string | null;
   used_date: string;
   notes: string | null;
   photo_path: string | null;
