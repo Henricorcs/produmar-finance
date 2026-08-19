@@ -35,7 +35,7 @@ import {
   listServiceOrderAttachments,
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel } from "@/lib/utils";
+import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel, formatBRLInput } from "@/lib/utils";
 import { PRODUCT_UNITS } from "@/lib/types";
 import type {
   Machine,
@@ -72,18 +72,6 @@ function parseBRLToNumber(s: string): number {
   const cleaned = s.replace(/\./g, "").replace(",", ".");
   const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
-}
-
-function formatBRLInput(raw: string | number): string {
-  let digits: string;
-  if (typeof raw === "number") digits = String(Math.round(raw * 100));
-  else digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  const cents = parseInt(digits, 10);
-  return (cents / 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 function formatQty(raw: string | number): string {

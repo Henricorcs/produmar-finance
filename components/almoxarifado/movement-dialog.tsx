@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatMoneyInput, formatQty, localDateISO, parseMoney } from "@/lib/utils";
+import { formatBRLInput, formatQty, localDateISO, parseMoney } from "@/lib/utils";
 import {
   createSupplyMovement,
   uploadSupplyMovementPhoto,
@@ -248,7 +248,7 @@ export function MovementDialog({
                 <Input
                   id="mv_cost"
                   value={unitCost}
-                  onChange={(e) => setUnitCost(formatMoneyInput(e.target.value))}
+                  onChange={(e) => setUnitCost(formatBRLInput(e.target.value))}
                   placeholder="0,00"
                   inputMode="decimal"
                   className="tabular-nums"

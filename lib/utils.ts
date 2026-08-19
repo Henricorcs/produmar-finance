@@ -42,13 +42,25 @@ export function parseMoney(s: string): number {
   return isNaN(n) ? 0 : n;
 }
 
-/** Máscara de digitação de dinheiro: mantém só dígitos e uma vírgula com 2 casas. */
-export function formatMoneyInput(raw: string): string {
-  const cleaned = raw.replace(/[^\d,]/g, "");
-  const parts = cleaned.split(",");
-  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
-  if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
-  return cleaned;
+/**
+ * Máscara de dinheiro com VÍRGULA AUTOMÁTICA — a de todo campo de R$ do app.
+ * Quem digita só aperta números e os dois últimos viram os centavos
+ * ("12345" → "123,45"), como na calculadora do mercado: ninguém precisa
+ * caçar a vírgula no teclado do celular. Aceita também o valor já em número
+ * (1234.5 → "1.234,50"), para preencher o campo na hora de editar.
+ *
+ * Sai com separador de milhar, então leia SEMPRE com `parseMoney` (que tira
+ * os pontos) — nunca com um `.replace(",", ".")` solto.
+ */
+export function formatBRLInput(raw: string | number): string {
+  const digits =
+    typeof raw === "number" ? String(Math.round(raw * 100)) : raw.replace(/\D/g, "");
+  if (!digits) return "";
+  const cents = parseInt(digits, 10);
+  return (cents / 100).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 /**

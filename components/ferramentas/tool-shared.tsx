@@ -4,7 +4,7 @@ import type { ToolCondition, ToolStatus } from "@/lib/types";
 
 // Os helpers de dinheiro vivem em lib/utils (o Estoque também usa). Reexportados
 // aqui para os diálogos de patrimônio continuarem importando de um lugar só.
-export { parseMoney, formatMoneyInput } from "@/lib/utils";
+export { parseMoney, formatBRLInput } from "@/lib/utils";
 
 export const CONDITION_OPTIONS: { value: ToolCondition; label: string }[] = [
   { value: "otimo", label: "Ótimo" },

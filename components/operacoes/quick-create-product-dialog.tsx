@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createProduct } from "@/app/(app)/operacoes/actions";
 import { PRODUCT_UNITS, type Product } from "@/lib/types";
+import { formatBRLInput } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -77,7 +78,7 @@ export function QuickCreateProductDialog({ open, onClose, onCreated }: Props) {
               <Input
                 id="prd_price"
                 value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                onChange={(e) => setPrice(formatBRLInput(e.target.value))}
                 placeholder="0,00"
                 inputMode="decimal"
               />

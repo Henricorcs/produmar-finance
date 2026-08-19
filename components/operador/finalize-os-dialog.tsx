@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SignaturePad } from "./signature-pad";
 import { ServiceOrderComprovantes } from "./service-order-comprovantes";
 import { finalizeServiceOrder } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatHourmeter, osTypeLabel } from "@/lib/utils";
+import { formatBRL, formatHourmeter, osTypeLabel, formatBRLInput } from "@/lib/utils";
 import type {
   ServiceOrder,
   ServiceOrderAttachment,
@@ -45,17 +45,6 @@ interface Props {
 }
 
 // Valor em R$: formata os dígitos como moeda enquanto digita (centavos).
-function formatBRLInput(raw: string | number): string {
-  let digits: string;
-  if (typeof raw === "number") digits = String(Math.round(raw * 100));
-  else digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  const cents = parseInt(digits, 10);
-  return (cents / 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 function parseBRLToNumber(s: string): number {
   if (!s) return 0;

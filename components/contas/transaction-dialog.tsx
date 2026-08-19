@@ -33,6 +33,7 @@ import type {
   TransactionStatus,
   TransactionType,
 } from "@/lib/types";
+import { formatBRLInput } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -44,21 +45,6 @@ interface Props {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatBRLInput(raw: string | number): string {
-  let digits: string;
-  if (typeof raw === "number") {
-    digits = String(Math.round(raw * 100));
-  } else {
-    digits = raw.replace(/\D/g, "");
-  }
-  if (!digits) return "";
-  const cents = parseInt(digits, 10);
-  return (cents / 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 export function TransactionDialog({
   open,

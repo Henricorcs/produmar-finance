@@ -26,25 +26,13 @@ import {
   uploadLoanAttachments,
   type LoanInput,
 } from "@/app/(app)/emprestimos/actions";
-import { loanTotalDue, formatBRL } from "@/lib/utils";
+import { loanTotalDue, formatBRL, formatBRLInput } from "@/lib/utils";
 import type { Loan, LoanRepaymentType } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   loan?: Loan | null;
-}
-
-function formatBRLInput(raw: string | number): string {
-  let digits: string;
-  if (typeof raw === "number") digits = String(Math.round(raw * 100));
-  else digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  const cents = parseInt(digits, 10);
-  return (cents / 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 function parseBRL(value: string): number {

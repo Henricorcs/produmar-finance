@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatMoneyInput, parseMoney } from "@/lib/utils";
+import { formatBRLInput, parseMoney } from "@/lib/utils";
 import {
   createSupplyItem,
   deleteSupplyItemPhoto,
@@ -279,7 +279,7 @@ export function ItemDialog({
                 <Input
                   id="si_initial_cost"
                   value={initialCost}
-                  onChange={(e) => setInitialCost(formatMoneyInput(e.target.value))}
+                  onChange={(e) => setInitialCost(formatBRLInput(e.target.value))}
                   placeholder="0,00"
                   inputMode="decimal"
                   className="tabular-nums"

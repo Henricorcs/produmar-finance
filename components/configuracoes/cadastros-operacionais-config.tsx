@@ -16,7 +16,7 @@ import {
   deletePickupLocation,
 } from "@/app/(app)/operacoes/actions";
 import { createContact, updateContact, deleteContact } from "@/app/(app)/obras/actions";
-import { machineCategoryLabel } from "@/lib/utils";
+import { formatBRLInput, machineCategoryLabel } from "@/lib/utils";
 import {
   MACHINE_CATEGORIES,
   PRODUCT_UNITS,
@@ -260,7 +260,7 @@ function ProductsList({ products }: { products: Product[] }) {
     setEditingId(p.id);
     setName(p.name);
     setUnit(p.unit);
-    setPrice(p.default_price != null ? p.default_price.toFixed(2).replace(".", ",") : "");
+    setPrice(p.default_price != null ? formatBRLInput(p.default_price) : "");
     setShowForm(true);
   }
 
@@ -356,7 +356,7 @@ function ProductsList({ products }: { products: Product[] }) {
             </select>
             <Input
               value={price}
-              onChange={(e) => setPrice(e.target.value)}
+              onChange={(e) => setPrice(formatBRLInput(e.target.value))}
               placeholder="preço médio (opcional)"
               className="h-9 text-sm"
               inputMode="decimal"

@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createTool, updateTool, uploadToolPhotos } from "@/app/(app)/ferramentas/actions";
-import { ConditionPicker, parseMoney, formatMoneyInput } from "./tool-shared";
+import { ConditionPicker, parseMoney, formatBRLInput } from "./tool-shared";
 import { ToolUnitsDialog } from "./tool-units-dialog";
 import type { Tool, ToolCondition, ToolUnit, ToolWarehouse } from "@/lib/types";
 
@@ -62,13 +62,9 @@ export function ToolDialog({
     setCondition(tool?.condition ?? "bom");
     setQuantity(tool ? String(tool.quantity) : "1");
     setUnit(tool?.unit ?? "unidade");
-    setUnitValue(
-      tool && tool.unit_value ? tool.unit_value.toFixed(2).replace(".", ",") : ""
-    );
+    setUnitValue(tool?.unit_value ? formatBRLInput(tool.unit_value) : "");
     setReplacementValue(
-      tool && tool.replacement_value
-        ? tool.replacement_value.toFixed(2).replace(".", ",")
-        : ""
+      tool?.replacement_value ? formatBRLInput(tool.replacement_value) : ""
     );
     // item novo já nasce no almoxarifado que está sendo mostrado na tela
     setWarehouseId(
@@ -236,7 +232,7 @@ export function ToolDialog({
               <Input
                 id="tool_unit_value"
                 value={unitValue}
-                onChange={(e) => setUnitValue(formatMoneyInput(e.target.value))}
+                onChange={(e) => setUnitValue(formatBRLInput(e.target.value))}
                 placeholder="0,00"
                 inputMode="decimal"
                 autoComplete="off"
@@ -248,7 +244,7 @@ export function ToolDialog({
               <Input
                 id="tool_replacement_value"
                 value={replacementValue}
-                onChange={(e) => setReplacementValue(formatMoneyInput(e.target.value))}
+                onChange={(e) => setReplacementValue(formatBRLInput(e.target.value))}
                 placeholder="0,00"
                 inputMode="decimal"
                 autoComplete="off"

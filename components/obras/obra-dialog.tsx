@@ -16,6 +16,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createObra, updateObra } from "@/app/(app)/obras/actions";
 import { QuickCreateContactDialog } from "./quick-create-contact-dialog";
 import { OBRA_STATUS_OPTIONS } from "./obra-shared";
+import { formatBRLInput } from "@/lib/utils";
 import type { Contact, ObraStatus, ObraSummary } from "@/lib/types";
 
 interface Props {
@@ -52,7 +53,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
     setStatus(obra?.status ?? "planejamento");
     setStartDate(obra?.start_date ?? "");
     setPlannedEndDate(obra?.planned_end_date ?? "");
-    setBudget(obra?.budget != null ? String(obra.budget) : "");
+    setBudget(obra?.budget != null ? formatBRLInput(obra.budget) : "");
     setNotes(obra?.notes ?? "");
     setError(null);
   }, [open, obra]);
@@ -192,7 +193,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
             <Input
               id="obra_budget"
               value={budget}
-              onChange={(e) => setBudget(e.target.value)}
+              onChange={(e) => setBudget(formatBRLInput(e.target.value))}
               placeholder="opcional, ex: 15000,00"
               inputMode="decimal"
               autoComplete="off"

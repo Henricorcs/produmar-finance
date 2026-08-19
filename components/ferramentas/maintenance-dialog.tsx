@@ -14,19 +14,13 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { finishMaintenance, openMaintenance } from "@/app/(app)/ferramentas/actions";
 import { ConditionPicker } from "./tool-shared";
+import { formatBRLInput } from "@/lib/utils";
 import type { ToolCondition, ToolWithStatus } from "@/lib/types";
 
 function parseMoney(s: string): number {
   if (!s) return 0;
   const n = parseFloat(s.replace(/\./g, "").replace(",", "."));
   return isNaN(n) ? 0 : n;
-}
-function formatMoneyInput(raw: string): string {
-  const cleaned = raw.replace(/[^\d,]/g, "");
-  const parts = cleaned.split(",");
-  if (parts.length > 2) return parts[0] + "," + parts.slice(1).join("");
-  if (parts[1]?.length > 2) return parts[0] + "," + parts[1].slice(0, 2);
-  return cleaned;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,7 +226,7 @@ export function FinishMaintenanceDialog({ open, onClose, target }: FinishProps) 
             <Input
               id="fin_cost"
               value={cost}
-              onChange={(e) => setCost(formatMoneyInput(e.target.value))}
+              onChange={(e) => setCost(formatBRLInput(e.target.value))}
               placeholder="0,00"
               inputMode="decimal"
               autoComplete="off"

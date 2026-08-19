@@ -21,6 +21,7 @@ import {
   formatBRL,
   formatDate,
   daysUntil,
+  formatBRLInput,
 } from "@/lib/utils";
 import type { LoanWithDetails } from "@/app/(app)/emprestimos/page";
 
@@ -32,14 +33,6 @@ interface Props {
   onDelete?: () => void;
 }
 
-function formatBRLInput(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  return (parseInt(digits, 10) / 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 function parseBRL(value: string): number {
   const n = parseFloat(value.replace(/\./g, "").replace(",", "."));
   return isNaN(n) ? 0 : n;

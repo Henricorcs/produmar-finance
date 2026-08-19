@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatBRL } from "@/lib/utils";
+import { formatBRL, formatBRLInput } from "@/lib/utils";
 import { createObraItem, updateObraItem, type ObraItemInput } from "@/app/(app)/obras/actions";
 import { OBRA_ITEM_UNITS, type ObraItem } from "@/lib/types";
 
@@ -20,17 +20,6 @@ function parseBRLToNumber(s: string): number {
   if (!s) return 0;
   const n = parseFloat(s.replace(/\./g, "").replace(",", "."));
   return isNaN(n) ? 0 : n;
-}
-function formatBRLInput(raw: string | number): string {
-  let digits: string;
-  if (typeof raw === "number") digits = String(Math.round(raw * 100));
-  else digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  const cents = parseInt(digits, 10);
-  return (cents / 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 function formatQty(raw: string | number): string {
   if (typeof raw === "number") return raw.toString().replace(".", ",");
