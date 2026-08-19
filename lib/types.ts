@@ -1028,3 +1028,58 @@ export interface SupplyRequestRow extends SupplyRequest {
   supply_items: { name: string; unit: string } | null;
   supply_obras: { name: string } | null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIARISTAS — quem vem por dia (migration 059)
+// ═══════════════════════════════════════════════════════════════════════════
+// O cadastro é do chefe (nome, PIX, valor da diária). O calendário é do
+// técnico: ele marca os dias que cada um veio e escreve o que foi feito. O dia
+// aponta para a obra do Estoque — é o mesmo lugar onde o material foi gasto.
+
+/** Cadastro do diarista — só o chefe mexe aqui. */
+export interface Diarista {
+  id: string;
+  name: string;
+  phone: string | null;
+  /** Chave PIX para pagar (CPF, celular, e-mail ou aleatória — texto livre). */
+  pix_key: string | null;
+  /** Quanto vale um dia de trabalho. 0 = ainda não combinado. */
+  daily_rate: number;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Linha da view v_diaristas (cadastro + quanto ele já trabalhou). */
+export interface DiaristaResumo extends Diarista {
+  days_count: number;
+  /** Soma das diárias lançadas (com o valor congelado de cada dia). */
+  total_value: number;
+  last_work_date: string | null;
+}
+
+/**
+ * Um dia trabalhado. `daily_rate` é o valor COPIADO do cadastro no momento do
+ * lançamento: reajuste de diária não muda o que já passou.
+ */
+export interface DiaristaDia {
+  id: string;
+  diarista_id: string;
+  work_date: string;
+  /** O que ele fez no dia. */
+  description: string | null;
+  obra_id: string | null;
+  sector_id: string | null;
+  daily_rate: number;
+  /** Nome de quem marcou o dia, gravado no lançamento. */
+  registered_by_name: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Dia + nome do diarista e da obra (join das consultas das telas). */
+export interface DiaristaDiaRow extends DiaristaDia {
+  diaristas: { name: string; pix_key: string | null } | null;
+  supply_obras: { name: string } | null;
+}

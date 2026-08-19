@@ -14,6 +14,7 @@ import {
   ClipboardList,
   Beef,
   PackageOpen,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -83,12 +84,17 @@ export const APP_MODULES: AppModule[] = [
   {
     slug: "estoque",
     name: "Estoque",
-    description: "Material de consumo: cano, emenda, cola — entradas e saídas",
+    description: "Material de consumo, obras e os diaristas que trabalharam nelas",
     href: "/almoxarifado",
     icon: PackageOpen,
     accentIcon:
       "bg-sky-50 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400",
-    tabs: [{ href: "/almoxarifado", label: "Estoque", short: "Estoque", icon: PackageOpen }],
+    tabs: [
+      { href: "/almoxarifado", label: "Estoque",   short: "Estoque",  icon: PackageOpen },
+      // Os diaristas moram aqui porque o dia trabalhado aponta para a mesma
+      // obra do material: é a outra metade do custo dela.
+      { href: "/diaristas",    label: "Diaristas", short: "Diarist.", icon: Users },
+    ],
   },
   {
     slug: "obras",

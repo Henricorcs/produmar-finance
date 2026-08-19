@@ -1,0 +1,240 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+
+/**
+ * O cadastro do diarista é do chefe (/diaristas) e o calendário é do técnico
+ * (/tecnico/diaristas): as duas telas mexem nos mesmos dados, então toda ação
+ * revalida as duas.
+ */
+function revalidate() {
+  revalidatePath("/diaristas");
+  revalidatePath("/tecnico/diaristas");
+}
+
+function clean(s?: string | null): string | null {
+  const v = s?.trim();
+  return v ? v.toUpperCase() : null;
+}
+
+/**
+ * A chave PIX NÃO vai para caixa alta: e-mail e chave aleatória diferenciam
+ * maiúscula de minúscula, e uma chave trocada é dinheiro no lugar errado.
+ */
+function cleanPix(s?: string | null): string | null {
+  const v = s?.trim();
+  return v ? v : null;
+}
+
+/** Dinheiro sempre positivo, com 2 casas. */
+function normMoney(v?: number | null): number {
+  const n = Math.abs(Number(v ?? 0));
+  return isNaN(n) ? 0 : Math.round(n * 100) / 100;
+}
+
+/** YYYY-MM-DD ou nada — não deixa lixo virar data no banco. */
+function cleanDate(s?: string | null): string | null {
+  const v = s?.trim();
+  return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
+/** O erro cru do Postgres não diz a ninguém que falta rodar a migration. */
+function diaristaError(error: { code?: string; message: string }): string {
+  if (error.code === "23505" && error.message.includes("uq_diarista_dia"))
+    return "Esse dia já estava lançado para este diarista";
+  if (error.code === "23505") return "Já existe um diarista com esse nome";
+  if (
+    error.code === "42P01" ||
+    error.message.includes("diarista_dias") ||
+    error.message.includes("diaristas") ||
+    error.message.includes("v_diaristas")
+  )
+    return "Rode a migration 059 no Supabase para usar os diaristas";
+  return error.message;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CADASTRO DO DIARISTA (só o chefe)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DiaristaInput {
+  name: string;
+  phone?: string | null;
+  pix_key?: string | null;
+  daily_rate?: number | null;
+  notes?: string | null;
+}
+
+export async function createDiarista(input: DiaristaInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome do diarista" };
+
+  const { data, error } = await supabase
+    .from("diaristas")
+    .insert({
+      name,
+      phone: clean(input.phone),
+      pix_key: cleanPix(input.pix_key),
+      daily_rate: normMoney(input.daily_rate),
+      notes: clean(input.notes),
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error ? diaristaError(error) : "Erro ao cadastrar" };
+  revalidate();
+  return { ok: true, diaristaId: data.id as string };
+}
+
+export async function updateDiarista(id: string, input: DiaristaInput) {
+  const supabase = createClient();
+
+  const name = clean(input.name);
+  if (!name) return { error: "Informe o nome do diarista" };
+
+  const { error } = await supabase
+    .from("diaristas")
+    .update({
+      name,
+      phone: clean(input.phone),
+      pix_key: cleanPix(input.pix_key),
+      daily_rate: normMoney(input.daily_rate),
+      notes: clean(input.notes),
+    })
+    .eq("id", id);
+
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Guarda o cadastro sem sumir com ele — o histórico de dias continua inteiro. */
+export async function setDiaristaActive(id: string, active: boolean) {
+  const supabase = createClient();
+  const { error } = await supabase.from("diaristas").update({ active }).eq("id", id);
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Apaga o diarista E TODOS os dias dele (o `on delete cascade` da 059). Para
+ * tirar da lista sem perder o histórico existe o `setDiaristaActive`.
+ */
+export async function deleteDiarista(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("diaristas").delete().eq("id", id);
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O CALENDÁRIO (o técnico marca, o chefe corrige)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DiaristaDiasInput {
+  diarista_id: string;
+  /** Os dias marcados no calendário, em YYYY-MM-DD. */
+  dates: string[];
+  description?: string | null;
+  obra_id?: string | null;
+  sector_id?: string | null;
+}
+
+/**
+ * Lança de uma vez todos os dias marcados no calendário — a tela deixa tocar
+ * vários dias e descrever o serviço uma vez só, porque quem passou a semana na
+ * mesma obra não vai repetir o mesmo texto cinco vezes.
+ *
+ * O valor da diária NÃO vem da tela: é lido aqui do cadastro e congelado em
+ * cada dia. Quem marca o dia (o técnico) não decide quanto ele vale.
+ */
+export async function createDiaristaDias(input: DiaristaDiasInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.diarista_id) return { error: "Escolha o diarista" };
+
+  const dates = Array.from(new Set((input.dates ?? []).map(cleanDate).filter(Boolean))) as string[];
+  if (dates.length === 0) return { error: "Marque pelo menos um dia no calendário" };
+
+  const { data: diarista, error: dErr } = await supabase
+    .from("diaristas")
+    .select("id, daily_rate")
+    .eq("id", input.diarista_id)
+    .maybeSingle();
+  if (dErr) return { error: diaristaError(dErr) };
+  if (!diarista) return { error: "Diarista não encontrado" };
+
+  // o nome de quem marcou vai gravado: o chefe precisa saber de quem é o recado
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const { error } = await supabase.from("diarista_dias").insert(
+    dates.map((work_date) => ({
+      diarista_id: input.diarista_id,
+      work_date,
+      description: clean(input.description),
+      obra_id: input.obra_id || null,
+      sector_id: input.sector_id || null,
+      daily_rate: normMoney(diarista.daily_rate as number),
+      registered_by_name: clean(profile?.full_name),
+      created_by: user.id,
+    }))
+  );
+
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true, count: dates.length };
+}
+
+export interface DiaristaDiaInput {
+  description?: string | null;
+  obra_id?: string | null;
+  sector_id?: string | null;
+  /** Só o chefe muda o valor de um dia já lançado (ver a policy da 059). */
+  daily_rate?: number | null;
+}
+
+export async function updateDiaristaDia(id: string, input: DiaristaDiaInput) {
+  const supabase = createClient();
+
+  const patch: Record<string, unknown> = {
+    description: clean(input.description),
+    obra_id: input.obra_id || null,
+    sector_id: input.sector_id || null,
+  };
+  if (input.daily_rate != null) patch.daily_rate = normMoney(input.daily_rate);
+
+  const { error } = await supabase.from("diarista_dias").update(patch).eq("id", id);
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Apaga o dia lançado. A policy da 059 deixa o chefe apagar qualquer um e o
+ * técnico só o que ele mesmo marcou — errou o dia, apaga e marca de novo.
+ */
+export async function deleteDiaristaDia(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("diarista_dias").delete().eq("id", id);
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true };
+}

@@ -1,0 +1,304 @@
+"use client";
+
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { CalendarCheck, HardHat, MapPin, Pencil, Trash2, User, Wallet } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  formatBRL,
+  formatBRLInput,
+  formatDate,
+  parseMoney,
+  upperKeepingCaret,
+} from "@/lib/utils";
+import { deleteDiaristaDia, updateDiaristaDia } from "@/app/(app)/diaristas/actions";
+import type { DiaristaObra } from "./dias-dialog";
+import type { DiaristaDia, SupplyObraSector } from "@/lib/types";
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  dia: DiaristaDia | null;
+  diaristaName: string;
+  obras: DiaristaObra[];
+  sectors: SupplyObraSector[];
+  /** Só o chefe corrige o que já foi lançado (a diária vale dinheiro). */
+  canEdit?: boolean;
+  /** O chefe apaga qualquer um; o técnico só o que ele mesmo marcou. */
+  canDelete?: boolean;
+}
+
+/**
+ * O que foi lançado naquele dia. Para o técnico é só conferência (e apagar o
+ * que ele mesmo marcou errado); para o chefe é onde se corrige a descrição, a
+ * obra e o valor daquele dia.
+ */
+export function DiaDetailDialog({
+  open,
+  onClose,
+  dia,
+  diaristaName,
+  obras,
+  sectors,
+  canEdit,
+  canDelete,
+}: Props) {
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+
+  const [description, setDescription] = useState("");
+  const [obraId, setObraId] = useState("");
+  const [sectorId, setSectorId] = useState("");
+  const [rate, setRate] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setEditing(false);
+    setError(null);
+    setDescription(dia?.description ?? "");
+    setObraId(dia?.obra_id ?? "");
+    setSectorId(dia?.sector_id ?? "");
+    setRate(dia ? formatBRLInput(Number(dia.daily_rate)) : "");
+  }, [open, dia]);
+
+  const obraSectors = useMemo(
+    () => sectors.filter((s) => s.obra_id === obraId),
+    [sectors, obraId]
+  );
+
+  const obraName = obras.find((o) => o.id === dia?.obra_id)?.name ?? null;
+  const sectorName = sectors.find((s) => s.id === dia?.sector_id)?.name ?? null;
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!dia) return;
+    setError(null);
+    startTransition(async () => {
+      const r = await updateDiaristaDia(dia.id, {
+        description,
+        obra_id: obraId || null,
+        sector_id: obraId && sectorId ? sectorId : null,
+        daily_rate: parseMoney(rate),
+      });
+      if (r && "error" in r) {
+        setError(r.error ?? "Erro ao salvar");
+        return;
+      }
+      onClose();
+    });
+  }
+
+  function handleDelete() {
+    if (!dia) return;
+    if (
+      !confirm(
+        `Apagar a diária de ${diaristaName} do dia ${formatDate(dia.work_date)}? Ela some da conta.`
+      )
+    )
+      return;
+    setError(null);
+    startTransition(async () => {
+      const r = await deleteDiaristaDia(dia.id);
+      if (r && "error" in r) {
+        setError(r.error ?? "Erro ao apagar");
+        return;
+      }
+      onClose();
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
+            <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+              <CalendarCheck className="w-4 h-4" />
+            </span>
+            {dia ? formatDate(dia.work_date) : "Dia"}
+          </DialogTitle>
+        </DialogHeader>
+
+        {dia && !editing && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+              <Linha icon={User} label="Diarista" value={diaristaName} />
+              <Linha
+                icon={Wallet}
+                label="Valor do dia"
+                value={formatBRL(Number(dia.daily_rate))}
+              />
+              {obraName && <Linha icon={HardHat} label="Obra" value={obraName} />}
+              {sectorName && <Linha icon={MapPin} label="Setor" value={sectorName} />}
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                O que ele fez
+              </p>
+              <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
+                {dia.description || "—"}
+              </p>
+            </div>
+
+            {dia.registered_by_name && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Marcado por {dia.registered_by_name}
+              </p>
+            )}
+
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+                {error}
+              </p>
+            )}
+
+            {(canEdit || canDelete) && (
+              <div className="flex gap-2">
+                {canEdit && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 h-12"
+                    onClick={() => setEditing(true)}
+                    disabled={isPending}
+                  >
+                    <Pencil className="w-4 h-4" />
+                    Editar
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="flex-1 h-12"
+                    onClick={handleDelete}
+                    disabled={isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Apagar
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {dia && editing && (
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="dde_desc">O que ele fez</Label>
+              <Textarea
+                id="dde_desc"
+                value={description}
+                onChange={(e) => setDescription(upperKeepingCaret(e))}
+                className="uppercase placeholder:normal-case placeholder:lowercase"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="dde_rate">Valor do dia (R$)</Label>
+              <Input
+                id="dde_rate"
+                value={rate}
+                onChange={(e) => setRate(formatBRLInput(e.target.value))}
+                placeholder="0,00"
+                inputMode="decimal"
+                className="tabular-nums"
+                autoComplete="off"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Só muda este dia — o cadastro do diarista continua igual.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Obra</Label>
+              <SearchableSelect
+                items={obras}
+                value={obraId}
+                onChange={(id) => {
+                  setObraId(id);
+                  setSectorId("");
+                }}
+                getId={(o) => o.id}
+                getLabel={(o) => o.name}
+                placeholder="Toque para escolher a obra..."
+                searchPlaceholder="Buscar obra..."
+                emptyMessage="Nenhuma obra cadastrada"
+              />
+            </div>
+
+            {obraSectors.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Setor</Label>
+                <SearchableSelect
+                  items={obraSectors}
+                  value={sectorId}
+                  onChange={setSectorId}
+                  getId={(s) => s.id}
+                  getLabel={(s) => s.name}
+                  placeholder="Toque para escolher o setor..."
+                  searchPlaceholder="Buscar setor..."
+                  emptyMessage="Nenhum setor cadastrado nesta obra"
+                />
+              </div>
+            )}
+
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+                {error}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 h-12"
+                onClick={() => setEditing(false)}
+                disabled={isPending}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" className="flex-1 h-12" disabled={isPending}>
+                {isPending ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Linha({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof User;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-2.5">
+      <Icon className="w-4 h-4 text-slate-400 flex-shrink-0" />
+      <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">{label}</span>
+      <span className="ml-auto text-sm font-medium text-slate-800 dark:text-slate-100 truncate text-right">
+        {value}
+      </span>
+    </div>
+  );
+}

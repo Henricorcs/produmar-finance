@@ -33,8 +33,9 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   ],
   "materiais-servicos": ["/operacoes", "/estoque", "/cadastros-operacionais"],
   ferramentas: ["/ferramentas"],
-  // Estoque de consumo — rota /almoxarifado (o /estoque é a tela de jazidas)
-  estoque: ["/almoxarifado"],
+  // Estoque de consumo — rota /almoxarifado (o /estoque é a tela de jazidas).
+  // /diaristas entra aqui: a diária é lançada na obra do Estoque.
+  estoque: ["/almoxarifado", "/diaristas"],
   obras: ["/obras"],
   animais: ["/animais"],
 };
