@@ -7,6 +7,7 @@ import {
   Baby,
   Beef,
   ChevronRight,
+  HandCoins,
   Plus,
   Printer,
   Search,
@@ -16,15 +17,17 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn, formatDate, localDateISO } from "@/lib/utils";
+import { cn, formatBRL, formatDate, localDateISO } from "@/lib/utils";
 import {
   applyVaccineProtocol,
   deleteVaccination,
   getAnimalThumbnails,
   rejectBirthRequest,
   setVaccinePending,
+  undoAnimalExit,
 } from "@/app/(app)/animais/actions";
 import { AnimalDialog } from "./animal-dialog";
+import { AnimalExitDialog } from "./animal-exit-dialog";
 import { AnimalDetailDialog } from "./animal-detail-dialog";
 import { VaccineProtocolDialog } from "./vaccine-protocol-dialog";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
@@ -70,6 +73,7 @@ export type VaccinationRow = AnimalVaccination & {
 };
 
 interface Props {
+  /** Todo mundo que já entrou no rebanho — inclusive quem já saiu. */
   animals: AnimalWithInfo[];
   breeds: AnimalBreed[];
   vaccines: AnimalVaccine[];
@@ -84,7 +88,7 @@ interface Props {
   birthRequests: AnimalBirthRequest[];
 }
 
-type Tab = "rebanho" | "vacinacao" | "nascimentos";
+type Tab = "rebanho" | "vacinacao" | "nascimentos" | "saidas";
 type CategoryFilter = "todos" | AnimalCategory;
 /** Filtro pelo tipo do animal — só aparece quando o rebanho tem mais de um. */
 type SpeciesFilter = "todos" | AnimalSpecies;
@@ -99,7 +103,7 @@ const SORTS: { value: SortKey; label: string }[] = [
 ];
 
 export function AnimaisPageClient({
-  animals,
+  animals: allAnimals,
   breeds,
   vaccines,
   vaccinations,
@@ -112,6 +116,10 @@ export function AnimaisPageClient({
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
+  /** Animal em que se está dando baixa (vendido/morto). */
+  const [exitAnimal, setExitAnimal] = useState<AnimalWithInfo | null>(null);
+  /** Saída sendo desfeita — trava o botão para não desfazer duas vezes. */
+  const [undoingExitId, setUndoingExitId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("rebanho");
   const [search, setSearch] = useState("");
   const [species, setSpecies] = useState<SpeciesFilter>("todos");
@@ -179,6 +187,39 @@ export function AnimaisPageClient({
     for (const b of births) if (b.calf_animal_id) m.set(b.calf_animal_id, b);
     return m;
   }, [births]);
+
+  /**
+   * O rebanho de hoje. Quem foi vendido ou morreu sai da planilha, das
+   * contagens e das listas de escolha — mas continua guardado na aba Saídas.
+   */
+  const animals = useMemo(
+    () => allAnimals.filter((a) => a.active !== false),
+    [allAnimals]
+  );
+
+  /** Quem saiu do rebanho, da saída mais nova para a mais velha. */
+  const exits = useMemo(
+    () =>
+      allAnimals
+        .filter((a) => a.active === false)
+        .sort((a, b) => (a.exit_date ?? "").localeCompare(b.exit_date ?? "") * -1),
+    [allAnimals]
+  );
+
+  /** Quanto entrou de venda e quantos morreram — o resumo da aba Saídas. */
+  const exitSummary = useMemo(() => {
+    let sold = 0;
+    let died = 0;
+    let total = 0;
+    for (const a of exits) {
+      if (a.exit_reason === "morte") died++;
+      else {
+        sold++;
+        total += Number(a.exit_amount ?? 0);
+      }
+    }
+    return { sold, died, total };
+  }, [exits]);
 
   /** Pendências marcadas na mão: `animalId|vaccineId`. */
   const pendingKeys = useMemo(
@@ -425,6 +466,29 @@ export function AnimaisPageClient({
     });
   }
 
+  /**
+   * Desfaz a baixa: o animal volta para o rebanho e, se tinha sido vendido, o
+   * lançamento no financeiro some junto — senão o dinheiro ficaria contado
+   * duas vezes na hora de vender de novo.
+   */
+  function handleUndoExit(a: AnimalWithInfo) {
+    if (undoingExitId) return;
+    const sold = a.exit_reason !== "morte" && Number(a.exit_amount ?? 0) > 0;
+    if (
+      !confirm(
+        `Trazer o animal ${a.tag} de volta para o rebanho?` +
+          (sold ? " O lançamento da venda sai do financeiro." : "")
+      )
+    )
+      return;
+    setUndoingExitId(a.id);
+    startTransition(async () => {
+      const r = await undoAnimalExit(a.id);
+      setUndoingExitId(null);
+      if (r && "error" in r) alert(r.error ?? "Erro ao desfazer a saída");
+    });
+  }
+
   /** Desfaz a aplicação feita hoje (erro de dedo na planilha). */
   function undoToday(
     animal: AnimalWithInfo,
@@ -467,6 +531,7 @@ export function AnimaisPageClient({
       count: pendingCount,
       alert: pendingCount > 0,
     },
+    { value: "saidas", label: "Saídas", icon: HandCoins },
   ];
 
   const categoryFilters: { value: CategoryFilter; label: string; count: number }[] = [
@@ -511,7 +576,7 @@ export function AnimaisPageClient({
       </div>
 
       {/* Abas */}
-      <div className="grid grid-cols-3 gap-1.5 sm:flex">
+      <div className="grid grid-cols-4 gap-1 sm:flex sm:gap-1.5">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = tab === t.value;
@@ -520,7 +585,8 @@ export function AnimaisPageClient({
               key={t.value}
               onClick={() => setTab(t.value)}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-1 min-h-[58px] px-1 rounded-xl border text-sm font-medium transition-colors active:scale-[0.97]",
+                "relative flex flex-col items-center justify-center gap-1 min-h-[58px] px-0.5 rounded-xl border text-[11px] font-medium transition-colors active:scale-[0.97]",
+                "sm:text-sm",
                 "sm:flex-row sm:min-h-0 sm:px-3 sm:py-2 sm:gap-1.5",
                 active
                   ? "bg-produmar-600 border-produmar-600 text-white"
@@ -847,6 +913,62 @@ export function AnimaisPageClient({
         </>
       )}
 
+      {/* ── Aba: Saídas — quem foi vendido ou morreu ─────────────────────── */}
+      {tab === "saidas" && (
+        <>
+          {exits.length === 0 ? (
+            <EmptyState
+              icon={HandCoins}
+              text="Ninguém saiu do rebanho ainda."
+              hint="Abra o animal na planilha e use 'Vender ou dar baixa'. O que for vendido cai no financeiro na hora."
+            />
+          ) : (
+            <>
+              {/* Resumo: o que entrou de venda e o que se perdeu */}
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
+                <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
+                  <div className="flex flex-col items-center justify-center gap-1 py-3">
+                    <span className="text-lg sm:text-xl font-bold leading-none tabular-nums text-emerald-700 dark:text-emerald-400">
+                      {exitSummary.sold}
+                    </span>
+                    <span className="text-[11px] font-medium leading-none tracking-wide text-slate-400 dark:text-slate-500">
+                      VENDIDOS
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center gap-1 py-3">
+                    <span className="text-lg sm:text-xl font-bold leading-none tabular-nums text-slate-800 dark:text-slate-100">
+                      {exitSummary.died}
+                    </span>
+                    <span className="text-[11px] font-medium leading-none tracking-wide text-slate-400 dark:text-slate-500">
+                      MORTES
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center gap-1 py-3 px-1">
+                    <span className="text-sm sm:text-base font-bold leading-none tabular-nums text-emerald-700 dark:text-emerald-400">
+                      {formatBRL(exitSummary.total)}
+                    </span>
+                    <span className="text-[11px] font-medium leading-none tracking-wide text-slate-400 dark:text-slate-500">
+                      RECEBIDO
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {exits.map((a) => (
+                  <ExitCard
+                    key={a.id}
+                    animal={a}
+                    undoing={undoingExitId === a.id}
+                    onUndo={() => handleUndoExit(a)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
       {/* Dialogs */}
       <AnimalDialog
         open={animalDialogOpen}
@@ -882,6 +1004,12 @@ export function AnimaisPageClient({
         onTreatment={(a) => openTreatment(a)}
         onBirth={(a) => openBirth(a)}
         onWeigh={(a) => openWeight(a)}
+        onExit={(a) => setExitAnimal(a)}
+      />
+      <AnimalExitDialog
+        open={!!exitAnimal}
+        onClose={() => setExitAnimal(null)}
+        animal={exitAnimal}
       />
       <VaccineProtocolDialog
         open={protocolOpen}
@@ -1407,6 +1535,70 @@ function treatmentsTitle(ts: AnimalTreatment[]): string | undefined {
         }${t.dose ? ` (${t.dose})` : ""}`
     )
     .join("\n");
+}
+
+// ── Cartão de quem saiu do rebanho ──────────────────────────────────────────
+/**
+ * Uma saída: o número do animal, o que houve (vendido/morreu), quando, por
+ * quanto e para quem. O "desfazer" existe porque baixa errada acontece — e
+ * pela venda o dinheiro já entrou no financeiro.
+ */
+function ExitCard({
+  animal,
+  undoing,
+  onUndo,
+}: {
+  animal: AnimalWithInfo;
+  undoing: boolean;
+  onUndo: () => void;
+}) {
+  const died = animal.exit_reason === "morte";
+  const amount = Number(animal.exit_amount ?? 0);
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-3">
+      <div className="flex items-center gap-2">
+        <span className="text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+          {animal.tag}
+        </span>
+        <span
+          className={cn(
+            "px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide",
+            died
+              ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+          )}
+        >
+          {died ? "Morreu" : "Vendido"}
+        </span>
+        {!died && amount > 0 && (
+          <span className="ml-auto text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
+            {formatBRL(amount)}
+          </span>
+        )}
+      </div>
+
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {categoryLabel(animal.category, animal.sex, animal.species)}
+        {animal.breed_name ? ` · ${animal.breed_name}` : ""}
+        {animal.exit_date ? ` · ${formatDate(animal.exit_date)}` : ""}
+        {animal.exit_buyer ? ` · ${animal.exit_buyer}` : ""}
+      </p>
+
+      {animal.exit_notes && (
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{animal.exit_notes}</p>
+      )}
+
+      <button
+        type="button"
+        onClick={onUndo}
+        disabled={undoing}
+        className="mt-2 min-h-[36px] px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-400 transition-colors active:scale-[0.97] disabled:opacity-50"
+      >
+        {undoing ? "Desfazendo..." : "Voltar para o rebanho"}
+      </button>
+    </div>
+  );
 }
 
 // ── Campo de busca ──────────────────────────────────────────────────────────

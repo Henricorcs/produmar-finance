@@ -3,12 +3,15 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { AnimalSex, AnimalSpecies } from "@/lib/types";
+import type { AnimalExitReason, AnimalSex, AnimalSpecies } from "@/lib/types";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function revalidate() {
   revalidatePath("/animais");
+  // a venda de um animal vira lançamento no financeiro
+  revalidatePath("/contas");
+  revalidatePath("/dashboard");
 }
 
 /** Texto de cadastro: sempre em CAIXA ALTA, vazio vira null. */
@@ -965,4 +968,161 @@ function pendingTableError(error: { code?: string; message: string }): string {
   if (error.code === "42P01" || error.message.includes("animal_vaccine_pending"))
     return "Rode a migration 044 no Supabase para usar a marcação de pendente";
   return error.message;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAÍDA DO REBANHO (venda ou morte)
+// ─────────────────────────────────────────────────────────────────────────────
+// Animal que sai não é apagado: fica com active = false e guarda por que saiu.
+// Na VENDA o valor cai no financeiro na hora, como entrada já recebida, e o id
+// do lançamento fica no animal — é ele que permite desfazer a saída levando o
+// dinheiro junto. Na MORTE nada vai para o financeiro.
+
+/** As colunas vêm da migration 056 — sem ela o erro do Postgres não diz nada. */
+function exitColumnError(error: { code?: string; message: string }): string {
+  if (error.code === "42703" || error.message.includes("exit_"))
+    return "Rode a migration 056 no Supabase para registrar venda ou morte";
+  return error.message;
+}
+
+export interface AnimalExitInput {
+  animal_id: string;
+  reason: AnimalExitReason;
+  /** Data da venda / da morte (YYYY-MM-DD). */
+  exit_date: string;
+  /** Só na venda — é este valor que entra no financeiro. */
+  amount?: number | null;
+  /** Só na venda — quem comprou. */
+  buyer?: string | null;
+  notes?: string | null;
+}
+
+export async function registerAnimalExit(input: AnimalExitInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const reason: AnimalExitReason = input.reason === "morte" ? "morte" : "venda";
+  const isSale = reason === "venda";
+  const amount = isSale ? Math.round(Math.max(0, input.amount ?? 0) * 100) / 100 : 0;
+  const exitDate = input.exit_date || new Date().toISOString().slice(0, 10);
+
+  if (!input.animal_id) return { error: "Animal não informado" };
+  if (isSale && amount <= 0) return { error: "Informe o valor da venda" };
+
+  const { data: animal } = await supabase
+    .from("animals")
+    .select("id, tag, active")
+    .eq("id", input.animal_id)
+    .maybeSingle<{ id: string; tag: string; active: boolean }>();
+  if (!animal) return { error: "Animal não encontrado" };
+  if (!animal.active) return { error: "Este animal já saiu do rebanho" };
+
+  // 1) tira do rebanho primeiro: se faltar a migration, para aqui — antes de
+  //    mexer no dinheiro de alguém.
+  const { error: outErr } = await supabase
+    .from("animals")
+    .update({
+      active: false,
+      exit_reason: reason,
+      exit_date: exitDate,
+      exit_amount: amount,
+      exit_buyer: isSale ? clean(input.buyer) : null,
+      exit_notes: clean(input.notes),
+      exit_transaction_id: null,
+    })
+    .eq("id", animal.id);
+  if (outErr) return { error: exitColumnError(outErr) };
+
+  // 2) venda: o valor entra no financeiro como recebido
+  if (isSale) {
+    const { data: cat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("name", "Venda de animais")
+      .eq("type", "entrada")
+      .maybeSingle<{ id: string }>();
+
+    const buyer = clean(input.buyer);
+    const { data: tx, error: txErr } = await supabase
+      .from("transactions")
+      .insert({
+        type: "entrada",
+        status: "recebido",
+        amount,
+        description: `VENDA DE ANIMAL Nº ${animal.tag}${buyer ? ` - ${buyer}` : ""}`,
+        due_date: exitDate,
+        paid_date: exitDate,
+        category_id: cat?.id ?? null,
+        notes: clean(input.notes),
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+
+    if (txErr || !tx) {
+      // desfaz a saída para o animal não sumir do rebanho sem o dinheiro entrar
+      await supabase
+        .from("animals")
+        .update({
+          active: true,
+          exit_reason: null,
+          exit_date: null,
+          exit_amount: 0,
+          exit_buyer: null,
+          exit_notes: null,
+          exit_transaction_id: null,
+        })
+        .eq("id", animal.id);
+      return { error: txErr?.message ?? "Erro ao lançar a venda no financeiro" };
+    }
+
+    await supabase
+      .from("animals")
+      .update({ exit_transaction_id: tx.id })
+      .eq("id", animal.id);
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/** Desfaz a saída: o animal volta ao rebanho e o lançamento da venda é apagado. */
+export async function undoAnimalExit(animalId: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: animal, error: readErr } = await supabase
+    .from("animals")
+    .select("id, exit_transaction_id")
+    .eq("id", animalId)
+    .maybeSingle<{ id: string; exit_transaction_id: string | null }>();
+  if (readErr) return { error: exitColumnError(readErr) };
+  if (!animal) return { error: "Animal não encontrado" };
+
+  if (animal.exit_transaction_id) {
+    await supabase.from("transactions").delete().eq("id", animal.exit_transaction_id);
+  }
+
+  const { error } = await supabase
+    .from("animals")
+    .update({
+      active: true,
+      exit_reason: null,
+      exit_date: null,
+      exit_amount: 0,
+      exit_buyer: null,
+      exit_notes: null,
+      exit_transaction_id: null,
+    })
+    .eq("id", animalId);
+  if (error) return { error: exitColumnError(error) };
+
+  revalidate();
+  return { ok: true };
 }

@@ -701,6 +701,9 @@ export interface AnimalBreed {
   created_at: string;
 }
 
+/** Por que o animal saiu do rebanho: foi vendido ou morreu. */
+export type AnimalExitReason = "venda" | "morte";
+
 export interface Animal {
   id: string;
   /** Número do animal (brinco). */
@@ -713,7 +716,17 @@ export interface Animal {
   /** Peso atual em kg. */
   weight: number;
   photo_path: string | null;
+  /** false = saiu do rebanho (vendido ou morto). */
   active: boolean;
+  /** Motivo da saída — null enquanto o animal está no rebanho (migration 056). */
+  exit_reason?: AnimalExitReason | null;
+  exit_date?: string | null;
+  /** Quanto entrou na venda (0 na morte). */
+  exit_amount?: number | null;
+  exit_buyer?: string | null;
+  exit_notes?: string | null;
+  /** Lançamento gerado no financeiro pela venda — some junto se a saída for desfeita. */
+  exit_transaction_id?: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;

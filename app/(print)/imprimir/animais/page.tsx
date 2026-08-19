@@ -38,7 +38,12 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   const especie = tipo && tipo in SPECIES_META ? tipo : null;
   const onlyPending = searchParams.pendentes === "1";
 
-  let query = supabase.from("v_animals").select("*").order("tag", { ascending: true });
+  // só o rebanho de hoje: quem foi vendido ou morreu não vai para a guia
+  let query = supabase
+    .from("v_animals")
+    .select("*")
+    .eq("active", true)
+    .order("tag", { ascending: true });
   if (categoria && CATEGORIES.includes(categoria)) query = query.eq("category", categoria);
   if (especie) query = query.eq("species", especie);
 

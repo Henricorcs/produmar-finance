@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Baby,
   ChevronRight,
+  HandCoins,
   ImageIcon,
   Pencil,
   Printer,
@@ -90,6 +91,8 @@ interface Props {
   onBirth: (animal: AnimalWithInfo) => void;
   /** Abre a pesagem avulsa deste animal. */
   onWeigh: (animal: AnimalWithInfo) => void;
+  /** Abre a baixa do animal: vendido ou morto. */
+  onExit: (animal: AnimalWithInfo) => void;
 }
 
 type Section = "ficha" | "vacinas" | "historico";
@@ -113,6 +116,7 @@ export function AnimalDetailDialog({
   onTreatment,
   onBirth,
   onWeigh,
+  onExit,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [section, setSection] = useState<Section>("ficha");
@@ -700,6 +704,15 @@ export function AnimalDetailDialog({
                     Parto
                   </Button>
                 )}
+                {/* Saída do rebanho: vendido (o valor vai pro financeiro) ou morto */}
+                <Button
+                  variant="outline"
+                  className="h-12 sm:h-10 col-span-2 border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400"
+                  onClick={() => onExit(animal)}
+                >
+                  <HandCoins className="w-4 h-4" />
+                  Vender ou dar baixa
+                </Button>
               </div>
             </>
           )}
