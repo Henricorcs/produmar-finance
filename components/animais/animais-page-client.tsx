@@ -215,7 +215,7 @@ export function AnimaisPageClient({
     return Array.from(set).sort();
   }, [treatments]);
 
-  // ── Tipo do animal (bovino, equino, caprino, ovino) ─────────────────────────
+  // ── Tipo do animal (bovino, equino, caprino, ovino, suíno) ──────────────────
   /** Quantos animais de cada tipo — o filtro só mostra o que existe. */
   const speciesCounts = useMemo(() => {
     const c = new Map<AnimalSpecies, number>();
@@ -479,7 +479,7 @@ export function AnimaisPageClient({
   ];
 
   /**
-   * Filtro por tipo — manda em quem aparece na planilha. Os quatro tipos ficam
+   * Filtro por tipo — manda em quem aparece na planilha. Todos os tipos ficam
    * sempre à vista (mesmo zerados): é por aqui que se escolhe o rebanho que se
    * quer ver, e é ele que a linha de cadastro segue.
    */
@@ -703,9 +703,9 @@ export function AnimaisPageClient({
           />
           <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
             Digite na primeira linha para cadastrar (Enter salva); na coluna &quot;Cat.&quot;
-            escolha o tipo do animal — bovino, equino, caprino ou ovino — e ele manda no nome
-            da categoria e nas raças da lista. Em &quot;Pariu&quot;, a data do parto pede M ou F
-            e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
+            escolha o tipo do animal — bovino, equino, caprino, ovino ou suíno — e ele manda
+            no nome da categoria e nas raças da lista. Em &quot;Pariu&quot;, a data do parto
+            pede M ou F e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
             toque na coluna para ver os partos da mãe e apagar o que entrou errado. Toque no
             peso para pesar de novo: embaixo dele fica quanto o animal ganhou desde a última
             pesagem e em quanto tempo. Célula vermelha = os ml a aplicar (vacina nunca dada ou

@@ -29,6 +29,7 @@ const BREED_PLACEHOLDER: Record<AnimalSpecies, string> = {
   equino: "nome (ex: mangalarga, crioulo)",
   caprino: "nome (ex: boer, saanen)",
   ovino: "nome (ex: santa inês, dorper)",
+  suino: "nome (ex: landrace, duroc)",
 };
 
 /** Mini-CRUD de raças (adicionar / renomear / remover), separado por tipo. */

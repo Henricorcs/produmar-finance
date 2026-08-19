@@ -684,7 +684,7 @@ export interface ToolWithStatus extends Tool {
 
 export type AnimalSex = "macho" | "femea";
 /** Tipo do animal (espécie). Tudo que foi cadastrado antes é bovino. */
-export type AnimalSpecies = "bovino" | "equino" | "caprino" | "ovino";
+export type AnimalSpecies = "bovino" | "equino" | "caprino" | "ovino" | "suino";
 /**
  * Categoria derivada na view v_animals (idade < 12 meses = bezerro). As chaves
  * são o PAPEL do animal, não o nome dele: `bezerro` = filhote, `boi` = macho
@@ -706,7 +706,7 @@ export interface Animal {
   /** Número do animal (brinco). */
   tag: string;
   sex: AnimalSex;
-  /** Tipo do animal (bovino, equino, caprino, ovino). */
+  /** Tipo do animal (bovino, equino, caprino, ovino, suíno). */
   species: AnimalSpecies;
   birth_date: string | null;
   breed_id: string | null;

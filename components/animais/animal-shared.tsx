@@ -53,7 +53,7 @@ export const SEX_LABELS: Record<AnimalSex, string> = {
 /**
  * Cada tipo dá nome às três categorias do rebanho. As chaves da categoria são
  * o papel do animal (macho adulto / fêmea adulta / filhote) — aqui elas viram
- * boi, cavalo, bode ou carneiro conforme o tipo.
+ * boi, cavalo, bode, carneiro ou porco conforme o tipo.
  */
 interface SpeciesNames {
   /** "Bovino" — como aparece na ficha e no cadastro. */
@@ -61,13 +61,13 @@ interface SpeciesNames {
   /** "Bovinos" — como aparece no filtro. */
   plural: string;
   chip: string;
-  /** Macho adulto: Boi, Cavalo, Bode, Carneiro. */
+  /** Macho adulto: Boi, Cavalo, Bode, Carneiro, Porco. */
   male: string;
-  /** Fêmea adulta: Vaca, Égua, Cabra, Ovelha. */
+  /** Fêmea adulta: Vaca, Égua, Cabra, Ovelha, Porca. */
   female: string;
-  /** Filhote macho: Bezerro, Potro, Cabrito, Cordeiro. */
+  /** Filhote macho: Bezerro, Potro, Cabrito, Cordeiro, Leitão. */
   youngMale: string;
-  /** Filhote fêmea: Bezerra, Potra, Cabrita, Cordeira. */
+  /** Filhote fêmea: Bezerra, Potra, Cabrita, Cordeira, Leitoa. */
   youngFemale: string;
   /** Plurais dos filtros. */
   males: string;
@@ -124,6 +124,18 @@ export const SPECIES_META: Record<AnimalSpecies, SpeciesNames> = {
     females: "Ovelhas",
     young: "Cordeiros",
   },
+  suino: {
+    label: "Suíno",
+    plural: "Suínos",
+    chip: "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300",
+    male: "Porco",
+    female: "Porca",
+    youngMale: "Leitão",
+    youngFemale: "Leitoa",
+    males: "Porcos",
+    females: "Porcas",
+    young: "Leitões",
+  },
 };
 
 export const SPECIES_OPTIONS: { value: AnimalSpecies; label: string }[] = (
@@ -179,7 +191,7 @@ export function categoryPlural(
   return category === "vaca" ? s.females : category === "boi" ? s.males : s.young;
 }
 
-/** Como se chama o filhote deste tipo, em minúscula: "bezerro", "potra"... */
+/** Como se chama o filhote deste tipo, em minúscula: "bezerro", "leitoa"... */
 export function youngNoun(species?: AnimalSpecies | null, sex?: AnimalSex | null): string {
   const s = SPECIES_META[speciesOf(species)];
   return (sex === "femea" ? s.youngFemale : s.youngMale).toLowerCase();

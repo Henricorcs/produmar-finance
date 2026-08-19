@@ -22,7 +22,7 @@ interface Props {
 /**
  * Guia de vacinação do rebanho — lista com uma linha por animal e uma coluna
  * por vacina. Aceita os mesmos filtros da tela: ?tipo=bovino|equino|caprino|
- * ovino, ?categoria=vaca|boi|bezerro e ?pendentes=1 (só quem tem vacina
+ * ovino|suino, ?categoria=vaca|boi|bezerro e ?pendentes=1 (só quem tem vacina
  * MARCADA NA MÃO como pendente).
  */
 export default async function ImprimirRebanhoPage({ searchParams }: Props) {

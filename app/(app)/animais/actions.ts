@@ -26,8 +26,16 @@ function dupTagError(error: { code?: string; message: string }): string {
   return speciesColumnError(error);
 }
 
-/** A coluna do tipo vem da migration 047 — sem ela o erro não diz nada. */
+/**
+ * O tipo do animal depende de duas migrations, e o erro cru do Postgres não
+ * diz qual está faltando: a coluna vem da 047, o valor 'suino' do enum vem da
+ * 054. Sem separar as duas o recado manda rodar a migration errada.
+ */
 function speciesColumnError(error: { code?: string; message: string }): string {
+  // invalid input value for enum animal_species: 'suino' — a coluna existe, o
+  // que falta é o valor novo no enum
+  if (error.message.includes("enum animal_species"))
+    return "Rode a migration 054 no Supabase para cadastrar suíno";
   if (error.message.includes("species"))
     return "Rode a migration 047 no Supabase para usar o tipo do animal";
   return error.message;
@@ -35,7 +43,7 @@ function speciesColumnError(error: { code?: string; message: string }): string {
 
 /** Tipo do animal — o que não vier marcado é bovino, como sempre foi. */
 function normSpecies(v?: AnimalSpecies | null): AnimalSpecies {
-  return v && ["bovino", "equino", "caprino", "ovino"].includes(v) ? v : "bovino";
+  return v && ["bovino", "equino", "caprino", "ovino", "suino"].includes(v) ? v : "bovino";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,7 +53,7 @@ function normSpecies(v?: AnimalSpecies | null): AnimalSpecies {
 export interface AnimalInput {
   tag: string;
   sex: AnimalSex;
-  /** Tipo do animal (bovino, equino, caprino, ovino). */
+  /** Tipo do animal (bovino, equino, caprino, ovino, suíno). */
   species?: AnimalSpecies | null;
   birth_date?: string | null;
   breed_id?: string | null;
