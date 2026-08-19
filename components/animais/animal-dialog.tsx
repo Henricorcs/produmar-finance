@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn, upperKeepingCaret } from "@/lib/utils";
 import { createAnimal, updateAnimal, uploadAnimalPhotos } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
@@ -138,7 +138,7 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
             <Input
               id="animal_tag"
               value={tag}
-              onChange={(e) => setTag(e.target.value.toUpperCase())}
+              onChange={(e) => setTag(upperKeepingCaret(e))}
               placeholder="ex: 1042, brinco a-15"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -267,7 +267,7 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
             <Textarea
               id="animal_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="marcas, procedência, pasto..."
               className="uppercase placeholder:normal-case placeholder:lowercase"
               rows={2}

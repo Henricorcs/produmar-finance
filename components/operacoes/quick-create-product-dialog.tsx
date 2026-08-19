@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createProduct } from "@/app/(app)/operacoes/actions";
 import { PRODUCT_UNITS, type Product } from "@/lib/types";
-import { formatBRLInput } from "@/lib/utils";
+import { formatBRLInput, upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -54,7 +54,7 @@ export function QuickCreateProductDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="prd_name"
               value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: areia média"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"

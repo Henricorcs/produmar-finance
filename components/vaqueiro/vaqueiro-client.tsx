@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn, formatDate, localDateISO } from "@/lib/utils";
+import { cn, formatDate, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { requestCalfBirth } from "@/app/(app)/vaqueiro/actions";
 import { SexPicker } from "@/components/animais/animal-shared";
 import type { AnimalSex } from "@/lib/types";
@@ -207,7 +207,7 @@ export function VaqueiroClient() {
               <Input
                 id="vq_mother_tag"
                 value={motherTag}
-                onChange={(e) => setMotherTag(e.target.value.toUpperCase())}
+                onChange={(e) => setMotherTag(upperKeepingCaret(e))}
                 placeholder="ex: 1046"
                 className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
                 autoComplete="off"

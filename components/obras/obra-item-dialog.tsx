@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatBRL, formatBRLInput } from "@/lib/utils";
+import { formatBRL, formatBRLInput, upperKeepingCaret } from "@/lib/utils";
 import { createObraItem, updateObraItem, type ObraItemInput } from "@/app/(app)/obras/actions";
 import { OBRA_ITEM_UNITS, type ObraItem } from "@/lib/types";
 
@@ -131,7 +131,7 @@ export function ObraItemDialog({ open, onClose, obraId, item }: Props) {
               <Input
                 id="item_unit"
                 value={unit}
-                onChange={(e) => setUnit(e.target.value.toUpperCase())}
+                onChange={(e) => setUnit(upperKeepingCaret(e))}
                 list="obra-item-units"
                 autoComplete="off"
               />
@@ -148,7 +148,7 @@ export function ObraItemDialog({ open, onClose, obraId, item }: Props) {
             <Input
               id="item_product"
               value={product}
-              onChange={(e) => setProduct(e.target.value.toUpperCase())}
+              onChange={(e) => setProduct(upperKeepingCaret(e))}
               placeholder="ex: tijolo, cimento, diária - gilvan"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

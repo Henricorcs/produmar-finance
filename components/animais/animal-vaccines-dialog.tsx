@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn, upperKeepingCaret } from "@/lib/utils";
 import { createVaccine, updateVaccine, deleteVaccine } from "@/app/(app)/animais/actions";
 import { ICON_BUTTON, formatMl, parseDecimal, formatDecimalInput } from "./animal-shared";
 import type { AnimalVaccine } from "@/lib/types";
@@ -256,7 +256,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines }: Props) {
                 <Input
                   id="vaccine_brand"
                   value={brand}
-                  onChange={(e) => setBrand(e.target.value.toUpperCase())}
+                  onChange={(e) => setBrand(upperKeepingCaret(e))}
                   placeholder="ex: zoetis, ourofino"
                   className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
                 />

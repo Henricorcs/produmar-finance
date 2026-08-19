@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { cn, formatDate, localDateISO } from "@/lib/utils";
+import { cn, formatDate, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { createBirth, deleteBirth } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
@@ -238,7 +238,7 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
               <Input
                 id="bt_calf_tag"
                 value={calfTag}
-                onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
+                onChange={(e) => setCalfTag(upperKeepingCaret(e))}
                 placeholder="ex: 1046"
                 className="h-11 sm:h-10 uppercase placeholder:normal-case placeholder:lowercase"
                 autoComplete="off"

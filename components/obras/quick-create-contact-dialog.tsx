@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createContact } from "@/app/(app)/obras/actions";
 import type { Contact } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -67,7 +68,7 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="ct_name"
               value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="nome ou razão social"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"

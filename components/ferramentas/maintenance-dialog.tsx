@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { finishMaintenance, openMaintenance } from "@/app/(app)/ferramentas/actions";
 import { ConditionPicker } from "./tool-shared";
-import { formatBRLInput } from "@/lib/utils";
+import { formatBRLInput, upperKeepingCaret } from "@/lib/utils";
 import type { ToolCondition, ToolWithStatus } from "@/lib/types";
 
 function parseMoney(s: string): number {
@@ -119,7 +119,7 @@ export function OpenMaintenanceDialog({ open, onClose, availableTools, presetToo
             <Input
               id="mnt_desc"
               value={description}
-              onChange={(e) => setDescription(e.target.value.toUpperCase())}
+              onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: troca de rolamento, afiação"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -131,7 +131,7 @@ export function OpenMaintenanceDialog({ open, onClose, availableTools, presetToo
             <Input
               id="mnt_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="ex: oficina do João (opcional)"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -244,7 +244,7 @@ export function FinishMaintenanceDialog({ open, onClose, target }: FinishProps) 
             <Input
               id="fin_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

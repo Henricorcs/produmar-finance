@@ -17,6 +17,7 @@ import { createTool, updateTool, uploadToolPhotos } from "@/app/(app)/ferramenta
 import { ConditionPicker, parseMoney, formatBRLInput } from "./tool-shared";
 import { ToolUnitsDialog } from "./tool-units-dialog";
 import type { Tool, ToolCondition, ToolUnit, ToolWarehouse } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -135,7 +136,7 @@ export function ToolDialog({
             <Input
               id="tool_name"
               value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: furadeira, marreta, nível a laser"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -147,7 +148,7 @@ export function ToolDialog({
             <Input
               id="tool_code"
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onChange={(e) => setCode(upperKeepingCaret(e))}
               placeholder="ex: FER-012 (opcional)"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -316,7 +317,7 @@ export function ToolDialog({
             <Textarea
               id="tool_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="detalhes, marca, acessórios..."
               className="uppercase placeholder:normal-case placeholder:lowercase"
               rows={2}

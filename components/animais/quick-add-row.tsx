@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, upperKeepingCaret } from "@/lib/utils";
 import { createAnimal, createBirth } from "@/app/(app)/animais/actions";
 import {
   SPECIES_META,
@@ -176,7 +176,7 @@ export function QuickAddRow({ breeds, species: filterSpecies, vaccinesCount }: P
           <input
             ref={tagRef}
             value={tag}
-            onChange={(e) => setTag(e.target.value.toUpperCase())}
+            onChange={(e) => setTag(upperKeepingCaret(e))}
             onKeyDown={onEnter}
             placeholder="+ nº novo"
             aria-label="Número do novo animal"
@@ -270,7 +270,7 @@ export function QuickAddRow({ breeds, species: filterSpecies, vaccinesCount }: P
                   {/* o bezerro entra no rebanho junto — precisa do número dele */}
                   <input
                     value={calfTag}
-                    onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
+                    onChange={(e) => setCalfTag(upperKeepingCaret(e))}
                     onKeyDown={onEnter}
                     placeholder={`nº do ${calf}`}
                     aria-label={`Número do ${calf}`}

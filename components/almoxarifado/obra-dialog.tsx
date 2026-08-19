@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createSupplyObra, updateSupplyObra } from "@/app/(app)/almoxarifado/actions";
 import type { SupplyObra } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -77,7 +78,7 @@ export function ObraDialog({ open, onClose, obra, onCreated }: Props) {
             <Input
               id="so_name"
               value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: rede rua das flores"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -89,7 +90,7 @@ export function ObraDialog({ open, onClose, obra, onCreated }: Props) {
             <Input
               id="so_client"
               value={client}
-              onChange={(e) => setClient(e.target.value.toUpperCase())}
+              onChange={(e) => setClient(upperKeepingCaret(e))}
               placeholder="opcional"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -101,7 +102,7 @@ export function ObraDialog({ open, onClose, obra, onCreated }: Props) {
             <Textarea
               id="so_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               rows={2}

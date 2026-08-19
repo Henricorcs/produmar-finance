@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { returnTool } from "@/app/(app)/ferramentas/actions";
 import { ConditionPicker } from "./tool-shared";
 import type { ToolCondition } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 export interface ReturnTarget {
   loanId: string;
@@ -85,7 +86,7 @@ export function ReturnDialog({ open, onClose, target }: Props) {
             <Input
               id="ret_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="ex: faltando broca, cabo danificado"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

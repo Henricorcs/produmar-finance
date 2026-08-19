@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatBRLInput, formatQty, localDateISO, parseMoney } from "@/lib/utils";
+import { formatBRLInput, formatQty, localDateISO, parseMoney, upperKeepingCaret } from "@/lib/utils";
 import {
   createSupplyMovement,
   uploadSupplyMovementPhoto,
@@ -272,7 +272,7 @@ export function MovementDialog({
             <Input
               id="mv_person"
               value={person}
-              onChange={(e) => setPerson(e.target.value.toUpperCase())}
+              onChange={(e) => setPerson(upperKeepingCaret(e))}
               placeholder={isSaida ? "nome de quem retirou" : "opcional"}
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -325,7 +325,7 @@ export function MovementDialog({
                 <Input
                   id="mv_destination"
                   value={destination}
-                  onChange={(e) => setDestination(e.target.value.toUpperCase())}
+                  onChange={(e) => setDestination(upperKeepingCaret(e))}
                   placeholder="onde ou em que foi aplicado (opcional)"
                   className="uppercase placeholder:normal-case placeholder:lowercase"
                   autoComplete="off"

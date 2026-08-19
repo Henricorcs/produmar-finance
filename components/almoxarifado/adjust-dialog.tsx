@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatQty } from "@/lib/utils";
+import { formatQty, upperKeepingCaret } from "@/lib/utils";
 import { adjustSupplyStock } from "@/app/(app)/almoxarifado/actions";
 import { formatQtyInput, parseQty } from "./supply-shared";
 import type { SupplyItemWithStock } from "@/lib/types";
@@ -121,7 +121,7 @@ export function AdjustDialog({ open, onClose, item }: Props) {
             <Input
               id="aj_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="quebra, perda, contagem (opcional)"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

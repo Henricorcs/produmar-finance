@@ -16,7 +16,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createObra, updateObra } from "@/app/(app)/obras/actions";
 import { QuickCreateContactDialog } from "./quick-create-contact-dialog";
 import { OBRA_STATUS_OPTIONS } from "./obra-shared";
-import { formatBRLInput } from "@/lib/utils";
+import { formatBRLInput, upperKeepingCaret } from "@/lib/utils";
 import type { Contact, ObraStatus, ObraSummary } from "@/lib/types";
 
 interface Props {
@@ -112,7 +112,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
             <Input
               id="obra_name"
               value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: reforma galpão, obra sítio boa vista"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -140,7 +140,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
             <Input
               id="obra_location"
               value={location}
-              onChange={(e) => setLocation(e.target.value.toUpperCase())}
+              onChange={(e) => setLocation(upperKeepingCaret(e))}
               placeholder="endereço / referência (opcional)"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -205,7 +205,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
             <Textarea
               id="obra_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="detalhes da obra..."
               className="uppercase placeholder:normal-case placeholder:lowercase"
               rows={2}

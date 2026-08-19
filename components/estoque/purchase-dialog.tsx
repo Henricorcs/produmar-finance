@@ -20,7 +20,7 @@ import {
   createMaterialPurchase,
   uploadPurchaseAttachment,
 } from "@/app/(app)/estoque/actions";
-import { formatBRL, formatBRLInput } from "@/lib/utils";
+import { formatBRL, formatBRLInput, upperKeepingCaret } from "@/lib/utils";
 import { PRODUCT_UNITS, type PickupLocation, type Product } from "@/lib/types";
 
 interface Props {
@@ -493,7 +493,7 @@ export function PurchaseDialog({ open, onClose, products, jazidas }: Props) {
               <Textarea
                 id="purchase_notes"
                 value={notes}
-                onChange={(e) => setNotes(e.target.value.toUpperCase())}
+                onChange={(e) => setNotes(upperKeepingCaret(e))}
                 placeholder="observações opcionais..."
                 rows={2}
                 className="uppercase placeholder:normal-case placeholder:lowercase"

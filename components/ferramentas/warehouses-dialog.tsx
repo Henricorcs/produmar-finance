@@ -17,6 +17,7 @@ import {
   deleteWarehouse,
 } from "@/app/(app)/ferramentas/actions";
 import type { ToolWarehouse } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -168,7 +169,7 @@ export function WarehousesDialog({ open, onClose, warehouses, countByWarehouse }
                 <Input
                   id="wh_name"
                   value={name}
-                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  onChange={(e) => setName(upperKeepingCaret(e))}
                   placeholder="ex: garagem, depósito, barracão"
                   className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
                   autoFocus
@@ -182,7 +183,7 @@ export function WarehousesDialog({ open, onClose, warehouses, countByWarehouse }
                 <Input
                   id="wh_location"
                   value={location}
-                  onChange={(e) => setLocation(e.target.value.toUpperCase())}
+                  onChange={(e) => setLocation(upperKeepingCaret(e))}
                   placeholder="ex: fazenda, sede"
                   className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
                   autoComplete="off"

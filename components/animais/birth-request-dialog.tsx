@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { cn, localDateISO } from "@/lib/utils";
+import { cn, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { resolveBirthRequest } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
@@ -152,7 +152,7 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
             <Input
               id="brq_calf_tag"
               value={calfTag}
-              onChange={(e) => setCalfTag(e.target.value.toUpperCase())}
+              onChange={(e) => setCalfTag(upperKeepingCaret(e))}
               placeholder="ex: 1046"
               className="h-11 sm:h-10 uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

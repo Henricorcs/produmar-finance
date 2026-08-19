@@ -1,3 +1,4 @@
+import type { ChangeEvent } from "react";
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import {
@@ -12,6 +13,40 @@ import {
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+/**
+ * CAIXA ALTA no que foi digitado, SEM jogar o cursor para o fim.
+ *
+ * O campo é controlado: se o texto que volta do estado for diferente do que
+ * está no input (e "abc" → "ABC" é diferente), o React reescreve o value e o
+ * navegador manda o cursor para o fim — quem tentava consertar o começo da
+ * palavra via a letra sair lá na ponta. Como caixa alta não muda o tamanho do
+ * texto, dá para devolver o cursor exatamente para onde ele estava, no quadro
+ * seguinte (o rAF roda depois de o React ter escrito o texto novo).
+ *
+ * Use em todo `onChange` que sobe texto para caixa alta:
+ *   onChange={(e) => setNome(upperKeepingCaret(e))}
+ */
+export function upperKeepingCaret(
+  e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+): string {
+  const el = e.target;
+  const value = el.value.toUpperCase();
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  if (start !== null && typeof el.setSelectionRange === "function") {
+    requestAnimationFrame(() => {
+      // só mexe se o campo ainda estiver com o usuário
+      if (document.activeElement !== el) return;
+      try {
+        el.setSelectionRange(start, end ?? start);
+      } catch {
+        /* alguns tipos de input (number, date) não aceitam seleção */
+      }
+    });
+  }
+  return value;
 }
 
 export function formatBRL(value: number): string {

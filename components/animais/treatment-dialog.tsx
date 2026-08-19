@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { cn, localDateISO } from "@/lib/utils";
+import { cn, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { createTreatment } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
@@ -134,7 +134,7 @@ export function TreatmentDialog({
             <Input
               id="tr_description"
               value={description}
-              onChange={(e) => setDescription(e.target.value.toUpperCase())}
+              onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: verminose, casco, bicheira"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -146,7 +146,7 @@ export function TreatmentDialog({
             <Input
               id="tr_medicine"
               value={medicine}
-              onChange={(e) => setMedicine(e.target.value.toUpperCase())}
+              onChange={(e) => setMedicine(upperKeepingCaret(e))}
               placeholder="ex: ivermectina 1%"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               list="tr_medicine_options"
@@ -167,7 +167,7 @@ export function TreatmentDialog({
               <Input
                 id="tr_dose"
                 value={dose}
-                onChange={(e) => setDose(e.target.value.toUpperCase())}
+                onChange={(e) => setDose(upperKeepingCaret(e))}
                 placeholder="ex: 10 ml"
                 className="uppercase placeholder:normal-case placeholder:lowercase"
                 autoComplete="off"

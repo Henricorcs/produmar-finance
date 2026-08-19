@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createPickupLocation } from "@/app/(app)/operacoes/actions";
 import type { PickupLocation } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -47,7 +48,7 @@ export function QuickCreateLocationDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="loc_name"
               value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: pedreira norte"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
@@ -59,7 +60,7 @@ export function QuickCreateLocationDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="loc_addr"
               value={address}
-              onChange={(e) => setAddress(e.target.value.toUpperCase())}
+              onChange={(e) => setAddress(upperKeepingCaret(e))}
               placeholder="rua / km / referência"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"

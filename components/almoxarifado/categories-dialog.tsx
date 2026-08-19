@@ -17,6 +17,7 @@ import {
   deleteSupplyCategory,
 } from "@/app/(app)/almoxarifado/actions";
 import type { SupplyCategory } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -157,7 +158,7 @@ export function CategoriesDialog({ open, onClose, categories, countByCategory }:
                 <Input
                   id="sc_name"
                   value={name}
-                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  onChange={(e) => setName(upperKeepingCaret(e))}
                   placeholder="ex: hidráulica, elétrica, colas"
                   className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
                   autoFocus

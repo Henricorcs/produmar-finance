@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createMachine } from "@/app/(app)/operacoes/actions";
 import { MACHINE_CATEGORIES, type Machine, type MachineTrackingType } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -52,7 +53,7 @@ export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="mch_name"
               value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: caminhão 01"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
@@ -65,7 +66,7 @@ export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
               <Input
                 id="mch_plate"
                 value={plate}
-                onChange={(e) => setPlate(e.target.value.toUpperCase())}
+                onChange={(e) => setPlate(upperKeepingCaret(e))}
                 placeholder="ABC-1234"
                 className="uppercase placeholder:normal-case"
               />

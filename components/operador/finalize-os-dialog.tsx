@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SignaturePad } from "./signature-pad";
 import { ServiceOrderComprovantes } from "./service-order-comprovantes";
 import { finalizeServiceOrder } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatHourmeter, osTypeLabel, formatBRLInput } from "@/lib/utils";
+import { formatBRL, formatHourmeter, osTypeLabel, formatBRLInput, upperKeepingCaret } from "@/lib/utils";
 import type {
   ServiceOrder,
   ServiceOrderAttachment,
@@ -670,7 +670,7 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
                   <Textarea
                     id="completion_notes"
                     value={completionNotes}
-                    onChange={(e) => setCompletionNotes(e.target.value.toUpperCase())}
+                    onChange={(e) => setCompletionNotes(upperKeepingCaret(e))}
                     rows={3}
                     className="text-lg uppercase"
                     autoFocus

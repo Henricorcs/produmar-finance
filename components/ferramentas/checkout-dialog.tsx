@@ -16,6 +16,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SignaturePad } from "@/components/operador/signature-pad";
 import { checkoutTool, uploadLoanReceiverPhoto } from "@/app/(app)/ferramentas/actions";
 import type { Obra, ToolWithStatus } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -180,7 +181,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
             <Input
               id="co_borrower"
               value={borrower}
-              onChange={(e) => setBorrower(e.target.value.toUpperCase())}
+              onChange={(e) => setBorrower(upperKeepingCaret(e))}
               placeholder="nome de quem pegou emprestado"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -192,7 +193,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
             <Input
               id="co_destination"
               value={destination}
-              onChange={(e) => setDestination(e.target.value.toUpperCase())}
+              onChange={(e) => setDestination(upperKeepingCaret(e))}
               placeholder="obra / local (opcional)"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -298,7 +299,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
             <Input
               id="co_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

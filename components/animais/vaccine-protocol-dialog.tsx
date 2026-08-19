@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { cn, formatDate, localDateISO } from "@/lib/utils";
+import { cn, formatDate, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { applyVaccineProtocol } from "@/app/(app)/animais/actions";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import {
@@ -576,7 +576,7 @@ export function VaccineProtocolDialog({
                               id={`brand_${v.id}`}
                               value={item.brand}
                               onChange={(e) =>
-                                patchItem(v.id, { brand: e.target.value.toUpperCase() })
+                                patchItem(v.id, { brand: upperKeepingCaret(e) })
                               }
                               placeholder="ex: zoetis"
                               className="h-11 text-base uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
@@ -597,7 +597,7 @@ export function VaccineProtocolDialog({
             <Textarea
               id="pr_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="lote, quem aplicou..."
               className="uppercase placeholder:normal-case placeholder:lowercase"
               rows={2}

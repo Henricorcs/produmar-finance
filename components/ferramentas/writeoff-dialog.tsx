@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { writeOffTool } from "@/app/(app)/ferramentas/actions";
 import type { ToolWithStatus } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 const REASONS = ["QUEBRADO", "PERDIDO", "ROUBADO", "SUCATEADO"];
 
@@ -111,7 +112,7 @@ export function WriteoffDialog({ open, onClose, tool }: Props) {
             <Input
               id="wo_reason"
               value={reason}
-              onChange={(e) => setReason(e.target.value.toUpperCase())}
+              onChange={(e) => setReason(upperKeepingCaret(e))}
               placeholder="ou descreva o motivo (opcional)"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

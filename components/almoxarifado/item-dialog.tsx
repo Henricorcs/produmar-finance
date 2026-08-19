@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatBRLInput, parseMoney } from "@/lib/utils";
+import { formatBRLInput, parseMoney, upperKeepingCaret } from "@/lib/utils";
 import {
   createSupplyItem,
   deleteSupplyItemPhoto,
@@ -161,7 +161,7 @@ export function ItemDialog({
             <Input
               id="si_name"
               value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: cano 50mm, emenda ótica, cola pvc"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
@@ -232,7 +232,7 @@ export function ItemDialog({
               <Input
                 id="si_code"
                 value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                onChange={(e) => setCode(upperKeepingCaret(e))}
                 placeholder="opcional"
                 className="uppercase placeholder:normal-case placeholder:lowercase"
                 autoComplete="off"
@@ -243,7 +243,7 @@ export function ItemDialog({
               <Input
                 id="si_location"
                 value={location}
-                onChange={(e) => setLocation(e.target.value.toUpperCase())}
+                onChange={(e) => setLocation(upperKeepingCaret(e))}
                 placeholder="prateleira 3"
                 className="uppercase placeholder:normal-case placeholder:lowercase"
                 autoComplete="off"

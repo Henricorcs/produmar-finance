@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createStockAdjustment } from "@/app/(app)/estoque/actions";
 import type { Product } from "@/lib/types";
+import { upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -162,7 +163,7 @@ export function AdjustmentDialog({ open, onClose, products }: Props) {
             <Input
               id="adj_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="ex: saldo inicial, perda, contagem"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"

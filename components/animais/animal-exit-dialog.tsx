@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { cn, formatBRLInput, localDateISO, parseMoney } from "@/lib/utils";
+import { cn, formatBRLInput, localDateISO, parseMoney, upperKeepingCaret } from "@/lib/utils";
 import { registerAnimalExit } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
@@ -169,7 +169,7 @@ export function AnimalExitDialog({ open, onClose, animal }: Props) {
                 <Input
                   id="ex_buyer"
                   value={buyer}
-                  onChange={(e) => setBuyer(e.target.value.toUpperCase())}
+                  onChange={(e) => setBuyer(upperKeepingCaret(e))}
                   placeholder="opcional, quem levou o animal"
                   className="uppercase placeholder:normal-case placeholder:lowercase"
                   autoComplete="off"
@@ -183,7 +183,7 @@ export function AnimalExitDialog({ open, onClose, animal }: Props) {
             <Textarea
               id="ex_notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value.toUpperCase())}
+              onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder={isSale ? "opcional" : "ex: picada de cobra"}
               rows={2}
               className="uppercase placeholder:normal-case placeholder:lowercase"
