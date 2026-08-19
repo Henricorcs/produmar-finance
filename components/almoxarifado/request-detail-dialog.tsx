@@ -54,11 +54,24 @@ export function SupplyRequestDetailDialog({
   const setor = sectors.find((x) => x.id === request.sector_id)?.name ?? null;
   const machine = machines.find((m) => m.id === request.machine_id) ?? null;
   const maquina = machine ? `${machine.name}${machine.plate ? ` (${machine.plate})` : ""}` : null;
-  const hourmeter = request.machine_hourmeter != null ? num(request.machine_hourmeter) : null;
-  const km = request.machine_km != null ? num(request.machine_km) : null;
-  const leituraRotulo = km != null ? "Km do painel" : "Horímetro";
+  const usaKm = request.machine_km != null || request.machine_km_end != null;
+  const ini = usaKm ? request.machine_km : request.machine_hourmeter;
+  const fim = usaKm ? request.machine_km_end : request.machine_hourmeter_end;
+  const leituraRotulo = usaKm ? "Km do painel" : "Horímetro";
+  /** "1.230,5 → 1.250,0 (19,5 h)" — o que interessa é o quanto ela trabalhou. */
   const leitura =
-    km != null ? formatQty(km) : hourmeter != null ? formatQty(hourmeter) : null;
+    ini == null && fim == null
+      ? null
+      : [
+          ini != null ? formatQty(num(ini)) : "?",
+          "→",
+          fim != null ? formatQty(num(fim)) : "?",
+          ini != null && fim != null
+            ? `(${formatQty(Math.round((num(fim) - num(ini)) * 10) / 10)} ${usaKm ? "km" : "h"})`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
   /** Material escrito na mão: o chefe ainda tem que casar com o cadastro. */
   const foraDoCadastro = !request.item_id;
 

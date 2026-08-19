@@ -1004,10 +1004,14 @@ export interface SupplyRequest {
   destination: string | null;
   /** Máquina usada no serviço (migration 057). */
   machine_id?: string | null;
-  /** Leitura do horímetro na hora — nula quando o técnico não anotou. */
+  /** Horímetro no COMEÇO do serviço — nulo quando o técnico não anotou. */
   machine_hourmeter?: number | null;
-  /** Leitura do km na hora — nula quando o técnico não anotou. */
+  /** Horímetro no FIM do serviço (migration 058). */
+  machine_hourmeter_end?: number | null;
+  /** Km no COMEÇO do serviço — nulo quando o técnico não anotou. */
   machine_km?: number | null;
+  /** Km no FIM do serviço (migration 058). */
+  machine_km_end?: number | null;
   /** Combustível abastecido; null = não abasteceu. */
   fuel_type?: string | null;
   used_date: string;

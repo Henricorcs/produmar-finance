@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Wallet,
   HardHat,
+  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ import { ItemDetailDialog } from "./item-detail-dialog";
 import { CategoriesDialog } from "./categories-dialog";
 import { ObraDialog } from "./obra-dialog";
 import { ObraCard, ObraDetailDialog } from "./obra-detail-dialog";
+import { ObraSectorsDialog } from "./obra-sectors-dialog";
 import { SupplyRequestDialog } from "./request-dialog";
 import { SupplyRequestDetailDialog } from "./request-detail-dialog";
 import { MOVEMENT_META, STATUS_META, fmtDateTime, num } from "./supply-shared";
@@ -95,6 +97,9 @@ export function AlmoxarifadoPageClient({
   const [obraDialogOpen, setObraDialogOpen] = useState(false);
   const [editObra, setEditObra] = useState<SupplyObraUsage | null>(null);
   const [detailObraId, setDetailObraId] = useState<string | null>(null);
+  /** Cadastro dos setores da obra (o "Setor aplicado" do técnico). */
+  const [sectorsOpen, setSectorsOpen] = useState(false);
+  const [sectorsObraId, setSectorsObraId] = useState<string | null>(null);
   /** O cadastro de obra foi aberto de dentro do lançamento? */
   const [creatingObraFromMovement, setCreatingObraFromMovement] = useState(false);
   const [adjustItemId, setAdjustItemId] = useState<string | null>(null);
@@ -147,6 +152,11 @@ export function AlmoxarifadoPageClient({
     [detailObraId, obras]
   );
   /** Nome da obra por id — a consulta de movimentos não faz join com obras. */
+  function openSectors(obraId: string | null) {
+    setSectorsObraId(obraId);
+    setSectorsOpen(true);
+  }
+
   const obraNameById = useMemo(
     () => new Map(obras.map((o) => [o.id, o.name])),
     [obras]
@@ -569,8 +579,10 @@ export function AlmoxarifadoPageClient({
       {tab === "obras" && (
         <ObrasTab
           obras={obras}
+          sectorCount={sectors.length}
           onNew={openNewObra}
           onOpen={(o) => setDetailObraId(o.id)}
+          onManageSectors={() => openSectors(null)}
         />
       )}
 
@@ -627,12 +639,24 @@ export function AlmoxarifadoPageClient({
           setCreatingObraFromMovement(false);
         }}
       />
+      <ObraSectorsDialog
+        open={sectorsOpen}
+        onClose={() => setSectorsOpen(false)}
+        obras={obras}
+        sectors={sectors}
+        presetObraId={sectorsObraId}
+      />
       <ObraDetailDialog
         open={!!detailObra}
         onClose={() => setDetailObraId(null)}
         obra={detailObra}
         items={items}
         sectors={sectors}
+        onManageSectors={(o) => {
+          // sai do detalhe direto para o cadastro — dois diálogos se atropelam
+          setDetailObraId(null);
+          openSectors(o.id);
+        }}
         onNewSaida={(o) => {
           setDetailObraId(null);
           openMovement("saida", undefined, o.id);
@@ -800,12 +824,17 @@ function ItemCard({
 // ── Aba: Obras ───────────────────────────────────────────────────────────────
 function ObrasTab({
   obras,
+  sectorCount,
   onNew,
   onOpen,
+  onManageSectors,
 }: {
   obras: SupplyObraUsage[];
+  /** Quantos setores existem no total — só para o rótulo do botão. */
+  sectorCount: number;
   onNew: () => void;
   onOpen: (obra: SupplyObraUsage) => void;
+  onManageSectors: () => void;
 }) {
   const total = obras.reduce((sum, o) => sum + num(o.total_value), 0);
 
@@ -817,10 +846,19 @@ function ObrasTab({
             {formatBRL(total)} em material
           </p>
         )}
-        <Button variant="outline" size="sm" onClick={onNew} className="ml-auto">
-          <Plus className="w-3.5 h-3.5" />
-          Nova obra
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {obras.length > 0 && (
+            <Button variant="outline" size="sm" onClick={onManageSectors}>
+              <MapPin className="w-3.5 h-3.5" />
+              Setores
+              {sectorCount > 0 && <span className="opacity-60 tabular-nums">{sectorCount}</span>}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={onNew}>
+            <Plus className="w-3.5 h-3.5" />
+            Nova obra
+          </Button>
+        </div>
       </div>
 
       {obras.length === 0 ? (

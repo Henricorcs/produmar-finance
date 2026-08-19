@@ -118,8 +118,9 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
   // ── Máquina do serviço (tudo opcional) ────────────────────────────────────
   const [usedMachine, setUsedMachine] = useState(false);
   const [machineId, setMachineId] = useState("");
-  /** Leitura do painel: horímetro ou km, conforme a máquina. */
-  const [reading, setReading] = useState("");
+  /** Leitura do painel no começo e no fim — a diferença é o que ela trabalhou. */
+  const [readingStart, setReadingStart] = useState("");
+  const [readingEnd, setReadingEnd] = useState("");
   /** Ninguém anotou o painel — é o caso comum, e não pode travar o envio. */
   const [noReading, setNoReading] = useState(false);
   const [fueled, setFueled] = useState(false);
@@ -143,6 +144,14 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
   );
   /** Caminhão/caçamba andam de km; máquina de terra conta hora. */
   const tracksKm = machine?.tracking_type === "km";
+
+  /** Quanto a máquina trabalhou neste serviço (só com as duas leituras). */
+  const worked = useMemo(() => {
+    const ini = parseReadingBR(readingStart);
+    const fim = parseReadingBR(readingEnd);
+    if (ini <= 0 || fim <= 0) return null;
+    return Math.round((fim - ini) * 10) / 10;
+  }, [readingStart, readingEnd]);
 
   /** Trocar de obra zera o setor: ele é de uma obra só. */
   function chooseObra(id: string) {
@@ -186,6 +195,16 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
     if (!obraId && !destination.trim())
       return setError("Diga o local da obra ou onde você aplicou o material");
     if (usedMachine && !machineId) return setError("Diga qual máquina você usou");
+    if (usedMachine && !noReading) {
+      const temIni = !!readingStart.trim();
+      const temFim = !!readingEnd.trim();
+      const nome = tracksKm ? "km" : "horímetro";
+      // um sozinho não serve para nada: é a diferença que diz quanto trabalhou
+      if (temIni !== temFim)
+        return setError(`Informe o ${nome} inicial e o final (ou marque "Não anotei")`);
+      if (temIni && temFim && (worked ?? 0) < 0)
+        return setError(`O ${nome} final não pode ser menor que o inicial`);
+    }
     if (usedMachine && fueled && !fuelType)
       return setError("Diga qual combustível você abasteceu");
 
@@ -211,9 +230,11 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
     fd.append("notes", notes);
     if (usedMachine && machineId) {
       fd.append("machine_id", machineId);
-      // leitura só se ele anotou — em branco o banco guarda nulo
-      const leitura = noReading ? "" : reading;
-      fd.append(tracksKm ? "machine_km" : "machine_hourmeter", leitura);
+      // leituras só se ele anotou — em branco o banco guarda nulo
+      const ini = noReading ? "" : readingStart;
+      const fim = noReading ? "" : readingEnd;
+      fd.append(tracksKm ? "machine_km" : "machine_hourmeter", ini);
+      fd.append(tracksKm ? "machine_km_end" : "machine_hourmeter_end", fim);
       if (fueled && fuelType) fd.append("fuel_type", fuelType);
     }
     if (photo) fd.append("photo", photo);
@@ -230,7 +251,8 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
       setLinhas([novaLinha()]);
       setNotes("");
       setPhoto(null);
-      setReading("");
+      setReadingStart("");
+      setReadingEnd("");
       setNoReading(false);
       setFueled(false);
       setFuelType("");
@@ -393,7 +415,7 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
                 {useSectorList
                   ? "Vale para todos os materiais deste envio."
                   : obraId
-                    ? "Esta obra ainda não tem setor cadastrado — escreva o lugar que o chefe cadastra depois."
+                    ? "Esta obra ainda não tem setor cadastrado (o chefe cadastra em Almoxarifado → Obras → Setores) — por enquanto, escreva o lugar."
                     : "Escolha o local da obra acima para aparecerem os setores dele."}
               </p>
             </div>
@@ -410,7 +432,8 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
                   setUsedMachine(v);
                   if (!v) {
                     setMachineId("");
-                    setReading("");
+                    setReadingStart("");
+                    setReadingEnd("");
                     setNoReading(false);
                     setFueled(false);
                     setFuelType("");
@@ -447,31 +470,69 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
                   {machineId && (
                     <>
                       <div className="space-y-1.5">
-                        <Label htmlFor="tc_reading">
-                          {tracksKm ? "Km do painel" : "Horímetro"}
-                        </Label>
+                        <Label>{tracksKm ? "Km do painel" : "Horímetro"}</Label>
                         {!noReading && (
-                          <Input
-                            id="tc_reading"
-                            value={reading}
-                            onChange={(e) =>
-                              setReading(
-                                tracksKm
-                                  ? e.target.value.replace(/\D/g, "")
-                                  : formatHourmeter(e.target.value)
-                              )
-                            }
-                            placeholder={tracksKm ? "ex: 154300" : "ex: 1230,5"}
-                            inputMode="decimal"
-                            className="h-12 text-lg font-semibold tabular-nums"
-                            autoComplete="off"
-                          />
+                          <>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label
+                                  htmlFor="tc_reading_ini"
+                                  className="text-[11px] text-slate-400 dark:text-slate-500"
+                                >
+                                  No começo
+                                </Label>
+                                <Input
+                                  id="tc_reading_ini"
+                                  value={readingStart}
+                                  onChange={(e) => setReadingStart(maskReading(e.target.value, tracksKm))}
+                                  placeholder={tracksKm ? "ex: 154300" : "ex: 1230,5"}
+                                  inputMode="decimal"
+                                  className="h-12 text-lg font-semibold tabular-nums"
+                                  autoComplete="off"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label
+                                  htmlFor="tc_reading_fim"
+                                  className="text-[11px] text-slate-400 dark:text-slate-500"
+                                >
+                                  No fim
+                                </Label>
+                                <Input
+                                  id="tc_reading_fim"
+                                  value={readingEnd}
+                                  onChange={(e) => setReadingEnd(maskReading(e.target.value, tracksKm))}
+                                  placeholder={tracksKm ? "ex: 154350" : "ex: 1250,5"}
+                                  inputMode="decimal"
+                                  className="h-12 text-lg font-semibold tabular-nums"
+                                  autoComplete="off"
+                                />
+                              </div>
+                            </div>
+                            {worked != null && (
+                              <p
+                                className={cn(
+                                  "text-sm font-medium",
+                                  worked < 0
+                                    ? "text-red-600 dark:text-red-400"
+                                    : "text-emerald-600 dark:text-emerald-400"
+                                )}
+                              >
+                                {worked < 0
+                                  ? `O ${tracksKm ? "km" : "horímetro"} final está menor que o inicial`
+                                  : tracksKm
+                                    ? `${formatQty(worked)} km rodados`
+                                    : `${formatQty(worked)} h trabalhadas`}
+                              </p>
+                            )}
+                          </>
                         )}
                         <button
                           type="button"
                           onClick={() => {
                             setNoReading((v) => !v);
-                            setReading("");
+                            setReadingStart("");
+                            setReadingEnd("");
                           }}
                           className={cn(
                             "w-full min-h-[44px] px-3 rounded-lg border text-sm font-medium transition-colors active:scale-[0.98]",
@@ -615,6 +676,20 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
       )}
     </div>
   );
+}
+
+/**
+ * Máscara da leitura do painel: km é número inteiro; horímetro tem uma casa e
+ * vírgula automática (o técnico digita só os números, ver formatHourmeter).
+ */
+function maskReading(raw: string, tracksKm: boolean): string {
+  return tracksKm ? raw.replace(/\D/g, "") : formatHourmeter(raw);
+}
+
+/** "1.230,5" → 1230.5. Vazio ou torto vira 0. */
+function parseReadingBR(raw: string): number {
+  const n = parseFloat(raw.replace(/\./g, "").replace(",", "."));
+  return isNaN(n) ? 0 : n;
 }
 
 /** Sim/Não do tamanho do dedo — o técnico responde sem abrir teclado. */

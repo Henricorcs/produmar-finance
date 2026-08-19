@@ -30,6 +30,11 @@ function requestError(error: { code?: string; message: string }): string {
   // colunas do setor/máquina vêm da 057 — sem ela o envio simples continua
   // funcionando, só o que usa os campos novos é que para aqui
   if (
+    error.message.includes("machine_hourmeter_end") ||
+    error.message.includes("machine_km_end")
+  )
+    return "Rode a migration 058 no Supabase para o horímetro inicial e final";
+  if (
     error.message.includes("sector_id") ||
     error.message.includes("machine_id") ||
     error.message.includes("machine_hourmeter") ||
@@ -111,7 +116,9 @@ export async function requestSupplyUsage(formData: FormData) {
   // desistir de avisar.
   const machineId = String(formData.get("machine_id") ?? "").trim();
   const hourmeter = parseReading(formData.get("machine_hourmeter"));
+  const hourmeterEnd = parseReading(formData.get("machine_hourmeter_end"));
   const km = parseReading(formData.get("machine_km"));
+  const kmEnd = parseReading(formData.get("machine_km_end"));
   const fuelType = clean(formData.get("fuel_type"));
 
   if (lines.length === 0) return { error: "Diga qual material você usou" };
@@ -129,7 +136,9 @@ export async function requestSupplyUsage(formData: FormData) {
   if (machineId) {
     extra.machine_id = machineId;
     if (hourmeter > 0) extra.machine_hourmeter = hourmeter;
+    if (hourmeterEnd > 0) extra.machine_hourmeter_end = hourmeterEnd;
     if (km > 0) extra.machine_km = km;
+    if (kmEnd > 0) extra.machine_km_end = kmEnd;
     if (fuelType) extra.fuel_type = fuelType;
   }
 
