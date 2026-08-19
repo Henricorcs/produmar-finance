@@ -93,9 +93,9 @@ type SpeciesFilter = "todos" | AnimalSpecies;
 type SortKey = "tag" | "recente" | "alterado";
 
 const SORTS: { value: SortKey; label: string }[] = [
-  { value: "tag", label: "Ordem: nº do animal" },
-  { value: "recente", label: "Ordem: cadastrados por último" },
-  { value: "alterado", label: "Ordem: mexidos por último" },
+  { value: "tag", label: "Nº do animal" },
+  { value: "recente", label: "Cadastrados por último" },
+  { value: "alterado", label: "Mexidos por último" },
 ];
 
 export function AnimaisPageClient({
@@ -446,10 +446,12 @@ export function AnimaisPageClient({
     value: Tab;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
-    count: number;
+    /** Só quem tem trabalho parado mostra número — o tamanho do rebanho já
+     *  está na faixa de contagem, não precisa aparecer duas vezes. */
+    count?: number;
     alert?: boolean;
   }[] = [
-    { value: "rebanho", label: "Rebanho", icon: Beef, count: animals.length },
+    { value: "rebanho", label: "Rebanho", icon: Beef },
     {
       value: "nascimentos",
       label: "Nascimentos",
@@ -468,7 +470,7 @@ export function AnimaisPageClient({
   ];
 
   const categoryFilters: { value: CategoryFilter; label: string; count: number }[] = [
-    { value: "todos", label: "Todos", count: speciesAnimals.length },
+    { value: "todos", label: "Total", count: speciesAnimals.length },
     { value: "vaca", label: categoryPlural("vaca", labelSpecies), count: countBy.vaca },
     { value: "boi", label: categoryPlural("boi", labelSpecies), count: countBy.boi },
     {
@@ -527,7 +529,7 @@ export function AnimaisPageClient({
             >
               <Icon className="w-5 h-5 sm:w-4 sm:h-4" />
               <span className="leading-none">{t.label}</span>
-              {t.count > 0 && (
+              {!!t.count && (
                 <span
                   className={cn(
                     "absolute top-1 right-1 min-w-[20px] h-[20px] px-1 rounded-full text-xs font-semibold flex items-center justify-center",
@@ -551,125 +553,146 @@ export function AnimaisPageClient({
           `uppercase` no bloco todo: o patrão pediu tudo em caixa alta aqui.
           Botões, inputs e selects não herdam text-transform — daí as variantes. */}
       {tab === "rebanho" && (
-        <div className="space-y-4 uppercase [&_button]:uppercase [&_input]:uppercase [&_select]:uppercase [&_input::placeholder]:uppercase">
-          {/* Qual tipo de animal aparece na planilha */}
-          <div className="flex flex-wrap gap-1.5">
-            {speciesFilters.map((f) => {
-              const active = species === f.value;
-              /* tipo que ninguém tem ainda: fica apagado, mas dá pra escolher */
-              const empty = f.count === 0 && !active;
-              return (
-                <button
-                  key={f.value}
-                  onClick={() => setSpecies(f.value)}
-                  className={cn(
-                    "flex items-center gap-1.5 min-h-[40px] px-3 rounded-full border text-xs font-medium transition-colors active:scale-[0.97]",
-                    active
-                      ? "bg-produmar-600 border-produmar-600 text-white"
-                      : empty
-                      ? "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-600"
-                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-                  )}
-                >
-                  {f.label}
-                  <span className={cn("tabular-nums", active ? "opacity-80" : "opacity-60")}>
-                    {f.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Filtro por categoria — também serve de resumo do rebanho */}
-          <div className="grid grid-cols-4 gap-1.5">
-            {categoryFilters.map((f) => {
-              const active = categoryFilter === f.value;
-              return (
-                <button
-                  key={f.value}
-                  onClick={() => setCategoryFilter(f.value)}
-                  className={cn(
-                    "flex flex-col items-center justify-center gap-0.5 min-h-[56px] rounded-xl border transition-colors active:scale-[0.97]",
-                    active
-                      ? "bg-produmar-50 border-produmar-300 dark:bg-produmar-950/40 dark:border-produmar-700"
-                      : "bg-white border-slate-200 dark:bg-slate-900 dark:border-slate-700"
-                  )}
-                >
-                  <span
+        <div className="space-y-3 uppercase [&_button]:uppercase [&_input]:uppercase [&_select]:uppercase [&_input::placeholder]:uppercase">
+          {/* ── Painel do rebanho ─────────────────────────────────────────
+              Tipo, contagem, busca, ordem e impressão numa caixa só. Antes
+              eram quatro blocos soltos, cada um com a sua fileira de números
+              — a tela ficava poluída e nada mandava em nada. A ordem agora é
+              a da cabeça de quem olha: em cima o TIPO (qual rebanho eu quero
+              ver), no meio a CONTAGEM desse rebanho — que já é o filtro por
+              categoria — e embaixo o que se faz com a lista. */}
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
+            {/* Tipo do animal: todos ficam à vista mesmo zerados (é por aqui
+                que se escolhe o rebanho, e é ele que manda na linha de
+                cadastro); os vazios ficam apagados. Sem número aqui — a
+                contagem é uma só, a da faixa logo abaixo. */}
+            <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 dark:bg-slate-800/60">
+              {speciesFilters.map((f) => {
+                const active = species === f.value;
+                /* tipo que ninguém tem ainda: fica apagado, mas dá pra escolher */
+                const empty = f.count === 0 && !active;
+                return (
+                  <button
+                    key={f.value}
+                    onClick={() => setSpecies(f.value)}
                     className={cn(
-                      "text-xl font-bold tabular-nums leading-none",
+                      "h-9 px-3 rounded-lg text-xs font-semibold tracking-wide transition-colors active:scale-[0.97]",
                       active
-                        ? "text-produmar-700 dark:text-produmar-300"
-                        : "text-slate-800 dark:text-slate-100"
-                    )}
-                  >
-                    {f.count}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-xs leading-tight",
-                      active
-                        ? "text-produmar-600 dark:text-produmar-400"
-                        : "text-slate-500 dark:text-slate-400"
+                        ? "bg-produmar-600 text-white shadow-sm"
+                        : empty
+                        ? "text-slate-400 dark:text-slate-600"
+                        : "text-slate-600 dark:text-slate-300"
                     )}
                   >
                     {f.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <SearchField
-            value={search}
-            onChange={setSearch}
-            placeholder="Buscar pelo número, raça ou tipo..."
-          />
-
-          <div className="flex gap-2">
-            {/* Ordem da planilha: por número (a de sempre) ou pelo que mexeu por último */}
-            <div className="relative flex-1">
-              <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
-                aria-label="Ordem da planilha"
-                className="w-full min-h-[44px] pl-9 pr-2 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-produmar-400"
-              >
-                {SORTS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+                  </button>
+                );
+              })}
             </div>
-            <button
-              type="button"
-              onClick={() => window.open(printHref, "_blank")}
-              className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border border-produmar-200 bg-white text-sm font-medium text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
-            >
-              <Printer className="w-4 h-4" />
-              Imprimir guia
-            </button>
-          </div>
 
-          {/* Só aparece quando existe pendência marcada na mão */}
-          {pendingCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setOnlyPending((v) => !v)}
-              className={cn(
-                "w-full flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl border text-sm font-medium transition-colors active:scale-[0.97]",
-                onlyPending
-                  ? "bg-red-50 border-red-300 text-red-700 dark:bg-red-950/40 dark:border-red-800 dark:text-red-400"
-                  : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+            {/* Contagem do rebanho — e o filtro por categoria no mesmo toque.
+                Uma faixa dividida em quatro, não quatro caixas soltas. */}
+            <div className="grid grid-cols-4 divide-x divide-slate-100 border-y border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+              {categoryFilters.map((f) => {
+                const active = categoryFilter === f.value;
+                return (
+                  <button
+                    key={f.value}
+                    onClick={() => setCategoryFilter(f.value)}
+                    className={cn(
+                      "relative flex flex-col items-center justify-center gap-1 py-3 transition-colors",
+                      active ? "bg-produmar-50 dark:bg-produmar-950/40" : ""
+                    )}
+                  >
+                    {/* a barrinha em cima diz qual está valendo, sem mais bordas */}
+                    <span
+                      className={cn(
+                        "absolute inset-x-0 top-0 h-[3px]",
+                        active ? "bg-produmar-500 dark:bg-produmar-400" : "bg-transparent"
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "text-lg sm:text-xl font-bold leading-none tabular-nums",
+                        active
+                          ? "text-produmar-700 dark:text-produmar-300"
+                          : "text-slate-800 dark:text-slate-100"
+                      )}
+                    >
+                      {f.count}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[11px] font-medium leading-none tracking-wide",
+                        active
+                          ? "text-produmar-600 dark:text-produmar-400"
+                          : "text-slate-400 dark:text-slate-500"
+                      )}
+                    >
+                      {f.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Busca, ordem e a guia impressa — uma linha só no desktop; no
+                celular a busca fica em cima e o resto embaixo dela. */}
+            <div className="flex flex-wrap items-center gap-2 p-2">
+              <div className="w-full sm:w-auto sm:flex-1">
+                <SearchField
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Buscar pelo número, raça ou tipo..."
+                  className="rounded-xl border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"
+                />
+              </div>
+
+              {/* Ordem da planilha: por número (a de sempre) ou pelo que mexeu por último */}
+              <div className="relative flex-1 sm:flex-none">
+                <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                  aria-label="Ordem da planilha"
+                  className="w-full h-11 pl-9 pr-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 dark:bg-slate-800/60 dark:border-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-produmar-400"
+                >
+                  {SORTS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => window.open(printHref, "_blank")}
+                className="flex items-center justify-center gap-1.5 h-11 px-3 rounded-xl border border-produmar-200 bg-white text-xs font-semibold text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
+              >
+                <Printer className="w-4 h-4" />
+                Imprimir
+              </button>
+
+              {/* Só aparece quando existe pendência marcada na mão */}
+              {pendingCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyPending((v) => !v)}
+                  className={cn(
+                    "w-full sm:w-auto flex items-center justify-center gap-1.5 h-11 px-3 rounded-xl border text-xs font-semibold transition-colors active:scale-[0.97]",
+                    onlyPending
+                      ? "bg-red-50 border-red-300 text-red-700 dark:bg-red-950/40 dark:border-red-800 dark:text-red-400"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  )}
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  Só pendentes
+                  <span className="opacity-70 tabular-nums">{pendingCount}</span>
+                </button>
               )}
-            >
-              <AlertTriangle className="w-4 h-4" />
-              Só os marcados como pendente
-              <span className="opacity-70">{pendingCount}</span>
-            </button>
-          )}
+            </div>
+          </div>
 
           {/* A planilha fica sempre na tela: a primeira linha é de digitação —
               cadastra o animal sem abrir formulário. */}
@@ -701,18 +724,26 @@ export function AnimaisPageClient({
                 : "Nada encontrado com esse filtro."
             }
           />
-          <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
-            Digite na primeira linha para cadastrar (Enter salva); na coluna &quot;Cat.&quot;
-            escolha o tipo do animal — bovino, equino, caprino, ovino ou suíno — e ele manda
-            no nome da categoria e nas raças da lista. Em &quot;Pariu&quot;, a data do parto
-            pede M ou F e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
-            toque na coluna para ver os partos da mãe e apagar o que entrou errado. Toque no
-            peso para pesar de novo: embaixo dele fica quanto o animal ganhou desde a última
-            pesagem e em quanto tempo. Célula vermelha = os ml a aplicar (vacina nunca dada ou
-            vencida); toque nela para registrar. Para deixar uma vacina pendente de propósito,
-            abra o animal na aba Vacinas — o que for marcado ganha a tarja laranja e entra no
-            filtro de pendentes.
-          </p>
+          {/* O manual da planilha é comprido e só se lê uma vez: fica dobrado,
+              a um toque de quem precisar. */}
+          <details className="group normal-case">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
+              <ChevronRight className="w-4 h-4 flex-shrink-0 transition-transform group-open:rotate-90" />
+              Como usar a planilha
+            </summary>
+            <p className="mt-2 pl-6 text-sm text-slate-500 dark:text-slate-400">
+              Digite na primeira linha para cadastrar (Enter salva); na coluna &quot;Cat.&quot;
+              escolha o tipo do animal — bovino, equino, caprino, ovino ou suíno — e ele manda
+              no nome da categoria e nas raças da lista. Em &quot;Pariu&quot;, a data do parto
+              pede M ou F e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
+              toque na coluna para ver os partos da mãe e apagar o que entrou errado. Toque no
+              peso para pesar de novo: embaixo dele fica quanto o animal ganhou desde a última
+              pesagem e em quanto tempo. Célula vermelha = os ml a aplicar (vacina nunca dada ou
+              vencida); toque nela para registrar. Para deixar uma vacina pendente de propósito,
+              abra o animal na aba Vacinas — o que for marcado ganha a tarja laranja e entra no
+              filtro de pendentes.
+            </p>
+          </details>
         </div>
       )}
 
@@ -1383,10 +1414,13 @@ function SearchField({
   value,
   onChange,
   placeholder,
+  className,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
+  /** Ajuste fino do campo quando ele mora dentro de um painel. */
+  className?: string;
 }) {
   return (
     <div className="relative">
@@ -1395,7 +1429,7 @@ function SearchField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="pl-9 pr-10 h-11"
+        className={cn("pl-9 pr-10 h-11", className)}
         autoComplete="off"
         enterKeyHint="search"
       />
