@@ -1,11 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, Check, ChevronRight, Users } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatBRL, formatDate, getInitials, localDateISO } from "@/lib/utils";
 import { DiaristaCalendar, monthRange } from "@/components/diaristas/diarista-shared";
-import { DiasDialog, type DiaristaObra } from "@/components/diaristas/dias-dialog";
+import {
+  LancarDiaDialog,
+  type DiaristaObra,
+} from "@/components/diaristas/lancar-dia-dialog";
 import { DiaDetailDialog } from "@/components/diaristas/dia-detail-dialog";
 import type { Diarista, DiaristaDia, SupplyObraSector } from "@/lib/types";
 
@@ -20,18 +23,22 @@ interface Props {
   meId: string;
 }
 
+/** Nenhum dia marcado — a mesma referência sempre, para o calendário não redesenhar à toa. */
+const NENHUM = new Set<string>();
+
 /**
  * A tela do técnico para dizer QUEM veio trabalhar. Mesma ideia da tela do
- * material: ele informa, não cadastra. Toca no diarista, toca nos dias que ele
- * veio (ficam azuis) e escreve o que foi feito — vários dias de uma vez.
+ * material: ele informa, não cadastra. Toca no diarista e toca no dia que ela
+ * veio — o dia fica azul e já abre a tela para escrever o que foi feito ali.
+ * Tocou noutro dia, abre de novo: um dia, uma descrição.
  */
 export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }: Props) {
   const hoje = new Date();
   const [openId, setOpenId] = useState<string | null>(null);
   const [year, setYear] = useState(hoje.getFullYear());
   const [month, setMonth] = useState(hoje.getMonth());
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [lancarOpen, setLancarOpen] = useState(false);
+  /** O dia que ele acabou de tocar — fica azul enquanto a tela está aberta. */
+  const [pendingDate, setPendingDate] = useState<string | null>(null);
   const [detalheDia, setDetalheDia] = useState<DiaristaDia | null>(null);
   /** A obra do último lançamento: quem está numa obra marca vários seguidos. */
   const [ultimaObraId, setUltimaObraId] = useState<string | null>(null);
@@ -63,7 +70,7 @@ export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }
 
   function abrir(id: string) {
     setOpenId(id);
-    setSelected(new Set());
+    setPendingDate(null);
     setSuccess(null);
     // volta sempre para o mês de hoje: o técnico marca o que acabou de acontecer
     setYear(hoje.getFullYear());
@@ -72,17 +79,13 @@ export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }
 
   function voltar() {
     setOpenId(null);
-    setSelected(new Set());
+    setPendingDate(null);
   }
 
-  function toggleDia(iso: string) {
+  /** Tocou num dia livre: fica azul e a tela do dia abre por cima. */
+  function escolherDia(iso: string) {
     setSuccess(null);
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(iso)) next.delete(iso);
-      else next.add(iso);
-      return next;
-    });
+    setPendingDate(iso);
   }
 
   function stepMonth(delta: number) {
@@ -90,9 +93,6 @@ export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }
     setYear(d.getFullYear());
     setMonth(d.getMonth());
   }
-
-  const marcados = [...selected].sort();
-  const totalMarcado = (diarista?.daily_rate ?? 0) * marcados.length;
 
   // ── Lista de diaristas ────────────────────────────────────────────────────
   if (!diarista) {
@@ -156,7 +156,7 @@ export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }
 
   // ── Calendário de um diarista ─────────────────────────────────────────────
   return (
-    <div className="space-y-4 pb-40">
+    <div className="space-y-4 pb-24">
       <button
         type="button"
         onClick={voltar}
@@ -193,64 +193,30 @@ export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }
             onPrevMonth={() => stepMonth(-1)}
             onNextMonth={() => stepMonth(1)}
             launched={launched}
-            selected={selected}
-            onToggle={toggleDia}
+            selected={pendingDate ? new Set([pendingDate]) : NENHUM}
+            onToggle={escolherDia}
             onOpenLaunched={setDetalheDia}
           />
         </CardContent>
       </Card>
 
       <p className="text-[11px] text-center text-slate-400 dark:text-slate-500">
-        Toque nos dias que ele veio — dá para marcar vários de uma vez.
+        Toque no dia que ele veio para dizer o que ele fez. Um dia por vez.
       </p>
 
-      {/* Barra do lançamento: só aparece quando há dia marcado */}
-      {marcados.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-          <div className="max-w-3xl mx-auto flex items-center gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {marcados.length === 1 ? "1 dia marcado" : `${marcados.length} dias marcados`}
-              </p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                {totalMarcado > 0 ? formatBRL(totalMarcado) : "Toque em Lançar para descrever"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSelected(new Set())}
-              className="ml-auto min-h-[48px] px-3 rounded-xl text-sm font-medium text-slate-500 dark:text-slate-400"
-            >
-              Limpar
-            </button>
-            <button
-              type="button"
-              onClick={() => setLancarOpen(true)}
-              className="flex items-center gap-2 min-h-[48px] px-4 rounded-xl bg-produmar-600 text-white text-sm font-semibold shadow-sm active:scale-[0.98] transition-transform"
-            >
-              <CalendarDays className="w-4 h-4" />
-              Lançar
-            </button>
-          </div>
-        </div>
-      )}
-
-      <DiasDialog
-        open={lancarOpen}
-        onClose={() => setLancarOpen(false)}
+      <LancarDiaDialog
+        open={!!pendingDate}
+        onClose={() => setPendingDate(null)}
         diarista={diarista}
-        dates={marcados}
+        date={pendingDate}
         obras={obras}
         sectors={sectors}
         defaultObraId={ultimaObraId}
         onSaved={(obraId) => {
           setUltimaObraId(obraId || null);
           setSuccess(
-            marcados.length === 1
-              ? `1 dia lançado para ${diarista.name}.`
-              : `${marcados.length} dias lançados para ${diarista.name}.`
+            `Dia ${pendingDate ? formatDate(pendingDate) : ""} lançado para ${diarista.name}.`
           );
-          setSelected(new Set());
         }}
       />
 

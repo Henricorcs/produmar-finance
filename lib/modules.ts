@@ -84,17 +84,25 @@ export const APP_MODULES: AppModule[] = [
   {
     slug: "estoque",
     name: "Estoque",
-    description: "Material de consumo, obras e os diaristas que trabalharam nelas",
+    description: "Material de consumo: cano, emenda, cola — entradas e saídas",
     href: "/almoxarifado",
     icon: PackageOpen,
     accentIcon:
       "bg-sky-50 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400",
-    tabs: [
-      { href: "/almoxarifado", label: "Estoque",   short: "Estoque",  icon: PackageOpen },
-      // Os diaristas moram aqui porque o dia trabalhado aponta para a mesma
-      // obra do material: é a outra metade do custo dela.
-      { href: "/diaristas",    label: "Diaristas", short: "Diarist.", icon: Users },
-    ],
+    tabs: [{ href: "/almoxarifado", label: "Estoque", short: "Estoque", icon: PackageOpen }],
+  },
+  {
+    // Módulo próprio, mas atrelado ao Estoque: o dia trabalhado é lançado numa
+    // obra do Estoque (supply_obras), e quem manda no Estoque também manda
+    // aqui. O acesso, porém, pode ser dado sozinho — ver a migration 060.
+    slug: "diaristas",
+    name: "Diaristas",
+    description: "Quem veio trabalhar por dia, lançado nas obras do Estoque",
+    href: "/diaristas",
+    icon: Users,
+    accentIcon:
+      "bg-violet-50 text-violet-600 dark:bg-violet-900/40 dark:text-violet-400",
+    tabs: [{ href: "/diaristas", label: "Diaristas", short: "Diarist.", icon: Users }],
   },
   {
     slug: "obras",

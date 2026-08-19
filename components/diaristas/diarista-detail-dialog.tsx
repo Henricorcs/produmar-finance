@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Archive,
   ArchiveRestore,
-  CalendarDays,
   Check,
   Copy,
   HardHat,
@@ -23,9 +22,12 @@ import { Button } from "@/components/ui/button";
 import { formatBRL, formatDate, getInitials } from "@/lib/utils";
 import { deleteDiarista, setDiaristaActive } from "@/app/(app)/diaristas/actions";
 import { DiaristaCalendar, monthRange } from "./diarista-shared";
-import { DiasDialog, type DiaristaObra } from "./dias-dialog";
+import { LancarDiaDialog, type DiaristaObra } from "./lancar-dia-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
 import type { DiaristaDia, DiaristaResumo, SupplyObraSector } from "@/lib/types";
+
+/** Nenhum dia marcado — mesma referência sempre, para não redesenhar à toa. */
+const NENHUM = new Set<string>();
 
 interface Props {
   open: boolean;
@@ -63,15 +65,15 @@ export function DiaristaDetailDialog({
 
   const [ano, setAno] = useState(year);
   const [mes, setMes] = useState(month);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [lancarOpen, setLancarOpen] = useState(false);
+  /** O dia que ele acabou de tocar — azul enquanto a tela do dia está aberta. */
+  const [pendingDate, setPendingDate] = useState<string | null>(null);
   const [detalheDia, setDetalheDia] = useState<DiaristaDia | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setAno(year);
     setMes(month);
-    setSelected(new Set());
+    setPendingDate(null);
     setError(null);
     setCopiado(false);
     // depende do ID, não do objeto: cada revalidação do servidor devolve um
@@ -112,15 +114,6 @@ export function DiaristaDetailDialog({
     setMes(d.getMonth());
   }
 
-  function toggleDia(iso: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(iso)) next.delete(iso);
-      else next.add(iso);
-      return next;
-    });
-  }
-
   async function copiarPix() {
     if (!diarista?.pix_key) return;
     try {
@@ -156,8 +149,6 @@ export function DiaristaDetailDialog({
       else onClose();
     });
   }
-
-  const marcados = [...selected].sort();
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -222,32 +213,10 @@ export function DiaristaDetailDialog({
               onPrevMonth={() => stepMonth(-1)}
               onNextMonth={() => stepMonth(1)}
               launched={launched}
-              selected={selected}
-              onToggle={toggleDia}
+              selected={pendingDate ? new Set([pendingDate]) : NENHUM}
+              onToggle={setPendingDate}
               onOpenLaunched={setDetalheDia}
             />
-
-            {marcados.length > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelected(new Set())}
-                  className="min-h-[48px] px-3 rounded-xl text-sm font-medium text-slate-500 dark:text-slate-400"
-                >
-                  Limpar
-                </button>
-                <Button
-                  type="button"
-                  onClick={() => setLancarOpen(true)}
-                  className="flex-1 h-12 font-semibold"
-                >
-                  <CalendarDays className="w-4 h-4" />
-                  {marcados.length === 1
-                    ? "Lançar 1 dia"
-                    : `Lançar ${marcados.length} dias`}
-                </Button>
-              </div>
-            )}
 
             {/* O mês fechado: dia a dia e o total */}
             <div className="space-y-1.5">
@@ -353,14 +322,14 @@ export function DiaristaDetailDialog({
           </div>
         )}
 
-        <DiasDialog
-          open={lancarOpen}
-          onClose={() => setLancarOpen(false)}
+        <LancarDiaDialog
+          open={!!pendingDate}
+          onClose={() => setPendingDate(null)}
           diarista={diarista}
-          dates={marcados}
+          date={pendingDate}
           obras={obras}
           sectors={sectors}
-          onSaved={() => setSelected(new Set())}
+          onSaved={() => setPendingDate(null)}
         />
 
         <DiaDetailDialog

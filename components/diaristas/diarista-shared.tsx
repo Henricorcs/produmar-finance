@@ -40,27 +40,19 @@ export function monthRange(year: number, month: number): { from: string; to: str
   };
 }
 
-/** "2026-08-12" → "12/08" (rótulo curto dos chips de dia). */
-export function shortDay(iso: string): string {
-  const [, m, d] = iso.split("-");
-  return `${d}/${m}`;
-}
-
-/** "12, 13 e 14 de agosto" — como a gente fala, para conferir antes de lançar. */
-export function daysPhrase(dates: string[]): string {
-  const sorted = [...dates].sort();
-  if (sorted.length === 0) return "";
-  const nums = sorted.map((d) => String(Number(d.split("-")[2])));
-  const [y, m] = sorted[0].split("-").map(Number);
-  const mes = new Date(y, m - 1, 1).toLocaleDateString("pt-BR", { month: "long" });
-  // dias de meses diferentes: o mês de cada um sai junto, senão o texto mente
-  const multiMes = new Set(sorted.map((d) => d.slice(0, 7))).size > 1;
-  if (multiMes) return sorted.map(shortDay).join(", ");
-  const lista =
-    nums.length === 1
-      ? nums[0]
-      : `${nums.slice(0, -1).join(", ")} e ${nums[nums.length - 1]}`;
-  return `${lista} de ${mes}`;
+/**
+ * "2026-08-12" → "Quarta-feira, 12 de agosto" (o dia clicado, por extenso).
+ * Só a primeira letra sobe: o `capitalize` do Tailwind subiria TODAS as
+ * palavras e sairia "Quarta-Feira, 12 De Agosto".
+ */
+export function longDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const texto = new Date(y, m - 1, d).toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

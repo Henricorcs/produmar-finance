@@ -10,6 +10,7 @@ export const ASSIGNABLE_MODULE_SLUGS = [
   "materiais-servicos",
   "ferramentas",
   "estoque",
+  "diaristas",
   "obras",
   "animais",
 ] as const;
@@ -33,9 +34,11 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   ],
   "materiais-servicos": ["/operacoes", "/estoque", "/cadastros-operacionais"],
   ferramentas: ["/ferramentas"],
-  // Estoque de consumo — rota /almoxarifado (o /estoque é a tela de jazidas).
-  // /diaristas entra aqui: a diária é lançada na obra do Estoque.
-  estoque: ["/almoxarifado", "/diaristas"],
+  // Estoque de consumo — rota /almoxarifado (o /estoque é a tela de jazidas)
+  estoque: ["/almoxarifado"],
+  // Módulo próprio, mas o dado é atrelado ao Estoque (a diária cai numa obra
+  // de supply_obras) — ver lib/modules.ts e a migration 060.
+  diaristas: ["/diaristas"],
   obras: ["/obras"],
   animais: ["/animais"],
 };

@@ -141,24 +141,24 @@ export async function deleteDiarista(id: string) {
 // O CALENDÁRIO (o técnico marca, o chefe corrige)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface DiaristaDiasInput {
+export interface DiaristaDiaCreateInput {
   diarista_id: string;
-  /** Os dias marcados no calendário, em YYYY-MM-DD. */
-  dates: string[];
+  /** O dia clicado no calendário, em YYYY-MM-DD. */
+  date: string;
   description?: string | null;
   obra_id?: string | null;
   sector_id?: string | null;
 }
 
 /**
- * Lança de uma vez todos os dias marcados no calendário — a tela deixa tocar
- * vários dias e descrever o serviço uma vez só, porque quem passou a semana na
- * mesma obra não vai repetir o mesmo texto cinco vezes.
+ * Lança UM dia — o clique no calendário abre a tela daquele dia e o serviço é
+ * descrito ali mesmo. Um dia, uma descrição: é o que o chefe precisa ler no
+ * fim do mês, e é por isso que não existe lançamento em lote com um texto só.
  *
- * O valor da diária NÃO vem da tela: é lido aqui do cadastro e congelado em
- * cada dia. Quem marca o dia (o técnico) não decide quanto ele vale.
+ * O valor da diária NÃO vem da tela: é lido aqui do cadastro e congelado no
+ * dia. Quem marca o dia (o técnico) não decide quanto ele vale.
  */
-export async function createDiaristaDias(input: DiaristaDiasInput) {
+export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
   const supabase = createClient();
   const {
     data: { user },
@@ -167,8 +167,8 @@ export async function createDiaristaDias(input: DiaristaDiasInput) {
 
   if (!input.diarista_id) return { error: "Escolha o diarista" };
 
-  const dates = Array.from(new Set((input.dates ?? []).map(cleanDate).filter(Boolean))) as string[];
-  if (dates.length === 0) return { error: "Marque pelo menos um dia no calendário" };
+  const workDate = cleanDate(input.date);
+  if (!workDate) return { error: "Escolha o dia no calendário" };
 
   const { data: diarista, error: dErr } = await supabase
     .from("diaristas")
@@ -185,22 +185,20 @@ export async function createDiaristaDias(input: DiaristaDiasInput) {
     .eq("id", user.id)
     .maybeSingle();
 
-  const { error } = await supabase.from("diarista_dias").insert(
-    dates.map((work_date) => ({
-      diarista_id: input.diarista_id,
-      work_date,
-      description: clean(input.description),
-      obra_id: input.obra_id || null,
-      sector_id: input.sector_id || null,
-      daily_rate: normMoney(diarista.daily_rate as number),
-      registered_by_name: clean(profile?.full_name),
-      created_by: user.id,
-    }))
-  );
+  const { error } = await supabase.from("diarista_dias").insert({
+    diarista_id: input.diarista_id,
+    work_date: workDate,
+    description: clean(input.description),
+    obra_id: input.obra_id || null,
+    sector_id: input.sector_id || null,
+    daily_rate: normMoney(diarista.daily_rate as number),
+    registered_by_name: clean(profile?.full_name),
+    created_by: user.id,
+  });
 
   if (error) return { error: diaristaError(error) };
   revalidate();
-  return { ok: true, count: dates.length };
+  return { ok: true };
 }
 
 export interface DiaristaDiaInput {

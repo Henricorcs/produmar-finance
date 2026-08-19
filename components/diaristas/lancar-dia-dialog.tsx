@@ -13,8 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { formatBRL, upperKeepingCaret } from "@/lib/utils";
-import { createDiaristaDias } from "@/app/(app)/diaristas/actions";
-import { daysPhrase, shortDay } from "./diarista-shared";
+import { createDiaristaDia } from "@/app/(app)/diaristas/actions";
+import { longDay } from "./diarista-shared";
 import type { Diarista, SupplyObraSector } from "@/lib/types";
 
 /** Obra do Estoque, do jeito enxuto que esta tela precisa. */
@@ -28,26 +28,27 @@ interface Props {
   open: boolean;
   onClose: () => void;
   diarista: Pick<Diarista, "id" | "name" | "daily_rate"> | null;
-  /** Os dias marcados no calendário (YYYY-MM-DD). */
-  dates: string[];
+  /** O dia clicado no calendário (YYYY-MM-DD). */
+  date: string | null;
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
-  /** Obra já escolhida (quem está numa obra lança vários seguidos). */
+  /** Obra do lançamento anterior — quem está numa obra lança vários seguidos. */
   defaultObraId?: string | null;
-  /** Deu certo: quem abriu limpa a seleção do calendário. */
+  /** Deu certo: quem abriu limpa o dia pendente e guarda a obra usada. */
   onSaved: (obraId: string) => void;
 }
 
 /**
- * "O que ele fez nesses dias?" — a tela que aparece depois de marcar os dias no
- * calendário. A descrição e a obra valem para TODOS os dias marcados: quem
- * passou a semana na mesma obra não vai repetir o mesmo texto cinco vezes.
+ * "O que ele fez nesse dia?" — abre no clique do dia, já com a data na frente.
+ * Um dia, uma descrição: o próximo dia clicado abre a sua própria tela, porque
+ * no fim do mês o chefe quer ler o que foi feito em CADA diária, não um texto
+ * repetido na semana inteira.
  */
-export function DiasDialog({
+export function LancarDiaDialog({
   open,
   onClose,
   diarista,
-  dates,
+  date,
   obras,
   sectors,
   defaultObraId,
@@ -66,15 +67,15 @@ export function DiasDialog({
     setObraId(defaultObraId ?? "");
     setSectorId("");
     setError(null);
-  }, [open, defaultObraId]);
+    // o dia entra nas dependências porque a tela é reaproveitada: clicou noutro
+    // dia sem fechar, o formulário começa limpo de novo
+  }, [open, date, defaultObraId]);
 
   /** Os setores da obra escolhida — o setor é subcadastro dela. */
   const obraSectors = useMemo(
     () => sectors.filter((s) => s.obra_id === obraId),
     [sectors, obraId]
   );
-
-  const total = (diarista?.daily_rate ?? 0) * dates.length;
 
   function chooseObra(id: string) {
     setObraId(id);
@@ -84,28 +85,29 @@ export function DiasDialog({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!diarista) return;
-    if (dates.length === 0) return setError("Marque pelo menos um dia no calendário");
+    if (!diarista || !date) return;
     // a descrição é a razão desta tela existir: sem ela, daqui a dois meses o
     // "veio dia 12" não explica nada a ninguém
-    if (!description.trim()) return setError("Escreva o que ele fez nesses dias");
+    if (!description.trim()) return setError("Escreva o que ele fez nesse dia");
 
     startTransition(async () => {
-      const r = await createDiaristaDias({
+      const r = await createDiaristaDia({
         diarista_id: diarista.id,
-        dates,
+        date,
         description,
         obra_id: obraId || null,
         sector_id: obraId && sectorId ? sectorId : null,
       });
       if (r && "error" in r) {
-        setError(r.error ?? "Erro ao lançar os dias");
+        setError(r.error ?? "Erro ao lançar o dia");
         return;
       }
       onSaved(obraId);
       onClose();
     });
   }
+
+  const valor = Number(diarista?.daily_rate ?? 0);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -120,40 +122,28 @@ export function DiasDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Os dias marcados, para conferir antes de lançar */}
-          <div className="rounded-xl border border-produmar-100 dark:border-slate-700 bg-produmar-50/60 dark:bg-slate-800/60 p-3 space-y-2">
+          {/* O dia clicado, por extenso: é a confirmação de que ele não errou o toque */}
+          <div className="rounded-xl border border-produmar-100 dark:border-slate-700 bg-produmar-50/60 dark:bg-slate-800/60 px-3 py-2.5">
             <p className="text-sm font-semibold text-produmar-800 dark:text-slate-100">
-              {dates.length === 1 ? "1 dia marcado" : `${dates.length} dias marcados`}
+              {date ? longDay(date) : ""}
             </p>
-            <div className="flex flex-wrap gap-1">
-              {[...dates].sort().map((d) => (
-                <span
-                  key={d}
-                  className="px-2 py-1 rounded-lg bg-produmar-600 text-white text-[11px] font-semibold tabular-nums"
-                >
-                  {shortDay(d)}
-                </span>
-              ))}
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              {daysPhrase(dates)}
-              {total > 0 && ` · ${formatBRL(total)}`}
-            </p>
+            {valor > 0 && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Diária de {formatBRL(valor)}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="dd_desc">O que ele fez *</Label>
+            <Label htmlFor="ld_desc">O que ele fez *</Label>
             <Textarea
-              id="dd_desc"
+              id="ld_desc"
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: ajudou a abrir a vala e carregou o cano"
               className="uppercase placeholder:normal-case placeholder:lowercase min-h-[92px]"
               rows={3}
             />
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              Vale para todos os dias marcados.
-            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -203,12 +193,12 @@ export function DiasDialog({
           )}
 
           <Button type="submit" disabled={isPending} className="w-full h-14 text-base font-semibold">
-            {isPending
-              ? "Lançando..."
-              : dates.length === 1
-                ? "Lançar 1 diária"
-                : `Lançar ${dates.length} diárias`}
+            {isPending ? "Lançando..." : "Lançar a diária"}
           </Button>
+
+          <p className="text-[11px] text-center text-slate-400 dark:text-slate-500">
+            Depois é só tocar em outro dia para lançar o próximo.
+          </p>
         </form>
       </DialogContent>
     </Dialog>

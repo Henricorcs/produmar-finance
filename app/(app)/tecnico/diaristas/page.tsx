@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { TecnicoDiaristasClient } from "@/components/tecnico/tecnico-diaristas-client";
 import { localDateISO } from "@/lib/utils";
 import type { Diarista, DiaristaDia, SupplyObraSector } from "@/lib/types";
-import type { DiaristaObra } from "@/components/diaristas/dias-dialog";
+import type { DiaristaObra } from "@/components/diaristas/lancar-dia-dialog";
 
 export const dynamic = "force-dynamic";
 

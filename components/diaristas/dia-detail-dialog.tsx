@@ -21,7 +21,7 @@ import {
   upperKeepingCaret,
 } from "@/lib/utils";
 import { deleteDiaristaDia, updateDiaristaDia } from "@/app/(app)/diaristas/actions";
-import type { DiaristaObra } from "./dias-dialog";
+import type { DiaristaObra } from "./lancar-dia-dialog";
 import type { DiaristaDia, SupplyObraSector } from "@/lib/types";
 
 interface Props {

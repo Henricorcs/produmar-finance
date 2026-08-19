@@ -19,7 +19,7 @@ import { DiaristaDialog } from "./diarista-dialog";
 import { DiaristaDetailDialog } from "./diarista-detail-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
 import { RelatorioDialog } from "./relatorio-dialog";
-import type { DiaristaObra } from "./dias-dialog";
+import type { DiaristaObra } from "./lancar-dia-dialog";
 import type {
   Diarista,
   DiaristaDia,

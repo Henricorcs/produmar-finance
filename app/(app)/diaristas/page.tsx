@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { DiaristasPageClient } from "@/components/diaristas/diaristas-page-client";
 import type { DiaristaDia, DiaristaResumo, SupplyObraSector } from "@/lib/types";
-import type { DiaristaObra } from "@/components/diaristas/dias-dialog";
+import type { DiaristaObra } from "@/components/diaristas/lancar-dia-dialog";
 
 export const dynamic = "force-dynamic";
 

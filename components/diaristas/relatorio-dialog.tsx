@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import type { DiaristaObra } from "./dias-dialog";
+import type { DiaristaObra } from "./lancar-dia-dialog";
 import type { Diarista } from "@/lib/types";
 
 interface Props {
