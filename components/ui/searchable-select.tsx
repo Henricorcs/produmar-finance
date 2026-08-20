@@ -17,7 +17,8 @@ interface Props<T> {
   onCreateNew?: () => void;
   createNewLabel?: string;
   clearable?: boolean;
-  /** Foca a busca (abre o teclado) ao abrir. Default: true. */
+  /** Foca a busca (abre o teclado) ao abrir. Default: false: o teclado só
+   *  sobe quando o usuário toca no campo de busca. */
   autoFocusSearch?: boolean;
   /** Só mostra a lista depois que o usuário digita algo. Default: false. */
   suggestOnType?: boolean;
@@ -36,7 +37,7 @@ export function SearchableSelect<T>({
   onCreateNew,
   createNewLabel = "Criar novo",
   clearable = true,
-  autoFocusSearch = true,
+  autoFocusSearch = false,
   suggestOnType = false,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
@@ -59,8 +60,9 @@ export function SearchableSelect<T>({
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
-  // Auto-focus search when opening (abre o teclado). Desligável p/ que o teclado
-  // só apareça quando o usuário tocar no campo de busca.
+  // Por padrão o teclado NÃO sobe ao abrir a lista: ele cobriria os itens que
+  // a pessoa acabou de mandar aparecer. Quem quiser buscar toca na busca.
+  // Lista muito longa pode pedir autoFocusSearch para já abrir digitando.
   useEffect(() => {
     if (open && autoFocusSearch) {
       // small delay for the input to render

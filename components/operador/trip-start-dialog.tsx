@@ -90,7 +90,6 @@ export function TripStartDialog({ order, open, onClose, onStart }: Props) {
               placeholder="ex: PEDREIRA NORTE"
               className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
-              autoFocus
             />
           </div>
 

@@ -154,7 +154,6 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
               placeholder={tracksKm ? "ex: 154300" : "ex: 1230,5"}
               inputMode="decimal"
               autoComplete="off"
-              autoFocus
               className="h-16 text-3xl text-center font-bold tabular-nums"
             />
             {tracksKm && lastKm != null && (

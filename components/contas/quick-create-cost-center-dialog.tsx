@@ -79,7 +79,6 @@ export function QuickCreateCostCenterDialog({ open, onClose, onCreated }: Props)
               placeholder="ex: provedor de internet"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
-              autoFocus
               required
             />
           </div>

@@ -96,7 +96,6 @@ export function PaymentDialog({
                 inputMode="decimal"
                 autoComplete="off"
                 className="pl-9 h-12 text-lg tabular-nums"
-                autoFocus
               />
             </div>
             <button

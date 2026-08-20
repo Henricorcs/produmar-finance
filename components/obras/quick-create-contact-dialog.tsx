@@ -72,7 +72,6 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
               placeholder="nome ou razão social"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
-              autoFocus
             />
           </div>
 

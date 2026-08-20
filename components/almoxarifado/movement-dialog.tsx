@@ -233,7 +233,6 @@ export function MovementDialog({
                 inputMode="decimal"
                 className="tabular-nums text-lg font-semibold"
                 autoComplete="off"
-                autoFocus
               />
               {isSaida && selected && (
                 <p className="text-[11px] text-slate-400 tabular-nums">

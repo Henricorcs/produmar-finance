@@ -92,7 +92,6 @@ export function QuickCreateCategoryDialog({
               placeholder="ex: aluguel"
               className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
-              autoFocus
               required
             />
           </div>

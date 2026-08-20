@@ -18,6 +18,54 @@ const dialogStack: Array<() => void> = [];
 let suppressPopstate = 0;
 let dialogIdCounter = 0;
 
+// ── A faixa da tela que o teclado deixa livre ────────────────────────────────
+// No celular o teclado NÃO empurra a página: ele cobre a parte de baixo da
+// tela. Uma caixa `fixed` continua centrada na tela inteira e metade dela fica
+// escondida atrás do teclado — era o que atrapalhava escrever o que o diarista
+// fez, cadastrar setor etc.
+//
+// Enquanto houver diálogo aberto, guardamos em <html> onde a parte visível
+// começa (--dialog-band-top) e que altura ela tem (--dialog-band-h). Quem usa
+// as duas é a classe .dialog-visible-band (globals.css), que centra a caixa
+// nessa faixa e encolhe a altura máxima junto. O contador existe porque pode
+// haver diálogo empilhado: só o último a fechar limpa as variáveis.
+let bandWatchers = 0;
+
+function useVisibleBand(open: boolean | undefined) {
+  React.useEffect(() => {
+    if (!open) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+
+    const update = () => {
+      // Com zoom de pinça a "faixa visível" é o pedaço ampliado da tela —
+      // encolher o diálogo por causa disso só atrapalharia. Volta pra tela toda.
+      if (vv.scale > 1.05) {
+        root.style.removeProperty("--dialog-band-top");
+        root.style.removeProperty("--dialog-band-h");
+        return;
+      }
+      root.style.setProperty("--dialog-band-top", `${vv.offsetTop}px`);
+      root.style.setProperty("--dialog-band-h", `${vv.height}px`);
+    };
+
+    bandWatchers++;
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      if (--bandWatchers === 0) {
+        root.style.removeProperty("--dialog-band-top");
+        root.style.removeProperty("--dialog-band-h");
+      }
+    };
+  }, [open]);
+}
+
 /**
  * Wrapper sobre Radix Dialog.Root que integra com o histórico do navegador:
  * - Ao abrir, empurra uma entrada de história (sem mudar a URL)
@@ -33,6 +81,8 @@ const Dialog = ({
   children,
   ...rest
 }: React.ComponentProps<typeof DialogPrimitive.Root>) => {
+  useVisibleBand(open);
+
   // Mantém a referência ao callback estável entre renders para evitar
   // disparar o efeito a cada render do pai
   const onOpenChangeRef = React.useRef(onOpenChange);
@@ -147,13 +197,23 @@ const DialogContent = React.forwardRef<
       // Não fecha ao clicar fora da caixa (evita perda acidental do
       // preenchimento). Fecha apenas pelo X, botão Cancelar ou Esc.
       onInteractOutside={(e) => e.preventDefault()}
+      // O teclado não sobe sozinho ao abrir: em vez de focar o primeiro campo
+      // (padrão do Radix), o foco vai para a própria caixa — dá para LER o que
+      // está escrito antes de digitar. Quem vai escrever toca no campo.
+      onOpenAutoFocus={(e) => {
+        e.preventDefault();
+        (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
+      }}
       className={cn(
-        // ── Mobile (base): "folha" que sobe de baixo, largura total ──
-        "fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-lg max-h-[92vh] overflow-y-auto",
-        "bg-white dark:bg-slate-900 rounded-t-2xl rounded-b-none shadow-xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
+        // ── Mobile (base): caixa centrada na faixa livre acima do teclado ──
+        // (o `top` e a altura máxima vêm de .dialog-visible-band)
+        "fixed inset-x-0 z-50 mx-auto w-[calc(100%-1.5rem)] max-w-lg -translate-y-1/2",
+        "dialog-visible-band overflow-y-auto overscroll-contain",
+        "bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-5",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-        "data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom",
+        "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        "data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%]",
         "duration-200",
         // ── Desktop (sm+): caixa centralizada (inalterado) ──
         "sm:left-[50%] sm:top-[50%] sm:bottom-auto sm:mx-0 sm:w-[calc(100%-2rem)] sm:translate-x-[-50%] sm:translate-y-[-50%]",

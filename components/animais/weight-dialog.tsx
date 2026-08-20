@@ -171,7 +171,6 @@ export function WeightDialog({ open, onClose, animals, weights = [], presetAnima
               className="h-11 text-base tabular-nums sm:h-10 sm:text-sm"
               inputMode="decimal"
               autoComplete="off"
-              autoFocus
             />
             {last ? (
               <p className="text-[11px] text-slate-400 dark:text-slate-500">

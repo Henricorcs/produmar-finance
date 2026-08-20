@@ -673,7 +673,6 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
                     onChange={(e) => setCompletionNotes(upperKeepingCaret(e))}
                     rows={3}
                     className="text-lg uppercase"
-                    autoFocus
                   />
                 </div>
 

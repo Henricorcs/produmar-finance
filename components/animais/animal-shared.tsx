@@ -10,12 +10,12 @@ import type {
 // ── Layout (celular) ─────────────────────────────────────────────────────────
 
 /**
- * Rodapé do diálogo colado no fim da tela no celular: em formulário longo
+ * Rodapé colado no fim da CAIXA do diálogo no celular: em formulário longo
  * (protocolo com 5 vacinas, cadastro do animal) o botão de salvar fica sempre
  * à mão, sem precisar rolar até o fim. No desktop segue no fluxo normal.
  */
 export const STICKY_FOOTER =
-  "sticky bottom-0 z-10 flex-row -mx-5 px-5 pt-3 pb-[calc(0.25rem+env(safe-area-inset-bottom))] " +
+  "sticky bottom-0 z-10 flex-row -mx-5 px-5 pt-3 pb-1 " +
   "bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 " +
   "sm:static sm:mx-0 sm:px-0 sm:pt-0 sm:pb-0 sm:border-0";
 

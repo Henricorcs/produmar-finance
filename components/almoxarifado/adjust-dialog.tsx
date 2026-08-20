@@ -101,7 +101,6 @@ export function AdjustDialog({ open, onClose, item }: Props) {
               inputMode="decimal"
               className="tabular-nums text-lg font-semibold"
               autoComplete="off"
-              autoFocus
             />
             {diff !== 0 && (
               <p

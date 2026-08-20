@@ -107,6 +107,22 @@
   background: linear-gradient(135deg, #0A4DB8 0%, #083DA0 40%, #062C7A 100%);
 }
 
+/* Diálogo no celular: centrado na faixa que sobra ACIMA DO TECLADO.
+   O teclado do celular não empurra a página — ele cobre a parte de baixo da
+   tela. Uma caixa `fixed` continua centrada na tela inteira e metade dela some
+   atrás do teclado. As duas variáveis abaixo são atualizadas pelo dialog.tsx
+   (visualViewport) enquanto houver diálogo aberto; sem elas, vale a tela toda.
+
+   O !important é para vencer os `max-h-[85vh]` que várias telas passam no
+   className do DialogContent: no celular quem manda é a faixa visível. A regra
+   só existe abaixo de 640px — o desktop fica exatamente como estava. */
+@media (max-width: 639.98px) {
+  .dialog-visible-band {
+    top: calc(var(--dialog-band-top, 0px) + var(--dialog-band-h, 100dvh) / 2) !important;
+    max-height: calc(var(--dialog-band-h, 100dvh) - 1.5rem) !important;
+  }
+}
+
 @layer utilities {
   .animate-fade-in {
     animation: fade-in 0.4s ease-out;

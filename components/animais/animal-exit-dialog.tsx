@@ -156,7 +156,6 @@ export function AnimalExitDialog({ open, onClose, animal }: Props) {
                   className="h-11 text-base tabular-nums sm:h-10 sm:text-sm"
                   inputMode="decimal"
                   autoComplete="off"
-                  autoFocus
                 />
                 <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
                   Entra no financeiro na hora, como entrada já recebida na categoria

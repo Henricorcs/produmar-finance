@@ -168,7 +168,6 @@ export function PauseDialog({ order, open, onClose, onPaused }: Props) {
                 placeholder={tracksKm ? "ex: 154300" : "ex: 1230,5"}
                 inputMode="decimal"
                 autoComplete="off"
-                autoFocus
                 className="h-16 text-3xl text-center font-bold tabular-nums"
               />
             </div>

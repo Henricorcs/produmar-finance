@@ -163,7 +163,6 @@ export function TripFinishDialog({ order, openTrip, open, onClose, onFinish }: P
               placeholder="ex: OBRA CENTRO"
               className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
               autoComplete="off"
-              autoFocus
             />
           </div>
 
