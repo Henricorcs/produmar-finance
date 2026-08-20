@@ -798,6 +798,12 @@ export interface AnimalTreatment {
 export interface AnimalVaccine {
   id: string;
   name: string;
+  /**
+   * De que tipo de animal é a vacina (migration 062). Aftosa é de bovino,
+   * influenza equina é de cavalo. Vem `undefined` enquanto a migration não
+   * roda — use `vaccinesForSpecies` em vez de ler direto.
+   */
+  species?: AnimalSpecies | null;
   recurrence_months: number | null;
   /** Dose fixa em ml. */
   default_dose_ml: number | null;

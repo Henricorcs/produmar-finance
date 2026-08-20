@@ -3,12 +3,15 @@
 import { useEffect } from "react";
 import { formatDate } from "@/lib/utils";
 import {
+  SPECIES_META,
   categoryLabel,
   formatMl,
   formatWeight,
   pariuLabel,
+  speciesOf,
   suggestedDoseMl,
   vaccineStatusFor,
+  vaccinesHaveSpecies,
 } from "./animal-shared";
 import type {
   AnimalBirth,
@@ -35,7 +38,7 @@ interface Props {
  */
 export function RebanhoVacinasPrint({
   animals,
-  vaccines,
+  vaccines: allVaccines,
   vaccinations,
   births = [],
   filterLabel,
@@ -66,11 +69,28 @@ export function RebanhoVacinasPrint({
 
   const pendingCount = animals.filter((a) => a.vaccines_due > 0).length;
 
+  /**
+   * A vacina é de um tipo de animal só. A folha traz as colunas dos tipos que
+   * estão nela — quando a guia sai com o rebanho misturado, a célula de quem
+   * não é daquele bicho fica em branco em vez de mandar aplicar. Sem a
+   * migration 062 o cadastro é um só e tudo vale para todos, como antes.
+   */
+  const bySpecies = vaccinesHaveSpecies(allVaccines);
+  const present = new Set(animals.map((a) => speciesOf(a.species)));
+  const vaccines = bySpecies
+    ? allVaccines.filter((v) => present.has(speciesOf(v.species)))
+    : allVaccines;
+  const mixedColumns =
+    bySpecies && new Set(vaccines.map((v) => speciesOf(v.species))).size > 1;
+  const applies = (v: AnimalVaccine, a: AnimalWithInfo) =>
+    !bySpecies || speciesOf(v.species) === speciesOf(a.species);
+
   /** Quanto levar: soma dos ml pendentes de cada vacina (dos animais da folha). */
   const totals = vaccines.map((v) => {
     let count = 0;
     let ml = 0;
     for (const a of animals) {
+      if (!applies(v, a)) continue;
       const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
       const { status } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
       if (status === "em_dia") continue;
@@ -166,10 +186,16 @@ export function RebanhoVacinasPrint({
                       className="py-1.5 px-1.5 font-semibold border border-slate-200 capitalize text-center"
                     >
                       {v.name}
-                      {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
-                      {v.default_brand && (
+                      {/* de que bicho é a coluna (só na guia misturada) e o
+                          remédio usado nela (cadastrado como "remédio/marca") */}
+                      {(mixedColumns || v.default_brand) && (
                         <span className="block text-[10px] font-normal text-slate-500">
-                          {v.default_brand}
+                          {[
+                            mixedColumns ? SPECIES_META[speciesOf(v.species)].label : null,
+                            v.default_brand,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </span>
                       )}
                     </th>
@@ -195,6 +221,16 @@ export function RebanhoVacinasPrint({
                         {pariuLabel(a.sex, birthsByMother.get(a.id) ?? [])}
                       </td>
                       {vaccines.map((v) => {
+                        // vacina de outro bicho: em branco, não se aplica nele
+                        if (!applies(v, a))
+                          return (
+                            <td
+                              key={v.id}
+                              className="py-1.5 px-1.5 border border-slate-200 text-center bg-slate-50 text-slate-300"
+                            >
+                              ·
+                            </td>
+                          );
                         const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
                         const { status } = vaccineStatusFor(
                           last?.applied_at ?? null,

@@ -24,8 +24,31 @@ function normWeight(v?: number | null): number {
   return Math.max(0, v ?? 0);
 }
 
-function dupTagError(error: { code?: string; message: string }): string {
-  if (error.code === "23505") return "Já existe um animal com esse número";
+/** Nome do tipo em português para as mensagens de erro ("um SUÍNO com esse número"). */
+const SPECIES_LABEL: Record<AnimalSpecies, string> = {
+  bovino: "bovino",
+  equino: "equino",
+  caprino: "caprino",
+  ovino: "ovino",
+  suino: "suíno",
+};
+
+/**
+ * Número repetido. A trava é por TIPO (migration 061): o bovino 003 e o suíno
+ * 003 convivem. Enquanto a 061 não roda, a trava antiga (`uq_animals_tag`,
+ * número único no rebanho inteiro) ainda barra — e o recado diz o que fazer,
+ * senão o erro parece que o animal já existe quando ele nem é do mesmo bicho.
+ */
+function dupTagError(
+  error: { code?: string; message: string },
+  species?: AnimalSpecies | null
+): string {
+  if (error.code === "23505") {
+    if (error.message.includes("uq_animals_tag"))
+      return "Rode a migration 061 no Supabase para numerar cada tipo de animal separado";
+    const what = species ? SPECIES_LABEL[normSpecies(species)] : "animal";
+    return `Já existe um ${what} com esse número`;
+  }
   return speciesColumnError(error);
 }
 
@@ -89,7 +112,8 @@ export async function createAnimal(input: AnimalInput) {
     .select("id")
     .single();
 
-  if (error || !data) return { error: error ? dupTagError(error) : "Erro ao cadastrar" };
+  if (error || !data)
+    return { error: error ? dupTagError(error, input.species) : "Erro ao cadastrar" };
 
   // o peso do cadastro é a primeira pesagem (hoje) — dela sai o ganho daqui pra frente
   const weight = normWeight(input.weight);
@@ -139,7 +163,7 @@ export async function updateAnimal(id: string, input: AnimalInput) {
     })
     .eq("id", id);
 
-  if (error) return { error: dupTagError(error) };
+  if (error) return { error: dupTagError(error, input.species) };
 
   if (weight > 0 && Number(before?.weight ?? 0) !== weight) {
     await saveWeight(supabase, {
@@ -378,6 +402,8 @@ function normRecurrence(v?: number | null): number | null {
 
 export interface VaccineInput {
   name: string;
+  /** De que tipo de animal é a vacina (bovino, equino, caprino, ovino, suíno). */
+  species?: AnimalSpecies | null;
   recurrence_months?: number | null;
   /** Dose fixa em ml. */
   default_dose_ml?: number | null;
@@ -399,6 +425,7 @@ function vaccineFields(input: VaccineInput) {
   const perWeight = normDose(input.dose_ml_per_weight);
   const weightKg = normDose(input.dose_weight_kg);
   return {
+    species: normSpecies(input.species),
     recurrence_months: normRecurrence(input.recurrence_months),
     default_dose_ml: normDose(input.default_dose_ml),
     // a dose por peso só vale com os dois lados preenchidos ("X ml a cada Y kg")
@@ -409,15 +436,52 @@ function vaccineFields(input: VaccineInput) {
   };
 }
 
+/**
+ * Erro do cadastro de vacina. O nome agora só é único DENTRO do tipo
+ * (migration 062): "raiva" existe em equino, em caprino e em ovino. Sem a 062
+ * a coluna `species` nem chega no banco — aí o recado manda rodar a migration
+ * em vez de mostrar o erro cru do Postgres.
+ */
+function vaccineError(
+  error: { code?: string; message: string },
+  species?: AnimalSpecies | null
+): string {
+  // o 23505 vem primeiro: a mensagem dele cita o índice uq_animal_vaccines_
+  // species_name, que tem "species" no nome e cairia no teste de baixo
+  if (error.code === "23505")
+    return `Essa vacina já existe em ${SPECIES_LABEL[normSpecies(species)]}`;
+  if (error.code === "PGRST204" || error.message.includes("species"))
+    return "Rode a migration 062 no Supabase para cadastrar vacina por tipo de animal";
+  return dupNameError(error, "Essa vacina");
+}
+
+/**
+ * A coluna `species` de animal_vaccines só existe depois da migration 062.
+ * Antes dela o PostgREST devolve PGRST204 ("could not find the column").
+ * O 23505 é testado antes por quem chama: a mensagem dele cita o índice
+ * uq_animal_vaccines_species_name e cairia neste teste por engano.
+ */
+function missingVaccineSpecies(error: { code?: string; message: string }): boolean {
+  return error.code !== "23505" && (error.code === "PGRST204" || error.message.includes("species"));
+}
+
 export async function createVaccine(input: VaccineInput) {
   const supabase = createClient();
   const name = normName(input.name);
   if (!name) return { error: "Informe o nome da vacina" };
 
-  const { error } = await supabase
+  const { species, ...fields } = vaccineFields(input);
+  let { error } = await supabase
     .from("animal_vaccines")
-    .insert({ name, ...vaccineFields(input) });
-  if (error) return { error: dupNameError(error, "Essa vacina") };
+    .insert({ name, species, ...fields });
+
+  // sem a migration 062 o cadastro é um só para a fazenda toda: grava sem o
+  // tipo em vez de travar o cadastro inteiro (a tela avisa o que falta rodar)
+  if (error && missingVaccineSpecies(error)) {
+    ({ error } = await supabase.from("animal_vaccines").insert({ name, ...fields }));
+  }
+
+  if (error) return { error: vaccineError(error, input.species) };
   revalidate();
   return { ok: true };
 }
@@ -427,11 +491,20 @@ export async function updateVaccine(id: string, input: VaccineInput) {
   const name = normName(input.name);
   if (!name) return { error: "Informe o nome da vacina" };
 
-  const { error } = await supabase
+  const { species, ...fields } = vaccineFields(input);
+  let { error } = await supabase
     .from("animal_vaccines")
-    .update({ name, ...vaccineFields(input) })
+    .update({ name, species, ...fields })
     .eq("id", id);
-  if (error) return { error: dupNameError(error, "Essa vacina") };
+
+  if (error && missingVaccineSpecies(error)) {
+    ({ error } = await supabase
+      .from("animal_vaccines")
+      .update({ name, ...fields })
+      .eq("id", id));
+  }
+
+  if (error) return { error: vaccineError(error, input.species) };
   revalidate();
   return { ok: true };
 }
@@ -764,7 +837,11 @@ export async function createBirth(input: BirthInput) {
     .select("id")
     .single();
   if (calfErr || !calf)
-    return { error: calfErr ? dupTagError(calfErr) : "Erro ao cadastrar o bezerro" };
+    return {
+      error: calfErr
+        ? dupTagError(calfErr, mother?.species as AnimalSpecies | null)
+        : "Erro ao cadastrar o bezerro",
+    };
   const calfAnimalId = calf.id as string;
 
   const { error } = await supabase.from("animal_births").insert({

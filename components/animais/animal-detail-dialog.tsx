@@ -49,6 +49,7 @@ import {
   previousWeighing,
   speciesOf,
   vaccineStatusFor,
+  vaccinesForSpecies,
   weightGain,
 } from "./animal-shared";
 import type {
@@ -228,7 +229,10 @@ export function AnimalDetailDialog({
   }
 
   // ── Situação de cada vacina cadastrada ────────────────────────────────────
-  const vaccineRows = vaccines.map((v) => {
+  /** Só as vacinas do bicho: a ficha do porco não cobra febre aftosa dele. */
+  const speciesVaccines = vaccinesForSpecies(vaccines, animal.species);
+
+  const vaccineRows = speciesVaccines.map((v) => {
     const applications = vaccinations
       .filter((x) => x.vaccine_id === v.id)
       .sort((a, b) => (a.applied_at < b.applied_at ? 1 : -1));
@@ -616,8 +620,8 @@ export function AnimalDetailDialog({
                 <InfoRow
                   label="Vacinação"
                   value={
-                    vaccines.length === 0
-                      ? "Sem vacinas cadastradas"
+                    speciesVaccines.length === 0
+                      ? `Sem vacinas de ${names.label.toLowerCase()} cadastradas`
                       : markedCount > 0
                       ? `${markedCount} marcada(s) como pendente`
                       : "Sem pendência marcada"
@@ -721,8 +725,9 @@ export function AnimalDetailDialog({
             <div className="space-y-2">
               {vaccineRows.length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500 py-2">
-                  Nenhuma vacina cadastrada ainda. Cadastre as vacinas do rebanho para
-                  acompanhar a situação de cada animal.
+                  Nenhuma vacina de {names.label.toLowerCase()} cadastrada ainda. Cadastre
+                  as vacinas dessa criação (aba Vacinação) para acompanhar a situação de
+                  cada animal.
                 </p>
               ) : (
                 <>

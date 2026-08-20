@@ -29,8 +29,11 @@ import {
   formatWeight,
   parseDecimal,
   previousWeighing,
+  SPECIES_META,
+  speciesOf,
   suggestedDoseMl,
   vaccineStatusFor,
+  vaccinesForSpecies,
   weightGain,
 } from "./animal-shared";
 import type {
@@ -112,12 +115,24 @@ export function VaccineProtocolDialog({
     [animalId, vaccinations]
   );
 
+  /** O animal escolhido — dele saem o peso e as vacinas do tipo dele. */
+  const animal = animalId ? animals.find((a) => a.id === animalId) ?? null : null;
+
+  /**
+   * Só as vacinas do bicho: quem está vacinando um porco não pode ver febre
+   * aftosa na lista, muito menos marcá-la por engano na ficha dele.
+   */
+  const speciesVaccines = useMemo(
+    () => vaccinesForSpecies(vaccines, animal?.species),
+    [vaccines, animal?.species]
+  );
+
   const statusByVaccine = useMemo(() => {
     const m = new Map<
       string,
       { last: AnimalVaccination | null; status: ReturnType<typeof vaccineStatusFor>["status"]; nextDate: string | null }
     >();
-    for (const v of vaccines) {
+    for (const v of speciesVaccines) {
       const apps = animalVaccinations
         .filter((x) => x.vaccine_id === v.id)
         .sort((a, b) => (a.applied_at < b.applied_at ? 1 : -1));
@@ -129,12 +144,12 @@ export function VaccineProtocolDialog({
       m.set(v.id, { last, status, nextDate });
     }
     return m;
-  }, [vaccines, animalVaccinations]);
+  }, [speciesVaccines, animalVaccinations]);
 
   /** Vacinas vencidas ou nunca aplicadas — o que o animal veio tomar. */
   const dueVaccines = useMemo(
-    () => vaccines.filter((v) => statusByVaccine.get(v.id)?.status !== "em_dia"),
-    [vaccines, statusByVaccine]
+    () => speciesVaccines.filter((v) => statusByVaccine.get(v.id)?.status !== "em_dia"),
+    [speciesVaccines, statusByVaccine]
   );
 
   /** Último protocolo do animal (para repetir exatamente o que foi dado). */
@@ -152,7 +167,6 @@ export function VaccineProtocolDialog({
   }, [animalVaccinations]);
 
   // ── Peso: o que está digitado manda na dose e no ganho ─────────────────────
-  const animal = animalId ? animals.find((a) => a.id === animalId) ?? null : null;
   const typedWeight = parseDecimal(weight);
   const weightKg = typedWeight > 0 ? typedWeight : Number(animal?.weight ?? 0);
 
@@ -195,7 +209,7 @@ export function VaccineProtocolDialog({
       presetIds.length > 0
         ? presetIds
         : aid
-          ? vaccines
+          ? vaccinesForSpecies(vaccines, a?.species)
               .filter((v) => {
                 const apps = vaccinations
                   .filter((x) => x.animal_id === aid && x.vaccine_id === v.id)
@@ -224,7 +238,7 @@ export function VaccineProtocolDialog({
     const a = animals.find((x) => x.id === id) ?? null;
     const kg = Number(a?.weight ?? 0);
     setWeight(kg > 0 ? String(kg).replace(".", ",") : "");
-    const ids = vaccines
+    const ids = vaccinesForSpecies(vaccines, a?.species)
       .filter((v) => {
         const apps = vaccinations
           .filter((x) => x.animal_id === id && x.vaccine_id === v.id)
@@ -267,9 +281,9 @@ export function VaccineProtocolDialog({
   /** Marca todas as vacinas de uma vez (ou limpa, se já estão todas marcadas). */
   function toggleAll() {
     setItems((prev) => {
-      if (Object.keys(prev).length === vaccines.length) return {};
+      if (Object.keys(prev).length === speciesVaccines.length) return {};
       const next: ItemMap = {};
-      for (const v of vaccines) next[v.id] = prev[v.id] ?? newItem(v, weightKg);
+      for (const v of speciesVaccines) next[v.id] = prev[v.id] ?? newItem(v, weightKg);
       return next;
     });
   }
@@ -437,9 +451,9 @@ export function VaccineProtocolDialog({
                 )}
               </Label>
               <div className="flex items-center gap-3">
-                {vaccines.length > 1 && (
+                {speciesVaccines.length > 1 && (
                   <button type="button" onClick={toggleAll} className={INLINE_LINK}>
-                    {selectedCount === vaccines.length ? "Limpar" : "Marcar todas"}
+                    {selectedCount === speciesVaccines.length ? "Limpar" : "Marcar todas"}
                   </button>
                 )}
                 <button
@@ -480,13 +494,18 @@ export function VaccineProtocolDialog({
               </div>
             )}
 
-            {vaccines.length === 0 ? (
+            {speciesVaccines.length === 0 ? (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 py-2">
-                Nenhuma vacina cadastrada. Use &quot;Gerenciar&quot; para cadastrar.
+                {animal
+                  ? `Nenhuma vacina de ${SPECIES_META[
+                      speciesOf(animal.species)
+                    ].label.toLowerCase()} cadastrada.`
+                  : "Nenhuma vacina cadastrada."}{" "}
+                Use &quot;Gerenciar&quot; para cadastrar.
               </p>
             ) : (
               <div className="space-y-2">
-                {vaccines.map((v) => {
+                {speciesVaccines.map((v) => {
                   const item = items[v.id];
                   const checked = !!item;
                   const hint = doseRuleLabel(v, weightKg);
@@ -639,6 +658,7 @@ export function VaccineProtocolDialog({
           open={vaccinesOpen}
           onClose={() => setVaccinesOpen(false)}
           vaccines={vaccines}
+          species={animal ? speciesOf(animal.species) : undefined}
         />
       </DialogContent>
     </Dialog>

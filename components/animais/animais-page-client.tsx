@@ -42,14 +42,18 @@ import {
   SPECIES_OPTIONS,
   categoryLabel,
   categoryPlural,
+  doseLabel,
   formatGain,
   formatMl,
   formatPeriod,
   formatWeight,
   pariuLabel,
+  recurrenceLabel,
   speciesOf,
   suggestedDoseMl,
   vaccineStatusFor,
+  vaccinesForSpecies,
+  vaccinesHaveSpecies,
   weightGain,
 } from "./animal-shared";
 import type {
@@ -92,6 +96,21 @@ type Tab = "rebanho" | "vacinacao" | "nascimentos" | "saidas";
 type CategoryFilter = "todos" | AnimalCategory;
 /** Filtro pelo tipo do animal — só aparece quando o rebanho tem mais de um. */
 type SpeciesFilter = "todos" | AnimalSpecies;
+
+/** Uma vacina no plano: quantos daquela criação estão em dia e quantos faltam. */
+interface VaccinePlanRowData {
+  vaccine: AnimalVaccine;
+  /** Tamanho do rebanho daquela criação. */
+  total: number;
+  ok: number;
+  due: number;
+}
+
+/** As vacinas de uma criação (species null = cadastro ainda sem tipo). */
+interface VaccinePlanGroup {
+  species: AnimalSpecies | null;
+  rows: VaccinePlanRowData[];
+}
 
 /** Ordem da planilha. */
 type SortKey = "tag" | "recente" | "alterado";
@@ -232,6 +251,21 @@ export function AnimaisPageClient({
     [pendings]
   );
 
+  /**
+   * Última aplicação de cada par `animalId|vaccineId`. É daqui que sai a
+   * situação de todo mundo — a planilha e o painel de vacinas usam o mesmo
+   * índice, para não contarem coisas diferentes.
+   */
+  const lastByKey = useMemo(() => {
+    const m = new Map<string, VaccinationRow>();
+    for (const v of vaccinations) {
+      const key = `${v.animal_id}|${v.vaccine_id}`;
+      const cur = m.get(key);
+      if (!cur || cur.applied_at < v.applied_at) m.set(key, v);
+    }
+    return m;
+  }, [vaccinations]);
+
   // O detalhe deriva do id — assim a tela reflete os dados recarregados do servidor
   const detailAnimal = useMemo(
     () => (detailAnimalId ? animals.find((a) => a.id === detailAnimalId) ?? null : null),
@@ -277,6 +311,61 @@ export function AnimaisPageClient({
     () => (species === "todos" ? animals : animals.filter((a) => speciesOf(a.species) === species)),
     [animals, species]
   );
+
+  /**
+   * As vacinas que viram COLUNA da planilha. Com um tipo escolhido, só as
+   * dele — o porco não precisa de coluna de febre aftosa. Com o rebanho
+   * misturado ("todos os tipos"), as de todos os tipos que existem no
+   * rebanho: a célula de quem não é daquele bicho fica apagada.
+   */
+  const tableVaccines = useMemo(() => {
+    if (species !== "todos") return vaccinesForSpecies(vaccines, species);
+    if (!vaccinesHaveSpecies(vaccines)) return vaccines;
+    const present = new Set(speciesPresent);
+    return vaccines.filter((v) => present.has(speciesOf(v.species)));
+  }, [vaccines, species, speciesPresent]);
+
+  /**
+   * O PLANO DE VACINAÇÃO: para cada vacina cadastrada, quantos animais
+   * daquela criação já estão em dia e quantos ainda faltam. É o que a aba
+   * Vacinação mostra — antes ela só listava o passado, sem dizer o que o
+   * rebanho ainda deve.
+   */
+  const vaccinePlan = useMemo<VaccinePlanGroup[]>(() => {
+    const rowsFor = (vs: AnimalVaccine[], herd: AnimalWithInfo[]) =>
+      vs.map((v) => {
+        let ok = 0;
+        for (const a of herd) {
+          const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
+          if (vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months).status === "em_dia")
+            ok++;
+        }
+        return { vaccine: v, total: herd.length, ok, due: herd.length - ok };
+      });
+
+    // sem a migration 062 o cadastro é um só: um grupo com o rebanho inteiro
+    if (!vaccinesHaveSpecies(vaccines))
+      return vaccines.length ? [{ species: null, rows: rowsFor(vaccines, animals) }] : [];
+
+    // "todos os tipos" mostra o plano das criações QUE EXISTEM no rebanho —
+    // senão a tela viraria um catálogo de vacina de bicho que ninguém tem.
+    // Para ver (ou cadastrar) as de um tipo novo, é só tocar no tipo em cima.
+    const list: AnimalSpecies[] =
+      species !== "todos"
+        ? [species]
+        : speciesPresent.length > 0
+          ? speciesPresent
+          : SPECIES_OPTIONS.map((o) => o.value);
+    return list
+      .map((sp) => ({
+        species: sp,
+        rows: rowsFor(
+          vaccines.filter((v) => speciesOf(v.species) === sp),
+          animals.filter((a) => speciesOf(a.species) === sp)
+        ),
+      }))
+      .filter((g) => g.rows.length > 0);
+  }, [vaccines, animals, species, speciesPresent, lastByKey]);
 
   /**
    * De quem são os nomes das categorias. Com um tipo escolhido (ou um rebanho
@@ -766,8 +855,8 @@ export function AnimaisPageClient({
             animals={filtered}
             breeds={breeds}
             quickAddSpecies={species === "todos" ? null : species}
-            vaccines={vaccines}
-            vaccinations={vaccinations}
+            vaccines={tableVaccines}
+            lastByKey={lastByKey}
             birthsByMother={birthsByMother}
             treatmentsByAnimal={treatmentsByAnimal}
             weightsByAnimal={weightsByAnimal}
@@ -813,23 +902,92 @@ export function AnimaisPageClient({
         </div>
       )}
 
-      {/* ── Aba: Vacinação — registro do que foi aplicado ────────────────── */}
+      {/* ── Aba: Vacinação — o plano de cada criação e o que já foi aplicado ── */}
       {tab === "vacinacao" && (
-        <>
-          <div className="flex gap-2">
-            <Button className="flex-[2] h-11" onClick={() => openProtocol(null)}>
-              <Syringe className="w-4 h-4" />
-              Aplicar vacina
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1 h-11"
+        <div className="space-y-3">
+          {/* Plano de vacinação: o que cada criação toma e quantos estão
+              faltando. Antes esta aba só tinha o registro do passado — não
+              dava para saber o que o rebanho ainda deve. */}
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
+            {/* Mesmo seletor de tipo da planilha — a escolha vale nas duas abas */}
+            <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 dark:bg-slate-800/60">
+              {speciesFilters.map((f) => {
+                const active = species === f.value;
+                const empty = f.count === 0 && !active;
+                return (
+                  <button
+                    key={f.value}
+                    onClick={() => setSpecies(f.value)}
+                    className={cn(
+                      "h-9 px-3 rounded-lg text-xs font-semibold tracking-wide transition-colors active:scale-[0.97]",
+                      active
+                        ? "bg-produmar-600 text-white shadow-sm"
+                        : empty
+                          ? "text-slate-400 dark:text-slate-600"
+                          : "text-slate-600 dark:text-slate-300"
+                    )}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {vaccinePlan.length === 0 ? (
+              <div className="flex flex-col items-center text-center gap-1 px-4 py-8">
+                <Syringe className="w-8 h-8 text-slate-300 dark:text-slate-600 mb-1" />
+                <p className="text-base text-slate-600 dark:text-slate-300">
+                  {species === "todos"
+                    ? "Nenhuma vacina cadastrada."
+                    : `Nenhuma vacina de ${SPECIES_META[species].label.toLowerCase()} cadastrada.`}
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Cadastre as vacinas de cada criação — cada uma vira uma coluna da
+                  planilha do rebanho, com os ml que o animal tem que tomar.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {vaccinePlan.map((group) => (
+                  <div key={group.species ?? "todas"}>
+                    {/* O nome da criação só aparece quando há mais de uma na tela */}
+                    {group.species && vaccinePlan.length > 1 && (
+                      <p className="px-3 pt-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                        {SPECIES_META[group.species].plural}
+                      </p>
+                    )}
+                    {group.rows.map((row) => (
+                      <VaccinePlanRow
+                        key={row.vaccine.id}
+                        row={row}
+                        onOpenHerd={() => {
+                          if (group.species) setSpecies(group.species);
+                          setOnlyPending(false);
+                          setTab("rebanho");
+                        }}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
               onClick={() => setVaccinesOpen(true)}
+              className="w-full flex items-center justify-center gap-2 min-h-[48px] px-3 border-t border-slate-100 bg-slate-50/60 text-sm font-semibold text-produmar-700 dark:border-slate-800 dark:bg-slate-800/40 dark:text-produmar-400 active:scale-[0.98] transition-transform"
             >
               <Settings2 className="w-4 h-4" />
-              Vacinas
-            </Button>
+              {species === "todos"
+                ? "Cadastrar vacinas"
+                : `Cadastrar vacinas de ${SPECIES_META[species].label.toLowerCase()}`}
+            </button>
           </div>
+
+          <Button className="w-full h-12" onClick={() => openProtocol(null)}>
+            <Syringe className="w-4 h-4" />
+            Aplicar vacina num animal
+          </Button>
 
           {pendingCount > 0 && (
             <button
@@ -848,42 +1006,56 @@ export function AnimaisPageClient({
             </button>
           )}
 
-          {vaccinations.length > 0 && (
-            <SearchField
-              value={search}
-              onChange={setSearch}
-              placeholder="Buscar por animal ou vacina..."
-            />
-          )}
-
-          {log.length === 0 ? (
-            <EmptyState
-              icon={Syringe}
-              text={
-                vaccinations.length === 0
-                  ? "Nenhuma vacina aplicada ainda."
-                  : "Nada encontrado com essa busca."
-              }
-              hint={
-                vaccinations.length === 0
-                  ? "O que for aplicado aparece aqui: animal, vacina, ml e marca."
-                  : undefined
-              }
-            />
-          ) : (
-            <div className="space-y-2">
-              {log.map((g) => (
-                <LogRow
-                  key={g.key}
-                  tag={g.tag}
-                  appliedAt={g.appliedAt}
-                  items={g.items}
-                  onOpen={() => setDetailAnimalId(g.animalId)}
-                />
-              ))}
+          {/* Registro do que já foi aplicado */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                O que já foi aplicado
+              </h2>
+              {log.length > 0 && (
+                <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
+                  {log.length} {log.length === 1 ? "aplicação" : "aplicações"}
+                </span>
+              )}
             </div>
-          )}
-        </>
+
+            {vaccinations.length > 0 && (
+              <SearchField
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por animal ou vacina..."
+              />
+            )}
+
+            {log.length === 0 ? (
+              <EmptyState
+                icon={Syringe}
+                text={
+                  vaccinations.length === 0
+                    ? "Nenhuma vacina aplicada ainda."
+                    : "Nada encontrado com essa busca."
+                }
+                hint={
+                  vaccinations.length === 0
+                    ? "O que for aplicado aparece aqui: animal, vacina, ml e marca."
+                    : undefined
+                }
+              />
+            ) : (
+              <div className="space-y-2">
+                {log.map((g) => (
+                  <LogRow
+                    key={g.key}
+                    tag={g.tag}
+                    appliedAt={g.appliedAt}
+                    items={g.items}
+                    onOpen={() => setDetailAnimalId(g.animalId)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Aba: Nascimentos — envios do vaqueiro aguardando conferência ──── */}
@@ -1076,6 +1248,7 @@ export function AnimaisPageClient({
         open={vaccinesOpen}
         onClose={() => setVaccinesOpen(false)}
         vaccines={vaccines}
+        species={species === "todos" ? undefined : species}
       />
     </div>
   );
@@ -1090,7 +1263,7 @@ function RebanhoTable({
   breeds,
   quickAddSpecies,
   vaccines,
-  vaccinations,
+  lastByKey,
   birthsByMother,
   treatmentsByAnimal,
   weightsByAnimal,
@@ -1107,8 +1280,10 @@ function RebanhoTable({
   breeds: AnimalBreed[];
   /** Tipo escolhido no filtro — a linha de cadastro já entra nele. */
   quickAddSpecies: AnimalSpecies | null;
+  /** Só as vacinas que viram coluna — já filtradas pelo tipo escolhido. */
   vaccines: AnimalVaccine[];
-  vaccinations: VaccinationRow[];
+  /** Última aplicação de cada `animalId|vaccineId` (vem pronta da página). */
+  lastByKey: Map<string, VaccinationRow>;
   birthsByMother: Map<string, AnimalBirth[]>;
   treatmentsByAnimal: Map<string, AnimalTreatment[]>;
   /** Pesagens por animal, da mais nova para a mais velha. */
@@ -1170,16 +1345,20 @@ function RebanhoTable({
     };
   }, [animals.length, vaccines.length]);
 
-  // última aplicação por animal+vacina
-  const lastByKey = useMemo(() => {
-    const m = new Map<string, VaccinationRow>();
-    for (const v of vaccinations) {
-      const key = `${v.animal_id}|${v.vaccine_id}`;
-      const cur = m.get(key);
-      if (!cur || cur.applied_at < v.applied_at) m.set(key, v);
-    }
-    return m;
-  }, [vaccinations]);
+  /**
+   * A vacina é de um tipo de animal só: a coluna de febre aftosa não vale
+   * para o porco. Com o rebanho misturado na tela as duas colunas aparecem,
+   * e a célula de quem não é daquele bicho fica apagada em vez de cobrar uma
+   * vacina que ele nunca vai tomar.
+   *
+   * Enquanto a migration 062 não roda o cadastro é um só para a fazenda toda
+   * — aí tudo vale para todos, como sempre foi.
+   */
+  const bySpecies = vaccinesHaveSpecies(vaccines);
+  const mixedColumns =
+    bySpecies && new Set(vaccines.map((v) => speciesOf(v.species))).size > 1;
+  const applies = (v: AnimalVaccine, a: AnimalWithInfo) =>
+    !bySpecies || speciesOf(v.species) === speciesOf(a.species);
 
   const today = localDateISO();
 
@@ -1190,6 +1369,7 @@ function RebanhoTable({
         let count = 0;
         let ml = 0;
         for (const a of animals) {
+          if (!applies(v, a)) continue;
           const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
           const { status } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
           if (status === "em_dia") continue;
@@ -1199,6 +1379,7 @@ function RebanhoTable({
         }
         return { count, ml: Math.round(ml * 10) / 10 };
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [animals, vaccines, lastByKey]
   );
 
@@ -1231,10 +1412,16 @@ function RebanhoTable({
                 className={cn(headCls, "px-2 py-3 text-center text-sm whitespace-nowrap")}
               >
                 {v.name}
-                {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
-                {v.default_brand && (
+                {/* de que bicho é a coluna (só com o rebanho misturado) e o
+                    remédio usado nela (cadastrado como "remédio/marca") */}
+                {(mixedColumns || v.default_brand) && (
                   <span className="block text-[13px] font-normal text-slate-500 dark:text-slate-400">
-                    {v.default_brand}
+                    {[
+                      mixedColumns ? SPECIES_META[speciesOf(v.species)].label : null,
+                      v.default_brand,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 )}
               </th>
@@ -1366,6 +1553,20 @@ function RebanhoTable({
                   )}
                 </td>
                 {vaccines.map((v) => {
+                  // vacina de outro bicho: a linha dele não tem essa coluna
+                  if (!applies(v, a)) {
+                    return (
+                      <td
+                        key={v.id}
+                        title={`${v.name} é vacina de ${SPECIES_META[
+                          speciesOf(v.species)
+                        ].label.toLowerCase()}`}
+                        className="px-1 py-1 text-center text-slate-200 dark:text-slate-700"
+                      >
+                        ·
+                      </td>
+                    );
+                  }
                   const key = `${a.id}|${v.id}`;
                   const last = lastByKey.get(key) ?? null;
                   const { status } = vaccineStatusFor(
@@ -1636,6 +1837,72 @@ function SearchField({
         </button>
       )}
     </div>
+  );
+}
+
+// ── Linha do plano de vacinação ─────────────────────────────────────────────
+/**
+ * Uma vacina cadastrada, com o retrato do rebanho: quantos estão em dia,
+ * quantos faltam e a barrinha que mostra isso sem precisar ler número.
+ * Tocar leva para a planilha daquela criação, onde se aplica com um toque.
+ */
+function VaccinePlanRow({
+  row,
+  onOpenHerd,
+}: {
+  row: VaccinePlanRowData;
+  onOpenHerd: () => void;
+}) {
+  const { vaccine, total, ok, due } = row;
+  const pct = total > 0 ? Math.round((ok / total) * 100) : 0;
+  const facts = [recurrenceLabel(vaccine.recurrence_months), doseLabel(vaccine), vaccine.default_brand]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenHerd}
+      className="w-full px-3 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+    >
+      <div className="flex items-center gap-2">
+        <span className="flex-1 min-w-0 text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+          {vaccine.name}
+        </span>
+        {total === 0 ? (
+          <span className="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0">
+            sem animais
+          </span>
+        ) : due > 0 ? (
+          <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold tabular-nums bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">
+            {due} faltando
+          </span>
+        ) : (
+          <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+            Tudo em dia
+          </span>
+        )}
+        <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" />
+      </div>
+
+      {facts && (
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">{facts}</p>
+      )}
+
+      {total > 0 && (
+        <div className="mt-1.5 flex items-center gap-2">
+          <span className="h-1.5 flex-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+            <span
+              className="block h-full rounded-full bg-emerald-500 dark:bg-emerald-400"
+              style={{ width: `${pct}%` }}
+            />
+          </span>
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums flex-shrink-0">
+            {ok} de {total} em dia
+          </span>
+        </div>
+      )}
+    </button>
   );
 }
 

@@ -14,6 +14,7 @@ import {
   speciesOf,
   suggestedDoseMl,
   vaccineStatusFor,
+  vaccinesForSpecies,
   weightGain,
   SEX_LABELS,
 } from "./animal-shared";
@@ -69,7 +70,10 @@ export function AnimalFichaPrint({
 
   const weightKg = Number(animal.weight);
 
-  const rows = vaccines.map((v) => {
+  /** Só as vacinas do bicho: a ficha do porco não cobra febre aftosa dele. */
+  const speciesVaccines = vaccinesForSpecies(vaccines, animal.species);
+
+  const rows = speciesVaccines.map((v) => {
     const applications = vaccinations
       .filter((x) => x.vaccine_id === v.id)
       .sort((a, b) => (a.applied_at < b.applied_at ? 1 : -1));

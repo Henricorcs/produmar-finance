@@ -150,6 +150,28 @@ export function speciesOf(species?: AnimalSpecies | null): AnimalSpecies {
   return species && species in SPECIES_META ? species : "bovino";
 }
 
+/**
+ * As vacinas daquele tipo de animal — aftosa não aparece para o porco.
+ *
+ * Rede de segurança: enquanto a migration 062 não roda, a coluna `species`
+ * não vem do banco e o cadastro ainda é UM SÓ para a fazenda inteira. Nesse
+ * caso toda vacina vale para todo bicho — senão a planilha de quem não é
+ * bovino ficaria sem coluna nenhuma da noite para o dia.
+ */
+export function vaccinesForSpecies<T extends { species?: AnimalSpecies | null }>(
+  vaccines: T[],
+  species?: AnimalSpecies | null
+): T[] {
+  if (!vaccines.some((v) => v.species)) return vaccines;
+  const s = speciesOf(species);
+  return vaccines.filter((v) => speciesOf(v.species) === s);
+}
+
+/** true quando o cadastro de vacinas já sabe separar por tipo (migration 062). */
+export function vaccinesHaveSpecies(vaccines: { species?: AnimalSpecies | null }[]): boolean {
+  return vaccines.some((v) => !!v.species);
+}
+
 // ── Categoria (derivada na view) ─────────────────────────────────────────────
 
 export const CATEGORY_META: Record<AnimalCategory, { chip: string }> = {
@@ -348,6 +370,21 @@ export function doseRuleLabel(vaccine: DoseRule, weightKg: number): string | nul
   }
   const fixed = Number(vaccine.default_dose_ml ?? 0);
   return fixed > 0 ? `dose padrão ${formatMl(fixed)}` : null;
+}
+
+/** De quantos em quantos meses a vacina repete, em texto curto. */
+export function recurrenceLabel(months: number | null): string {
+  if (!months) return "dose única";
+  if (months === 12) return "a cada 1 ano";
+  if (months % 12 === 0) return `a cada ${months / 12} anos`;
+  return `a cada ${months} ${months === 1 ? "mês" : "meses"}`;
+}
+
+/** A dose do cadastro em texto curto: "5 ml" ou "1 ml a cada 50 kg". */
+export function doseLabel(v: DoseRule): string | null {
+  if (v.dose_ml_per_weight && v.dose_weight_kg)
+    return `${formatMl(Number(v.dose_ml_per_weight))} a cada ${Number(v.dose_weight_kg)} kg`;
+  return v.default_dose_ml ? formatMl(Number(v.default_dose_ml)) : null;
 }
 
 // ── Partos ───────────────────────────────────────────────────────────────────
