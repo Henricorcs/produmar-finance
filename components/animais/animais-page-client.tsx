@@ -313,17 +313,29 @@ export function AnimaisPageClient({
   );
 
   /**
-   * As vacinas que viram COLUNA da planilha. Com um tipo escolhido, só as
-   * dele — o porco não precisa de coluna de febre aftosa. Com o rebanho
-   * misturado ("todos os tipos"), as de todos os tipos que existem no
-   * rebanho: a célula de quem não é daquele bicho fica apagada.
+   * As vacinas que viram COLUNA da planilha — e a planilha só ganha coluna de
+   * vacina quando a lista é de UMA criação só.
+   *
+   * Em "todos os tipos" o rebanho misturado botava a clostridiose de bovino
+   * ao lado da de caprino, a dectomax, a linfadenite... uma esteira de coluna
+   * em que cada linha só usava metade. Vacina se aplica olhando um bicho de
+   * cada vez: escolhe o tipo lá em cima e a planilha vira o guia daquele
+   * curral. Sem tipo escolhido a tela fica sendo o cadastro do rebanho.
+   *
+   * Fazenda de um bicho só nunca perde as colunas: mesmo em "todos os tipos",
+   * se só existe bovino no rebanho, as vacinas de bovino aparecem.
    */
   const tableVaccines = useMemo(() => {
-    if (species !== "todos") return vaccinesForSpecies(vaccines, species);
+    // sem a migration 062 o cadastro é um só para a fazenda — tudo vale para todos
     if (!vaccinesHaveSpecies(vaccines)) return vaccines;
-    const present = new Set(speciesPresent);
-    return vaccines.filter((v) => present.has(speciesOf(v.species)));
+    if (species !== "todos") return vaccinesForSpecies(vaccines, species);
+    if (speciesPresent.length === 1) return vaccinesForSpecies(vaccines, speciesPresent[0]);
+    return [];
   }, [vaccines, species, speciesPresent]);
+
+  /** Rebanho misturado sem tipo escolhido: é por isso que não há coluna de vacina. */
+  const vaccinesNeedSpecies =
+    species === "todos" && speciesPresent.length > 1 && vaccinesHaveSpecies(vaccines);
 
   /**
    * O PLANO DE VACINAÇÃO: para cada vacina cadastrada, quantos animais
@@ -879,6 +891,22 @@ export function AnimaisPageClient({
                 : "Nada encontrado com esse filtro."
             }
           />
+          {/* Rebanho misturado: a planilha ficou sem coluna de vacina de
+              propósito — o recado diz onde elas estão, senão parece defeito. */}
+          {vaccinesNeedSpecies && (
+            <button
+              type="button"
+              onClick={() => setSpecies(speciesPresent[0])}
+              className="w-full flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-produmar-200 bg-produmar-50/60 text-left text-sm font-medium text-produmar-700 dark:border-slate-700 dark:bg-slate-800/40 dark:text-produmar-400 active:scale-[0.98] transition-transform"
+            >
+              <Syringe className="w-4 h-4 flex-shrink-0" />
+              <span className="flex-1">
+                Escolha o tipo aí em cima para ver as vacinas — cada criação tem as suas
+              </span>
+              <ChevronRight className="w-4 h-4 flex-shrink-0" />
+            </button>
+          )}
+
           {/* O manual da planilha é comprido e só se lê uma vez: fica dobrado,
               a um toque de quem precisar. */}
           <details className="group normal-case">
@@ -889,7 +917,9 @@ export function AnimaisPageClient({
             <p className="mt-2 pl-6 text-sm text-slate-500 dark:text-slate-400">
               Digite na primeira linha para cadastrar (Enter salva); na coluna &quot;Cat.&quot;
               escolha o tipo do animal — bovino, equino, caprino, ovino ou suíno — e ele manda
-              no nome da categoria e nas raças da lista. Em &quot;Pariu&quot;, a data do parto
+              no nome da categoria, nas raças da lista e nas vacinas. As colunas de vacina só
+              aparecem com UM tipo escolhido lá em cima: cada criação toma as suas, e
+              misturadas a planilha não caberia na tela. Em &quot;Pariu&quot;, a data do parto
               pede M ou F e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
               toque na coluna para ver os partos da mãe e apagar o que entrou errado. Toque no
               peso para pesar de novo: embaixo dele fica quanto o animal ganhou desde a última
@@ -1345,21 +1375,6 @@ function RebanhoTable({
     };
   }, [animals.length, vaccines.length]);
 
-  /**
-   * A vacina é de um tipo de animal só: a coluna de febre aftosa não vale
-   * para o porco. Com o rebanho misturado na tela as duas colunas aparecem,
-   * e a célula de quem não é daquele bicho fica apagada em vez de cobrar uma
-   * vacina que ele nunca vai tomar.
-   *
-   * Enquanto a migration 062 não roda o cadastro é um só para a fazenda toda
-   * — aí tudo vale para todos, como sempre foi.
-   */
-  const bySpecies = vaccinesHaveSpecies(vaccines);
-  const mixedColumns =
-    bySpecies && new Set(vaccines.map((v) => speciesOf(v.species))).size > 1;
-  const applies = (v: AnimalVaccine, a: AnimalWithInfo) =>
-    !bySpecies || speciesOf(v.species) === speciesOf(a.species);
-
   const today = localDateISO();
 
   // quanto levar: soma dos ml pendentes de cada vacina (dos animais listados)
@@ -1369,7 +1384,6 @@ function RebanhoTable({
         let count = 0;
         let ml = 0;
         for (const a of animals) {
-          if (!applies(v, a)) continue;
           const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
           const { status } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
           if (status === "em_dia") continue;
@@ -1379,7 +1393,6 @@ function RebanhoTable({
         }
         return { count, ml: Math.round(ml * 10) / 10 };
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [animals, vaccines, lastByKey]
   );
 
@@ -1412,16 +1425,10 @@ function RebanhoTable({
                 className={cn(headCls, "px-2 py-3 text-center text-sm whitespace-nowrap")}
               >
                 {v.name}
-                {/* de que bicho é a coluna (só com o rebanho misturado) e o
-                    remédio usado nela (cadastrado como "remédio/marca") */}
-                {(mixedColumns || v.default_brand) && (
+                {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
+                {v.default_brand && (
                   <span className="block text-[13px] font-normal text-slate-500 dark:text-slate-400">
-                    {[
-                      mixedColumns ? SPECIES_META[speciesOf(v.species)].label : null,
-                      v.default_brand,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {v.default_brand}
                   </span>
                 )}
               </th>
@@ -1553,20 +1560,6 @@ function RebanhoTable({
                   )}
                 </td>
                 {vaccines.map((v) => {
-                  // vacina de outro bicho: a linha dele não tem essa coluna
-                  if (!applies(v, a)) {
-                    return (
-                      <td
-                        key={v.id}
-                        title={`${v.name} é vacina de ${SPECIES_META[
-                          speciesOf(v.species)
-                        ].label.toLowerCase()}`}
-                        className="px-1 py-1 text-center text-slate-200 dark:text-slate-700"
-                      >
-                        ·
-                      </td>
-                    );
-                  }
                   const key = `${a.id}|${v.id}`;
                   const last = lastByKey.get(key) ?? null;
                   const { status } = vaccineStatusFor(

@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { formatDate } from "@/lib/utils";
 import {
-  SPECIES_META,
   categoryLabel,
   formatMl,
   formatWeight,
@@ -70,27 +69,26 @@ export function RebanhoVacinasPrint({
   const pendingCount = animals.filter((a) => a.vaccines_due > 0).length;
 
   /**
-   * A vacina é de um tipo de animal só. A folha traz as colunas dos tipos que
-   * estão nela — quando a guia sai com o rebanho misturado, a célula de quem
-   * não é daquele bicho fica em branco em vez de mandar aplicar. Sem a
-   * migration 062 o cadastro é um só e tudo vale para todos, como antes.
+   * A folha só ganha a grade de vacinas quando é de UMA criação só (o mesmo
+   * da tela): vacina se aplica olhando um bicho de cada vez, e as colunas de
+   * bovino misturadas com as de caprino não caberiam na paisagem. Sem tipo
+   * escolhido (`/imprimir/animais` sem `?tipo=`) com rebanho misturado, sai a
+   * relação do rebanho — Nº, categoria, raça, peso e partos.
+   *
+   * Sem a migration 062 o cadastro é um só e tudo vale para todos, como antes.
    */
-  const bySpecies = vaccinesHaveSpecies(allVaccines);
-  const present = new Set(animals.map((a) => speciesOf(a.species)));
-  const vaccines = bySpecies
-    ? allVaccines.filter((v) => present.has(speciesOf(v.species)))
-    : allVaccines;
-  const mixedColumns =
-    bySpecies && new Set(vaccines.map((v) => speciesOf(v.species))).size > 1;
-  const applies = (v: AnimalVaccine, a: AnimalWithInfo) =>
-    !bySpecies || speciesOf(v.species) === speciesOf(a.species);
+  const present = Array.from(new Set(animals.map((a) => speciesOf(a.species))));
+  const vaccines = !vaccinesHaveSpecies(allVaccines)
+    ? allVaccines
+    : present.length === 1
+      ? allVaccines.filter((v) => speciesOf(v.species) === present[0])
+      : [];
 
   /** Quanto levar: soma dos ml pendentes de cada vacina (dos animais da folha). */
   const totals = vaccines.map((v) => {
     let count = 0;
     let ml = 0;
     for (const a of animals) {
-      if (!applies(v, a)) continue;
       const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
       const { status } = vaccineStatusFor(last?.applied_at ?? null, v.recurrence_months);
       if (status === "em_dia") continue;
@@ -157,11 +155,12 @@ export function RebanhoVacinasPrint({
             </div>
             <div className="text-right">
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.15em]">
-                Guia de vacinação
+                {vaccines.length > 0 ? "Guia de vacinação" : "Relação do rebanho"}
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 {animals.length} animais
-                {filterLabel ? ` · ${filterLabel}` : ""} · {pendingCount} com vacina a aplicar
+                {filterLabel ? ` · ${filterLabel}` : ""}
+                {vaccines.length > 0 ? ` · ${pendingCount} com vacina a aplicar` : ""}
               </p>
               <p className="text-[11px] text-slate-500">{formatDate(new Date())}</p>
             </div>
@@ -186,16 +185,10 @@ export function RebanhoVacinasPrint({
                       className="py-1.5 px-1.5 font-semibold border border-slate-200 capitalize text-center"
                     >
                       {v.name}
-                      {/* de que bicho é a coluna (só na guia misturada) e o
-                          remédio usado nela (cadastrado como "remédio/marca") */}
-                      {(mixedColumns || v.default_brand) && (
+                      {/* o remédio usado nessa vacina (cadastrado como "remédio/marca") */}
+                      {v.default_brand && (
                         <span className="block text-[10px] font-normal text-slate-500">
-                          {[
-                            mixedColumns ? SPECIES_META[speciesOf(v.species)].label : null,
-                            v.default_brand,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
+                          {v.default_brand}
                         </span>
                       )}
                     </th>
@@ -221,16 +214,6 @@ export function RebanhoVacinasPrint({
                         {pariuLabel(a.sex, birthsByMother.get(a.id) ?? [])}
                       </td>
                       {vaccines.map((v) => {
-                        // vacina de outro bicho: em branco, não se aplica nele
-                        if (!applies(v, a))
-                          return (
-                            <td
-                              key={v.id}
-                              className="py-1.5 px-1.5 border border-slate-200 text-center bg-slate-50 text-slate-300"
-                            >
-                              ·
-                            </td>
-                          );
                         const last = lastByKey.get(`${a.id}|${v.id}`) ?? null;
                         const { status } = vaccineStatusFor(
                           last?.applied_at ?? null,
@@ -296,10 +279,21 @@ export function RebanhoVacinasPrint({
           )}
 
           <p className="text-[10px] text-slate-500 pt-1">
-            Fundo vermelho = vacina atrasada ou nunca aplicada; o valor é a dose em ml para
-            aquele animal. Marque o quadradinho ao aplicar. &quot;ok&quot; = em dia, com o mês
-            da última aplicação. Pariu = crias (M = macho, F = fêmea). &quot;Levar&quot; = soma
-            dos ml pendentes e quantos animais faltam de cada vacina.
+            {vaccines.length > 0 ? (
+              <>
+                Fundo vermelho = vacina atrasada ou nunca aplicada; o valor é a dose em ml
+                para aquele animal. Marque o quadradinho ao aplicar. &quot;ok&quot; = em dia,
+                com o mês da última aplicação. Pariu = crias (M = macho, F = fêmea).
+                &quot;Levar&quot; = soma dos ml pendentes e quantos animais faltam de cada
+                vacina.
+              </>
+            ) : (
+              <>
+                Relação do rebanho. Pariu = crias (M = macho, F = fêmea). A grade de vacinas
+                sai numa folha por criação: escolha o tipo na tela antes de imprimir — cada
+                bicho toma as suas vacinas.
+              </>
+            )}
           </p>
         </div>
       </div>
