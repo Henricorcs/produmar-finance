@@ -1,22 +1,14 @@
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
 import { modulesForProfile } from "@/lib/modules";
-import type { Profile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function InicioPage() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, allowed_modules")
-    .eq("id", user!.id)
-    .single<Pick<Profile, "role" | "allowed_modules">>();
+  // O layout já buscou o perfil nesta mesma requisição; aqui vem do cache,
+  // sem nova consulta.
+  const profile = await getProfile();
 
   const modules = modulesForProfile(profile?.allowed_modules, profile?.role);
   const isOperador = profile?.role === "operador";

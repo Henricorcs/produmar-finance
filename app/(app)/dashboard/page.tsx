@@ -1,8 +1,9 @@
 ﻿import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
 import { KpiCard } from "@/components/dashboard/kpi-card";
-import { CashflowChart } from "@/components/dashboard/cashflow-chart";
-import { CashflowProjection } from "@/components/dashboard/cashflow-projection";
+import { CashflowChart } from "@/components/dashboard/cashflow-chart-lazy";
+import { CashflowProjection } from "@/components/dashboard/cashflow-projection-lazy";
 import { ExpenseBreakdown } from "@/components/dashboard/expense-breakdown";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock, Banknote, Boxes, AlertTriangle } from "lucide-react";
@@ -24,9 +25,7 @@ export default async function DashboardPage() {
   // Marca contas vencidas em background (não bloqueia)
   void supabase.rpc("mark_overdue");
 
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const [kpisRes, expensesRes, cashflowRes, projectionRes, billsRes, profileRes, stockRes, purchasesRes] = await Promise.all([
+  const [kpisRes, expensesRes, cashflowRes, projectionRes, billsRes, profile, stockRes, purchasesRes] = await Promise.all([
     supabase.from("v_dashboard_kpis").select("*").single(),
     supabase.from("v_expenses_by_category").select("*"),
     supabase.from("v_cashflow_6m").select("*"),
@@ -38,9 +37,8 @@ export default async function DashboardPage() {
       .in("status", ["pendente", "vencido"])
       .order("due_date", { ascending: true })
       .limit(5),
-    user
-      ? supabase.from("profiles").select("full_name").eq("id", user.id).single()
-      : Promise.resolve({ data: null }),
+    // perfil do cache da requisição (o layout já buscou) — não consulta de novo
+    getProfile(),
     supabase.from("product_stock_balance").select("*"),
     supabase.from("material_purchases").select("total_amount, amount_paid"),
   ]);
@@ -85,8 +83,7 @@ export default async function DashboardPage() {
       icon: AlertTriangle,
     },
   ];
-  const firstName =
-    (profileRes.data as { full_name?: string } | null)?.full_name?.split(" ")[0] ?? "";
+  const firstName = profile?.full_name?.split(" ")[0] ?? "";
 
   const month = new Date().toLocaleDateString("pt-BR", {
     month: "long",

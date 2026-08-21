@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserId } from "@/lib/auth";
 import { AnimalFichaPrint } from "@/components/animais/animal-ficha-print";
 import type {
   AnimalBirth,
@@ -20,10 +21,9 @@ interface Props {
 export default async function ImprimirFichaAnimalPage({ params }: Props) {
   const supabase = createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Id vem do header que o middleware preencheu — sem ida e volta ao Supabase.
+  const userId = await getCurrentUserId();
+  if (!userId) redirect("/login");
 
   const { data: animal } = await supabase
     .from("v_animals")

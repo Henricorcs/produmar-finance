@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserId } from "@/lib/auth";
 import { OrcamentoPrint } from "@/components/operacoes/orcamento-print";
 import type {
   ServiceOrder,
@@ -34,11 +35,9 @@ interface Props {
 export default async function ImprimirOSPage({ params }: Props) {
   const supabase = createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
+  // Id vem do header que o middleware preencheu — sem ida e volta ao Supabase.
+  const userId = await getCurrentUserId();
+  if (!userId) redirect("/login");
 
   const { data: order, error } = await supabase
     .from("service_orders")
@@ -56,35 +55,26 @@ export default async function ImprimirOSPage({ params }: Props) {
     );
   }
 
-  // Log de horários das viagens (best-effort: não quebra a impressão caso a
-  // tabela ainda não exista — migration 016 não aplicada no Supabase).
-  const { data: trips } = await supabase
-    .from("service_order_trips")
-    .select("*")
-    .eq("service_order_id", order.id);
-  order.service_order_trips = (trips as ServiceOrderTrip[] | null) ?? [];
+  // Viagens, pausas, comprovantes e encaminhamentos. Nenhum depende do outro,
+  // então saem na mesma leva — antes eram quatro esperas em fila só para montar
+  // uma folha de impressão. Best-effort: se alguma tabela ainda não existe
+  // (migrations 016/025/026/027), aquela lista volta vazia e a folha sai igual.
+  const [tripsRes, pausesRes, attachmentsRes, forwardsRes] = await Promise.all([
+    supabase.from("service_order_trips").select("*").eq("service_order_id", order.id),
+    supabase.from("service_order_pauses").select("*").eq("service_order_id", order.id),
+    supabase.from("service_order_attachments").select("*").eq("service_order_id", order.id),
+    supabase
+      .from("service_order_forwards")
+      .select("*")
+      .eq("service_order_id", order.id)
+      .order("created_at", { ascending: true }),
+  ]);
 
-  // Diário de pausas/retomadas do serviço interno (best-effort: migration 025).
-  const { data: pauses } = await supabase
-    .from("service_order_pauses")
-    .select("*")
-    .eq("service_order_id", order.id);
-  order.service_order_pauses = (pauses as ServiceOrderPause[] | null) ?? [];
-
-  // Comprovantes anexados (best-effort: migration 026 não aplicada no Supabase).
-  const { data: attachments } = await supabase
-    .from("service_order_attachments")
-    .select("*")
-    .eq("service_order_id", order.id);
-  order.service_order_attachments = (attachments as ServiceOrderAttachment[] | null) ?? [];
-
-  // Encaminhamentos (best-effort: migration 027 não aplicada no Supabase).
-  const { data: forwards } = await supabase
-    .from("service_order_forwards")
-    .select("*")
-    .eq("service_order_id", order.id)
-    .order("created_at", { ascending: true });
-  order.service_order_forwards = (forwards as ServiceOrderForward[] | null) ?? [];
+  order.service_order_trips = (tripsRes.data as ServiceOrderTrip[] | null) ?? [];
+  order.service_order_pauses = (pausesRes.data as ServiceOrderPause[] | null) ?? [];
+  order.service_order_attachments =
+    (attachmentsRes.data as ServiceOrderAttachment[] | null) ?? [];
+  order.service_order_forwards = (forwardsRes.data as ServiceOrderForward[] | null) ?? [];
 
   return <OrcamentoPrint order={order} />;
 }

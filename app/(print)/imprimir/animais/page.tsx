@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserId } from "@/lib/auth";
 import { RebanhoVacinasPrint } from "@/components/animais/rebanho-vacinas-print";
 import { SPECIES_META, categoryPlural } from "@/components/animais/animal-shared";
 import type {
@@ -28,10 +29,9 @@ interface Props {
 export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   const supabase = createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Id vem do header que o middleware preencheu — sem ida e volta ao Supabase.
+  const userId = await getCurrentUserId();
+  if (!userId) redirect("/login");
 
   const categoria = searchParams.categoria as AnimalCategory | undefined;
   const tipo = searchParams.tipo as AnimalSpecies | undefined;

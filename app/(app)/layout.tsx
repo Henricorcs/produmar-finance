@@ -1,24 +1,37 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { Topbar } from "@/components/layout/topbar";
 import { TabsNav } from "@/components/layout/tabs-nav";
-import type { Profile } from "@/lib/types";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  // Sem ida e volta: o middleware já conferiu a sessão e passou o id no header.
+  const userId = await getCurrentUserId();
+  if (!userId) redirect("/login");
 
-  const profileRes = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  const today = new Date();
+  const in7days = new Date(today);
+  in7days.setDate(today.getDate() + 7);
+  const todayStr = today.toISOString().split("T")[0];
+  const in7daysStr = in7days.toISOString().split("T")[0];
 
-  const profile = profileRes.data as Profile | null;
+  // Perfil e notificações saem na mesma leva. Antes o layout esperava o perfil
+  // chegar para só então pedir as notificações — duas esperas em fila, em toda
+  // tela aberta. As notificações só aparecem para admin/financeiro; para os
+  // outros perfis o resultado é descartado, mas como vai junto não custa tempo.
+  const [profile, notifRes] = await Promise.all([
+    getProfile(),
+    supabase
+      .from("transactions")
+      .select("id, description, amount, due_date, status, type")
+      .in("status", ["vencido", "pendente"])
+      .lte("due_date", in7daysStr)
+      .order("due_date", { ascending: true })
+      .limit(10),
+  ]);
+
   const isVisualizador = profile?.role === "visualizador";
   const isOperador     = profile?.role === "operador";
   const isVaqueiro     = profile?.role === "vaqueiro";
@@ -67,20 +80,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   // Layout completo para admin / financeiro
-  const today = new Date();
-  const in7days = new Date(today);
-  in7days.setDate(today.getDate() + 7);
-  const todayStr = today.toISOString().split("T")[0];
-  const in7daysStr = in7days.toISOString().split("T")[0];
-
-  const notifRes = await supabase
-    .from("transactions")
-    .select("id, description, amount, due_date, status, type")
-    .in("status", ["vencido", "pendente"])
-    .lte("due_date", in7daysStr)
-    .order("due_date", { ascending: true })
-    .limit(10);
-
   const notifications = (notifRes.data ?? []).map((t) => ({
     ...t,
     isOverdue: t.status === "vencido" || t.due_date < todayStr,

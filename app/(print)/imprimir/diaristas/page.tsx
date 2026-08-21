@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserId } from "@/lib/auth";
 import { DiaristasPrint } from "@/components/diaristas/diaristas-print";
 import { localDateISO } from "@/lib/utils";
 import type { DiaristaDiaRow } from "@/lib/types";
@@ -22,10 +23,9 @@ function cleanDate(v?: string): string | null {
 export default async function ImprimirDiaristasPage({ searchParams }: Props) {
   const supabase = createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Id vem do header que o middleware preencheu — sem ida e volta ao Supabase.
+  const userId = await getCurrentUserId();
+  if (!userId) redirect("/login");
 
   const hoje = new Date();
   const from =

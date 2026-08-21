@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserId } from "@/lib/auth";
 
 export default async function Home() {
-  const supabase = createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-  redirect(user ? "/inicio" : "/login");
+  // Id vem do header que o middleware preencheu — sem ida e volta ao Supabase
+  // só para decidir o destino do redirecionamento.
+  const userId = await getCurrentUserId();
+  redirect(userId ? "/inicio" : "/login");
 }

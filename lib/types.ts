@@ -87,7 +87,9 @@ export interface Invoice {
   total_amount: number | null;
   direction: TransactionType | null;
   file_url: string | null;
-  raw_data: unknown;
+  /** XML completo da nota. Só é gravado no upload — nenhuma tela lê, e a
+   *  listagem não busca este campo (é o mais pesado da tabela). */
+  raw_data?: unknown;
   processed: boolean;
   transaction_id: string | null;
 }

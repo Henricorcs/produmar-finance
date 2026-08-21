@@ -1,22 +1,14 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
 import { VaqueiroClient } from "@/components/vaqueiro/vaqueiro-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function VaqueiroPage() {
-  const supabase = createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  // Perfil já carregado pelo layout nesta mesma requisição — vem do cache, sem
+  // nova consulta e sem segurar as buscas da tela.
+  const profile = await getProfile();
+  if (!profile) redirect("/login");
 
   // Tela fechada: só o vaqueiro (e o admin, para conferir/testar).
   if (profile?.role !== "vaqueiro" && profile?.role !== "admin") redirect("/inicio");

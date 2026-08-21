@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OperacoesPageClient } from "@/components/operacoes/operacoes-page-client";
 import type {
@@ -32,17 +33,10 @@ export default async function OperacoesPage({
 
   // Técnico (operador) não gerencia OS — só executa pelo painel /operador.
   // O menu já esconde esta rota; aqui garantimos no servidor (acesso por URL).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    if (profile?.role === "operador") redirect("/operador");
-  }
+  // Perfil do cache da requisição (o layout já buscou) — a conferência não
+  // custa mais duas esperas antes das buscas da tela.
+  const profile = await getProfile();
+  if (profile?.role === "operador") redirect("/operador");
 
   const today = new Date();
   const month =

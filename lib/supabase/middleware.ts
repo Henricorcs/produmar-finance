@@ -1,9 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isModuleBlocked, moduleSlugForPath } from "@/lib/module-access";
+import { USER_ID_HEADER } from "@/lib/auth-header";
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  // Cookies que o Supabase pediu para gravar (renovação de sessão). Ficam
+  // guardados e entram em TODA resposta — inclusive nos redirecionamentos.
+  // Antes o redirect saía sem eles e a sessão renovada se perdia, obrigando
+  // uma nova renovação no request seguinte.
+  const pendingCookies: {
+    name: string;
+    value: string;
+    options?: Record<string, unknown>;
+  }[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,10 +24,7 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+          pendingCookies.push(...cookiesToSet);
         }
       }
     }
@@ -29,6 +35,26 @@ export async function updateSession(request: NextRequest) {
     data: { user }
   } = await supabase.auth.getUser();
 
+  // Headers repassados ao render. Montados DEPOIS do getUser para levarem os
+  // cookies já renovados. Apagamos o nosso header antes de escrever: o que o
+  // cliente mandar com esse nome é descartado, só o middleware preenche.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(USER_ID_HEADER);
+  if (user) requestHeaders.set(USER_ID_HEADER, user.id);
+
+  const withCookies = <T extends NextResponse>(response: T): T => {
+    pendingCookies.forEach(({ name, value, options }) =>
+      response.cookies.set(name, value, options)
+    );
+    return response;
+  };
+
+  const redirectTo = (pathname: string) => {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname;
+    return withCookies(NextResponse.redirect(url));
+  };
+
   const path = request.nextUrl.pathname;
   const isPublicRoute =
     path.startsWith("/login") ||
@@ -36,43 +62,29 @@ export async function updateSession(request: NextRequest) {
     path === "/";
 
   // Usuário não autenticado → login
-  if (!user && !isPublicRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
+  if (!user && !isPublicRoute) return redirectTo("/login");
 
   // Usuário autenticado acessando login → hub de módulos
-  if (user && path.startsWith("/login")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/inicio";
-    return NextResponse.redirect(url);
-  }
+  if (user && path.startsWith("/login")) return redirectTo("/inicio");
 
   // Roles com acesso restrito
   if (user) {
     const role = user.user_metadata?.role as string | undefined;
 
     if (role === "visualizador" && !path.startsWith("/visualizador") && !isPublicRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/visualizador";
-      return NextResponse.redirect(url);
+      return redirectTo("/visualizador");
     }
 
     // Vaqueiro: só a tela de nascimento de bezerro. Nada de hub, módulos ou
     // configurações — perfil fechado, sem exceção.
     if (role === "vaqueiro" && !path.startsWith("/vaqueiro") && !isPublicRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/vaqueiro";
-      return NextResponse.redirect(url);
+      return redirectTo("/vaqueiro");
     }
 
     // Técnico: só a tela de "usei este material". Ele avisa o que gastou na
     // obra; o saldo só cai quando o chefe dá baixa. Nada de hub nem módulos.
     if (role === "tecnico" && !path.startsWith("/tecnico") && !isPublicRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/tecnico";
-      return NextResponse.redirect(url);
+      return redirectTo("/tecnico");
     }
 
     // Operador: sempre acessa /operador e /imprimir (comprovantes). Se tiver
@@ -89,11 +101,7 @@ export async function updateSession(request: NextRequest) {
             path.startsWith("/configuracoes") ||
             (slug !== null && allowedModules.includes(slug))));
 
-      if (!canAccess) {
-        const url = request.nextUrl.clone();
-        url.pathname = hasModules ? "/inicio" : "/operador";
-        return NextResponse.redirect(url);
-      }
+      if (!canAccess) return redirectTo(hasModules ? "/inicio" : "/operador");
     }
 
     // Módulos liberados por usuário — admin/operador/visualizador/vaqueiro/tecnico
@@ -108,13 +116,9 @@ export async function updateSession(request: NextRequest) {
       !isPublicRoute
     ) {
       const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;
-      if (isModuleBlocked(path, allowedModules)) {
-        const url = request.nextUrl.clone();
-        url.pathname = "/inicio";
-        return NextResponse.redirect(url);
-      }
+      if (isModuleBlocked(path, allowedModules)) return redirectTo("/inicio");
     }
   }
 
-  return supabaseResponse;
+  return withCookies(NextResponse.next({ request: { headers: requestHeaders } }));
 }

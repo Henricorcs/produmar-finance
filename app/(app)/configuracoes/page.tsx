@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertConfigClient } from "@/components/configuracoes/alert-config-client";
@@ -12,16 +13,17 @@ export const dynamic = "force-dynamic";
 
 export default async function ConfiguracoesPage() {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  const [profileRes, alertConfigsRes, categoriesRes] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user!.id).single<Profile>(),
+  // Id vem do header que o middleware preencheu — sem ida e volta ao Supabase.
+  const userId = await getCurrentUserId();
+
+  const [profile, alertConfigsRes, categoriesRes] = await Promise.all([
+    // perfil do cache da requisição (o layout já buscou) — não consulta de novo
+    getProfile(),
     supabase
       .from("alert_configs")
       .select("alert_type, enabled, days_before")
-      .eq("user_id", user!.id),
+      .eq("user_id", userId!),
     supabase
       .from("categories")
       .select("*")
@@ -29,7 +31,6 @@ export default async function ConfiguracoesPage() {
       .order("name", { ascending: true }),
   ]);
 
-  const profile = profileRes.data;
   const alertConfigs = alertConfigsRes.data ?? [];
   const categories = (categoriesRes.data as Category[]) ?? [];
   const isAdmin = profile?.role === "admin";
@@ -70,7 +71,7 @@ export default async function ConfiguracoesPage() {
         <CardContent>
           <ProfileFormClient
             fullName={profile?.full_name ?? ""}
-            email={profile?.email ?? user!.email!}
+            email={profile?.email ?? ""}
             role={profile?.role ?? "financeiro"}
           />
         </CardContent>
@@ -113,7 +114,7 @@ export default async function ConfiguracoesPage() {
             </p>
           </CardHeader>
           <CardContent>
-            <UserManagementClient users={allUsers} currentUserId={user!.id} />
+            <UserManagementClient users={allUsers} currentUserId={userId!} />
           </CardContent>
         </Card>
       )}

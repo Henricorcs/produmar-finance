@@ -5,20 +5,23 @@ import { useTheme } from "next-themes";
 import { useRouter, usePathname } from "next/navigation";
 import { TrendingDown } from "lucide-react";
 import { MonthNav } from "@/components/ui/month-nav";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatBRL, formatBRLFull, formatDate } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/badge";
 import type { Category, CostCenter, Transaction } from "@/lib/types";
+
+// O gráfico entra depois que a tela abriu: a biblioteca de gráficos é o pedaço
+// mais pesado desta página e a lista de categorias, logo ao lado, já responde.
+const DespesasChart = dynamic(
+  () => import("@/components/para-onde-foi/despesas-chart").then((m) => m.DespesasChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[220px] rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />
+    ),
+  }
+);
 
 type TransactionWithRels = Transaction & {
   categories: { name: string; color: string; type: string } | null;
@@ -145,45 +148,7 @@ export function ParaOndeFoiClient({ transactions, categories, costCenters, month
                 <CardTitle>Despesas por categoria</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    data={categoryStats.slice(0, 8)}
-                    layout="vertical"
-                    margin={{ left: 0, right: 16, top: 0, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDark ? "#1e293b" : "#f1f5f9"} />
-                    <XAxis
-                      type="number"
-                      tickFormatter={(v) => formatBRLFull(v)}
-                      tick={{ fontSize: 10, fill: "#94a3b8" }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={110}
-                      tick={{ fontSize: 10, fill: isDark ? "#94a3b8" : "#64748b" }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      formatter={(value: number) => [formatBRL(value), "Total"]}
-                      contentStyle={{
-                        borderRadius: "8px",
-                        border: isDark ? "1px solid #334155" : "1px solid #e2e8f0",
-                        background: isDark ? "#1e293b" : "white",
-                        fontSize: "12px",
-                        color: isDark ? "#f1f5f9" : "#0f172a",
-                      }}
-                    />
-                    <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-                      {categoryStats.slice(0, 8).map((entry) => (
-                        <Cell key={entry.id} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <DespesasChart data={categoryStats.slice(0, 8)} isDark={isDark} />
               </CardContent>
             </Card>
 
