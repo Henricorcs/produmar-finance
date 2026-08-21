@@ -3,6 +3,7 @@ import { AlmoxarifadoPageClient } from "@/components/almoxarifado/almoxarifado-p
 import type {
   Machine,
   SupplyCategory,
+  SupplyFenceRunView,
   SupplyItemWithStock,
   SupplyObraSector,
   SupplyObraUsage,
@@ -23,6 +24,7 @@ export default async function AlmoxarifadoPage() {
     sectorsRes,
     machinesRes,
     requestsRes,
+    fenceRes,
   ] = await Promise.all([
     supabase.from("v_supply_stock").select("*").order("name", { ascending: true }),
     supabase
@@ -48,6 +50,13 @@ export default async function AlmoxarifadoPage() {
       .select("*, supply_items(name, unit), supply_obras(name)")
       .order("created_at", { ascending: true })
       .limit(100),
+    // metros de cerca com o preço já resolvido (migration 063 — sem ela a aba
+    // fica vazia e o resto da tela continua igual)
+    supabase
+      .from("v_supply_fence_runs")
+      .select("*")
+      .order("work_date", { ascending: false })
+      .limit(500),
   ]);
 
   return (
@@ -59,6 +68,7 @@ export default async function AlmoxarifadoPage() {
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
       machines={(machinesRes.data as Machine[]) ?? []}
       requests={(requestsRes.data as SupplyRequestRow[]) ?? []}
+      fenceRuns={(fenceRes.data as SupplyFenceRunView[]) ?? []}
     />
   );
 }

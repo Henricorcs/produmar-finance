@@ -219,3 +219,129 @@ export async function cancelSupplyUsageRequest(id: string) {
   revalidatePath("/almoxarifado");
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CERCA — o metro feito (migration 063)
+// ─────────────────────────────────────────────────────────────────────────────
+// Aqui o técnico manda SÓ METRO. Nenhum campo desta função encosta em dinheiro:
+// o preço por metro é cadastrado pelo chefe na obra/no setor e só aparece na
+// tela dele. É o mesmo motivo de o técnico não ver saldo de estoque.
+
+function fenceError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.message.includes("supply_fence_runs"))
+    return "Rode a migration 063 no Supabase para lançar os metros de cerca";
+  if (error.message.includes("supply_fence_runs_meters_check"))
+    return "Informe quantos metros você fez";
+  return error.message;
+}
+
+/** "12,5" → 12.5, sempre positivo e com 2 casas (a coluna é numeric(12,2)). */
+function parseMeters(raw: unknown): number {
+  const n = parseFloat(String(raw ?? "").replace(",", "."));
+  if (isNaN(n)) return 0;
+  return Math.round(Math.abs(n) * 100) / 100;
+}
+
+/** YYYY-MM-DD ou nada — não deixa lixo virar data no banco. */
+function cleanDate(raw: unknown): string | null {
+  const v = String(raw ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
+/**
+ * O técnico lança quantos metros de cerca saíram no dia, em qual setor. Isso
+ * entra DIRETO no histórico da obra (não é fila de aprovação como o material):
+ * metro feito é fato, não pedido. O chefe corrige se estiver errado.
+ */
+export async function registerFenceRun(formData: FormData) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const obraId = String(formData.get("obra_id") ?? "").trim();
+  const sectorId = String(formData.get("sector_id") ?? "").trim();
+  const meters = parseMeters(formData.get("meters"));
+  const workDate = cleanDate(formData.get("work_date"));
+  const description = clean(formData.get("description"));
+  const photo = formData.get("photo");
+
+  if (!obraId) return { error: "Diga em qual obra você fez a cerca" };
+  if (meters <= 0) return { error: "Informe quantos metros você fez" };
+  if (!workDate) return { error: "Informe o dia do serviço" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  // a foto é opcional — sobe antes, para não gravar o lançamento sem ela
+  let photoPath: string | null = null;
+  if (photo instanceof File && photo.size > 0) {
+    if (photo.size > MAX_FILE_SIZE) return { error: "A foto deve ter no máximo 10 MB" };
+    const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "foto.jpg";
+    photoPath = `fence-runs/${randomUUID()}_${safeName}`;
+    const { error: upErr } = await supabase.storage
+      .from("attachments")
+      .upload(photoPath, photo, {
+        contentType: photo.type || "application/octet-stream",
+        upsert: false,
+      });
+    if (upErr) return { error: upErr.message };
+  }
+
+  const { error } = await supabase.from("supply_fence_runs").insert({
+    obra_id: obraId,
+    sector_id: sectorId || null,
+    work_date: workDate,
+    meters,
+    description,
+    photo_path: photoPath,
+    // rate_per_meter fica NULO de propósito: quem põe preço é o chefe
+    registered_by_name: clean(profile?.full_name),
+    created_by: user.id,
+  });
+
+  if (error) {
+    if (photoPath) await supabase.storage.from("attachments").remove([photoPath]);
+    return { error: fenceError(error) };
+  }
+
+  revalidatePath("/tecnico/cerca");
+  revalidatePath("/almoxarifado");
+  return { ok: true, meters };
+}
+
+/**
+ * Lançou errado? Ele apaga o PRÓPRIO lançamento (a policy da 063 não deixa
+ * mexer no dos outros). Corrigir metro é apagar e lançar de novo.
+ */
+export async function cancelFenceRun(id: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: run } = await supabase
+    .from("supply_fence_runs")
+    .select("photo_path, created_by")
+    .eq("id", id)
+    .maybeSingle();
+  if (!run) return { error: "Lançamento não encontrado" };
+  if (run.created_by !== user.id)
+    return { error: "Você só pode apagar o que você mesmo lançou" };
+
+  const { error } = await supabase.from("supply_fence_runs").delete().eq("id", id);
+  if (error) return { error: fenceError(error) };
+
+  // a foto é só deste lançamento (cada um sobe a sua), então some com ele
+  if (run.photo_path)
+    await supabase.storage.from("attachments").remove([run.photo_path as string]);
+
+  revalidatePath("/tecnico/cerca");
+  revalidatePath("/almoxarifado");
+  return { ok: true };
+}

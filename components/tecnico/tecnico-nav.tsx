@@ -2,18 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PackageOpen, Users } from "lucide-react";
+import { Fence, PackageOpen, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ABAS = [
   { href: "/tecnico", label: "Material", icon: PackageOpen },
   { href: "/tecnico/diaristas", label: "Diaristas", icon: Users },
+  { href: "/tecnico/cerca", label: "Cerca", icon: Fence },
 ];
 
 /**
- * As duas coisas que o técnico avisa da rua: o material que gastou e quem veio
- * trabalhar. Duas telas, um toque para trocar — sem menu, sem hub, sem nada
- * mais no meio (o perfil dele é fechado nestas rotas).
+ * As três coisas que o técnico avisa da rua: o material que gastou, quem veio
+ * trabalhar e quantos metros de cerca andaram. Três telas, um toque para
+ * trocar — sem menu, sem hub, sem nada mais no meio (o perfil dele é fechado
+ * nestas rotas).
  */
 export function TecnicoNav() {
   const pathname = usePathname();
@@ -28,14 +30,14 @@ export function TecnicoNav() {
             key={aba.href}
             href={aba.href}
             className={cn(
-              "flex-1 flex items-center justify-center gap-2 min-h-[48px] rounded-lg text-sm font-semibold transition-colors",
+              "flex-1 flex items-center justify-center gap-1.5 min-h-[48px] px-1 rounded-lg text-[13px] sm:text-sm font-semibold transition-colors",
               active
                 ? "bg-white dark:bg-slate-700 text-produmar-700 dark:text-produmar-300 shadow-sm"
                 : "text-slate-500 dark:text-slate-400"
             )}
           >
-            <Icon className="w-4 h-4" />
-            {aba.label}
+            <Icon className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">{aba.label}</span>
           </Link>
         );
       })}

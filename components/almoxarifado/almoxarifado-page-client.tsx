@@ -9,6 +9,7 @@ import {
   ArrowUpFromLine,
   ChevronRight,
   ClipboardCheck,
+  Fence,
   History,
   Settings2,
   Tag,
@@ -34,12 +35,14 @@ import { CategoriesDialog } from "./categories-dialog";
 import { ObraDialog } from "./obra-dialog";
 import { ObraCard, ObraDetailDialog } from "./obra-detail-dialog";
 import { ObraSectorsDialog } from "./obra-sectors-dialog";
+import { CercaTab, FenceRateDialog, FenceRunDialog } from "./cerca-tab";
 import { SupplyRequestDialog } from "./request-dialog";
 import { SupplyRequestDetailDialog } from "./request-detail-dialog";
 import { MOVEMENT_META, STATUS_META, fmtDateTime, num } from "./supply-shared";
 import type {
   Machine,
   SupplyCategory,
+  SupplyFenceRunView,
   SupplyItemWithStock,
   SupplyMovement,
   SupplyObraSector,
@@ -65,9 +68,11 @@ interface Props {
   machines?: Machine[];
   /** O que os técnicos avisaram que usaram, esperando baixa (migration 052). */
   requests?: SupplyRequestRow[];
+  /** Metros de cerca feitos, com o preço já resolvido (migration 063). */
+  fenceRuns?: SupplyFenceRunView[];
 }
 
-type Tab = "estoque" | "obras" | "movimentos" | "pendentes";
+type Tab = "estoque" | "obras" | "cerca" | "movimentos" | "pendentes";
 /** Categoria escolhida: todas, um id, ou os itens sem categoria. */
 type CategoryFilter = "todas" | "sem" | (string & {});
 type StatusFilter = "todos" | SupplyStatus;
@@ -80,6 +85,7 @@ export function AlmoxarifadoPageClient({
   sectors = [],
   machines = [],
   requests = [],
+  fenceRuns = [],
 }: Props) {
   const [tab, setTab] = useState<Tab>("estoque");
   const [isRejecting, startRejecting] = useTransition();
@@ -100,6 +106,13 @@ export function AlmoxarifadoPageClient({
   /** Cadastro dos setores da obra (o "Setor aplicado" do técnico). */
   const [sectorsOpen, setSectorsOpen] = useState(false);
   const [sectorsObraId, setSectorsObraId] = useState<string | null>(null);
+  /** Cerca: o lançamento de metros e a tabela de preço por metro. */
+  const [fenceRunOpen, setFenceRunOpen] = useState(false);
+  const [editFenceRun, setEditFenceRun] = useState<SupplyFenceRunView | null>(null);
+  /** Obra que o lançamento novo já abre escolhida (a do filtro/da obra aberta). */
+  const [fenceRunObraId, setFenceRunObraId] = useState<string | null>(null);
+  const [fenceRatesOpen, setFenceRatesOpen] = useState(false);
+  const [fenceRatesObraId, setFenceRatesObraId] = useState<string | null>(null);
   /** O cadastro de obra foi aberto de dentro do lançamento? */
   const [creatingObraFromMovement, setCreatingObraFromMovement] = useState(false);
   const [adjustItemId, setAdjustItemId] = useState<string | null>(null);
@@ -463,6 +476,7 @@ export function AlmoxarifadoPageClient({
           [
             { value: "estoque", label: "Estoque", icon: PackageOpen, count: scopedItems.length },
             { value: "obras", label: "Obras", icon: HardHat, count: obras.length },
+            { value: "cerca", label: "Cerca", icon: Fence, count: fenceRuns.length },
             {
               value: "movimentos",
               label: "Movimentos",
@@ -586,6 +600,27 @@ export function AlmoxarifadoPageClient({
         />
       )}
 
+      {tab === "cerca" && (
+        <CercaTab
+          runs={fenceRuns}
+          obras={obras}
+          sectors={sectors}
+          onNew={(obraId) => {
+            setEditFenceRun(null);
+            setFenceRunObraId(obraId);
+            setFenceRunOpen(true);
+          }}
+          onOpen={(r) => {
+            setEditFenceRun(r);
+            setFenceRunOpen(true);
+          }}
+          onRates={(obraId) => {
+            setFenceRatesObraId(obraId);
+            setFenceRatesOpen(true);
+          }}
+        />
+      )}
+
       {tab === "movimentos" && (
         <MovimentosTab movements={scopedMovements} obraNameById={obraNameById} />
       )}
@@ -646,12 +681,33 @@ export function AlmoxarifadoPageClient({
         sectors={sectors}
         presetObraId={sectorsObraId}
       />
+
+      <FenceRunDialog
+        open={fenceRunOpen}
+        onClose={() => {
+          setFenceRunOpen(false);
+          setEditFenceRun(null);
+        }}
+        run={editFenceRun}
+        obras={obras}
+        sectors={sectors}
+        presetObraId={fenceRunObraId}
+      />
+
+      <FenceRateDialog
+        open={fenceRatesOpen}
+        onClose={() => setFenceRatesOpen(false)}
+        obras={obras}
+        sectors={sectors}
+        presetObraId={fenceRatesObraId}
+      />
       <ObraDetailDialog
         open={!!detailObra}
         onClose={() => setDetailObraId(null)}
         obra={detailObra}
         items={items}
         sectors={sectors}
+        fenceRuns={fenceRuns}
         onManageSectors={(o) => {
           // sai do detalhe direto para o cadastro — dois diálogos se atropelam
           setDetailObraId(null);

@@ -947,6 +947,8 @@ export interface SupplyObra {
   client: string | null;
   notes: string | null;
   active: boolean;
+  /** Preço por metro de cerca da obra inteira (migration 063). 0 = sem preço. */
+  fence_rate?: number;
   created_by: string | null;
   created_at: string;
 }
@@ -961,6 +963,8 @@ export interface SupplyObraSector {
   name: string;
   notes: string | null;
   active: boolean;
+  /** Preço por metro de cerca SÓ deste setor (migration 063). 0 = usa o da obra. */
+  fence_rate?: number;
   created_by: string | null;
   created_at: string;
 }
@@ -1036,6 +1040,48 @@ export interface SupplyRequestRow extends SupplyRequest {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CERCA — metro feito por setor (migration 063)
+// ═══════════════════════════════════════════════════════════════════════════
+// A obra da cerca não se mede em material, se mede em METRO FEITO. O técnico
+// lança só o metro (a tela dele não tem dinheiro nenhum); o preço por metro é
+// cadastrado pelo chefe na obra e, quando o setor for diferente, no setor.
+
+/** Um trecho de cerca feito num dia. */
+export interface SupplyFenceRun {
+  id: string;
+  obra_id: string;
+  /** Setor onde andou a cerca (null = a obra não tem setor cadastrado). */
+  sector_id: string | null;
+  work_date: string;
+  meters: number;
+  /** O que foi feito no trecho. */
+  description: string | null;
+  photo_path: string | null;
+  /**
+   * Preço travado deste trecho pelo chefe. NULO = vale o preço do setor (e,
+   * sem ele, o da obra). Zero é um preço de verdade: trecho que não paga.
+   */
+  rate_per_meter: number | null;
+  /** Nome de quem lançou, gravado no lançamento. */
+  registered_by_name: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Linha da view v_supply_fence_runs — o lançamento com o preço já resolvido.
+ * É o que a tela do CHEFE lê; a do técnico lê a tabela crua, sem valor.
+ */
+export interface SupplyFenceRunView extends SupplyFenceRun {
+  obra_name: string;
+  sector_name: string | null;
+  /** Preço por metro que valeu (trecho → setor → obra). */
+  effective_rate: number;
+  /** metros × preço. */
+  total_value: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DIARISTAS — quem vem por dia (migration 059)
 // ═══════════════════════════════════════════════════════════════════════════
 // O cadastro é do chefe (nome, PIX, valor da diária). O calendário é do
@@ -1060,6 +1106,8 @@ export interface Diarista {
 /** Linha da view v_diaristas (cadastro + quanto ele já trabalhou). */
 export interface DiaristaResumo extends Diarista {
   days_count: number;
+  /** Quantos desses dias foram meia diária (migration 064). */
+  half_days_count?: number;
   /** Soma das diárias lançadas (com o valor congelado de cada dia). */
   total_value: number;
   last_work_date: string | null;
@@ -1077,7 +1125,13 @@ export interface DiaristaDia {
   description: string | null;
   obra_id: string | null;
   sector_id: string | null;
+  /**
+   * O que se paga NESTE dia. Na meia diária o valor já está pela metade — ver
+   * a migration 064: nenhuma soma do app divide nada, o valor já vem certo.
+   */
   daily_rate: number;
+  /** Veio só meia diária (migration 064): pinta o dia de amarelo. */
+  half_day?: boolean;
   /** Nome de quem marcou o dia, gravado no lançamento. */
   registered_by_name: string | null;
   created_by: string | null;

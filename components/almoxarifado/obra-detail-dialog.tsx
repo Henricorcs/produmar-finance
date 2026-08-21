@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowUpFromLine, HardHat, MapPin, Pencil, Trash2, User } from "lucide-react";
+import { ArrowUpFromLine, Fence, HardHat, MapPin, Pencil, Trash2, User } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,12 @@ import { Button } from "@/components/ui/button";
 import { formatBRL, formatQty } from "@/lib/utils";
 import { deleteSupplyObra, getSupplyObraMovements } from "@/app/(app)/almoxarifado/actions";
 import { fmtDateTime, num } from "./supply-shared";
-import type { SupplyItemWithStock, SupplyObraSector, SupplyObraUsage } from "@/lib/types";
+import type {
+  SupplyFenceRunView,
+  SupplyItemWithStock,
+  SupplyObraSector,
+  SupplyObraUsage,
+} from "@/lib/types";
 
 /** Saída da obra — vem da consulta sob demanda, sem o limite da listagem. */
 type ObraMovement = {
@@ -33,6 +38,8 @@ interface Props {
   items: SupplyItemWithStock[];
   /** Setores de TODAS as obras — o diálogo filtra os desta. */
   sectors?: SupplyObraSector[];
+  /** Metros de cerca de TODAS as obras — o diálogo filtra os desta (063). */
+  fenceRuns?: SupplyFenceRunView[];
   onNewSaida: (obra: SupplyObraUsage) => void;
   onEdit: (obra: SupplyObraUsage) => void;
   /** Abre o cadastro de setores já nesta obra. */
@@ -45,6 +52,7 @@ export function ObraDetailDialog({
   obra,
   items,
   sectors = [],
+  fenceRuns = [],
   onNewSaida,
   onEdit,
   onManageSectors,
@@ -75,6 +83,31 @@ export function ObraDetailDialog({
     () => sectors.filter((x) => x.obra_id === obra?.id),
     [sectors, obra?.id]
   );
+
+  /**
+   * A cerca desta obra: quanto andou e quanto custou, por setor. Numa obra de
+   * cerca é este o número que interessa — o material é só o meio.
+   */
+  const cerca = useMemo(() => {
+    const meus = fenceRuns.filter((r) => r.obra_id === obra?.id);
+    const porSetor = new Map<string, { nome: string; metros: number; valor: number }>();
+    for (const r of meus) {
+      const key = r.sector_id ?? "sem";
+      const cur = porSetor.get(key) ?? {
+        nome: r.sector_name ?? "Sem setor",
+        metros: 0,
+        valor: 0,
+      };
+      cur.metros += num(r.meters);
+      cur.valor += num(r.total_value);
+      porSetor.set(key, cur);
+    }
+    return {
+      metros: meus.reduce((s, r) => s + num(r.meters), 0),
+      valor: meus.reduce((s, r) => s + num(r.total_value), 0),
+      setores: [...porSetor.values()].sort((a, b) => b.metros - a.metros),
+    };
+  }, [fenceRuns, obra?.id]);
 
   const costByItem = useMemo(() => {
     const map = new Map<string, number>();
@@ -155,6 +188,39 @@ export function ObraDetailDialog({
             <ArrowUpFromLine className="w-4 h-4" />
             Lançar saída para esta obra
           </Button>
+
+          {/* Cerca: metro feito por setor (o técnico lança só o metro) */}
+          {cerca.metros > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Fence className="w-3.5 h-3.5 text-lime-600" />
+                Cerca feita
+              </p>
+              <div className="rounded-xl border border-lime-200 dark:border-lime-900/50 bg-lime-50/60 dark:bg-lime-950/20 px-3 py-2.5 flex items-baseline justify-between gap-2">
+                <span className="text-lg font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+                  {formatQty(cerca.metros)} m
+                </span>
+                <span className="text-sm font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
+                  {formatBRL(cerca.valor)}
+                </span>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                {cerca.setores.map((s) => (
+                  <div key={s.nome} className="flex items-center gap-3 px-3 py-2">
+                    <span className="flex-1 min-w-0 text-sm text-slate-700 dark:text-slate-200 truncate">
+                      {s.nome}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums flex-shrink-0">
+                      {formatQty(s.metros)} m
+                    </span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0 w-24 text-right">
+                      {formatBRL(s.valor)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Setores: o subcadastro que o técnico escolhe na tela dele */}
           <div className="space-y-1.5">

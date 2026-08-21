@@ -701,3 +701,166 @@ export async function deleteSupplyObraSector(id: string) {
   revalidatePath("/tecnico");
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CERCA — o metro feito e o preço dele (migration 063)
+// ─────────────────────────────────────────────────────────────────────────────
+// O técnico lança metro (actions de /tecnico). Aqui é o outro lado: o PREÇO,
+// que é só do chefe, e a correção do que foi lançado.
+
+function fenceError(error: { code?: string; message: string }): string {
+  if (error.message.includes("fence_rate"))
+    return "Rode a migration 063 no Supabase para usar o preço por metro";
+  if (error.code === "42P01" || error.message.includes("supply_fence_runs"))
+    return "Rode a migration 063 no Supabase para usar o controle de cerca";
+  return supplyError(error);
+}
+
+/** Dinheiro sempre positivo, com 2 casas. */
+function normMoney(v?: number | null): number {
+  const n = Math.abs(Number(v ?? 0));
+  return isNaN(n) ? 0 : Math.round(n * 100) / 100;
+}
+
+/** Metro sempre positivo, com 2 casas (a coluna é numeric(12,2)). */
+function normMeters(v?: number | null): number {
+  const n = Math.abs(Number(v ?? 0));
+  return isNaN(n) ? 0 : Math.round(n * 100) / 100;
+}
+
+function revalidateFence() {
+  revalidate();
+  revalidatePath("/tecnico/cerca");
+}
+
+/**
+ * Preço por metro da OBRA — vale para todos os setores dela que não tiverem um
+ * preço próprio. É onde o chefe cadastra o valor uma vez só.
+ */
+export async function setObraFenceRate(obraId: string, rate: number) {
+  const supabase = createClient();
+  if (!obraId) return { error: "Obra não informada" };
+
+  const { error } = await supabase
+    .from("supply_obras")
+    .update({ fence_rate: normMoney(rate) })
+    .eq("id", obraId);
+
+  if (error) return { error: fenceError(error) };
+  revalidateFence();
+  return { ok: true };
+}
+
+/**
+ * Preço por metro SÓ deste setor — para quando um pedaço da cerca é de outro
+ * tipo (mais fio, terreno pior) e vale diferente. Zero = volta a valer o preço
+ * da obra.
+ */
+export async function setSectorFenceRate(sectorId: string, rate: number) {
+  const supabase = createClient();
+  if (!sectorId) return { error: "Setor não informado" };
+
+  const { error } = await supabase
+    .from("supply_obra_sectors")
+    .update({ fence_rate: normMoney(rate) })
+    .eq("id", sectorId);
+
+  if (error) return { error: fenceError(error) };
+  revalidateFence();
+  return { ok: true };
+}
+
+export interface FenceRunInput {
+  obra_id: string;
+  sector_id?: string | null;
+  work_date: string;
+  meters: number;
+  description?: string | null;
+  /**
+   * Preço travado deste trecho. `null` = usa o preço do setor/da obra — é o
+   * normal, e é assim que entra o lançamento do técnico.
+   */
+  rate_per_meter?: number | null;
+}
+
+/** O chefe também lança metro (quando o técnico não lançou). */
+export async function createFenceRun(input: FenceRunInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.obra_id) return { error: "Escolha a obra" };
+  const meters = normMeters(input.meters);
+  if (meters <= 0) return { error: "Informe quantos metros foram feitos" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.work_date ?? ""))
+    return { error: "Informe o dia do serviço" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const { error } = await supabase.from("supply_fence_runs").insert({
+    obra_id: input.obra_id,
+    sector_id: input.sector_id || null,
+    work_date: input.work_date,
+    meters,
+    description: clean(input.description),
+    rate_per_meter: input.rate_per_meter == null ? null : normMoney(input.rate_per_meter),
+    registered_by_name: clean(profile?.full_name),
+    created_by: user.id,
+  });
+
+  if (error) return { error: fenceError(error) };
+  revalidateFence();
+  return { ok: true };
+}
+
+/** Corrigir o que foi lançado — metro, dia, setor e o preço travado do trecho. */
+export async function updateFenceRun(id: string, input: FenceRunInput) {
+  const supabase = createClient();
+
+  const meters = normMeters(input.meters);
+  if (meters <= 0) return { error: "Informe quantos metros foram feitos" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.work_date ?? ""))
+    return { error: "Informe o dia do serviço" };
+
+  const { error } = await supabase
+    .from("supply_fence_runs")
+    .update({
+      obra_id: input.obra_id,
+      sector_id: input.sector_id || null,
+      work_date: input.work_date,
+      meters,
+      description: clean(input.description),
+      rate_per_meter: input.rate_per_meter == null ? null : normMoney(input.rate_per_meter),
+    })
+    .eq("id", id);
+
+  if (error) return { error: fenceError(error) };
+  revalidateFence();
+  return { ok: true };
+}
+
+export async function deleteFenceRun(id: string) {
+  const supabase = createClient();
+
+  const { data: run } = await supabase
+    .from("supply_fence_runs")
+    .select("photo_path")
+    .eq("id", id)
+    .maybeSingle();
+
+  const { error } = await supabase.from("supply_fence_runs").delete().eq("id", id);
+  if (error) return { error: fenceError(error) };
+
+  // a foto é só deste lançamento (cada um sobe a sua), então some com ele
+  if (run?.photo_path)
+    await supabase.storage.from("attachments").remove([run.photo_path as string]);
+
+  revalidateFence();
+  return { ok: true };
+}
