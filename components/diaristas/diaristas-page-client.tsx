@@ -73,12 +73,14 @@ export function DiaristasPageClient({ diaristas, dias, obras, sectors }: Props) 
     [dias, from, to]
   );
 
-  /** Quantos dias e quanto cada um fez no mês. */
+  /** Quantos dias (e quantas meias) e quanto cada um fez no mês. */
   const resumoDoMes = useMemo(() => {
-    const map = new Map<string, { dias: number; total: number }>();
+    const map = new Map<string, { dias: number; meias: number; total: number }>();
     for (const d of diasDoMes) {
-      const cur = map.get(d.diarista_id) ?? { dias: 0, total: 0 };
+      const cur = map.get(d.diarista_id) ?? { dias: 0, meias: 0, total: 0 };
       cur.dias += 1;
+      if (d.half_day) cur.meias += 1;
+      // o valor da meia diária já está pela metade no lançamento (migration 064)
       cur.total += Number(d.daily_rate);
       map.set(d.diarista_id, cur);
     }
@@ -86,6 +88,7 @@ export function DiaristasPageClient({ diaristas, dias, obras, sectors }: Props) 
   }, [diasDoMes]);
 
   const totalMes = diasDoMes.reduce((s, d) => s + Number(d.daily_rate), 0);
+  const meiasDoMes = diasDoMes.filter((d) => d.half_day).length;
   const ativos = diaristas.filter((d) => d.active);
 
   const listados = useMemo(() => {
@@ -158,7 +161,14 @@ export function DiaristasPageClient({ diaristas, dias, obras, sectors }: Props) 
 
         <div className="grid grid-cols-3 gap-2 text-center">
           <Numero label="diaristas" value={String(ativos.length)} />
-          <Numero label="diárias no mês" value={String(diasDoMes.length)} />
+          <Numero
+            label={
+              meiasDoMes > 0
+                ? `diárias · ${meiasDoMes} ${meiasDoMes === 1 ? "meia" : "meias"}`
+                : "diárias no mês"
+            }
+            value={String(diasDoMes.length)}
+          />
           <Numero label="a pagar no mês" value={formatBRL(totalMes)} destaque />
         </div>
 
@@ -331,8 +341,15 @@ export function DiaristasPageClient({ diaristas, dias, obras, sectors }: Props) 
                         </span>
                       )}
                     </span>
-                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300 tabular-nums flex-shrink-0">
-                      {formatBRL(Number(d.daily_rate))}
+                    <span className="text-right flex-shrink-0">
+                      <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 tabular-nums">
+                        {formatBRL(Number(d.daily_rate))}
+                      </span>
+                      {d.half_day && (
+                        <span className="block text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                          meia diária
+                        </span>
+                      )}
                     </span>
                   </button>
                 </li>

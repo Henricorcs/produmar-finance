@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
+  cn,
   formatBRL,
   formatBRLInput,
   formatDate,
@@ -60,6 +61,7 @@ export function DiaDetailDialog({
   const [obraId, setObraId] = useState("");
   const [sectorId, setSectorId] = useState("");
   const [rate, setRate] = useState("");
+  const [halfDay, setHalfDay] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -69,7 +71,23 @@ export function DiaDetailDialog({
     setObraId(dia?.obra_id ?? "");
     setSectorId(dia?.sector_id ?? "");
     setRate(dia ? formatBRLInput(Number(dia.daily_rate)) : "");
+    setHalfDay(dia?.half_day === true);
   }, [open, dia]);
+
+  /**
+   * Trocar entre dia inteiro e meia diária já ajusta o valor na tela (metade ou
+   * dobro do que está lá). O chefe ainda pode digitar por cima — mas ninguém
+   * precisa fazer a conta na mão para o caso normal.
+   */
+  function toggleHalf(meia: boolean) {
+    if (meia === halfDay) return;
+    setHalfDay(meia);
+    const atual = parseMoney(rate);
+    if (atual > 0) {
+      const novo = meia ? atual / 2 : atual * 2;
+      setRate(formatBRLInput(Math.round(novo * 100) / 100));
+    }
+  }
 
   const obraSectors = useMemo(
     () => sectors.filter((s) => s.obra_id === obraId),
@@ -89,6 +107,7 @@ export function DiaDetailDialog({
         obra_id: obraId || null,
         sector_id: obraId && sectorId ? sectorId : null,
         daily_rate: parseMoney(rate),
+        half_day: halfDay,
       });
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao salvar");
@@ -122,10 +141,22 @@ export function DiaDetailDialog({
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
-            <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+            <span
+              className={cn(
+                "w-7 h-7 rounded-lg flex items-center justify-center",
+                dia?.half_day
+                  ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                  : "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+              )}
+            >
               <CalendarCheck className="w-4 h-4" />
             </span>
             {dia ? formatDate(dia.work_date) : "Dia"}
+            {dia?.half_day && (
+              <span className="ml-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[11px] font-semibold">
+                meia diária
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -135,7 +166,7 @@ export function DiaDetailDialog({
               <Linha icon={User} label="Diarista" value={diaristaName} />
               <Linha
                 icon={Wallet}
-                label="Valor do dia"
+                label={dia.half_day ? "Meia diária" : "Valor do dia"}
                 value={formatBRL(Number(dia.daily_rate))}
               />
               {obraName && <Linha icon={HardHat} label="Obra" value={obraName} />}
@@ -208,7 +239,32 @@ export function DiaDetailDialog({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="dde_rate">Valor do dia (R$)</Label>
+              <Label>Trabalhou o dia todo?</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[false, true].map((meia) => (
+                  <button
+                    key={String(meia)}
+                    type="button"
+                    onClick={() => toggleHalf(meia)}
+                    className={cn(
+                      "min-h-[48px] rounded-xl border text-sm font-semibold transition-colors active:scale-[0.97]",
+                      halfDay === meia
+                        ? meia
+                          ? "bg-amber-400 border-amber-400 text-amber-950"
+                          : "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-500"
+                    )}
+                  >
+                    {meia ? "Meia diária" : "Dia inteiro"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="dde_rate">
+                {halfDay ? "Valor da meia diária (R$)" : "Valor do dia (R$)"}
+              </Label>
               <Input
                 id="dde_rate"
                 value={rate}

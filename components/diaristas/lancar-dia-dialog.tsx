@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatBRL, upperKeepingCaret } from "@/lib/utils";
+import { cn, formatBRL, upperKeepingCaret } from "@/lib/utils";
 import { createDiaristaDia } from "@/app/(app)/diaristas/actions";
 import { longDay } from "./diarista-shared";
 import type { Diarista, SupplyObraSector } from "@/lib/types";
@@ -60,12 +60,15 @@ export function LancarDiaDialog({
   const [description, setDescription] = useState("");
   const [obraId, setObraId] = useState("");
   const [sectorId, setSectorId] = useState("");
+  /** Veio só meio expediente: vale metade e o dia fica amarelo no calendário. */
+  const [halfDay, setHalfDay] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setDescription("");
     setObraId(defaultObraId ?? "");
     setSectorId("");
+    setHalfDay(false);
     setError(null);
     // o dia entra nas dependências porque a tela é reaproveitada: clicou noutro
     // dia sem fechar, o formulário começa limpo de novo
@@ -97,6 +100,7 @@ export function LancarDiaDialog({
         description,
         obra_id: obraId || null,
         sector_id: obraId && sectorId ? sectorId : null,
+        half_day: halfDay,
       });
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao lançar o dia");
@@ -108,6 +112,8 @@ export function LancarDiaDialog({
   }
 
   const valor = Number(diarista?.daily_rate ?? 0);
+  /** O que ele vai receber por este dia — é o número que interessa na hora. */
+  const aPagar = halfDay ? Math.round((valor / 2) * 100) / 100 : valor;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -129,7 +135,39 @@ export function LancarDiaDialog({
             </p>
             {valor > 0 && (
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Diária de {formatBRL(valor)}
+                {halfDay
+                  ? `Meia diária: ${formatBRL(aPagar)} (a diária é ${formatBRL(valor)})`
+                  : `Diária de ${formatBRL(valor)}`}
+              </p>
+            )}
+          </div>
+
+          {/* Dia inteiro ou meio expediente — dois botões do tamanho do dedo,
+              porque isso se responde na rua, sem abrir teclado. */}
+          <div className="space-y-1.5">
+            <Label>Trabalhou o dia todo?</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {[false, true].map((meia) => (
+                <button
+                  key={String(meia)}
+                  type="button"
+                  onClick={() => setHalfDay(meia)}
+                  className={cn(
+                    "min-h-[52px] rounded-xl border text-sm font-semibold transition-colors active:scale-[0.97]",
+                    halfDay === meia
+                      ? meia
+                        ? "bg-amber-400 border-amber-400 text-amber-950"
+                        : "bg-emerald-500 border-emerald-500 text-white"
+                      : "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-500"
+                  )}
+                >
+                  {meia ? "Meia diária" : "Dia inteiro"}
+                </button>
+              ))}
+            </div>
+            {halfDay && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                Vale metade da diária e o dia fica amarelo no calendário.
               </p>
             )}
           </div>
@@ -193,7 +231,7 @@ export function LancarDiaDialog({
           )}
 
           <Button type="submit" disabled={isPending} className="w-full h-14 text-base font-semibold">
-            {isPending ? "Lançando..." : "Lançar a diária"}
+            {isPending ? "Lançando..." : halfDay ? "Lançar a meia diária" : "Lançar a diária"}
           </Button>
 
           <p className="text-[11px] text-center text-slate-400 dark:text-slate-500">

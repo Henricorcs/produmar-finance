@@ -17,6 +17,8 @@ interface Bloco {
   nome: string;
   pix: string | null;
   dias: DiaristaDiaRow[];
+  /** Quantos daqueles dias foram meia diária — sai no resumo. */
+  meias: number;
   total: number;
 }
 
@@ -34,9 +36,12 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
       nome: d.diaristas?.name ?? "—",
       pix: d.diaristas?.pix_key ?? null,
       dias: [],
+      meias: 0,
       total: 0,
     };
     bloco.dias.push(d);
+    if (d.half_day) bloco.meias += 1;
+    // a meia diária já está gravada pela metade (migration 064): a soma é direta
     bloco.total += Number(d.daily_rate);
     porPessoa.set(key, bloco);
   }
@@ -44,6 +49,7 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
   const blocos = [...porPessoa.values()].sort((a, b) => a.nome.localeCompare(b.nome));
   const totalGeral = blocos.reduce((s, b) => s + b.total, 0);
   const totalDias = dias.length;
+  const totalMeias = blocos.reduce((s, b) => s + b.meias, 0);
 
   return (
     <>
@@ -139,6 +145,12 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
                       <td className="py-1.5 px-2 border border-slate-200">{b.pix ?? "—"}</td>
                       <td className="py-1.5 px-2 border border-slate-200 text-center tabular-nums">
                         {b.dias.length}
+                        {b.meias > 0 && (
+                          <span className="text-[10px] text-slate-500">
+                            {" "}
+                            ({b.meias} {b.meias === 1 ? "meia" : "meias"})
+                          </span>
+                        )}
                       </td>
                       <td className="py-1.5 px-2 border border-slate-200 text-right tabular-nums font-semibold">
                         {formatBRL(b.total)}
@@ -154,6 +166,12 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
                     </td>
                     <td className="py-2 px-2 border border-slate-200 text-center tabular-nums font-bold">
                       {totalDias}
+                      {totalMeias > 0 && (
+                        <span className="text-[10px] font-normal text-slate-500">
+                          {" "}
+                          ({totalMeias} {totalMeias === 1 ? "meia" : "meias"})
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 px-2 border border-slate-200 text-right tabular-nums font-bold text-produmar-800">
                       {formatBRL(totalGeral)}
@@ -169,7 +187,8 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
                     <div className="flex items-baseline justify-between border-b border-slate-300 pb-1">
                       <span className="text-[13px] font-bold text-produmar-800">{b.nome}</span>
                       <span className="text-[11px] text-slate-500">
-                        {b.dias.length} {b.dias.length === 1 ? "diária" : "diárias"} ·{" "}
+                        {b.dias.length} {b.dias.length === 1 ? "diária" : "diárias"}
+                        {b.meias > 0 ? ` (${b.meias} ${b.meias === 1 ? "meia" : "meias"})` : ""} ·{" "}
                         <strong className="text-slate-700">{formatBRL(b.total)}</strong>
                         {b.pix ? ` · PIX ${b.pix}` : ""}
                       </span>
@@ -194,7 +213,14 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
                               <td className="py-1 px-2 text-slate-600">
                                 {d.supply_obras?.name ?? "—"}
                               </td>
-                              <td className="py-1 px-2">{d.description || "—"}</td>
+                              <td className="py-1 px-2">
+                                {d.description || "—"}
+                                {d.half_day && (
+                                  <span className="ml-1 text-[10px] font-semibold text-amber-700">
+                                    · MEIA DIÁRIA
+                                  </span>
+                                )}
+                              </td>
                               <td className="py-1 px-2 text-right tabular-nums">
                                 {formatBRL(Number(d.daily_rate))}
                               </td>
@@ -208,7 +234,8 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
 
               <p className="text-[10px] text-slate-400 pt-2 border-t border-slate-200">
                 Os dias são marcados no calendário por quem acompanha o serviço; o valor
-                de cada diária é o que estava combinado no dia em que foi lançada.
+                de cada diária é o que estava combinado no dia em que foi lançada. Meia
+                diária já sai pela metade.
               </p>
             </>
           )}

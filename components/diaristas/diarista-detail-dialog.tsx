@@ -101,7 +101,9 @@ export function DiaristaDetailDialog({
         .sort((a, b) => b.work_date.localeCompare(a.work_date)),
     [meusDias, from, to]
   );
+  // o valor da meia diária já entra pela metade no lançamento (migration 064)
   const totalMes = doMes.reduce((s, d) => s + Number(d.daily_rate), 0);
+  const meiasDoMes = doMes.filter((d) => d.half_day).length;
 
   const obraNome = useMemo(
     () => new Map(obras.map((o) => [o.id, o.name])),
@@ -224,9 +226,11 @@ export function DiaristaDetailDialog({
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                   {doMes.length === 0
                     ? "Nenhuma diária neste mês"
-                    : doMes.length === 1
-                      ? "1 diária no mês"
-                      : `${doMes.length} diárias no mês`}
+                    : `${doMes.length} ${doMes.length === 1 ? "diária" : "diárias"} no mês${
+                        meiasDoMes > 0
+                          ? ` · ${meiasDoMes} ${meiasDoMes === 1 ? "meia" : "meias"}`
+                          : ""
+                      }`}
                 </span>
                 {totalMes > 0 && (
                   <span className="text-sm font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
@@ -258,8 +262,15 @@ export function DiaristaDetailDialog({
                             </span>
                           )}
                         </span>
-                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums flex-shrink-0">
-                          {formatBRL(Number(d.daily_rate))}
+                        <span className="text-right flex-shrink-0">
+                          <span className="block text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+                            {formatBRL(Number(d.daily_rate))}
+                          </span>
+                          {d.half_day && (
+                            <span className="block text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                              meia
+                            </span>
+                          )}
                         </span>
                       </button>
                     </li>

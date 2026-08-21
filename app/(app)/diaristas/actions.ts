@@ -43,6 +43,8 @@ function cleanDate(s?: string | null): string | null {
 function diaristaError(error: { code?: string; message: string }): string {
   if (error.code === "23505" && error.message.includes("uq_diarista_dia"))
     return "Esse dia já estava lançado para este diarista";
+  if (error.message.includes("half_day"))
+    return "Rode a migration 064 no Supabase para usar a meia diária";
   if (error.code === "23505") return "Já existe um diarista com esse nome";
   if (
     error.code === "42P01" ||
@@ -148,6 +150,8 @@ export interface DiaristaDiaCreateInput {
   description?: string | null;
   obra_id?: string | null;
   sector_id?: string | null;
+  /** Veio só meio expediente: vale metade da diária (migration 064). */
+  half_day?: boolean;
 }
 
 /**
@@ -156,7 +160,8 @@ export interface DiaristaDiaCreateInput {
  * fim do mês, e é por isso que não existe lançamento em lote com um texto só.
  *
  * O valor da diária NÃO vem da tela: é lido aqui do cadastro e congelado no
- * dia. Quem marca o dia (o técnico) não decide quanto ele vale.
+ * dia. Quem marca o dia (o técnico) não decide quanto ele vale — ele só diz se
+ * foi dia inteiro ou meio expediente, e a metade é feita AQUI.
  */
 export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
   const supabase = createClient();
@@ -185,13 +190,21 @@ export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
     .eq("id", user.id)
     .maybeSingle();
 
+  // Meia diária vale metade — e o valor JÁ ENTRA pela metade em daily_rate
+  // (ver a migration 064). Nenhuma soma do app precisa lembrar de dividir.
+  const half = input.half_day === true;
+  const rate = normMoney(diarista.daily_rate as number);
+
   const { error } = await supabase.from("diarista_dias").insert({
     diarista_id: input.diarista_id,
     work_date: workDate,
     description: clean(input.description),
     obra_id: input.obra_id || null,
     sector_id: input.sector_id || null,
-    daily_rate: normMoney(diarista.daily_rate as number),
+    daily_rate: half ? normMoney(rate / 2) : rate,
+    // a coluna vem da 064: só mandamos quando é meia, para quem ainda não rodou
+    // a migration continuar lançando dia inteiro normalmente
+    ...(half ? { half_day: true } : {}),
     registered_by_name: clean(profile?.full_name),
     created_by: user.id,
   });
@@ -207,6 +220,8 @@ export interface DiaristaDiaInput {
   sector_id?: string | null;
   /** Só o chefe muda o valor de um dia já lançado (ver a policy da 059). */
   daily_rate?: number | null;
+  /** Marca de meia diária. O valor vem no `daily_rate` já pela metade. */
+  half_day?: boolean | null;
 }
 
 export async function updateDiaristaDia(id: string, input: DiaristaDiaInput) {
@@ -218,6 +233,7 @@ export async function updateDiaristaDia(id: string, input: DiaristaDiaInput) {
     sector_id: input.sector_id || null,
   };
   if (input.daily_rate != null) patch.daily_rate = normMoney(input.daily_rate);
+  if (input.half_day != null) patch.half_day = input.half_day;
 
   const { error } = await supabase.from("diarista_dias").update(patch).eq("id", id);
   if (error) return { error: diaristaError(error) };

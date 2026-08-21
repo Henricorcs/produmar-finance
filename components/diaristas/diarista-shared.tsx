@@ -76,7 +76,8 @@ interface CalendarProps {
 
 /**
  * O calendário do mês de UM diarista. Toca no dia e ele fica azul; o que já foi
- * lançado fica verde e, ao tocar, abre o que foi feito naquele dia.
+ * lançado fica verde e, ao tocar, abre o que foi feito naquele dia. Meia diária
+ * fica AMARELA — dá para bater o olho no mês e ver os dias que valem metade.
  *
  * Dia futuro fica apagado e não aceita toque: ninguém trabalhou amanhã.
  */
@@ -142,7 +143,9 @@ export function DiaristaCalendar({
               type="button"
               disabled={isFuture}
               onClick={() => (dia ? onOpenLaunched(dia) : onToggle(iso))}
-              aria-label={`Dia ${numero}${dia ? " — já lançado" : ""}`}
+              aria-label={`Dia ${numero}${
+                dia ? (dia.half_day ? " — meia diária lançada" : " — já lançado") : ""
+              }`}
               // o dia lançado não é um botão de marcar: ele abre o lançamento
               aria-pressed={dia ? undefined : isSelected}
               className={cn(
@@ -152,7 +155,11 @@ export function DiaristaCalendar({
                 "aspect-square rounded-lg border text-sm font-semibold tabular-nums flex items-center justify-center transition-colors active:scale-95",
                 isFuture && "opacity-30",
                 dia
-                  ? "bg-emerald-500 border-emerald-500 text-white"
+                  ? dia.half_day
+                    ? // meia diária: amarelo com número escuro (branco em cima
+                      // de amarelo não se lê no sol)
+                      "bg-amber-400 border-amber-400 text-amber-950"
+                    : "bg-emerald-500 border-emerald-500 text-white"
                   : isSelected
                     ? "bg-produmar-600 border-produmar-600 text-white shadow-sm"
                     : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300",
@@ -167,7 +174,8 @@ export function DiaristaCalendar({
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
         <Legenda className="bg-produmar-600" label="marcado agora" />
-        <Legenda className="bg-emerald-500" label="já lançado" />
+        <Legenda className="bg-emerald-500" label="dia inteiro" />
+        <Legenda className="bg-amber-400" label="meia diária" />
       </div>
     </div>
   );
