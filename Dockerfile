@@ -23,10 +23,18 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
+ENV STORAGE_DIR=/data/attachments
+
+# su-exec: usado na partida para acertar o dono do volume das fotos e rebaixar
+# de root para o usuário comum na mesma linha (ver docker-entrypoint.sh).
+RUN apk add --no-cache su-exec
 
 # Roda como usuário comum, não como root.
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Imagem enxuta: o build "standalone" (ver next.config.js) já traz dentro de
 # .next/standalone só as dependências que o site usa para rodar, com o servidor
@@ -37,6 +45,12 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-USER nextjs
+# Script da migração das fotos, para rodar uma vez pelo terminal do EasyPanel.
+# Não depende de nada instalado: usa só o fetch que o Node 20 já tem.
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/baixar-fotos-no-servidor.mjs ./scripts/
+
+# Sem USER: a partida precisa de root por um instante para acertar o dono do
+# volume e então rebaixa para `nextjs`. O site nunca chega a rodar como root.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 EXPOSE 3000
 CMD ["node", "server.js"]

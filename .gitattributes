@@ -1,0 +1,9 @@
+# Arquivos que o Linux executa TÊM que ficar com quebra de linha LF, mesmo
+# sendo editados no Windows.
+#
+# Com CRLF, o shell lê a primeira linha como "/bin/sh\r" e o contêiner morre na
+# partida dizendo "no such file or directory" — apontando para um arquivo que
+# está lá, o que manda qualquer um procurar no lugar errado por um bom tempo.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-entrypoint.sh text eol=lf

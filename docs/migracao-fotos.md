@@ -63,22 +63,51 @@ fora do container, então **o próximo deploy não leva as fotos junto**.
 
 ### 2. Variáveis de ambiente
 
-No mesmo serviço, aba **Environment**:
+**Nada a fazer.** O `STORAGE_DIR=/data/attachments` já vem definido no
+Dockerfile, casando com o mount path do passo 1.
 
-```
-STORAGE_DIR=/data/attachments
-```
-
-Só essa. A leitura de reserva no Supabase (procura no disco, se não achar busca
-lá) **já vem ligada de fábrica** — é o que permite virar a chave sem nenhuma
-foto sumir enquanto a cópia não termina. Ela só é desligada no passo 7.
+A leitura de reserva no Supabase (procura no disco, se não achar busca lá)
+**já vem ligada de fábrica** — é o que permite virar a chave sem nenhuma foto
+sumir enquanto a cópia não termina. Ela só é desligada no passo 7.
 
 As três variáveis do Supabase continuam onde estão — o banco não mudou.
 
-> Se você publicar uma versão nova **sem** ter feito nada disso, não quebra
-> nada: o sistema continua lendo tudo do Supabase, como antes. O único
-> incômodo é que as fotos novas cairiam dentro do container e sumiriam no
-> deploy seguinte — e o log de partida avisa isso em letras grandes.
+> Se você publicar uma versão nova antes de terminar a migração, não quebra
+> nada: o sistema continua lendo tudo do Supabase, como antes.
+
+### 3. Guardar a cópia de segurança (no seu PC)
+
+Este passo **não** é o que abastece o servidor — é só a sua cópia de segurança,
+para o caso de algo dar errado lá na frente. O servidor se vira sozinho no
+passo 5.
+
+```bash
+node scripts/migrar-fotos.mjs
+```
+
+Baixa os 446 arquivos para `./fotos-migradas`, encolhendo as fotos na passagem
+(1,35 GB viram uns 130~150 MB). O `sharp`, que faz a compressão, já está
+instalado.
+
+**Pode rodar quantas vezes quiser**: o que já está baixado é pulado. Se a
+internet cair no meio, chame de novo que ele continua de onde parou.
+
+Quando terminar, copie a pasta `fotos-migradas` para um HD externo ou pendrive.
+São as fotos originais da empresa.
+
+O script **não apaga nada** no Supabase.
+
+### 4. Publicar
+
+Faça o deploy pelo botão **Implantar**. Isso leva duas coisas necessárias para
+o passo seguinte: o ajuste automático de permissão do volume e o script que
+roda dentro do contêiner.
+
+> **Por que a permissão se resolve sozinha agora:** o volume é uma pasta do host
+> e o Docker a entrega pertencendo ao root, enquanto o site roda como `nextjs`
+> (uid 1001) — ele leria as fotos mas não conseguiria gravar as novas. A partida
+> do contêiner passou a acertar o dono da pasta e rebaixar para o usuário comum
+> na mesma linha (`docker-entrypoint.sh`). O site nunca chega a rodar como root.
 
 ### 3. Baixar os arquivos do Supabase
 
@@ -113,27 +142,42 @@ Antes de enviar para o servidor, copie a pasta `fotos-migradas` para um HD
 externo ou pendrive. São as fotos originais da empresa e a compressão é
 irreversível.
 
-### 5. Enviar para o volume do servidor
+### 5. O servidor busca as fotos sozinho
 
-Confirme o caminho do volume no host pelo painel do EasyPanel (costuma ser
-`/etc/easypanel/projects/<projeto>/<serviço>/volumes/storage`), e envie:
+**Sem SSH, sem enviar 1,3 GB do seu PC.** O contêiner puxa direto do Supabase,
+que é muito mais rápido (servidor falando com servidor) e evita o trabalho de
+copiar arquivo para dentro da máquina.
+
+No EasyPanel, serviço **financa**, clique no ícone **`>_`** (terminal) na barra
+de cima. Vai abrir um terminal dentro do contêiner. Cole:
 
 ```bash
-scp -r fotos-migradas/* usuario@SEU_SERVIDOR:/etc/easypanel/projects/PROJETO/SERVICO/volumes/storage/
+node scripts/baixar-fotos-no-servidor.mjs
 ```
 
-> ⚠️ **Permissão — o erro mais provável desta migração.** O container roda como
-> o usuário `nextjs` (uid 1001), não como root. Se a pasta ficar do root, o app
-> lê as fotos mas **não consegue gravar as novas**. No servidor, depois de
-> enviar:
->
-> ```bash
-> chown -R 1001:1001 /etc/easypanel/projects/PROJETO/SERVICO/volumes/storage
-> ```
+Ele lista os 446 arquivos, baixa um a um e mostra o progresso. A primeira coisa
+que faz é testar se consegue gravar — se a permissão estiver errada, ele para
+logo no começo e avisa, em vez de descobrir depois de baixar 1,3 GB.
 
-### 6. Publicar e conferir
+**Pode rodar quantas vezes quiser**: o que já está no disco é pulado. Se cair no
+meio, chame de novo que continua de onde parou.
 
-Faça o deploy e confira, uma por uma:
+Para só conferir a lista, sem baixar:
+
+```bash
+node scripts/baixar-fotos-no-servidor.mjs --so-listar
+```
+
+> As fotos vão para o servidor **do tamanho original**, sem encolher — a
+> compressão exige uma biblioteca que não vale a pena carregar na imagem por
+> causa de uma única execução. São 1,35 GB em disco, o que não é problema (disco
+> não tem cota). As fotos **novas** já sobem encolhidas, porque isso acontece no
+> celular. Se um dia quiser encolher as antigas também, dá para subir a pasta
+> `fotos-migradas` do passo 3, que já está comprimida.
+
+### 6. Conferir
+
+Abra o site e confira, uma por uma:
 
 - [ ] Uma foto **antiga** de Patrimônio abre (veio do disco)
 - [ ] Uma foto **nova** sobe e aparece (gravou no disco)
@@ -174,20 +218,26 @@ uso volta para perto de zero e o aviso de 121% some.
 Esta é a parte que a migração custa.
 
 O Supabase fazia backup dos arquivos sozinho. **A partir do passo 8, ninguém
-mais faz.** Disco queimado sem backup = as fotos da empresa acabaram.
+mais faz.** Disco queimado sem backup = as fotos da empresa acabaram. E o
+servidor é uma VM no VMware, então vale lembrar que HD de VM morre igual a HD
+de máquina física.
 
-Coloque uma rotina diária no servidor (`crontab -e`):
+Na mesma tela onde você criou o volume tem o botão **"Criar Backup de Volume"**.
+Comece por ele: veja se dá para agendar (diário) e para onde ele consegue
+mandar a cópia — se aceitar um destino externo tipo S3 ou Backblaze, resolve
+tudo sem você precisar montar nada na mão.
 
-```bash
-0 3 * * * tar -czf /backup/fotos-$(date +\%F).tar.gz -C /etc/easypanel/projects/PROJETO/SERVICO/volumes storage && find /backup -name 'fotos-*.tar.gz' -mtime +30 -delete
-```
+**Backup no mesmo servidor não é backup** — se a máquina morrer, morre junto.
+A cópia precisa sair de lá: outro servidor, um serviço de nuvem, ou até um PC
+do escritório.
 
-Isso guarda 30 dias. **Backup no mesmo servidor não é backup** — se a máquina
-morrer, morre junto. Leve a cópia para fora (outro servidor, S3, Backblaze, ou
-até um `rsync` para um PC do escritório).
+Duas coisas que valem mais que a rotina em si:
 
-Depois de montar, **teste restaurar**: abra o `.tar.gz` num canto e confira que
-as fotos estão lá. Backup que nunca foi restaurado não conta.
+- **Teste restaurar.** Pegue um backup, abra num canto e confira que as fotos
+  estão lá. Backup que nunca foi restaurado não conta como backup.
+- **A pasta `fotos-migradas` do passo 3 já é uma cópia completa**, comprimida e
+  fora do servidor. Guarde ela num HD externo enquanto a rotina automática não
+  estiver de pé — é a sua rede de segurança nesse meio-tempo.
 
 ---
 
