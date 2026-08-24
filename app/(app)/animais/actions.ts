@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { AnimalExitReason, AnimalSex, AnimalSpecies } from "@/lib/types";
+import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -195,7 +196,7 @@ export async function deleteAnimal(id: string) {
     .maybeSingle();
   if (animal?.photo_path && !paths.includes(animal.photo_path)) paths.push(animal.photo_path);
   if (paths.length) {
-    await supabase.storage.from("attachments").remove(paths);
+    await removerArquivos(paths);
   }
 
   const { error } = await supabase.from("animals").delete().eq("id", id);
@@ -230,15 +231,10 @@ export async function uploadAnimalPhotos(animalId: string, formData: FormData) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `animals/${animalId}/${randomUUID()}_${safeName}`;
 
-    const { error: upErr } = await supabase.storage
-      .from("attachments")
-      .upload(path, file, {
-        contentType: file.type || "application/octet-stream",
-        upsert: false,
-      });
+    const { error: upErr } = await uploadArquivo(path, file);
     if (upErr) {
       // desfaz o que já subiu neste lote para não deixar lixo
-      if (uploadedPaths.length) await supabase.storage.from("attachments").remove(uploadedPaths);
+      if (uploadedPaths.length) await removerArquivos(uploadedPaths);
       return { error: upErr.message };
     }
     uploadedPaths.push(path);
@@ -248,7 +244,7 @@ export async function uploadAnimalPhotos(animalId: string, formData: FormData) {
     uploadedPaths.map((path) => ({ animal_id: animalId, path, created_by: user.id }))
   );
   if (insErr) {
-    await supabase.storage.from("attachments").remove(uploadedPaths);
+    await removerArquivos(uploadedPaths);
     return { error: insErr.message };
   }
 
@@ -276,14 +272,11 @@ export async function getAnimalPhotos(animalId: string) {
     .order("created_at", { ascending: true });
   if (error) return { error: error.message };
 
-  const photos = await Promise.all(
-    (data ?? []).map(async (p) => {
-      const { data: signed } = await supabase.storage
-        .from("attachments")
-        .createSignedUrl(p.path, 60 * 60);
-      return { id: p.id as string, path: p.path as string, url: signed?.signedUrl ?? null };
-    })
-  );
+  const photos = (data ?? []).map((p) => ({
+    id: p.id as string,
+    path: p.path as string,
+    url: urlDoArquivo(p.path as string) as string | null,
+  }));
   return { photos };
 }
 
@@ -298,7 +291,7 @@ export async function deleteAnimalPhoto(photoId: string) {
     .maybeSingle();
   if (!photo) return { error: "Foto não encontrada" };
 
-  await supabase.storage.from("attachments").remove([photo.path]);
+  await removerArquivos([photo.path]);
   const { error } = await supabase.from("animal_photos").delete().eq("id", photoId);
   if (error) return { error: error.message };
 
@@ -328,19 +321,13 @@ export async function deleteAnimalPhoto(photoId: string) {
 
 /** URLs assinadas (1h) das fotos principais — usadas nas miniaturas da lista. */
 export async function getAnimalThumbnails(paths: string[]) {
-  const supabase = createClient();
   const unique = Array.from(new Set(paths.filter(Boolean)));
   if (unique.length === 0) return { urls: {} as Record<string, string> };
 
-  const { data, error } = await supabase.storage
-    .from("attachments")
-    .createSignedUrls(unique, 60 * 60);
-  if (error) return { error: error.message };
-
+  // O endereço é montado na hora, sem ida ao servidor de arquivos: quem confere
+  // o acesso é a rota /api/arquivo, no momento em que a foto for aberta.
   const urls: Record<string, string> = {};
-  for (const item of data ?? []) {
-    if (item.path && item.signedUrl) urls[item.path] = item.signedUrl;
-  }
+  for (const path of unique) urls[path] = urlDoArquivo(path);
   return { urls };
 }
 
@@ -989,7 +976,7 @@ export async function rejectBirthRequest(requestId: string) {
   if (error) return { error: birthRequestsTableError(error) };
 
   if (request?.photo_path) {
-    await supabase.storage.from("attachments").remove([request.photo_path as string]);
+    await removerArquivos([request.photo_path as string]);
   }
 
   revalidate();

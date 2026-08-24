@@ -17,6 +17,7 @@ import {
   deleteServiceOrderAttachment,
 } from "@/app/(app)/operacoes/actions";
 import type { ServiceOrderAttachment } from "@/lib/types";
+import { comprimirImagens } from "@/lib/comprimir-imagem";
 
 const MAX_SIZE_MB = 10;
 const MAX_SIZE = MAX_SIZE_MB * 1024 * 1024;
@@ -58,12 +59,15 @@ export function ServiceOrderComprovantes({ orderId, attachments }: Props) {
   // assíncrono — sem isso a lista ficaria vazia após o carregamento).
   useEffect(() => setList(attachments), [attachments]);
 
-  function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    // Encolhe as fotos antes de medir: comprovante de 12 MB tirado no celular
+    // vira uns 300 kB e passa a caber, em vez de ser recusado.
+    const escolhidos = await comprimirImagens(Array.from(files));
     const fd = new FormData();
     const errs: string[] = [];
     const pendingNames: string[] = [];
-    Array.from(files).forEach((f) => {
+    escolhidos.forEach((f) => {
       if (f.size > MAX_SIZE) {
         errs.push(`${f.name}: máx ${MAX_SIZE_MB} MB`);
         return;
@@ -101,11 +105,9 @@ export function ServiceOrderComprovantes({ orderId, attachments }: Props) {
 
   async function openAtt(att: ServiceOrderAttachment) {
     if (!att.storage_path) return; // anexo otimista ainda sem caminho
+    // Montar o endereço não falha mais (é só um caminho para /api/arquivo). Se o
+    // arquivo não estiver lá, quem avisa é a própria rota, ao abrir.
     const res = await getServiceOrderAttachmentSignedUrl(att.storage_path);
-    if ("error" in res) {
-      setError(res.error ?? "Erro ao abrir");
-      return;
-    }
     window.open(res.url, "_blank", "noopener,noreferrer");
   }
 

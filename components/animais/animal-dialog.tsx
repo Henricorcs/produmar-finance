@@ -29,6 +29,7 @@ import {
 } from "./animal-shared";
 import { AnimalBreedsDialog } from "./animal-breeds-dialog";
 import type { Animal, AnimalBreed, AnimalSex, AnimalSpecies } from "@/lib/types";
+import { comprimirImagens } from "@/lib/comprimir-imagem";
 
 interface Props {
   open: boolean;
@@ -217,10 +218,13 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
               accept="image/*"
               multiple
               className="hidden"
-              onChange={(e) => {
+              onChange={async (e) => {
                 const picked = Array.from(e.target.files ?? []);
-                if (picked.length) setPhotos((prev) => [...prev, ...picked]);
                 if (fileRef.current) fileRef.current.value = "";
+                if (!picked.length) return;
+                // Encolhe no próprio celular antes de subir.
+                const fotos = await comprimirImagens(picked);
+                setPhotos((prev) => [...prev, ...fotos]);
               }}
             />
             {photos.length > 0 && (

@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { removeSupplyPhotoIfUnused } from "@/lib/supply-photos";
+import { removerArquivos, uploadArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -155,12 +156,7 @@ export async function requestSupplyUsage(formData: FormData) {
     if (photo.size > MAX_FILE_SIZE) return { error: "A foto deve ter no máximo 10 MB" };
     const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "foto.jpg";
     photoPath = `supply-requests/${randomUUID()}_${safeName}`;
-    const { error: upErr } = await supabase.storage
-      .from("attachments")
-      .upload(photoPath, photo, {
-        contentType: photo.type || "application/octet-stream",
-        upsert: false,
-      });
+    const { error: upErr } = await uploadArquivo(photoPath, photo);
     if (upErr) return { error: upErr.message };
   }
 
@@ -181,7 +177,7 @@ export async function requestSupplyUsage(formData: FormData) {
   );
 
   if (error) {
-    if (photoPath) await supabase.storage.from("attachments").remove([photoPath]);
+    if (photoPath) await removerArquivos([photoPath]);
     return { error: requestError(error) };
   }
 
@@ -283,12 +279,7 @@ export async function registerFenceRun(formData: FormData) {
     if (photo.size > MAX_FILE_SIZE) return { error: "A foto deve ter no máximo 10 MB" };
     const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "foto.jpg";
     photoPath = `fence-runs/${randomUUID()}_${safeName}`;
-    const { error: upErr } = await supabase.storage
-      .from("attachments")
-      .upload(photoPath, photo, {
-        contentType: photo.type || "application/octet-stream",
-        upsert: false,
-      });
+    const { error: upErr } = await uploadArquivo(photoPath, photo);
     if (upErr) return { error: upErr.message };
   }
 
@@ -305,7 +296,7 @@ export async function registerFenceRun(formData: FormData) {
   });
 
   if (error) {
-    if (photoPath) await supabase.storage.from("attachments").remove([photoPath]);
+    if (photoPath) await removerArquivos([photoPath]);
     return { error: fenceError(error) };
   }
 
@@ -339,7 +330,7 @@ export async function cancelFenceRun(id: string) {
 
   // a foto é só deste lançamento (cada um sobe a sua), então some com ele
   if (run.photo_path)
-    await supabase.storage.from("attachments").remove([run.photo_path as string]);
+    await removerArquivos([run.photo_path as string]);
 
   revalidatePath("/tecnico/cerca");
   revalidatePath("/almoxarifado");

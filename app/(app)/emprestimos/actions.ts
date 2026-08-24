@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LoanRepaymentType, LoanStatus } from "@/lib/types";
 import { loanTotalDue } from "@/lib/utils";
+import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 function revalidate() {
   revalidatePath("/emprestimos");
@@ -420,7 +421,7 @@ export async function deleteLoan(id: string) {
 
   // Remove os arquivos do storage (as linhas caem por cascade junto com o loan)
   if (attachments && attachments.length > 0) {
-    await supabase.storage.from("attachments").remove(attachments.map((a) => a.storage_path));
+    await removerArquivos(attachments.map((a) => a.storage_path));
   }
 
   // installments + payments + attachments caem por cascade
@@ -629,12 +630,7 @@ export async function uploadLoanAttachments(loanId: string, formData: FormData) 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `loans/${loanId}/${randomUUID()}_${safeName}`;
 
-    const { error: uploadErr } = await supabase.storage
-      .from("attachments")
-      .upload(path, file, {
-        contentType: file.type || "application/octet-stream",
-        upsert: false,
-      });
+    const { error: uploadErr } = await uploadArquivo(path, file);
 
     if (uploadErr) {
       errors.push(`${file.name}: ${uploadErr.message}`);
@@ -664,12 +660,7 @@ export async function uploadLoanAttachments(loanId: string, formData: FormData) 
 
 /** Gera uma URL assinada (1h) para abrir/baixar um comprovante. */
 export async function getLoanAttachmentSignedUrl(storagePath: string) {
-  const supabase = createClient();
-  const { data, error } = await supabase.storage
-    .from("attachments")
-    .createSignedUrl(storagePath, 60 * 60);
-  if (error) return { error: error.message };
-  return { url: data.signedUrl };
+  return { url: urlDoArquivo(storagePath) };
 }
 
 export async function deleteLoanAttachment(id: string) {
@@ -682,7 +673,7 @@ export async function deleteLoanAttachment(id: string) {
     .single();
   if (!att) return { error: "Comprovante não encontrado" };
 
-  await supabase.storage.from("attachments").remove([att.storage_path]);
+  await removerArquivos([att.storage_path]);
 
   const { error } = await supabase.from("loan_attachments").delete().eq("id", id);
   if (error) return { error: error.message };

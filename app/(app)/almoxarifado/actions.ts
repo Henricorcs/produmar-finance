@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { removeSupplyPhotoIfUnused } from "@/lib/supply-photos";
 import type { SupplyMovementType } from "@/lib/types";
+import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -161,7 +162,7 @@ export async function deleteSupplyItem(id: string) {
     ...(item?.photo_path ? [item.photo_path as string] : []),
     ...(movs ?? []).map((m) => m.photo_path as string),
   ];
-  if (paths.length) await supabase.storage.from("attachments").remove(paths);
+  if (paths.length) await removerArquivos(paths);
 
   const { error } = await supabase.from("supply_items").delete().eq("id", id);
   if (error) return { error: supplyError(error) };
@@ -184,10 +185,7 @@ async function uploadPhoto(
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const path = `${folder}/${randomUUID()}_${safeName}`;
 
-  const { error } = await supabase.storage.from("attachments").upload(path, file, {
-    contentType: file.type || "application/octet-stream",
-    upsert: false,
-  });
+  const { error } = await uploadArquivo(path, file);
   if (error) return { error: error.message };
   return { path };
 }
@@ -217,12 +215,12 @@ export async function uploadSupplyItemPhoto(itemId: string, formData: FormData) 
     .update({ photo_path: up.path })
     .eq("id", itemId);
   if (error) {
-    await supabase.storage.from("attachments").remove([up.path]);
+    await removerArquivos([up.path]);
     return { error: supplyError(error) };
   }
 
   if (previous?.photo_path) {
-    await supabase.storage.from("attachments").remove([previous.photo_path]);
+    await removerArquivos([previous.photo_path]);
   }
 
   revalidate();
@@ -245,7 +243,7 @@ export async function deleteSupplyItemPhoto(itemId: string) {
     .eq("id", itemId);
   if (error) return { error: supplyError(error) };
 
-  await supabase.storage.from("attachments").remove([item.photo_path]);
+  await removerArquivos([item.photo_path]);
   revalidate();
   return { ok: true };
 }
@@ -269,7 +267,7 @@ export async function uploadSupplyMovementPhoto(movementId: string, formData: Fo
     .update({ photo_path: up.path })
     .eq("id", movementId);
   if (error) {
-    await supabase.storage.from("attachments").remove([up.path]);
+    await removerArquivos([up.path]);
     return { error: supplyError(error) };
   }
 
@@ -282,21 +280,13 @@ export async function uploadSupplyMovementPhoto(movementId: string, formData: Fo
  * para o detalhe do item não precisar de uma ida ao servidor por foto.
  */
 export async function getSupplyPhotoUrls(paths: string[]) {
-  const supabase = createClient();
   const unique = Array.from(new Set(paths.filter(Boolean)));
   if (unique.length === 0) return { urls: {} as Record<string, string> };
 
-  const entries = await Promise.all(
-    unique.map(async (path) => {
-      const { data } = await supabase.storage
-        .from("attachments")
-        .createSignedUrl(path, 60 * 60);
-      return [path, data?.signedUrl ?? null] as const;
-    })
-  );
-
+  // O endereço é montado na hora, sem ida ao servidor de arquivos: quem confere
+  // o acesso é a rota /api/arquivo, no momento em que a foto for aberta.
   const urls: Record<string, string> = {};
-  for (const [path, url] of entries) if (url) urls[path] = url;
+  for (const path of unique) urls[path] = urlDoArquivo(path);
   return { urls };
 }
 
@@ -445,7 +435,7 @@ export async function deleteSupplyMovement(id: string) {
 
   // o comprovante vai junto — sem o lançamento ele não serve mais pra nada
   if (mov.photo_path) {
-    await supabase.storage.from("attachments").remove([mov.photo_path as string]);
+    await removerArquivos([mov.photo_path as string]);
   }
 
   revalidate();
@@ -859,7 +849,7 @@ export async function deleteFenceRun(id: string) {
 
   // a foto é só deste lançamento (cada um sobe a sua), então some com ele
   if (run?.photo_path)
-    await supabase.storage.from("attachments").remove([run.photo_path as string]);
+    await removerArquivos([run.photo_path as string]);
 
   revalidateFence();
   return { ok: true };

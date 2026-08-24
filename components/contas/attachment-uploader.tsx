@@ -15,6 +15,7 @@ import {
   deleteAttachment,
 } from "@/app/(app)/contas/actions";
 import type { TransactionAttachment } from "@/lib/types";
+import { comprimirImagens } from "@/lib/comprimir-imagem";
 
 const MAX_SIZE_MB = 10;
 const MAX_SIZE = MAX_SIZE_MB * 1024 * 1024;
@@ -81,11 +82,15 @@ export function AttachmentUploader({
     []
   );
 
-  function addFiles(files: FileList | null) {
+  async function addFiles(files: FileList | null) {
     if (!files) return;
+    // Encolhe as fotos antes de medir: comprovante de 12 MB tirado no celular
+    // vira uns 300 kB e passa a caber, em vez de ser recusado. PDF e XML de
+    // nota fiscal passam intactos.
+    const escolhidos = await comprimirImagens(Array.from(files));
     const ok: File[] = [];
     const errs: string[] = [];
-    Array.from(files).forEach((f) => {
+    escolhidos.forEach((f) => {
       if (f.size > MAX_SIZE) {
         errs.push(`${f.name}: máx ${MAX_SIZE_MB} MB`);
         return;
@@ -112,11 +117,9 @@ export function AttachmentUploader({
   }
 
   async function openExisting(att: TransactionAttachment) {
+    // Montar o endereço não falha mais (é só um caminho para /api/arquivo). Se o
+    // arquivo não estiver lá, quem avisa é a própria rota, ao abrir.
     const result = await getAttachmentSignedUrl(att.storage_path);
-    if ("error" in result) {
-      setError(result.error ?? "Erro");
-      return;
-    }
     window.open(result.url, "_blank", "noopener,noreferrer");
   }
 

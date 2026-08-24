@@ -22,6 +22,7 @@ import {
 } from "@/app/(app)/estoque/actions";
 import { formatBRL, formatBRLInput, upperKeepingCaret } from "@/lib/utils";
 import { PRODUCT_UNITS, type PickupLocation, type Product } from "@/lib/types";
+import { comprimirImagem } from "@/lib/comprimir-imagem";
 
 interface Props {
   open: boolean;
@@ -105,12 +106,13 @@ export function PurchaseDialog({ open, onClose, products, jazidas }: Props) {
     });
   }, [open]);
 
-  function pickNota(file: File | null) {
+  async function pickNota(file: File | null) {
+    const nota = file ? await comprimirImagem(file) : null;
     setNotaPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      return file && file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+      return nota && nota.type.startsWith("image/") ? URL.createObjectURL(nota) : null;
     });
-    setNotaFile(file);
+    setNotaFile(nota);
   }
 
   const total = useMemo(

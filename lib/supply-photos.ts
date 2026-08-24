@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { removerArquivos } from "@/lib/storage";
 
 /**
  * Apaga a foto do storage só quando ninguém mais aponta para ela.
@@ -28,5 +29,5 @@ export async function removeSupplyPhotoIfUnused(
 
   if ((requests.count ?? 0) > 0 || (movements.count ?? 0) > 0) return;
 
-  await supabase.storage.from("attachments").remove([photoPath]);
+  await removerArquivos([photoPath]);
 }

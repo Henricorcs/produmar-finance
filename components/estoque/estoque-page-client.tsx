@@ -598,9 +598,10 @@ function ComprasTab({
   }
 
   async function openNota(path: string) {
+    // Montar o endereço não falha mais (é só um caminho para /api/arquivo). Se o
+    // arquivo não estiver lá, quem avisa é a própria rota, ao abrir.
     const r = await getPurchaseAttachmentUrl(path);
-    if ("url" in r) window.open(r.url, "_blank", "noopener,noreferrer");
-    else alert(r.error ?? "Erro ao abrir a nota");
+    window.open(r.url, "_blank", "noopener,noreferrer");
   }
 
   if (purchases.length === 0) {

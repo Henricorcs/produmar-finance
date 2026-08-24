@@ -17,6 +17,7 @@ import {
   deleteLoanAttachment,
 } from "@/app/(app)/emprestimos/actions";
 import type { LoanAttachment } from "@/lib/types";
+import { comprimirImagens } from "@/lib/comprimir-imagem";
 
 const MAX_SIZE_MB = 10;
 const MAX_SIZE = MAX_SIZE_MB * 1024 * 1024;
@@ -48,12 +49,15 @@ export function LoanComprovantes({ loanId, attachments }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    // Encolhe as fotos antes de medir: comprovante de 12 MB tirado no celular
+    // vira uns 300 kB e passa a caber, em vez de ser recusado.
+    const escolhidos = await comprimirImagens(Array.from(files));
     const fd = new FormData();
     const errs: string[] = [];
     let count = 0;
-    Array.from(files).forEach((f) => {
+    escolhidos.forEach((f) => {
       if (f.size > MAX_SIZE) {
         errs.push(`${f.name}: máx ${MAX_SIZE_MB} MB`);
         return;
@@ -72,11 +76,9 @@ export function LoanComprovantes({ loanId, attachments }: Props) {
   }
 
   async function openAtt(att: LoanAttachment) {
+    // Montar o endereço não falha mais (é só um caminho para /api/arquivo). Se o
+    // arquivo não estiver lá, quem avisa é a própria rota, ao abrir.
     const res = await getLoanAttachmentSignedUrl(att.storage_path);
-    if ("error" in res) {
-      setError(res.error ?? "Erro ao abrir");
-      return;
-    }
     window.open(res.url, "_blank", "noopener,noreferrer");
   }
 

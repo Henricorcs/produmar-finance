@@ -18,6 +18,7 @@ import { ConditionPicker, parseMoney, formatBRLInput } from "./tool-shared";
 import { ToolUnitsDialog } from "./tool-units-dialog";
 import type { Tool, ToolCondition, ToolUnit, ToolWarehouse } from "@/lib/types";
 import { upperKeepingCaret } from "@/lib/utils";
+import { comprimirImagens } from "@/lib/comprimir-imagem";
 
 interface Props {
   open: boolean;
@@ -267,10 +268,13 @@ export function ToolDialog({
               accept="image/*"
               multiple
               className="hidden"
-              onChange={(e) => {
+              onChange={async (e) => {
                 const picked = Array.from(e.target.files ?? []);
-                if (picked.length) setPhotos((prev) => [...prev, ...picked]);
                 if (fileRef.current) fileRef.current.value = "";
+                if (!picked.length) return;
+                // Encolhe no próprio celular antes de subir.
+                const fotos = await comprimirImagens(picked);
+                setPhotos((prev) => [...prev, ...fotos]);
               }}
             />
             {photos.length > 0 && (

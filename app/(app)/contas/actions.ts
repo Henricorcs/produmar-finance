@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TransactionStatus, TransactionType } from "@/lib/types";
+import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 interface TransactionPayload {
   type: TransactionType;
@@ -72,12 +73,7 @@ async function uploadAttachments(
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${transactionId}/${randomUUID()}_${safeName}`;
 
-    const { error: uploadErr } = await supabase.storage
-      .from("attachments")
-      .upload(path, file, {
-        contentType: file.type || "application/octet-stream",
-        upsert: false,
-      });
+    const { error: uploadErr } = await uploadArquivo(path, file);
 
     if (uploadErr) {
       errors.push(`${file.name}: ${uploadErr.message}`);
@@ -175,9 +171,7 @@ export async function deleteTransaction(id: string) {
     .eq("transaction_id", id);
 
   if (attachments && attachments.length > 0) {
-    await supabase.storage
-      .from("attachments")
-      .remove(attachments.map((a) => a.storage_path));
+    await removerArquivos(attachments.map((a) => a.storage_path));
   }
 
   const { error } = await supabase.from("transactions").delete().eq("id", id);
@@ -208,13 +202,7 @@ export async function markTransactionPaid(id: string, type: TransactionType) {
 
 /** Generates a fresh signed URL (1h) to open/download an attachment. */
 export async function getAttachmentSignedUrl(storagePath: string) {
-  const supabase = createClient();
-  const { data, error } = await supabase.storage
-    .from("attachments")
-    .createSignedUrl(storagePath, 60 * 60);
-
-  if (error) return { error: error.message };
-  return { url: data.signedUrl };
+  return { url: urlDoArquivo(storagePath) };
 }
 
 export async function deleteAttachment(id: string) {
@@ -228,7 +216,7 @@ export async function deleteAttachment(id: string) {
 
   if (!att) return { error: "Anexo não encontrado" };
 
-  await supabase.storage.from("attachments").remove([att.storage_path]);
+  await removerArquivos([att.storage_path]);
 
   const { error } = await supabase
     .from("transaction_attachments")

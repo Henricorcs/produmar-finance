@@ -15,3 +15,7 @@ next-env.d.ts
 .claude/
 .agents/
 skills-lock.json
+
+# Fotos e comprovantes gravados em disco (em produção isso é um volume do
+# EasyPanel; aqui é só a pasta de desenvolvimento).
+.storage/

@@ -10,6 +10,7 @@ import { cn, formatDate, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { requestCalfBirth } from "@/app/(app)/vaqueiro/actions";
 import { SexPicker } from "@/components/animais/animal-shared";
 import type { AnimalSex } from "@/lib/types";
+import { comprimirImagem } from "@/lib/comprimir-imagem";
 
 interface SubmittedEntry {
   id: string;
@@ -41,10 +42,13 @@ export function VaqueiroClient() {
     };
   }, [photoUrl]);
 
-  function handlePhotoChange(file: File | null) {
+  async function handlePhotoChange(file: File | null) {
+    // Encolhe no próprio celular antes de subir: no 4G do pasto o envio de uma
+    // foto de câmera inteira demora demais, e para ver o bezerro 1600px sobra.
+    const foto = file ? await comprimirImagem(file) : null;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
-    setPhoto(file);
-    setPhotoUrl(file ? URL.createObjectURL(file) : null);
+    setPhoto(foto);
+    setPhotoUrl(foto ? URL.createObjectURL(foto) : null);
   }
 
   function resetForm() {

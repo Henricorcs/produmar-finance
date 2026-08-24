@@ -17,6 +17,7 @@ import { SignaturePad } from "@/components/operador/signature-pad";
 import { checkoutTool, uploadLoanReceiverPhoto } from "@/app/(app)/ferramentas/actions";
 import type { Obra, ToolWithStatus } from "@/lib/types";
 import { upperKeepingCaret } from "@/lib/utils";
+import { comprimirImagem } from "@/lib/comprimir-imagem";
 
 interface Props {
   open: boolean;
@@ -236,9 +237,11 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
               accept="image/*"
               capture="environment"
               className="hidden"
-              onChange={(e) => {
-                setPhoto(e.target.files?.[0] ?? null);
+              onChange={async (e) => {
+                const escolhida = e.target.files?.[0] ?? null;
                 e.target.value = "";
+                // Encolhe no próprio celular antes de subir.
+                setPhoto(escolhida ? await comprimirImagem(escolhida) : null);
               }}
             />
             <input
@@ -246,9 +249,11 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={(e) => {
-                setPhoto(e.target.files?.[0] ?? null);
+              onChange={async (e) => {
+                const escolhida = e.target.files?.[0] ?? null;
                 e.target.value = "";
+                // Encolhe no próprio celular antes de subir.
+                setPhoto(escolhida ? await comprimirImagem(escolhida) : null);
               }}
             />
             {photo ? (

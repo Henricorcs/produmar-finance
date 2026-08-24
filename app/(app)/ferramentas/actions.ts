@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ToolCondition } from "@/lib/types";
+import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -119,7 +120,7 @@ export async function deleteTool(id: string) {
     .maybeSingle();
   if (tool?.photo_path && !paths.includes(tool.photo_path)) paths.push(tool.photo_path);
   if (paths.length) {
-    await supabase.storage.from("attachments").remove(paths);
+    await removerArquivos(paths);
   }
 
   const { error } = await supabase.from("tools").delete().eq("id", id);
@@ -153,15 +154,10 @@ export async function uploadToolPhotos(toolId: string, formData: FormData) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `tools/${toolId}/${randomUUID()}_${safeName}`;
 
-    const { error: upErr } = await supabase.storage
-      .from("attachments")
-      .upload(path, file, {
-        contentType: file.type || "application/octet-stream",
-        upsert: false,
-      });
+    const { error: upErr } = await uploadArquivo(path, file);
     if (upErr) {
       // desfaz o que já subiu neste lote para não deixar lixo
-      if (uploadedPaths.length) await supabase.storage.from("attachments").remove(uploadedPaths);
+      if (uploadedPaths.length) await removerArquivos(uploadedPaths);
       return { error: upErr.message };
     }
     uploadedPaths.push(path);
@@ -171,7 +167,7 @@ export async function uploadToolPhotos(toolId: string, formData: FormData) {
     uploadedPaths.map((path) => ({ tool_id: toolId, path, created_by: user.id }))
   );
   if (insErr) {
-    await supabase.storage.from("attachments").remove(uploadedPaths);
+    await removerArquivos(uploadedPaths);
     return { error: insErr.message };
   }
 
@@ -199,14 +195,11 @@ export async function getToolPhotos(toolId: string) {
     .order("created_at", { ascending: true });
   if (error) return { error: error.message };
 
-  const photos = await Promise.all(
-    (data ?? []).map(async (p) => {
-      const { data: signed } = await supabase.storage
-        .from("attachments")
-        .createSignedUrl(p.path, 60 * 60);
-      return { id: p.id as string, path: p.path as string, url: signed?.signedUrl ?? null };
-    })
-  );
+  const photos = (data ?? []).map((p) => ({
+    id: p.id as string,
+    path: p.path as string,
+    url: urlDoArquivo(p.path as string) as string | null,
+  }));
   return { photos };
 }
 
@@ -221,7 +214,7 @@ export async function deleteToolPhoto(photoId: string) {
     .maybeSingle();
   if (!photo) return { error: "Foto não encontrada" };
 
-  await supabase.storage.from("attachments").remove([photo.path]);
+  await removerArquivos([photo.path]);
   const { error } = await supabase.from("tool_photos").delete().eq("id", photoId);
   if (error) return { error: error.message };
 
@@ -251,12 +244,7 @@ export async function deleteToolPhoto(photoId: string) {
 
 /** Gera uma URL assinada (1h) para exibir uma foto avulsa (ex.: quem pegou emprestado). */
 export async function getToolPhotoUrl(storagePath: string) {
-  const supabase = createClient();
-  const { data, error } = await supabase.storage
-    .from("attachments")
-    .createSignedUrl(storagePath, 60 * 60);
-  if (error || !data) return { error: error?.message ?? "Erro ao abrir foto" };
-  return { url: data.signedUrl };
+  return { url: urlDoArquivo(storagePath) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -334,12 +322,7 @@ export async function uploadLoanReceiverPhoto(loanId: string, formData: FormData
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const path = `tool-loans/${loanId}/${randomUUID()}_${safeName}`;
 
-  const { error: upErr } = await supabase.storage
-    .from("attachments")
-    .upload(path, file, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
+  const { error: upErr } = await uploadArquivo(path, file);
   if (upErr) return { error: upErr.message };
 
   const { error } = await supabase

@@ -10,6 +10,7 @@ import type {
   AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
+import { urlDoArquivo } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -64,14 +65,11 @@ export default async function ImprimirFichaAnimalPage({ params }: Props) {
       .order("weighed_at", { ascending: false }),
   ]);
 
-  // foto principal com URL assinada (a impressão precisa da imagem acessível)
-  let photoUrl: string | null = null;
-  if (animal.photo_path) {
-    const { data: signed } = await supabase.storage
-      .from("attachments")
-      .createSignedUrl(animal.photo_path, 60 * 60);
-    photoUrl = signed?.signedUrl ?? null;
-  }
+  // Foto principal. O navegador de quem mandou imprimir busca a imagem em
+  // /api/arquivo com a sessão dele — a impressão sai com a foto do animal.
+  const photoUrl: string | null = animal.photo_path
+    ? urlDoArquivo(animal.photo_path)
+    : null;
 
   return (
     <AnimalFichaPrint

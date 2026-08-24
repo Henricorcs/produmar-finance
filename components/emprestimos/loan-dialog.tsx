@@ -28,6 +28,7 @@ import {
 } from "@/app/(app)/emprestimos/actions";
 import { loanTotalDue, formatBRL, formatBRLInput } from "@/lib/utils";
 import type { Loan, LoanRepaymentType } from "@/lib/types";
+import { comprimirImagens } from "@/lib/comprimir-imagem";
 
 interface Props {
   open: boolean;
@@ -100,11 +101,14 @@ export function LoanDialog({ open, onClose, loan }: Props) {
   });
   const interest = total - principal;
 
-  function addFiles(list: FileList | null) {
+  async function addFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
+    // Encolhe as fotos antes de medir: comprovante de 12 MB tirado no celular
+    // vira uns 300 kB e passa a caber, em vez de ser recusado.
+    const escolhidos = await comprimirImagens(Array.from(list));
     const accepted: File[] = [];
     const errs: string[] = [];
-    Array.from(list).forEach((f) => {
+    escolhidos.forEach((f) => {
       if (f.size > MAX_SIZE) errs.push(`${f.name}: máx ${MAX_SIZE_MB} MB`);
       else accepted.push(f);
     });

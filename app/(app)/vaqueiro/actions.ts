@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { AnimalSex } from "@/lib/types";
+import { removerArquivos, uploadArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -64,12 +65,7 @@ export async function requestCalfBirth(formData: FormData) {
   const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "foto.jpg";
   const photoPath = `animals/vaqueiro/${randomUUID()}_${safeName}`;
 
-  const { error: upErr } = await supabase.storage
-    .from("attachments")
-    .upload(photoPath, photo, {
-      contentType: photo.type || "application/octet-stream",
-      upsert: false,
-    });
+  const { error: upErr } = await uploadArquivo(photoPath, photo);
   if (upErr) return { error: upErr.message };
 
   const { error } = await supabase.from("animal_birth_requests").insert({
@@ -83,7 +79,7 @@ export async function requestCalfBirth(formData: FormData) {
   });
 
   if (error) {
-    await supabase.storage.from("attachments").remove([photoPath]);
+    await removerArquivos([photoPath]);
     return { error: birthRequestError(error) };
   }
 

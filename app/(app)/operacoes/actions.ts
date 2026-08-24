@@ -16,6 +16,7 @@ import type {
   ServiceOrderStatus,
   ServiceOrderType,
 } from "@/lib/types";
+import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 /**
  * Regra de negócio: só caminhão e caçamba fazem frete (e cobrança por km).
@@ -1283,12 +1284,7 @@ export async function uploadServiceOrderAttachments(orderId: string, formData: F
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `service_orders/${orderId}/${randomUUID()}_${safeName}`;
 
-    const { error: uploadErr } = await supabase.storage
-      .from("attachments")
-      .upload(path, file, {
-        contentType: file.type || "application/octet-stream",
-        upsert: false,
-      });
+    const { error: uploadErr } = await uploadArquivo(path, file);
 
     if (uploadErr) {
       errors.push(`${file.name}: ${uploadErr.message}`);
@@ -1334,12 +1330,7 @@ export async function listServiceOrderAttachments(orderId: string) {
 
 /** Gera uma URL assinada (1h) para abrir/baixar um comprovante. */
 export async function getServiceOrderAttachmentSignedUrl(storagePath: string) {
-  const supabase = createClient();
-  const { data, error } = await supabase.storage
-    .from("attachments")
-    .createSignedUrl(storagePath, 60 * 60);
-  if (error) return { error: error.message };
-  return { url: data.signedUrl };
+  return { url: urlDoArquivo(storagePath) };
 }
 
 export async function deleteServiceOrderAttachment(id: string) {
@@ -1352,7 +1343,7 @@ export async function deleteServiceOrderAttachment(id: string) {
     .single();
   if (!att) return { error: "Comprovante não encontrado" };
 
-  await supabase.storage.from("attachments").remove([att.storage_path]);
+  await removerArquivos([att.storage_path]);
 
   const { error } = await supabase.from("service_order_attachments").delete().eq("id", id);
   if (error) return { error: error.message };

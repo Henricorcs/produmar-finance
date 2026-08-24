@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, ImagePlus, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { comprimirImagem } from "@/lib/comprimir-imagem";
 import type { SupplyMovementType, SupplyStatus } from "@/lib/types";
 
 /** Unidades sugeridas no cadastro — o campo aceita qualquer texto. */
@@ -139,10 +140,12 @@ export function PhotoField({
 
   const shown = preview ?? (file ? null : currentUrl ?? null);
 
-  function pick(e: React.ChangeEvent<HTMLInputElement>) {
-    onChange(e.target.files?.[0] ?? null);
-    // zera o input: escolher o MESMO arquivo de novo tem que disparar onChange
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const escolhida = e.target.files?.[0] ?? null;
+    // zera o input ANTES do await: escolher o MESMO arquivo de novo tem que
+    // disparar onChange, e depois do await o React já reciclou o evento.
     e.target.value = "";
+    onChange(escolhida ? await comprimirImagem(escolhida) : null);
   }
 
   function clear() {
