@@ -165,6 +165,26 @@ async function main() {
   console.log(`Já tinha : ${pulados}`);
   console.log(`Falhas   : ${falhas}`);
 
+  // O terminal do EasyPanel entra como root, então o que este script gravou
+  // nasceu pertencendo ao root — e o site, que roda como uid 1001, não
+  // conseguiria acrescentar foto numa pasta já existente. Acerta o dono aqui
+  // mesmo, para não depender de ninguém lembrar de reiniciar depois.
+  if (baixados > 0 && typeof process.getuid === "function" && process.getuid() === 0) {
+    const { chown } = await import("fs/promises");
+    const acertarDono = async (alvo) => {
+      const { readdir } = await import("fs/promises");
+      await chown(alvo, 1001, 1001).catch(() => {});
+      const itens = await readdir(alvo, { withFileTypes: true }).catch(() => []);
+      for (const item of itens) {
+        const filho = path.join(alvo, item.name);
+        if (item.isDirectory()) await acertarDono(filho);
+        else await chown(filho, 1001, 1001).catch(() => {});
+      }
+    };
+    await acertarDono(DESTINO);
+    console.log("\nDono dos arquivos ajustado para o usuário do site.");
+  }
+
   if (falhas > 0) {
     console.log("\nRode de novo para tentar os que falharam (os prontos são pulados).");
     process.exitCode = 1;
