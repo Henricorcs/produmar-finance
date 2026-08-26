@@ -59,6 +59,11 @@ export async function updateSession(request: NextRequest) {
   const isPublicRoute =
     path.startsWith("/login") ||
     path.startsWith("/auth") ||
+    // O backup não entra com sessão: ele se identifica pela senha própria
+    // (BACKUP_TOKEN), conferida dentro da própria rota. Sem esta linha o
+    // middleware mandaria o PC do escritório para a tela de login, e o backup
+    // guardaria uma página HTML no lugar das fotos.
+    path.startsWith("/api/backup") ||
     path === "/";
 
   // Usuário não autenticado → login

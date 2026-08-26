@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "fs/promises";
 import path from "path";
 
 /**
@@ -133,6 +133,35 @@ export async function lerArquivo(chave: string): Promise<Buffer | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Todos os arquivos guardados, com o caminho relativo e o tamanho.
+ *
+ * Usado pelo backup: o PC do escritório pergunta o que existe aqui e baixa só
+ * o que ainda não tem. Pasta vazia devolve lista vazia, sem reclamar.
+ */
+export async function listarTodosOsArquivos(): Promise<
+  { caminho: string; tamanho: number }[]
+> {
+  const encontrados: { caminho: string; tamanho: number }[] = [];
+
+  async function percorrer(pasta: string, prefixo: string) {
+    const itens = await readdir(pasta, { withFileTypes: true }).catch(() => []);
+    for (const item of itens) {
+      const completo = path.join(pasta, item.name);
+      const relativo = prefixo ? `${prefixo}/${item.name}` : item.name;
+      if (item.isDirectory()) {
+        await percorrer(completo, relativo);
+      } else if (item.isFile()) {
+        const info = await stat(completo).catch(() => null);
+        if (info) encontrados.push({ caminho: relativo, tamanho: info.size });
+      }
+    }
+  }
+
+  await percorrer(RAIZ, "");
+  return encontrados;
 }
 
 export async function arquivoExiste(chave: string): Promise<boolean> {

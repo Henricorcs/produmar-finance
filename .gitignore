@@ -19,3 +19,9 @@ skills-lock.json
 # Fotos e comprovantes gravados em disco (em produção isso é um volume do
 # EasyPanel; aqui é só a pasta de desenvolvimento).
 .storage/
+
+# Configuração do backup (tem senha dentro)
+backup.config.json
+
+# Registro do backup
+scripts/backup.log
