@@ -37,7 +37,7 @@ interface Props {
  *
  * Apagar um setor NÃO apaga os envios que já usaram ele: eles ficam sem setor.
  */
-export function ObraSectorsDialog({ open, onClose, obras, sectors, presetObraId }: Props) {
+export function SupplyObraSectorsDialog({ open, onClose, obras, sectors, presetObraId }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [obraId, setObraId] = useState("");

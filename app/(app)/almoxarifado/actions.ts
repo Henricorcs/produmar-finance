@@ -11,6 +11,10 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function revalidate() {
   revalidatePath("/almoxarifado");
+  // as obras do Estoque (supply_obras) são cuidadas no módulo Obras: cadastro,
+  // setores e o quanto cada obra consumiu aparecem lá, então aquela tela
+  // também tem que acompanhar o que muda aqui
+  revalidatePath("/obras");
 }
 
 function clean(s?: string | null): string | null {

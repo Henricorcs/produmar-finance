@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowUpFromLine, Fence, HardHat, MapPin, Pencil, Trash2, User } from "lucide-react";
+import { Fence, HardHat, MapPin, Pencil, Trash2, User } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,13 +11,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatBRL, formatQty } from "@/lib/utils";
 import { deleteSupplyObra, getSupplyObraMovements } from "@/app/(app)/almoxarifado/actions";
-import { fmtDateTime, num } from "./supply-shared";
+import { fmtDateTime, num } from "@/components/almoxarifado/supply-shared";
 import type {
   SupplyFenceRunView,
-  SupplyItemWithStock,
   SupplyObraSector,
   SupplyObraUsage,
 } from "@/lib/types";
+
+/**
+ * Custo médio de um material do Estoque (v_supply_stock). É só o que o detalhe
+ * precisa para transformar a quantidade que saiu em dinheiro — o catálogo
+ * inteiro não vem para cá.
+ */
+export type SupplyItemCost = {
+  id: string;
+  avg_unit_cost: number | null;
+};
 
 /** Saída da obra — vem da consulta sob demanda, sem o limite da listagem. */
 type ObraMovement = {
@@ -34,26 +43,24 @@ interface Props {
   open: boolean;
   onClose: () => void;
   obra: SupplyObraUsage | null;
-  /** Catálogo, para pegar o custo médio de cada material. */
-  items: SupplyItemWithStock[];
+  /** Custo médio de cada material — é com ele que o consumo vira dinheiro. */
+  costs: SupplyItemCost[];
   /** Setores de TODAS as obras — o diálogo filtra os desta. */
   sectors?: SupplyObraSector[];
   /** Metros de cerca de TODAS as obras — o diálogo filtra os desta (063). */
   fenceRuns?: SupplyFenceRunView[];
-  onNewSaida: (obra: SupplyObraUsage) => void;
   onEdit: (obra: SupplyObraUsage) => void;
   /** Abre o cadastro de setores já nesta obra. */
   onManageSectors: (obra: SupplyObraUsage) => void;
 }
 
-export function ObraDetailDialog({
+export function SupplyObraDetailDialog({
   open,
   onClose,
   obra,
-  items,
+  costs,
   sectors = [],
   fenceRuns = [],
-  onNewSaida,
   onEdit,
   onManageSectors,
 }: Props) {
@@ -111,9 +118,9 @@ export function ObraDetailDialog({
 
   const costByItem = useMemo(() => {
     const map = new Map<string, number>();
-    for (const i of items) map.set(i.id, i.avg_unit_cost != null ? num(i.avg_unit_cost) : 0);
+    for (const i of costs) map.set(i.id, i.avg_unit_cost != null ? num(i.avg_unit_cost) : 0);
     return map;
-  }, [items]);
+  }, [costs]);
 
   /** Consumo somado por material — é o que interessa numa obra. */
   const byItem = useMemo(() => {
@@ -182,12 +189,11 @@ export function ObraDetailDialog({
                 ? "1 saída"
                 : `${num(obra.movements_count)} saídas`}
             </p>
+            {/* a baixa de material continua sendo do Estoque — aqui é só o retrato */}
+            <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+              A saída de material é lançada no Estoque, escolhendo esta obra.
+            </p>
           </div>
-
-          <Button className="w-full" onClick={() => onNewSaida(obra)}>
-            <ArrowUpFromLine className="w-4 h-4" />
-            Lançar saída para esta obra
-          </Button>
 
           {/* Cerca: metro feito por setor (o técnico lança só o metro) */}
           {cerca.metros > 0 && (
@@ -341,7 +347,7 @@ export function ObraDetailDialog({
 }
 
 /** Card da obra na aba — nome, cliente e quanto de material já consumiu. */
-export function ObraCard({
+export function SupplyObraCard({
   obra,
   onOpen,
 }: {

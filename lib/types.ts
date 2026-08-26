@@ -940,8 +940,10 @@ export interface SupplyMovement {
 }
 
 /**
- * Obra DO ESTOQUE — lista própria do módulo, para saber quanto de material
- * cada obra consumiu. Não tem relação com o módulo Obras (public.obras).
+ * Obra DO ESTOQUE — lista própria, para saber quanto de material cada obra
+ * consumiu. É uma tabela à parte de public.obras: são cadastros diferentes, que
+ * desde a migration 065 são cuidados na mesma tela — o módulo Obras, na aba
+ * "Do Estoque". O lançamento de material continua no Estoque.
  */
 export interface SupplyObra {
   id: string;

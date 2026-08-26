@@ -1,14 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HardHat, Plus, Search, Wallet, ListChecks } from "lucide-react";
+import { HardHat, PackageOpen, Plus, Search, Wallet, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBRL } from "@/lib/utils";
 import { ObraDialog } from "./obra-dialog";
 import { ObraDetailDialog } from "./obra-detail-dialog";
-import { OBRA_STATUS_META } from "./obra-shared";
-import type { Contact, ObraItem, ObraStatus, ObraSummary } from "@/lib/types";
+import { ObrasEstoqueTab } from "./obras-estoque-tab";
+import type { SupplyItemCost } from "./estoque-obra-detail-dialog";
+import { EmptyState, OBRA_STATUS_META } from "./obra-shared";
+import type {
+  Contact,
+  ObraItem,
+  ObraStatus,
+  ObraSummary,
+  SupplyFenceRunView,
+  SupplyObraSector,
+  SupplyObraUsage,
+} from "@/lib/types";
 
 export type ObraTransactionRow = {
   id: string;
@@ -47,9 +57,19 @@ interface Props {
   transactions: ObraTransactionRow[];
   serviceOrders: ObraServiceOrderRow[];
   toolLoans: ObraToolLoanRow[];
+  /** Obras DO ESTOQUE (supply_obras) — a aba que veio do módulo Estoque. */
+  supplyObras?: SupplyObraUsage[];
+  /** Setores dessas obras — o "Setor aplicado" que o técnico escolhe. */
+  supplySectors?: SupplyObraSector[];
+  /** Custo médio dos materiais, para valorizar o consumo de cada obra. */
+  supplyCosts?: SupplyItemCost[];
+  /** Metros de cerca — o detalhe da obra mostra o resumo por setor. */
+  supplyFenceRuns?: SupplyFenceRunView[];
 }
 
 type StatusFilter = "todas" | ObraStatus;
+/** As duas listas de obra do sistema, agora na mesma tela. */
+type Tab = "obras" | "estoque";
 
 export function ObrasPageClient({
   obras,
@@ -58,7 +78,12 @@ export function ObrasPageClient({
   transactions,
   serviceOrders,
   toolLoans,
+  supplyObras = [],
+  supplySectors = [],
+  supplyCosts = [],
+  supplyFenceRuns = [],
 }: Props) {
+  const [tab, setTab] = useState<Tab>("obras");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todas");
 
@@ -104,15 +129,16 @@ export function ObrasPageClient({
     return c;
   }, [obras]);
 
+  const activeObras = useMemo(() => obras.filter((o) => o.active), [obras]);
+
   const totalCost = useMemo(
-    () => obras.filter((o) => o.active).reduce((sum, o) => sum + Number(o.total_cost), 0),
-    [obras]
+    () => activeObras.reduce((sum, o) => sum + Number(o.total_cost), 0),
+    [activeObras]
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toUpperCase();
-    return obras.filter((o) => {
-      if (!o.active) return false;
+    return activeObras.filter((o) => {
       if (statusFilter !== "todas" && o.status !== statusFilter) return false;
       if (!q) return true;
       const client = o.contact_id ? contactsById.get(o.contact_id)?.name ?? "" : "";
@@ -122,7 +148,7 @@ export function ObrasPageClient({
         client.toUpperCase().includes(q)
       );
     });
-  }, [obras, search, statusFilter, contactsById]);
+  }, [activeObras, search, statusFilter, contactsById]);
 
   function openEdit(o: ObraSummary) {
     setEditObra(o);
@@ -141,106 +167,164 @@ export function ObrasPageClient({
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Obras</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Cadastro e custos por obra
+          <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+            {tab === "obras"
+              ? "Cadastro e custos por obra"
+              : "Obras que consomem material do Estoque"}
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditObra(null);
-            setObraDialogOpen(true);
-          }}
-          className="flex-shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Nova obra
-        </Button>
-      </div>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-2">
-        <KpiCard
-          icon={HardHat}
-          label="Em andamento"
-          value={String(countBy.em_andamento)}
-          tone="produmar"
-        />
-        <KpiCard
-          icon={ListChecks}
-          label="Planejamento"
-          value={String(countBy.planejamento)}
-          tone="amber"
-        />
-        <KpiCard icon={Wallet} label="Total gasto" value={formatBRL(totalCost)} tone="emerald" />
-      </div>
-
-      {/* Busca + filtro por status */}
-      <div className="space-y-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome, local ou cliente..."
-            className="pl-9"
-            autoComplete="off"
-          />
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
-          {statusFilters.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatusFilter(f.value)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                statusFilter === f.value
-                  ? "bg-produmar-600 border-produmar-600 text-white"
-                  : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-              }`}
-            >
-              {f.label}
-              {f.value !== "todas" && (
-                <span className="opacity-60 ml-1">{countBy[f.value]}</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {filtered.length === 0 ? (
-          obras.filter((o) => o.active).length === 0 ? (
-            <EmptyState
-              icon={HardHat}
-              text="Nenhuma obra cadastrada ainda."
-              hint="Cadastre a primeira para acompanhar custos."
-              action={
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setEditObra(null);
-                    setObraDialogOpen(true);
-                  }}
-                >
-                  <Plus className="w-4 h-4" /> Nova obra
-                </Button>
-              }
-            />
-          ) : (
-            <EmptyState icon={Search} text="Nada encontrado com esse filtro." />
-          )
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filtered.map((o) => (
-              <ObraCard
-                key={o.id}
-                obra={o}
-                clientName={o.contact_id ? contactsById.get(o.contact_id)?.name ?? null : null}
-                onOpen={() => setDetailObraId(o.id)}
-              />
-            ))}
-          </div>
+        {tab === "obras" && (
+          <Button
+            onClick={() => {
+              setEditObra(null);
+              setObraDialogOpen(true);
+            }}
+            className="flex-shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            Nova obra
+          </Button>
         )}
       </div>
+
+      {/* As duas listas de obra: as do cadastro e as que recebem material */}
+      <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+        {(
+          [
+            { value: "obras", label: "Obras", icon: HardHat, count: activeObras.length },
+            {
+              value: "estoque",
+              label: "Do Estoque",
+              icon: PackageOpen,
+              count: supplyObras.length,
+            },
+          ] as const
+        ).map((t) => {
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.value}
+              onClick={() => setTab(t.value)}
+              className={`flex-1 flex items-center justify-center gap-1.5 min-h-[40px] px-2 rounded-md transition-colors ${
+                tab === t.value
+                  ? "bg-white dark:bg-slate-700 text-produmar-700 dark:text-produmar-400 shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span className="text-xs font-medium">
+                {t.label}
+                <span className="opacity-50 tabular-nums ml-1">{t.count}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "obras" && (
+        <>
+          {/* KPIs */}
+          <div className="grid grid-cols-3 gap-2">
+            <KpiCard
+              icon={HardHat}
+              label="Em andamento"
+              value={String(countBy.em_andamento)}
+              tone="produmar"
+            />
+            <KpiCard
+              icon={ListChecks}
+              label="Planejamento"
+              value={String(countBy.planejamento)}
+              tone="amber"
+            />
+            <KpiCard
+              icon={Wallet}
+              label="Total gasto"
+              value={formatBRL(totalCost)}
+              tone="emerald"
+            />
+          </div>
+
+          {/* Busca + filtro por status */}
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nome, local ou cliente..."
+                className="pl-9"
+                autoComplete="off"
+              />
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+              {statusFilters.map((f) => (
+                <button
+                  key={f.value}
+                  onClick={() => setStatusFilter(f.value)}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    statusFilter === f.value
+                      ? "bg-produmar-600 border-produmar-600 text-white"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  }`}
+                >
+                  {f.label}
+                  {f.value !== "todas" && (
+                    <span className="opacity-60 ml-1">{countBy[f.value]}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {filtered.length === 0 ? (
+              activeObras.length === 0 ? (
+                <EmptyState
+                  icon={HardHat}
+                  text="Nenhuma obra cadastrada ainda."
+                  hint="Cadastre a primeira para acompanhar custos."
+                  action={
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setEditObra(null);
+                        setObraDialogOpen(true);
+                      }}
+                    >
+                      <Plus className="w-4 h-4" /> Nova obra
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState icon={Search} text="Nada encontrado com esse filtro." />
+              )
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {filtered.map((o) => (
+                  <ObraCard
+                    key={o.id}
+                    obra={o}
+                    clientName={
+                      o.contact_id ? contactsById.get(o.contact_id)?.name ?? null : null
+                    }
+                    onOpen={() => setDetailObraId(o.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {tab === "estoque" && (
+        <ObrasEstoqueTab
+          obras={supplyObras}
+          sectors={supplySectors}
+          costs={supplyCosts}
+          fenceRuns={supplyFenceRuns}
+        />
+      )}
 
       {/* Dialogs */}
       <ObraDialog
@@ -354,28 +438,6 @@ function KpiCard({
         {value}
       </p>
       <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{label}</p>
-    </div>
-  );
-}
-
-// ── Empty state ───────────────────────────────────────────────────────────────
-function EmptyState({
-  icon: Icon,
-  text,
-  hint,
-  action,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  text: string;
-  hint?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center text-center py-12 px-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-      <Icon className="w-8 h-8 text-slate-300 dark:text-slate-600 mb-2" />
-      <p className="text-sm text-slate-500 dark:text-slate-400">{text}</p>
-      {hint && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{hint}</p>}
-      {action && <div className="mt-3">{action}</div>}
     </div>
   );
 }

@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   Wallet,
   HardHat,
-  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,9 +31,7 @@ import { MovementDialog } from "./movement-dialog";
 import { AdjustDialog } from "./adjust-dialog";
 import { ItemDetailDialog } from "./item-detail-dialog";
 import { CategoriesDialog } from "./categories-dialog";
-import { ObraDialog } from "./obra-dialog";
-import { ObraCard, ObraDetailDialog } from "./obra-detail-dialog";
-import { ObraSectorsDialog } from "./obra-sectors-dialog";
+import { SupplyObraDialog } from "@/components/obras/estoque-obra-dialog";
 import { CercaTab, FenceRateDialog, FenceRunDialog } from "./cerca-tab";
 import { SupplyRequestDialog } from "./request-dialog";
 import { SupplyRequestDetailDialog } from "./request-detail-dialog";
@@ -72,7 +69,7 @@ interface Props {
   fenceRuns?: SupplyFenceRunView[];
 }
 
-type Tab = "estoque" | "obras" | "cerca" | "movimentos" | "pendentes";
+type Tab = "estoque" | "cerca" | "movimentos" | "pendentes";
 /** Categoria escolhida: todas, um id, ou os itens sem categoria. */
 type CategoryFilter = "todas" | "sem" | (string & {});
 type StatusFilter = "todos" | SupplyStatus;
@@ -102,10 +99,6 @@ export function AlmoxarifadoPageClient({
   const [movementPresetObraId, setMovementPresetObraId] = useState<string | null>(null);
   const [obraDialogOpen, setObraDialogOpen] = useState(false);
   const [editObra, setEditObra] = useState<SupplyObraUsage | null>(null);
-  const [detailObraId, setDetailObraId] = useState<string | null>(null);
-  /** Cadastro dos setores da obra (o "Setor aplicado" do técnico). */
-  const [sectorsOpen, setSectorsOpen] = useState(false);
-  const [sectorsObraId, setSectorsObraId] = useState<string | null>(null);
   /** Cerca: o lançamento de metros e a tabela de preço por metro. */
   const [fenceRunOpen, setFenceRunOpen] = useState(false);
   const [editFenceRun, setEditFenceRun] = useState<SupplyFenceRunView | null>(null);
@@ -160,16 +153,7 @@ export function AlmoxarifadoPageClient({
     () => (adjustItemId ? items.find((i) => i.id === adjustItemId) ?? null : null),
     [adjustItemId, items]
   );
-  const detailObra = useMemo(
-    () => (detailObraId ? obras.find((o) => o.id === detailObraId) ?? null : null),
-    [detailObraId, obras]
-  );
   /** Nome da obra por id — a consulta de movimentos não faz join com obras. */
-  function openSectors(obraId: string | null) {
-    setSectorsObraId(obraId);
-    setSectorsOpen(true);
-  }
-
   const obraNameById = useMemo(
     () => new Map(obras.map((o) => [o.id, o.name])),
     [obras]
@@ -257,14 +241,10 @@ export function AlmoxarifadoPageClient({
   }, [scopedItems, search, statusFilter]);
 
   // ── Ações auxiliares ────────────────────────────────────────────────────────
-  function openMovement(
-    type: "entrada" | "saida",
-    item?: SupplyItemWithStock,
-    obraId?: string
-  ) {
+  function openMovement(type: "entrada" | "saida", item?: SupplyItemWithStock) {
     setMovementType(type);
     setMovementPresetId(item?.id ?? null);
-    setMovementPresetObraId(obraId ?? null);
+    setMovementPresetObraId(null);
     setMovementOpen(true);
   }
   function openNewItem() {
@@ -277,11 +257,6 @@ export function AlmoxarifadoPageClient({
     setEditItem(null);
     setCreatingFromMovement(true);
     setItemDialogOpen(true);
-  }
-  function openNewObra() {
-    setEditObra(null);
-    setCreatingObraFromMovement(false);
-    setObraDialogOpen(true);
   }
   function openNewObraFromMovement() {
     setEditObra(null);
@@ -475,7 +450,6 @@ export function AlmoxarifadoPageClient({
         {(
           [
             { value: "estoque", label: "Estoque", icon: PackageOpen, count: scopedItems.length },
-            { value: "obras", label: "Obras", icon: HardHat, count: obras.length },
             { value: "cerca", label: "Cerca", icon: Fence, count: fenceRuns.length },
             {
               value: "movimentos",
@@ -590,16 +564,6 @@ export function AlmoxarifadoPageClient({
         </div>
       )}
 
-      {tab === "obras" && (
-        <ObrasTab
-          obras={obras}
-          sectorCount={sectors.length}
-          onNew={openNewObra}
-          onOpen={(o) => setDetailObraId(o.id)}
-          onManageSectors={() => openSectors(null)}
-        />
-      )}
-
       {tab === "cerca" && (
         <CercaTab
           runs={fenceRuns}
@@ -664,7 +628,7 @@ export function AlmoxarifadoPageClient({
         onCreateObra={openNewObraFromMovement}
         onEditObra={openEditObra}
       />
-      <ObraDialog
+      <SupplyObraDialog
         open={obraDialogOpen}
         onClose={() => setObraDialogOpen(false)}
         obra={editObra}
@@ -673,13 +637,6 @@ export function AlmoxarifadoPageClient({
           if (creatingObraFromMovement) setMovementPresetObraId(obraId);
           setCreatingObraFromMovement(false);
         }}
-      />
-      <ObraSectorsDialog
-        open={sectorsOpen}
-        onClose={() => setSectorsOpen(false)}
-        obras={obras}
-        sectors={sectors}
-        presetObraId={sectorsObraId}
       />
 
       <FenceRunDialog
@@ -700,27 +657,6 @@ export function AlmoxarifadoPageClient({
         obras={obras}
         sectors={sectors}
         presetObraId={fenceRatesObraId}
-      />
-      <ObraDetailDialog
-        open={!!detailObra}
-        onClose={() => setDetailObraId(null)}
-        obra={detailObra}
-        items={items}
-        sectors={sectors}
-        fenceRuns={fenceRuns}
-        onManageSectors={(o) => {
-          // sai do detalhe direto para o cadastro — dois diálogos se atropelam
-          setDetailObraId(null);
-          openSectors(o.id);
-        }}
-        onNewSaida={(o) => {
-          setDetailObraId(null);
-          openMovement("saida", undefined, o.id);
-        }}
-        onEdit={(o) => {
-          setDetailObraId(null);
-          openEditObra(o);
-        }}
       />
       <SupplyRequestDetailDialog
         open={!!detailRequest}
@@ -873,68 +809,6 @@ function ItemCard({
           Saída
         </button>
       </div>
-    </div>
-  );
-}
-
-// ── Aba: Obras ───────────────────────────────────────────────────────────────
-function ObrasTab({
-  obras,
-  sectorCount,
-  onNew,
-  onOpen,
-  onManageSectors,
-}: {
-  obras: SupplyObraUsage[];
-  /** Quantos setores existem no total — só para o rótulo do botão. */
-  sectorCount: number;
-  onNew: () => void;
-  onOpen: (obra: SupplyObraUsage) => void;
-  onManageSectors: () => void;
-}) {
-  const total = obras.reduce((sum, o) => sum + num(o.total_value), 0);
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        {obras.length > 0 && (
-          <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-            {formatBRL(total)} em material
-          </p>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          {obras.length > 0 && (
-            <Button variant="outline" size="sm" onClick={onManageSectors}>
-              <MapPin className="w-3.5 h-3.5" />
-              Setores
-              {sectorCount > 0 && <span className="opacity-60 tabular-nums">{sectorCount}</span>}
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={onNew}>
-            <Plus className="w-3.5 h-3.5" />
-            Nova obra
-          </Button>
-        </div>
-      </div>
-
-      {obras.length === 0 ? (
-        <EmptyState
-          icon={HardHat}
-          text="Nenhuma obra cadastrada."
-          hint="Cadastre as obras para saber quanto de material cada uma consumiu."
-          action={
-            <Button size="sm" onClick={onNew}>
-              <Plus className="w-4 h-4" /> Nova obra
-            </Button>
-          }
-        />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {obras.map((o) => (
-            <ObraCard key={o.id} obra={o} onOpen={() => onOpen(o)} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

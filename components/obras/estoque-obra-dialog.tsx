@@ -25,7 +25,15 @@ interface Props {
   onCreated?: (obraId: string) => void;
 }
 
-export function ObraDialog({ open, onClose, obra, onCreated }: Props) {
+/**
+ * Cadastro da OBRA DO ESTOQUE (tabela supply_obras) — a lista que diz quanto de
+ * material cada obra consumiu. Mora aqui, no módulo Obras, mas segue sendo uma
+ * lista à parte das obras de public.obras (essas são a aba "Obras").
+ *
+ * O Estoque também usa este diálogo: ao lançar uma saída dá para cadastrar a
+ * obra na hora, sem sair do lançamento.
+ */
+export function SupplyObraDialog({ open, onClose, obra, onCreated }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 

@@ -105,9 +105,12 @@ export const APP_MODULES: AppModule[] = [
     tabs: [{ href: "/diaristas", label: "Diaristas", short: "Diarist.", icon: Users }],
   },
   {
+    // Duas listas de obra moram aqui: as do cadastro (public.obras, com número,
+    // orçamento e OS) e as do Estoque (supply_obras, que recebem material e
+    // metro de cerca). São cadastros diferentes, na mesma tela — ver a 065.
     slug: "obras",
     name: "Obras",
-    description: "Gestão e acompanhamento de obras",
+    description: "Cadastro, custos e material consumido por obra",
     href: "/obras",
     icon: HardHat,
     accentIcon:
