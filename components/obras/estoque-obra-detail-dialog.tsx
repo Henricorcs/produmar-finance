@@ -6,7 +6,10 @@ import {
   HardHat,
   MapPin,
   MapPinned,
+  Paperclip,
   Pencil,
+  Plus,
+  Receipt,
   Trash2,
   User,
   Users,
@@ -23,6 +26,7 @@ import { deleteSupplyObra, getSupplyObraExtrato } from "@/app/(app)/almoxarifado
 import { num } from "@/components/almoxarifado/supply-shared";
 import type {
   SupplyFenceRunView,
+  SupplyObraDespesa,
   SupplyObraExtrato,
   SupplyObraSector,
   SupplyObraUsage,
@@ -39,6 +43,12 @@ interface Props {
   onEdit: (obra: SupplyObraUsage) => void;
   /** Abre o cadastro de setores já nesta obra. */
   onManageSectors: (obra: SupplyObraUsage) => void;
+  /**
+   * Abre o lançamento de despesa desta obra — null lança uma nova, uma despesa
+   * abre para correção. Quem cuida do diálogo é a lista: aqui ele fecharia por
+   * cima deste e os dois se atropelariam.
+   */
+  onDespesa: (obra: SupplyObraUsage, despesa: SupplyObraDespesa | null) => void;
 }
 
 /** Os recortes de tempo do extrato — o que o dono pergunta no dia a dia. */
@@ -73,6 +83,7 @@ export function SupplyObraDetailDialog({
   fenceRuns = [],
   onEdit,
   onManageSectors,
+  onDespesa,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [extrato, setExtrato] = useState<SupplyObraExtrato[]>([]);
@@ -80,12 +91,19 @@ export function SupplyObraDetailDialog({
   const [erro, setErro] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<Periodo>("tudo");
 
-  // o gasto inteiro da obra — material e diárias — vem da view da migration 066
   const obraId = obra?.id ?? null;
+
+  // troca de obra (ou fechou): limpa o que estava na tela
   useEffect(() => {
     setExtrato([]);
     setErro(null);
     setPeriodo("tudo");
+  }, [open, obraId]);
+
+  // O gasto inteiro da obra — material, diárias e despesas — vem da view 067.
+  // Recarrega toda vez que o diálogo reabre: é assim que a despesa recém-salva
+  // aparece, já que lançar despesa fecha este diálogo e volta para ele.
+  useEffect(() => {
     if (!open || !obraId) return;
     let cancelled = false;
     setLoading(true);
@@ -96,6 +114,7 @@ export function SupplyObraDetailDialog({
         setErro(r.error ?? "Não foi possível carregar o extrato");
         return;
       }
+      setErro(null);
       setExtrato((r.extrato ?? []) as SupplyObraExtrato[]);
     });
     return () => {
@@ -141,15 +160,34 @@ export function SupplyObraDetailDialog({
     return extrato.filter((l) => (l.entry_date ?? "").startsWith(prefixo));
   }, [extrato, periodo]);
 
-  /** Quanto o período custou, separando as duas metades. */
+  /** Quanto o período custou, separando as três origens. */
   const totalPeriodo = useMemo(() => {
     let material = 0;
     let maoDeObra = 0;
+    let despesas = 0;
     for (const l of linhas) {
       if (l.kind === "diaria") maoDeObra += num(l.value);
+      else if (l.kind === "despesa") despesas += num(l.value);
       else material += num(l.value);
     }
-    return { material, maoDeObra, total: material + maoDeObra };
+    return { material, maoDeObra, despesas, total: material + maoDeObra + despesas };
+  }, [linhas]);
+
+  /**
+   * O relatório da despesa avulsa: quanto foi por categoria. É onde se vê que
+   * o combustível pesou mais que o material, por exemplo.
+   */
+  const porCategoria = useMemo(() => {
+    const map = new Map<string, { nome: string; valor: number; qtd: number }>();
+    for (const l of linhas) {
+      if (l.kind !== "despesa") continue;
+      const nome = (l.category ?? "").trim() || "Sem categoria";
+      const cur = map.get(nome) ?? { nome, valor: 0, qtd: 0 };
+      cur.valor += num(l.value);
+      cur.qtd += 1;
+      map.set(nome, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [linhas]);
 
   /** Consumo somado por material — o que mais pesou na obra. */
@@ -183,6 +221,8 @@ export function SupplyObraDetailDialog({
       { nome: string; material: number; dias: number; maoDeObra: number }
     >();
     for (const l of linhas) {
+      // a despesa fica de fora: ali "quem" é o fornecedor, não quem trabalhou
+      if (l.kind === "despesa") continue;
       const nome = (l.person ?? "").trim() || "Sem nome";
       const cur = map.get(nome) ?? { nome, material: 0, dias: 0, maoDeObra: 0 };
       if (l.kind === "diaria") {
@@ -200,11 +240,32 @@ export function SupplyObraDetailDialog({
 
   if (!obra) return null;
 
+  /** A linha do extrato virada despesa de novo, para abrir na edição. */
+  function despesaDaLinha(l: SupplyObraExtrato): SupplyObraDespesa {
+    return {
+      id: l.id,
+      obra_id: l.obra_id,
+      expense_date: l.entry_date,
+      category: l.category,
+      description: l.description,
+      amount: num(l.value),
+      person: l.person,
+      photo_path: l.photo_path,
+      notes: l.notes,
+      created_by: null,
+      created_at: l.created_at,
+    };
+  }
+
+  function abrirDespesa(l: SupplyObraExtrato | null) {
+    onDespesa(obra!, l ? despesaDaLinha(l) : null);
+  }
+
   function handleDelete() {
     const o = obra!;
     if (
       !confirm(
-        `Excluir a obra "${o.name}"? As saídas e as diárias já lançadas NÃO são apagadas — elas ficam sem obra.`
+        `Excluir a obra "${o.name}"? As saídas e as diárias já lançadas NÃO são apagadas — elas ficam sem obra. As despesas avulsas desta obra são apagadas junto.`
       )
     )
       return;
@@ -246,8 +307,8 @@ export function SupplyObraDetailDialog({
             <p className="mt-1.5 text-3xl font-bold text-slate-800 dark:text-slate-100 tabular-nums leading-none">
               {formatBRL(custoTotal)}
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-left">
-              <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 px-2.5 py-1.5">
+            <div className="mt-3 grid grid-cols-3 gap-1.5 text-left">
+              <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 px-2 py-1.5">
                 <p className="text-[10px] text-orange-700 dark:text-orange-400 uppercase tracking-wide">
                   Material
                 </p>
@@ -255,13 +316,11 @@ export function SupplyObraDetailDialog({
                   {formatBRL(num(obra.total_value))}
                 </p>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  {num(obra.items_count)}{" "}
-                  {num(obra.items_count) === 1 ? "material" : "materiais"} ·{" "}
                   {num(obra.movements_count)}{" "}
                   {num(obra.movements_count) === 1 ? "saída" : "saídas"}
                 </p>
               </div>
-              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1.5">
+              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5">
                 <p className="text-[10px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
                   Mão de obra
                 </p>
@@ -270,13 +329,34 @@ export function SupplyObraDetailDialog({
                 </p>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">
                   {num(obra.days_count)} {num(obra.days_count) === 1 ? "diária" : "diárias"}
-                  {num(obra.workers_count) > 0 && ` · ${num(obra.workers_count)} pessoas`}
+                </p>
+              </div>
+              <div className="rounded-lg bg-violet-50 dark:bg-violet-900/20 px-2 py-1.5">
+                <p className="text-[10px] text-violet-700 dark:text-violet-400 uppercase tracking-wide">
+                  Despesas
+                </p>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+                  {formatBRL(num(obra.expense_value))}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {num(obra.expenses_count)}{" "}
+                  {num(obra.expenses_count) === 1 ? "lançamento" : "lançamentos"}
                 </p>
               </div>
             </div>
+
+            <Button
+              type="button"
+              className="mt-3 w-full"
+              onClick={() => abrirDespesa(null)}
+            >
+              <Plus className="w-4 h-4" />
+              Lançar despesa
+            </Button>
+
             <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-              O material sai no Estoque e a diária é lançada em Diaristas — as duas
-              escolhendo esta obra.
+              O material sai no Estoque e a diária em Diaristas, as duas escolhendo esta
+              obra. A despesa — compra direta, combustível, frete — é lançada aqui.
             </p>
           </div>
 
@@ -411,43 +491,115 @@ export function SupplyObraDetailDialog({
             )}
           </div>
 
+          {/* Relatório da despesa avulsa: em que o dinheiro foi embora */}
+          {porCategoria.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Receipt className="w-3.5 h-3.5 text-violet-500" />
+                Despesas por categoria
+              </p>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                {porCategoria.map((c) => (
+                  <div key={c.nome} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                        {c.nome}
+                      </p>
+                      <p className="text-[11px] text-slate-400 tabular-nums">
+                        {c.qtd} {c.qtd === 1 ? "lançamento" : "lançamentos"}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
+                      {formatBRL(c.valor)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* O extrato: cada gasto, na ordem em que aconteceu */}
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Extrato de gastos
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Extrato de gastos
+              </p>
+              <button
+                type="button"
+                onClick={() => abrirDespesa(null)}
+                className="min-h-[36px] px-2 text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:underline"
+              >
+                + Despesa
+              </button>
+            </div>
             {linhas.length === 0 ? (
               <p className="text-xs text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
                 {loading ? "Carregando..." : "Nenhum gasto lançado no período."}
               </p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 max-h-72 overflow-y-auto">
-                {linhas.map((l) => (
-                  <div key={`${l.kind}-${l.id}`} className="flex items-center gap-2.5 px-3 py-2">
-                    <span
-                      className={`w-1.5 h-9 rounded-full flex-shrink-0 ${
-                        l.kind === "diaria" ? "bg-emerald-400" : "bg-orange-400"
+                {linhas.map((l) => {
+                  const ehDespesa = l.kind === "despesa";
+                  return (
+                    <div
+                      key={`${l.kind}-${l.id}`}
+                      // só a despesa é editável aqui: o material é do Estoque e a
+                      // diária é do módulo Diaristas, cada um se acerta na sua tela
+                      onClick={ehDespesa ? () => abrirDespesa(l) : undefined}
+                      role={ehDespesa ? "button" : undefined}
+                      tabIndex={ehDespesa ? 0 : undefined}
+                      onKeyDown={
+                        ehDespesa
+                          ? (e) => {
+                              if (e.key !== "Enter" && e.key !== " ") return;
+                              e.preventDefault();
+                              abrirDespesa(l);
+                            }
+                          : undefined
+                      }
+                      className={`flex items-center gap-2.5 px-3 py-2 ${
+                        ehDespesa
+                          ? "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                          : ""
                       }`}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                        {l.kind === "material"
-                          ? `${formatQty(num(l.quantity))} ${l.unit ?? ""} · ${l.description}`
-                          : l.description}
-                      </p>
-                      <p className="text-[11px] text-slate-400 truncate">
-                        {formatDate(l.entry_date)}
-                        {l.person ? ` · ${l.person}` : ""}
-                        {l.detail ? ` · ${l.detail}` : ""}
+                    >
+                      <span
+                        className={`w-1.5 h-9 rounded-full flex-shrink-0 ${
+                          l.kind === "diaria"
+                            ? "bg-emerald-400"
+                            : ehDespesa
+                              ? "bg-violet-400"
+                              : "bg-orange-400"
+                        }`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                          {l.kind === "material"
+                            ? `${formatQty(num(l.quantity))} ${l.unit ?? ""} · ${l.description}`
+                            : l.description}
+                        </p>
+                        <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+                          {l.photo_path && <Paperclip className="w-3 h-3 flex-shrink-0" />}
+                          <span className="truncate">
+                            {formatDate(l.entry_date)}
+                            {l.category ? ` · ${l.category}` : ""}
+                            {l.person ? ` · ${l.person}` : ""}
+                            {l.detail ? ` · ${l.detail}` : ""}
+                          </span>
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
+                        {formatBRL(num(l.value))}
                       </p>
                     </div>
-                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
-                      {formatBRL(num(l.value))}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              Toque numa despesa para corrigir ou apagar. Material e diária se acertam
+              nas telas de Estoque e Diaristas.
+            </p>
           </div>
 
           {/* Setores: o subcadastro que o técnico escolhe na tela dele */}
@@ -518,8 +670,13 @@ export function SupplyObraCard({
   onOpen: () => void;
 }) {
   const custo = num(obra.total_cost ?? obra.total_value);
-  const material = num(obra.total_value);
-  const maoDeObra = num(obra.labor_value);
+
+  /** De onde vem o custo — só vale mostrar quando há mais de uma origem. */
+  const partes = [
+    { valor: num(obra.total_value), cor: "bg-orange-400", texto: "text-orange-600 dark:text-orange-400" },
+    { valor: num(obra.labor_value), cor: "bg-emerald-400", texto: "text-emerald-600 dark:text-emerald-400" },
+    { valor: num(obra.expense_value), cor: "bg-violet-400", texto: "text-violet-600 dark:text-violet-400" },
+  ].filter((p) => p.valor > 0);
 
   return (
     <div
@@ -559,22 +716,15 @@ export function SupplyObraCard({
         </div>
       </div>
 
-      {/* De onde vem o custo — só aparece quando as duas metades existem */}
-      {material > 0 && maoDeObra > 0 && (
-        <div className="mt-2.5 flex items-center gap-3 text-[11px] tabular-nums">
-          <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
-            {formatBRL(material)}
-          </span>
-          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            {formatBRL(maoDeObra)}
-          </span>
-          {num(obra.days_count) > 0 && (
-            <span className="text-slate-400">
-              {num(obra.days_count)} {num(obra.days_count) === 1 ? "diária" : "diárias"}
+      {/* De onde vem o custo — só aparece quando há mais de uma origem */}
+      {partes.length > 1 && (
+        <div className="mt-2.5 flex items-center gap-3 flex-wrap text-[11px] tabular-nums">
+          {partes.map((p) => (
+            <span key={p.cor} className={`flex items-center gap-1 ${p.texto}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${p.cor}`} />
+              {formatBRL(p.valor)}
             </span>
-          )}
+          ))}
         </div>
       )}
     </div>

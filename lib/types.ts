@@ -1009,8 +1009,37 @@ export interface SupplyObraUsage extends SupplyObra {
   labor_value?: number;
   last_work_date?: string | null;
 
-  /** O que a obra custou de verdade: material + mão de obra. */
+  /** Despesa avulsa — compra direta, frete, serviço (migration 067). */
+  expenses_count?: number;
+  expense_value?: number;
+  last_expense_date?: string | null;
+
+  /** O que a obra custou: material + mão de obra + despesas. */
   total_cost?: number;
+}
+
+/**
+ * Despesa avulsa da obra (migration 067) — o gasto que não passa pelo Estoque
+ * nem pela diária: compra direta, combustível, frete, serviço de terceiro.
+ *
+ * NÃO conversa com o módulo Contas: é registro e relatório dentro de Obras.
+ */
+export interface SupplyObraDespesa {
+  id: string;
+  obra_id: string;
+  /** A data do gasto, não a da digitação. */
+  expense_date: string;
+  /** Combustível, serviço de terceiro... texto livre; agrupa o relatório. */
+  category: string | null;
+  description: string;
+  amount: number;
+  /** De quem comprou, quem fez o serviço, quem recebeu. */
+  person: string | null;
+  /** Comprovante no bucket attachments. */
+  photo_path: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 /**
@@ -1021,19 +1050,24 @@ export interface SupplyObraUsage extends SupplyObra {
 export interface SupplyObraExtrato {
   id: string;
   obra_id: string;
-  /** "material" = saída do Estoque · "diaria" = dia de diarista. */
-  kind: "material" | "diaria";
-  /** A data do fato (saída / dia trabalhado), não a da digitação. */
+  /** As três origens de gasto da obra. */
+  kind: "material" | "diaria" | "despesa";
+  /** A data do fato (saída / dia trabalhado / compra), não a da digitação. */
   entry_date: string;
-  /** Nome do material, ou "Diária" / "Meia diária". */
+  /** Nome do material, "Diária" / "Meia diária", ou o que foi comprado. */
   description: string;
   unit: string | null;
   quantity: number;
   value: number;
-  /** Quem pegou o material / quem trabalhou o dia. */
+  /** Quem pegou o material, quem trabalhou o dia, de quem se comprou. */
   person: string | null;
   /** Destino do material / o que a pessoa fez no dia. */
   detail: string | null;
+  /** Só a despesa tem categoria — é o que agrupa o relatório (067). */
+  category: string | null;
+  notes: string | null;
+  /** Comprovante, quando existe (saída de material e despesa). */
+  photo_path: string | null;
   created_at: string;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HardHat, MapPin, MapPinned, Plus, Search, Users, Wallet } from "lucide-react";
+import { HardHat, MapPin, MapPinned, Plus, Receipt, Search, Users, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBRL } from "@/lib/utils";
@@ -10,10 +10,12 @@ import { SupplyObraDialog } from "./estoque-obra-dialog";
 import { SupplyObraCard, SupplyObraDetailDialog } from "./estoque-obra-detail-dialog";
 import { SupplyObraSectorsDialog } from "./estoque-obra-sectors-dialog";
 import { LocaisDialog } from "./locais-dialog";
+import { DespesaDialog } from "./despesa-dialog";
 import { EmptyState } from "./obra-shared";
 import type {
   SupplyFenceRunView,
   SupplyLocal,
+  SupplyObraDespesa,
   SupplyObraSector,
   SupplyObraUsage,
 } from "@/lib/types";
@@ -38,8 +40,8 @@ const SEM_LOCAL = "sem-local";
  * é o pedaço dentro dela (entrada, curral). Por isso a lista vem agrupada por
  * local: é assim que se enxerga quanto uma fazenda inteira já custou.
  *
- * O custo mostrado tem as duas metades — o material que saiu do Estoque e as
- * diárias lançadas na obra (migration 066).
+ * O custo mostrado tem as três origens: o material que saiu do Estoque, as
+ * diárias lançadas na obra e a despesa avulsa comprada direto para ela.
  */
 export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Props) {
   const [obraDialogOpen, setObraDialogOpen] = useState(false);
@@ -50,6 +52,14 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
   const [sectorsObraId, setSectorsObraId] = useState<string | null>(null);
   /** Cadastro dos locais — a lista de fazendas/sítios. */
   const [locaisOpen, setLocaisOpen] = useState(false);
+  /**
+   * Despesa avulsa da obra. Mora aqui, e não dentro do detalhe, porque dois
+   * diálogos abertos ao mesmo tempo se atropelam: o detalhe fecha, a despesa
+   * abre, e ao sair o detalhe volta — já com o extrato recarregado.
+   */
+  const [despesaOpen, setDespesaOpen] = useState(false);
+  const [despesaObra, setDespesaObra] = useState<SupplyObraUsage | null>(null);
+  const [editDespesa, setEditDespesa] = useState<SupplyObraDespesa | null>(null);
 
   const [search, setSearch] = useState("");
   /** Local escolhido no filtro — "" = todos. */
@@ -69,11 +79,13 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
   const totais = useMemo(() => {
     let material = 0;
     let maoDeObra = 0;
+    let despesas = 0;
     for (const o of obras) {
       material += num(o.total_value);
       maoDeObra += num(o.labor_value);
+      despesas += num(o.expense_value);
     }
-    return { material, maoDeObra, total: material + maoDeObra };
+    return { material, maoDeObra, despesas, total: material + maoDeObra + despesas };
   }, [obras]);
 
   /** Os grupos do filtro: cada local que tem obra, mais o "sem local". */
@@ -151,6 +163,20 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
     setObraDialogOpen(true);
   }
 
+  /** Sai do detalhe e abre a despesa — `null` lança uma nova. */
+  function abrirDespesa(obra: SupplyObraUsage, despesa: SupplyObraDespesa | null) {
+    setDetailObraId(null);
+    setDespesaObra(obra);
+    setEditDespesa(despesa);
+    setDespesaOpen(true);
+  }
+
+  /** Fechou a despesa (salvou ou desistiu): volta para o detalhe de onde veio. */
+  function fecharDespesa() {
+    setDespesaOpen(false);
+    if (despesaObra) setDetailObraId(despesaObra.id);
+  }
+
   return (
     <div className="space-y-4">
       {/* Ações */}
@@ -191,7 +217,7 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
       ) : (
         <>
           {/* Quanto tudo já custou, e de onde vem o custo */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <Kpi
               icon={Wallet}
               label="Gasto total"
@@ -209,6 +235,12 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
               label="Mão de obra"
               value={formatBRL(totais.maoDeObra)}
               tone="emerald"
+            />
+            <Kpi
+              icon={Receipt}
+              label="Despesas"
+              value={formatBRL(totais.despesas)}
+              tone="violet"
             />
           </div>
 
@@ -315,7 +347,17 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
           setEditObra(o);
           setObraDialogOpen(true);
         }}
+        onDespesa={abrirDespesa}
       />
+      {despesaObra && (
+        <DespesaDialog
+          open={despesaOpen}
+          onClose={fecharDespesa}
+          obraId={despesaObra.id}
+          obraNome={despesaObra.name}
+          despesa={editDespesa}
+        />
+      )}
     </div>
   );
 }
@@ -358,12 +400,13 @@ function Kpi({
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
-  tone: "produmar" | "orange" | "emerald";
+  tone: "produmar" | "orange" | "emerald" | "violet";
 }) {
   const tones = {
     produmar: "bg-produmar-50 text-produmar-600 dark:bg-produmar-900/30 dark:text-produmar-400",
     orange: "bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400",
     emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400",
+    violet: "bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400",
   }[tone];
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 flex flex-col items-center text-center gap-1">

@@ -38,6 +38,8 @@ function supplyError(error: { code?: string; message: string }): string {
     return "Rode a migration 050 no Supabase para usar as fotos";
   if (error.message.includes("supply_requests"))
     return "Rode a migration 052 no Supabase para receber os envios do técnico";
+  if (error.message.includes("supply_obra_despesas"))
+    return "Rode a migration 067 no Supabase para lançar despesas na obra";
   if (error.message.includes("supply_locais") || error.message.includes("local_id"))
     return "Rode a migration 066 no Supabase para usar os locais da obra";
   if (error.message.includes("v_supply_obra_extrato"))
@@ -624,6 +626,150 @@ export async function getSupplyObraExtrato(obraId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DESPESA AVULSA DA OBRA (migration 067)
+// ─────────────────────────────────────────────────────────────────────────────
+// O gasto que não passa pelo Estoque nem pela diária: compra direta, frete,
+// combustível, serviço de terceiro. NÃO cria lançamento em Contas — é registro
+// e relatório dentro de Obras.
+
+export interface SupplyObraDespesaInput {
+  obra_id: string;
+  expense_date?: string | null;
+  category?: string | null;
+  description: string;
+  amount: number;
+  person?: string | null;
+  notes?: string | null;
+}
+
+function despesaFields(input: SupplyObraDespesaInput) {
+  const fields: Record<string, unknown> = {
+    category: clean(input.category),
+    description: clean(input.description),
+    amount: normMoney(input.amount),
+    person: clean(input.person),
+    notes: clean(input.notes),
+  };
+  // sem data informada o banco resolve sozinho (default current_date), e na
+  // edição a data que já estava lá continua valendo
+  if (input.expense_date) fields.expense_date = input.expense_date;
+  return fields;
+}
+
+export async function createSupplyObraDespesa(input: SupplyObraDespesaInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.obra_id) return { error: "Obra não informada" };
+  if (!clean(input.description)) return { error: "Informe o que foi a despesa" };
+  if (normMoney(input.amount) <= 0) return { error: "Informe o valor da despesa" };
+
+  const { data, error } = await supabase
+    .from("supply_obra_despesas")
+    .insert({ obra_id: input.obra_id, ...despesaFields(input), created_by: user.id })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error ? supplyError(error) : "Erro ao lançar" };
+  revalidate();
+  return { ok: true, despesaId: data.id as string };
+}
+
+export async function updateSupplyObraDespesa(id: string, input: SupplyObraDespesaInput) {
+  const supabase = createClient();
+
+  if (!clean(input.description)) return { error: "Informe o que foi a despesa" };
+  if (normMoney(input.amount) <= 0) return { error: "Informe o valor da despesa" };
+
+  const { error } = await supabase
+    .from("supply_obra_despesas")
+    .update(despesaFields(input))
+    .eq("id", id);
+
+  if (error) return { error: supplyError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Apaga a despesa e o comprovante dela — a foto é só desta despesa. */
+export async function deleteSupplyObraDespesa(id: string) {
+  const supabase = createClient();
+
+  const { data: despesa } = await supabase
+    .from("supply_obra_despesas")
+    .select("photo_path")
+    .eq("id", id)
+    .maybeSingle();
+
+  const { error } = await supabase.from("supply_obra_despesas").delete().eq("id", id);
+  if (error) return { error: supplyError(error) };
+
+  if (despesa?.photo_path) await removerArquivos([despesa.photo_path as string]);
+  revalidate();
+  return { ok: true };
+}
+
+/** Comprovante da despesa (nota, recibo, foto do pagamento). */
+export async function uploadSupplyObraDespesaPhoto(despesaId: string, formData: FormData) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Arquivo inválido" };
+
+  const up = await uploadPhoto(supabase, `supply-obra-despesas/${despesaId}`, file);
+  if ("error" in up) return { error: up.error };
+
+  // troca de foto: a antiga sai do storage, ninguém mais aponta para ela
+  const { data: anterior } = await supabase
+    .from("supply_obra_despesas")
+    .select("photo_path")
+    .eq("id", despesaId)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from("supply_obra_despesas")
+    .update({ photo_path: up.path })
+    .eq("id", despesaId);
+  if (error) {
+    await removerArquivos([up.path]);
+    return { error: supplyError(error) };
+  }
+
+  if (anterior?.photo_path) await removerArquivos([anterior.photo_path as string]);
+  revalidate();
+  return { ok: true };
+}
+
+/** Tira o comprovante sem apagar a despesa. */
+export async function removeSupplyObraDespesaPhoto(despesaId: string) {
+  const supabase = createClient();
+
+  const { data: despesa } = await supabase
+    .from("supply_obra_despesas")
+    .select("photo_path")
+    .eq("id", despesaId)
+    .maybeSingle();
+  if (!despesa?.photo_path) return { ok: true };
+
+  const { error } = await supabase
+    .from("supply_obra_despesas")
+    .update({ photo_path: null })
+    .eq("id", despesaId);
+  if (error) return { error: supplyError(error) };
+
+  await removerArquivos([despesa.photo_path as string]);
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SOLICITAÇÕES DO TÉCNICO (migration 052)
 // O técnico avisa o que usou; nada sai do estoque até o chefe dar baixa aqui.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -708,11 +854,25 @@ export async function rejectSupplyRequest(requestId: string) {
   return { ok: true };
 }
 
-/** Remove a obra. As saídas dela NÃO somem — ficam sem obra. */
+/**
+ * Remove a obra. As saídas e as diárias dela NÃO somem — ficam sem obra. As
+ * despesas avulsas somem junto (só existiam por causa desta obra), então os
+ * comprovantes delas saem do storage antes.
+ */
 export async function deleteSupplyObra(id: string) {
   const supabase = createClient();
+
+  const { data: despesas } = await supabase
+    .from("supply_obra_despesas")
+    .select("photo_path")
+    .eq("obra_id", id)
+    .not("photo_path", "is", null);
+
   const { error } = await supabase.from("supply_obras").delete().eq("id", id);
   if (error) return { error: supplyError(error) };
+
+  const paths = (despesas ?? []).map((d) => d.photo_path as string);
+  if (paths.length) await removerArquivos(paths);
   revalidate();
   revalidatePath("/tecnico");
   return { ok: true };
