@@ -8,7 +8,6 @@ import { formatBRL } from "@/lib/utils";
 import { ObraDialog } from "./obra-dialog";
 import { ObraDetailDialog } from "./obra-detail-dialog";
 import { ObrasEstoqueTab } from "./obras-estoque-tab";
-import type { SupplyItemCost } from "./estoque-obra-detail-dialog";
 import { EmptyState, OBRA_STATUS_META } from "./obra-shared";
 import type {
   Contact,
@@ -16,6 +15,7 @@ import type {
   ObraStatus,
   ObraSummary,
   SupplyFenceRunView,
+  SupplyLocal,
   SupplyObraSector,
   SupplyObraUsage,
 } from "@/lib/types";
@@ -61,8 +61,8 @@ interface Props {
   supplyObras?: SupplyObraUsage[];
   /** Setores dessas obras — o "Setor aplicado" que o técnico escolhe. */
   supplySectors?: SupplyObraSector[];
-  /** Custo médio dos materiais, para valorizar o consumo de cada obra. */
-  supplyCosts?: SupplyItemCost[];
+  /** Locais onde as obras acontecem — Fazenda 01, Sítio... (migration 066). */
+  supplyLocais?: SupplyLocal[];
   /** Metros de cerca — o detalhe da obra mostra o resumo por setor. */
   supplyFenceRuns?: SupplyFenceRunView[];
 }
@@ -80,7 +80,7 @@ export function ObrasPageClient({
   toolLoans,
   supplyObras = [],
   supplySectors = [],
-  supplyCosts = [],
+  supplyLocais = [],
   supplyFenceRuns = [],
 }: Props) {
   // Só existe uma lista de obra na tela: a que veio do Estoque.
@@ -279,7 +279,7 @@ export function ObrasPageClient({
       <ObrasEstoqueTab
         obras={supplyObras}
         sectors={supplySectors}
-        costs={supplyCosts}
+        locais={supplyLocais}
         fenceRuns={supplyFenceRuns}
       />
 

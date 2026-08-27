@@ -5,6 +5,7 @@ import type {
   SupplyCategory,
   SupplyFenceRunView,
   SupplyItemWithStock,
+  SupplyLocal,
   SupplyObraSector,
   SupplyObraUsage,
   SupplyRequestRow,
@@ -22,6 +23,7 @@ export default async function AlmoxarifadoPage() {
     categoriesRes,
     obrasRes,
     sectorsRes,
+    locaisRes,
     machinesRes,
     requestsRes,
     fenceRes,
@@ -40,6 +42,8 @@ export default async function AlmoxarifadoPage() {
     supabase.from("v_supply_obra_usage").select("*").order("name", { ascending: true }),
     // setores das obras (migration 057 — sem ela volta vazio e a tela segue igual)
     supabase.from("supply_obra_sectors").select("*").order("name", { ascending: true }),
+    // locais das obras (migration 066 — sem ela volta vazio e a tela segue igual)
+    supabase.from("supply_locais").select("*").order("name", { ascending: true }),
     // frota: o envio do técnico pode ter vindo com máquina, e o nome sai do id
     supabase.from("machines").select("*").order("name", { ascending: true }),
     // o que os técnicos avisaram que usaram, esperando baixa (migration 052 —
@@ -66,6 +70,7 @@ export default async function AlmoxarifadoPage() {
       categories={(categoriesRes.data as SupplyCategory[]) ?? []}
       obras={(obrasRes.data as SupplyObraUsage[]) ?? []}
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
+      locais={(locaisRes.data as SupplyLocal[]) ?? []}
       machines={(machinesRes.data as Machine[]) ?? []}
       requests={(requestsRes.data as SupplyRequestRow[]) ?? []}
       fenceRuns={(fenceRes.data as SupplyFenceRunView[]) ?? []}

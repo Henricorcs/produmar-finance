@@ -41,6 +41,7 @@ import type {
   SupplyCategory,
   SupplyFenceRunView,
   SupplyItemWithStock,
+  SupplyLocal,
   SupplyMovement,
   SupplyObraSector,
   SupplyObraUsage,
@@ -61,6 +62,8 @@ interface Props {
   obras?: SupplyObraUsage[];
   /** Setores de cada obra — subcadastro do chefe (migration 057). */
   sectors?: SupplyObraSector[];
+  /** Locais onde as obras acontecem — Fazenda 01, Sítio... (migration 066). */
+  locais?: SupplyLocal[];
   /** Frota: o envio do técnico pode ter vindo com máquina (migration 057). */
   machines?: Machine[];
   /** O que os técnicos avisaram que usaram, esperando baixa (migration 052). */
@@ -80,6 +83,7 @@ export function AlmoxarifadoPageClient({
   categories,
   obras = [],
   sectors = [],
+  locais = [],
   machines = [],
   requests = [],
   fenceRuns = [],
@@ -632,6 +636,7 @@ export function AlmoxarifadoPageClient({
         open={obraDialogOpen}
         onClose={() => setObraDialogOpen(false)}
         obra={editObra}
+        locais={locais}
         onCreated={(obraId) => {
           // veio do lançamento: a obra recém-criada já entra selecionada nele
           if (creatingObraFromMovement) setMovementPresetObraId(obraId);

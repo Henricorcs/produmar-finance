@@ -940,15 +940,31 @@ export interface SupplyMovement {
 }
 
 /**
+ * Local da obra — onde ela acontece (Fazenda 01, Fazenda 02, Sítio...). Cadastro
+ * livre da migration 066: a mesma fazenda costuma ter várias obras (cerca, baia,
+ * curral), e é o local que responde "quanto já gastei nesta fazenda".
+ */
+export interface SupplyLocal {
+  id: string;
+  name: string;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
  * Obra DO ESTOQUE — lista própria, para saber quanto de material cada obra
  * consumiu. É uma tabela à parte de public.obras: são cadastros diferentes, que
- * desde a migration 065 são cuidados na mesma tela — o módulo Obras, na aba
- * "Do Estoque". O lançamento de material continua no Estoque.
+ * desde a migration 065 são cuidados na mesma tela — o módulo Obras.
+ * O lançamento de material continua no Estoque.
  */
 export interface SupplyObra {
   id: string;
   name: string;
   client: string | null;
+  /** Onde a obra acontece — aponta para supply_locais (migration 066). */
+  local_id?: string | null;
   notes: string | null;
   active: boolean;
   /** Preço por metro de cerca da obra inteira (migration 063). 0 = sem preço. */
@@ -973,14 +989,52 @@ export interface SupplyObraSector {
   created_at: string;
 }
 
-/** Linha da view v_supply_obra_usage (obra + consumo de material). */
+/** Linha da view v_supply_obra_usage (obra + local + material + mão de obra). */
 export interface SupplyObraUsage extends SupplyObra {
+  /** Nome do local, já resolvido pela view (migration 066). */
+  local_name?: string | null;
+
   /** Quantos materiais diferentes saíram para esta obra. */
   items_count: number;
   movements_count: number;
   /** Soma das saídas × custo médio do item. */
   total_value: number;
   last_usage_at: string | null;
+
+  /** Mão de obra — as diárias lançadas nesta obra (migration 066). */
+  days_count?: number;
+  /** Quantos diaristas diferentes trabalharam nela. */
+  workers_count?: number;
+  /** Soma das diárias; na meia diária o valor já vem pela metade. */
+  labor_value?: number;
+  last_work_date?: string | null;
+
+  /** O que a obra custou de verdade: material + mão de obra. */
+  total_cost?: number;
+}
+
+/**
+ * Uma linha do extrato da obra (view v_supply_obra_extrato, migration 066) —
+ * quando foi, com o que foi, quanto custou e quem usou. Junta as saídas de
+ * material do Estoque com as diárias, na mesma forma.
+ */
+export interface SupplyObraExtrato {
+  id: string;
+  obra_id: string;
+  /** "material" = saída do Estoque · "diaria" = dia de diarista. */
+  kind: "material" | "diaria";
+  /** A data do fato (saída / dia trabalhado), não a da digitação. */
+  entry_date: string;
+  /** Nome do material, ou "Diária" / "Meia diária". */
+  description: string;
+  unit: string | null;
+  quantity: number;
+  value: number;
+  /** Quem pegou o material / quem trabalhou o dia. */
+  person: string | null;
+  /** Destino do material / o que a pessoa fez no dia. */
+  detail: string | null;
+  created_at: string;
 }
 
 /** Linha da view v_supply_stock (item + saldo, custo médio, valor e status). */

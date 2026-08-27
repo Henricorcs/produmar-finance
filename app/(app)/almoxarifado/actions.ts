@@ -38,6 +38,10 @@ function supplyError(error: { code?: string; message: string }): string {
     return "Rode a migration 050 no Supabase para usar as fotos";
   if (error.message.includes("supply_requests"))
     return "Rode a migration 052 no Supabase para receber os envios do técnico";
+  if (error.message.includes("supply_locais") || error.message.includes("local_id"))
+    return "Rode a migration 066 no Supabase para usar os locais da obra";
+  if (error.message.includes("v_supply_obra_extrato"))
+    return "Rode a migration 066 no Supabase para ver o extrato da obra";
   if (error.message.includes("supply_obra_sectors") || error.message.includes("sector_id"))
     return "Rode a migration 057 no Supabase para usar os setores da obra";
   if (error.message.includes("supply_obras") || error.message.includes("obra_id"))
@@ -489,6 +493,58 @@ export async function deleteSupplyCategory(id: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LOCAIS DA OBRA (migration 066)
+// ─────────────────────────────────────────────────────────────────────────────
+// Onde a obra acontece: Fazenda 01, Fazenda 02, Sítio... A mesma fazenda tem
+// várias obras, e é o local que responde "quanto já gastei nesta fazenda".
+// Cadastro livre — o dono cria quantos quiser, na hora.
+
+export async function createSupplyLocal(name: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const nome = clean(name);
+  if (!nome) return { error: "Informe o nome do local" };
+
+  const { data, error } = await supabase
+    .from("supply_locais")
+    .insert({ name: nome, created_by: user.id })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error ? supplyError(error) : "Erro ao cadastrar" };
+  revalidate();
+  revalidatePath("/tecnico");
+  return { ok: true, localId: data.id as string };
+}
+
+export async function updateSupplyLocal(id: string, name: string) {
+  const supabase = createClient();
+
+  const nome = clean(name);
+  if (!nome) return { error: "Informe o nome do local" };
+
+  const { error } = await supabase.from("supply_locais").update({ name: nome }).eq("id", id);
+  if (error) return { error: supplyError(error) };
+  revalidate();
+  revalidatePath("/tecnico");
+  return { ok: true };
+}
+
+/** Apagar o local NÃO apaga as obras dele: elas só ficam sem local. */
+export async function deleteSupplyLocal(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("supply_locais").delete().eq("id", id);
+  if (error) return { error: supplyError(error) };
+  revalidate();
+  revalidatePath("/tecnico");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // OBRAS DO ESTOQUE
 // (lista própria do módulo — nada a ver com a tabela obras do módulo Obras)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -497,6 +553,8 @@ export interface SupplyObraInput {
   name: string;
   client?: string | null;
   notes?: string | null;
+  /** Onde a obra acontece (migration 066). Vazio = obra sem local. */
+  local_id?: string | null;
 }
 
 export async function createSupplyObra(input: SupplyObraInput) {
@@ -515,6 +573,7 @@ export async function createSupplyObra(input: SupplyObraInput) {
       name,
       client: clean(input.client),
       notes: clean(input.notes),
+      local_id: input.local_id || null,
       created_by: user.id,
     })
     .select("id")
@@ -533,7 +592,12 @@ export async function updateSupplyObra(id: string, input: SupplyObraInput) {
 
   const { error } = await supabase
     .from("supply_obras")
-    .update({ name, client: clean(input.client), notes: clean(input.notes) })
+    .update({
+      name,
+      client: clean(input.client),
+      notes: clean(input.notes),
+      local_id: input.local_id || null,
+    })
     .eq("id", id);
 
   if (error) return { error: supplyError(error) };
@@ -542,20 +606,21 @@ export async function updateSupplyObra(id: string, input: SupplyObraInput) {
 }
 
 /**
- * Todas as saídas de uma obra, sem o limite da listagem da página — o detalhe
- * da obra precisa do consumo inteiro para os totais baterem com o card.
+ * O extrato da obra: tudo que ela gastou em linha do tempo — material que saiu
+ * do Estoque e diárias — vindo já somado na mesma forma pela view da migration
+ * 066. É o que responde quando foi, com o que foi, quanto custou e quem usou.
  */
-export async function getSupplyObraMovements(obraId: string) {
+export async function getSupplyObraExtrato(obraId: string) {
   const supabase = createClient();
   const { data, error } = await supabase
-    .from("supply_movements")
-    .select("id, item_id, quantity, person, destination, created_at, supply_items(name, unit)")
+    .from("v_supply_obra_extrato")
+    .select("*")
     .eq("obra_id", obraId)
-    .eq("type", "saida")
+    .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (error) return { error: supplyError(error) };
-  return { movements: data ?? [] };
+  return { extrato: data ?? [] };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

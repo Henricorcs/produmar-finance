@@ -5,6 +5,7 @@ import type {
   ObraItem,
   ObraSummary,
   SupplyFenceRunView,
+  SupplyLocal,
   SupplyObraSector,
   SupplyObraUsage,
 } from "@/lib/types";
@@ -13,7 +14,6 @@ import type {
   ObraServiceOrderRow,
   ObraToolLoanRow,
 } from "@/components/obras/obras-page-client";
-import type { SupplyItemCost } from "@/components/obras/estoque-obra-detail-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +29,7 @@ export default async function ObrasPage() {
     toolLoansRes,
     supplyObrasRes,
     supplySectorsRes,
-    supplyCostsRes,
+    supplyLocaisRes,
     supplyFenceRes,
   ] = await Promise.all([
     supabase
@@ -69,9 +69,8 @@ export default async function ObrasPage() {
     supabase.from("v_supply_obra_usage").select("*").order("name", { ascending: true }),
     // setores de cada obra (migration 057 — sem ela volta vazio e a tela segue igual)
     supabase.from("supply_obra_sectors").select("*").order("name", { ascending: true }),
-    // só o custo médio de cada material: é ele que transforma a quantidade que
-    // saiu em dinheiro. O catálogo inteiro não precisa vir para esta tela.
-    supabase.from("v_supply_stock").select("id, avg_unit_cost"),
+    // locais das obras — Fazenda 01, Sítio... (migration 066; sem ela volta vazio)
+    supabase.from("supply_locais").select("*").order("name", { ascending: true }),
     // metros de cerca com o preço já resolvido (migration 063)
     supabase
       .from("v_supply_fence_runs")
@@ -90,7 +89,7 @@ export default async function ObrasPage() {
       toolLoans={(toolLoansRes.data as unknown as ObraToolLoanRow[]) ?? []}
       supplyObras={(supplyObrasRes.data as SupplyObraUsage[]) ?? []}
       supplySectors={(supplySectorsRes.data as SupplyObraSector[]) ?? []}
-      supplyCosts={(supplyCostsRes.data as SupplyItemCost[]) ?? []}
+      supplyLocais={(supplyLocaisRes.data as SupplyLocal[]) ?? []}
       supplyFenceRuns={(supplyFenceRes.data as SupplyFenceRunView[]) ?? []}
     />
   );

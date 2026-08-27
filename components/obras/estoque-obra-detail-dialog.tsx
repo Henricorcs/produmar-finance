@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Fence, HardHat, MapPin, Pencil, Trash2, User } from "lucide-react";
+import {
+  Fence,
+  HardHat,
+  MapPin,
+  MapPinned,
+  Pencil,
+  Trash2,
+  User,
+  Users,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,42 +18,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { formatBRL, formatQty } from "@/lib/utils";
-import { deleteSupplyObra, getSupplyObraMovements } from "@/app/(app)/almoxarifado/actions";
-import { fmtDateTime, num } from "@/components/almoxarifado/supply-shared";
+import { formatBRL, formatDate, formatQty } from "@/lib/utils";
+import { deleteSupplyObra, getSupplyObraExtrato } from "@/app/(app)/almoxarifado/actions";
+import { num } from "@/components/almoxarifado/supply-shared";
 import type {
   SupplyFenceRunView,
+  SupplyObraExtrato,
   SupplyObraSector,
   SupplyObraUsage,
 } from "@/lib/types";
-
-/**
- * Custo médio de um material do Estoque (v_supply_stock). É só o que o detalhe
- * precisa para transformar a quantidade que saiu em dinheiro — o catálogo
- * inteiro não vem para cá.
- */
-export type SupplyItemCost = {
-  id: string;
-  avg_unit_cost: number | null;
-};
-
-/** Saída da obra — vem da consulta sob demanda, sem o limite da listagem. */
-type ObraMovement = {
-  id: string;
-  item_id: string;
-  quantity: number;
-  person: string | null;
-  destination: string | null;
-  created_at: string;
-  supply_items: { name: string; unit: string } | null;
-};
 
 interface Props {
   open: boolean;
   onClose: () => void;
   obra: SupplyObraUsage | null;
-  /** Custo médio de cada material — é com ele que o consumo vira dinheiro. */
-  costs: SupplyItemCost[];
   /** Setores de TODAS as obras — o diálogo filtra os desta. */
   sectors?: SupplyObraSector[];
   /** Metros de cerca de TODAS as obras — o diálogo filtra os desta (063). */
@@ -54,31 +41,62 @@ interface Props {
   onManageSectors: (obra: SupplyObraUsage) => void;
 }
 
+/** Os recortes de tempo do extrato — o que o dono pergunta no dia a dia. */
+type Periodo = "tudo" | "mes" | "mes_passado" | "ano";
+
+const PERIODOS: { value: Periodo; label: string }[] = [
+  { value: "tudo", label: "Tudo" },
+  { value: "mes", label: "Este mês" },
+  { value: "mes_passado", label: "Mês passado" },
+  { value: "ano", label: "Este ano" },
+];
+
+/** Prefixo "AAAA-MM" / "AAAA" de hoje — comparar texto evita fuso horário. */
+function prefixoDoPeriodo(p: Periodo): string | null {
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const mes = hoje.getMonth();
+  if (p === "ano") return String(ano);
+  if (p === "mes") return `${ano}-${String(mes + 1).padStart(2, "0")}`;
+  if (p === "mes_passado") {
+    const d = new Date(ano, mes - 1, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return null;
+}
+
 export function SupplyObraDetailDialog({
   open,
   onClose,
   obra,
-  costs,
   sectors = [],
   fenceRuns = [],
   onEdit,
   onManageSectors,
 }: Props) {
   const [isPending, startTransition] = useTransition();
-  const [movements, setMovements] = useState<ObraMovement[]>([]);
+  const [extrato, setExtrato] = useState<SupplyObraExtrato[]>([]);
   const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [periodo, setPeriodo] = useState<Periodo>("tudo");
 
-  // o consumo inteiro da obra, sem o teto da listagem da página
+  // o gasto inteiro da obra — material e diárias — vem da view da migration 066
   const obraId = obra?.id ?? null;
   useEffect(() => {
-    setMovements([]);
+    setExtrato([]);
+    setErro(null);
+    setPeriodo("tudo");
     if (!open || !obraId) return;
     let cancelled = false;
     setLoading(true);
-    getSupplyObraMovements(obraId).then((r) => {
+    getSupplyObraExtrato(obraId).then((r) => {
       if (cancelled) return;
       setLoading(false);
-      if ("movements" in r) setMovements(r.movements as unknown as ObraMovement[]);
+      if ("error" in r) {
+        setErro(r.error ?? "Não foi possível carregar o extrato");
+        return;
+      }
+      setExtrato((r.extrato ?? []) as SupplyObraExtrato[]);
     });
     return () => {
       cancelled = true;
@@ -116,34 +134,69 @@ export function SupplyObraDetailDialog({
     };
   }, [fenceRuns, obra?.id]);
 
-  const costByItem = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const i of costs) map.set(i.id, i.avg_unit_cost != null ? num(i.avg_unit_cost) : 0);
-    return map;
-  }, [costs]);
+  /** O extrato do recorte escolhido — é sobre ele que tudo abaixo é somado. */
+  const linhas = useMemo(() => {
+    const prefixo = prefixoDoPeriodo(periodo);
+    if (!prefixo) return extrato;
+    return extrato.filter((l) => (l.entry_date ?? "").startsWith(prefixo));
+  }, [extrato, periodo]);
 
-  /** Consumo somado por material — é o que interessa numa obra. */
-  const byItem = useMemo(() => {
+  /** Quanto o período custou, separando as duas metades. */
+  const totalPeriodo = useMemo(() => {
+    let material = 0;
+    let maoDeObra = 0;
+    for (const l of linhas) {
+      if (l.kind === "diaria") maoDeObra += num(l.value);
+      else material += num(l.value);
+    }
+    return { material, maoDeObra, total: material + maoDeObra };
+  }, [linhas]);
+
+  /** Consumo somado por material — o que mais pesou na obra. */
+  const porMaterial = useMemo(() => {
     const map = new Map<
       string,
-      { id: string; name: string; unit: string; qty: number; value: number }
+      { nome: string; unit: string; qty: number; value: number }
     >();
-    for (const m of movements) {
-      const key = m.item_id;
-      const current = map.get(key) ?? {
-        id: key,
-        name: m.supply_items?.name ?? "—",
-        unit: m.supply_items?.unit ?? "",
+    for (const l of linhas) {
+      if (l.kind !== "material") continue;
+      const cur = map.get(l.description) ?? {
+        nome: l.description,
+        unit: l.unit ?? "",
         qty: 0,
         value: 0,
       };
-      const qty = num(m.quantity);
-      current.qty += qty;
-      current.value += qty * (costByItem.get(key) ?? 0);
-      map.set(key, current);
+      cur.qty += num(l.quantity);
+      cur.value += num(l.value);
+      map.set(l.description, cur);
     }
     return Array.from(map.values()).sort((a, b) => b.value - a.value || b.qty - a.qty);
-  }, [movements, costByItem]);
+  }, [linhas]);
+
+  /**
+   * Quem mexeu na obra: quanto de material cada um pegou e quantos dias
+   * trabalhou. É a resposta de "quem usou o material".
+   */
+  const porPessoa = useMemo(() => {
+    const map = new Map<
+      string,
+      { nome: string; material: number; dias: number; maoDeObra: number }
+    >();
+    for (const l of linhas) {
+      const nome = (l.person ?? "").trim() || "Sem nome";
+      const cur = map.get(nome) ?? { nome, material: 0, dias: 0, maoDeObra: 0 };
+      if (l.kind === "diaria") {
+        cur.dias += num(l.quantity);
+        cur.maoDeObra += num(l.value);
+      } else {
+        cur.material += num(l.value);
+      }
+      map.set(nome, cur);
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => b.material + b.maoDeObra - (a.material + a.maoDeObra)
+    );
+  }, [linhas]);
 
   if (!obra) return null;
 
@@ -151,7 +204,7 @@ export function SupplyObraDetailDialog({
     const o = obra!;
     if (
       !confirm(
-        `Excluir a obra "${o.name}"? As saídas já lançadas NÃO são apagadas — elas ficam sem obra.`
+        `Excluir a obra "${o.name}"? As saídas e as diárias já lançadas NÃO são apagadas — elas ficam sem obra.`
       )
     )
       return;
@@ -165,38 +218,106 @@ export function SupplyObraDetailDialog({
     });
   }
 
+  const custoTotal = num(obra.total_cost ?? obra.total_value);
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="dark:text-slate-100 pr-8">{obra.name}</DialogTitle>
-          {obra.client && <p className="text-[11px] text-slate-400">{obra.client}</p>}
+          <div className="flex items-center gap-2 flex-wrap">
+            {obra.local_name && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400 flex items-center gap-1">
+                <MapPinned className="w-3 h-3" />
+                {obra.local_name}
+              </span>
+            )}
+            {obra.client && <p className="text-[11px] text-slate-400">{obra.client}</p>}
+          </div>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Total consumido */}
+          {/* O que a obra custou — as duas metades */}
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
             <p className="text-[10px] text-slate-400 uppercase tracking-wide">
-              Material consumido
+              Custo da obra
             </p>
-            {/* números da view: não piscam zero enquanto as saídas carregam */}
+            {/* números da view: não piscam zero enquanto o extrato carrega */}
             <p className="mt-1.5 text-3xl font-bold text-slate-800 dark:text-slate-100 tabular-nums leading-none">
-              {formatBRL(num(obra.total_value))}
+              {formatBRL(custoTotal)}
             </p>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              {num(obra.items_count) === 1 ? "1 material" : `${num(obra.items_count)} materiais`} ·{" "}
-              {num(obra.movements_count) === 1
-                ? "1 saída"
-                : `${num(obra.movements_count)} saídas`}
-            </p>
-            {/* a baixa de material continua sendo do Estoque — aqui é só o retrato */}
+            <div className="mt-3 grid grid-cols-2 gap-2 text-left">
+              <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 px-2.5 py-1.5">
+                <p className="text-[10px] text-orange-700 dark:text-orange-400 uppercase tracking-wide">
+                  Material
+                </p>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+                  {formatBRL(num(obra.total_value))}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {num(obra.items_count)}{" "}
+                  {num(obra.items_count) === 1 ? "material" : "materiais"} ·{" "}
+                  {num(obra.movements_count)}{" "}
+                  {num(obra.movements_count) === 1 ? "saída" : "saídas"}
+                </p>
+              </div>
+              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1.5">
+                <p className="text-[10px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
+                  Mão de obra
+                </p>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+                  {formatBRL(num(obra.labor_value))}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {num(obra.days_count)} {num(obra.days_count) === 1 ? "diária" : "diárias"}
+                  {num(obra.workers_count) > 0 && ` · ${num(obra.workers_count)} pessoas`}
+                </p>
+              </div>
+            </div>
             <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-              A saída de material é lançada no Estoque, escolhendo esta obra.
+              O material sai no Estoque e a diária é lançada em Diaristas — as duas
+              escolhendo esta obra.
             </p>
           </div>
 
+          {erro && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+              {erro}
+            </p>
+          )}
+
+          {/* Recorte de tempo — vale para tudo que vem abaixo */}
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+            {PERIODOS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setPeriodo(p.value)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  periodo === p.value
+                    ? "bg-produmar-600 border-produmar-600 text-white"
+                    : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {periodo !== "tudo" && (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 flex items-baseline justify-between gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {linhas.length === 1 ? "1 lançamento" : `${linhas.length} lançamentos`} no
+                período
+              </span>
+              <span className="text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+                {formatBRL(totalPeriodo.total)}
+              </span>
+            </div>
+          )}
+
           {/* Cerca: metro feito por setor (o técnico lança só o metro) */}
-          {cerca.metros > 0 && (
+          {cerca.metros > 0 && periodo === "tudo" && (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                 <Fence className="w-3.5 h-3.5 text-lime-600" />
@@ -227,6 +348,107 @@ export function SupplyObraDetailDialog({
               </div>
             </div>
           )}
+
+          {/* Quem mexeu na obra */}
+          {porPessoa.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-slate-400" />
+                Quem trabalhou / pegou material
+              </p>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                {porPessoa.map((p) => (
+                  <div key={p.nome} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                        {p.nome}
+                      </p>
+                      <p className="text-[11px] text-slate-400 tabular-nums">
+                        {p.dias > 0 &&
+                          `${formatQty(p.dias)} ${p.dias === 1 ? "dia" : "dias"}`}
+                        {p.dias > 0 && p.material > 0 ? " · " : ""}
+                        {p.material > 0 && `${formatBRL(p.material)} em material`}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
+                      {formatBRL(p.material + p.maoDeObra)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Consumo por material */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Consumo por material
+            </p>
+            {porMaterial.length === 0 ? (
+              <p className="text-xs text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                {loading ? "Carregando..." : "Nenhum material saiu para esta obra no período."}
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                {porMaterial.map((r) => (
+                  <div key={r.nome} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                        {r.nome}
+                      </p>
+                      <p className="text-[11px] text-slate-400 tabular-nums">
+                        {formatQty(r.qty)} {r.unit}
+                      </p>
+                    </div>
+                    {r.value > 0 && (
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
+                        {formatBRL(r.value)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* O extrato: cada gasto, na ordem em que aconteceu */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Extrato de gastos
+            </p>
+            {linhas.length === 0 ? (
+              <p className="text-xs text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                {loading ? "Carregando..." : "Nenhum gasto lançado no período."}
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 max-h-72 overflow-y-auto">
+                {linhas.map((l) => (
+                  <div key={`${l.kind}-${l.id}`} className="flex items-center gap-2.5 px-3 py-2">
+                    <span
+                      className={`w-1.5 h-9 rounded-full flex-shrink-0 ${
+                        l.kind === "diaria" ? "bg-emerald-400" : "bg-orange-400"
+                      }`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                        {l.kind === "material"
+                          ? `${formatQty(num(l.quantity))} ${l.unit ?? ""} · ${l.description}`
+                          : l.description}
+                      </p>
+                      <p className="text-[11px] text-slate-400 truncate">
+                        {formatDate(l.entry_date)}
+                        {l.person ? ` · ${l.person}` : ""}
+                        {l.detail ? ` · ${l.detail}` : ""}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
+                      {formatBRL(num(l.value))}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Setores: o subcadastro que o técnico escolhe na tela dele */}
           <div className="space-y-1.5">
@@ -262,65 +484,6 @@ export function SupplyObraDetailDialog({
             )}
           </div>
 
-          {/* Consumo por material */}
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Consumo por material
-            </p>
-            {byItem.length === 0 ? (
-              <p className="text-xs text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
-                {loading ? "Carregando..." : "Nenhum material saiu para esta obra ainda."}
-              </p>
-            ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                {byItem.map((r) => (
-                  <div key={r.id} className="flex items-center gap-3 px-3 py-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                        {r.name}
-                      </p>
-                      <p className="text-[11px] text-slate-400 tabular-nums">
-                        {formatQty(r.qty)} {r.unit}
-                      </p>
-                    </div>
-                    {r.value > 0 && (
-                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
-                        {formatBRL(r.value)}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Saídas lançadas */}
-          {movements.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Saídas lançadas
-              </p>
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 max-h-48 overflow-y-auto">
-                {movements.slice(0, 40).map((m) => (
-                  <div key={m.id} className="flex items-center gap-2.5 px-3 py-2">
-                    <span className="w-1.5 h-8 rounded-full bg-red-400 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate tabular-nums">
-                        {formatQty(num(m.quantity))} {m.supply_items?.unit ?? ""} ·{" "}
-                        {m.supply_items?.name ?? "—"}
-                      </p>
-                      <p className="text-[11px] text-slate-400 truncate">
-                        {fmtDateTime(m.created_at)}
-                        {m.person ? ` · ${m.person}` : ""}
-                        {m.destination ? ` · ${m.destination}` : ""}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {obra.notes && (
             <p className="text-xs text-slate-500 dark:text-slate-400 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2">
               {obra.notes}
@@ -346,7 +509,7 @@ export function SupplyObraDetailDialog({
   );
 }
 
-/** Card da obra na aba — nome, cliente e quanto de material já consumiu. */
+/** Card da obra na lista — local, cliente e quanto ela já custou. */
 export function SupplyObraCard({
   obra,
   onOpen,
@@ -354,6 +517,10 @@ export function SupplyObraCard({
   obra: SupplyObraUsage;
   onOpen: () => void;
 }) {
+  const custo = num(obra.total_cost ?? obra.total_value);
+  const material = num(obra.total_value);
+  const maoDeObra = num(obra.labor_value);
+
   return (
     <div
       onClick={onOpen}
@@ -384,13 +551,32 @@ export function SupplyObraCard({
         </div>
         <div className="text-right flex-shrink-0">
           <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums leading-none">
-            {formatBRL(num(obra.total_value))}
+            {formatBRL(custo)}
           </p>
           <p className="text-[11px] text-slate-400 mt-1 tabular-nums">
             {num(obra.items_count)} {num(obra.items_count) === 1 ? "material" : "materiais"}
           </p>
         </div>
       </div>
+
+      {/* De onde vem o custo — só aparece quando as duas metades existem */}
+      {material > 0 && maoDeObra > 0 && (
+        <div className="mt-2.5 flex items-center gap-3 text-[11px] tabular-nums">
+          <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+            {formatBRL(material)}
+          </span>
+          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            {formatBRL(maoDeObra)}
+          </span>
+          {num(obra.days_count) > 0 && (
+            <span className="text-slate-400">
+              {num(obra.days_count)} {num(obra.days_count) === 1 ? "diária" : "diárias"}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
