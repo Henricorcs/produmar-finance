@@ -44,12 +44,13 @@ RLS) · Tailwind · Recharts · PWA.
 
 ## Ambiente local
 
-- **Node.js não está instalado nesta máquina.** Ou seja: `npm install`, `npm run dev`,
-  build e testes **não rodam aqui**. Alterações de código não podem ser validadas
-  localmente — escreva com cuidado extra, já que o TypeScript não vai te avisar.
-- **`.env.local` não existe** (só o `.env.example`). Faltam as chaves do Supabase.
-
-Se o Node for instalado depois, apague esta seção.
+- **Node.js instalado** (v24, com npm 11) e as dependências já baixadas em `node_modules`.
+- **Sempre rode `npx tsc --noEmit` antes de commitar.** É rápido e é a forma de saber
+  que a alteração não quebrou nada — não commite código sem esse check passar.
+- **`.env.local` não existe** (só o `.env.example`). Sem as chaves do Supabase,
+  `npm run dev` e `npm run build` não sobem a aplicação de verdade.
+- **`npm run lint` não funciona**: o repositório não tem config de ESLint, então o
+  comando abre um assistente interativo e trava. Use o typecheck.
 
 ---
 

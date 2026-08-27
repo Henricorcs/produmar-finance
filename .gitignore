@@ -10,6 +10,8 @@ build/
 .vscode/
 .idea/
 next-env.d.ts
+# cache do typecheck (npx tsc) — muda a cada rodada, não vai pro repositório
+tsconfig.tsbuildinfo
 
 # Claude Code (ferramentas locais — não fazem parte do app)
 .claude/
