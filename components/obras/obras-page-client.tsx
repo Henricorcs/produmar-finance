@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HardHat, PackageOpen, Plus, Search, Wallet, ListChecks } from "lucide-react";
+import { HardHat, Plus, Search, Wallet, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBRL } from "@/lib/utils";
@@ -68,7 +68,7 @@ interface Props {
 }
 
 type StatusFilter = "todas" | ObraStatus;
-/** As duas listas de obra do sistema, agora na mesma tela. */
+/** As duas listas de obra do sistema — hoje a tela só mostra a do Estoque. */
 type Tab = "obras" | "estoque";
 
 export function ObrasPageClient({
@@ -83,7 +83,8 @@ export function ObrasPageClient({
   supplyCosts = [],
   supplyFenceRuns = [],
 }: Props) {
-  const [tab, setTab] = useState<Tab>("obras");
+  // Só existe uma lista de obra na tela: a que veio do Estoque.
+  const [tab] = useState<Tab>("estoque");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todas");
 
@@ -170,59 +171,17 @@ export function ObrasPageClient({
         <div className="min-w-0">
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Obras</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
-            {tab === "obras"
-              ? "Cadastro e custos por obra"
-              : "Obras que consomem material do Estoque"}
+            Cadastro, setores e material aplicado
           </p>
         </div>
-        {tab === "obras" && (
-          <Button
-            onClick={() => {
-              setEditObra(null);
-              setObraDialogOpen(true);
-            }}
-            className="flex-shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Nova obra
-          </Button>
-        )}
       </div>
 
-      {/* As duas listas de obra: as do cadastro e as que recebem material */}
-      <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-        {(
-          [
-            { value: "obras", label: "Obras", icon: HardHat, count: activeObras.length },
-            {
-              value: "estoque",
-              label: "Do Estoque",
-              icon: PackageOpen,
-              count: supplyObras.length,
-            },
-          ] as const
-        ).map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.value}
-              onClick={() => setTab(t.value)}
-              className={`flex-1 flex items-center justify-center gap-1.5 min-h-[40px] px-2 rounded-md transition-colors ${
-                tab === t.value
-                  ? "bg-white dark:bg-slate-700 text-produmar-700 dark:text-produmar-400 shadow-sm"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span className="text-xs font-medium">
-                {t.label}
-                <span className="opacity-50 tabular-nums ml-1">{t.count}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
+      {/*
+        Lista antiga do cadastro (public.obras): ficou sem porta de entrada, porque a
+        tela agora mostra só as obras do Estoque. O código segue aqui porque o
+        seletor de obra de Contas, Ferramentas e Operações ainda aponta pra essa
+        tabela — é só devolver a aba se um dia precisar cadastrar de novo.
+      */}
       {tab === "obras" && (
         <>
           {/* KPIs */}
@@ -317,14 +276,12 @@ export function ObrasPageClient({
         </>
       )}
 
-      {tab === "estoque" && (
-        <ObrasEstoqueTab
-          obras={supplyObras}
-          sectors={supplySectors}
-          costs={supplyCosts}
-          fenceRuns={supplyFenceRuns}
-        />
-      )}
+      <ObrasEstoqueTab
+        obras={supplyObras}
+        sectors={supplySectors}
+        costs={supplyCosts}
+        fenceRuns={supplyFenceRuns}
+      />
 
       {/* Dialogs */}
       <ObraDialog

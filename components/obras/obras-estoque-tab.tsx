@@ -87,7 +87,7 @@ export function ObrasEstoqueTab({ obras, sectors, costs, fenceRuns }: Props) {
       {obras.length === 0 ? (
         <EmptyState
           icon={HardHat}
-          text="Nenhuma obra do Estoque cadastrada."
+          text="Nenhuma obra cadastrada ainda."
           hint="Cadastre as obras para saber quanto de material cada uma consumiu."
           action={
             <Button size="sm" onClick={openNew}>
