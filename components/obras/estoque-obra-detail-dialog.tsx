@@ -671,11 +671,30 @@ export function SupplyObraCard({
 }) {
   const custo = num(obra.total_cost ?? obra.total_value);
 
-  /** De onde vem o custo — só vale mostrar quando há mais de uma origem. */
+  /**
+   * De onde vem o custo. Cada parte vai com o NOME junto: a bolinha colorida
+   * sozinha não dizia nada — quem olhava via dois valores soltos e não sabia
+   * qual era material e qual era diária.
+   */
   const partes = [
-    { valor: num(obra.total_value), cor: "bg-orange-400", texto: "text-orange-600 dark:text-orange-400" },
-    { valor: num(obra.labor_value), cor: "bg-emerald-400", texto: "text-emerald-600 dark:text-emerald-400" },
-    { valor: num(obra.expense_value), cor: "bg-violet-400", texto: "text-violet-600 dark:text-violet-400" },
+    {
+      nome: "Material",
+      valor: num(obra.total_value),
+      cor: "bg-orange-400",
+      texto: "text-orange-600 dark:text-orange-400",
+    },
+    {
+      nome: "Mão de obra",
+      valor: num(obra.labor_value),
+      cor: "bg-emerald-400",
+      texto: "text-emerald-600 dark:text-emerald-400",
+    },
+    {
+      nome: "Despesas",
+      valor: num(obra.expense_value),
+      cor: "bg-violet-400",
+      texto: "text-violet-600 dark:text-violet-400",
+    },
   ].filter((p) => p.valor > 0);
 
   return (
@@ -710,19 +729,24 @@ export function SupplyObraCard({
           <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums leading-none">
             {formatBRL(custo)}
           </p>
-          <p className="text-[11px] text-slate-400 mt-1 tabular-nums">
-            {num(obra.items_count)} {num(obra.items_count) === 1 ? "material" : "materiais"}
+          {/* o número grande também precisa dizer do que é: antes vinha
+              "0 materiais" embaixo de uma obra que só teve diária */}
+          <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">
+            custo da obra
           </p>
         </div>
       </div>
 
-      {/* De onde vem o custo — só aparece quando há mais de uma origem */}
-      {partes.length > 1 && (
-        <div className="mt-2.5 flex items-center gap-3 flex-wrap text-[11px] tabular-nums">
+      {/* De onde vem o custo, com o nome de cada parte */}
+      {partes.length > 0 && (
+        <div className="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px]">
           {partes.map((p) => (
-            <span key={p.cor} className={`flex items-center gap-1 ${p.texto}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${p.cor}`} />
-              {formatBRL(p.valor)}
+            <span key={p.nome} className="flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${p.cor}`} />
+              <span className="text-slate-500 dark:text-slate-400">{p.nome}</span>
+              <span className={`font-medium tabular-nums ${p.texto}`}>
+                {formatBRL(p.valor)}
+              </span>
             </span>
           ))}
         </div>
