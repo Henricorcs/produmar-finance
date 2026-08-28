@@ -226,10 +226,11 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      {/* Área de toque de 44px no celular — o X continua no mesmo lugar,
-          só o alvo do dedo cresce (right-0.5/top-0.5 + w-11/h-11 mantêm o
-          ícone centrado exatamente onde estava com right-4/top-4). */}
-      <DialogPrimitive.Close className="absolute right-0.5 top-0.5 w-11 h-11 flex items-center justify-center rounded-lg opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-produmar-500 focus:ring-offset-2 disabled:pointer-events-none">
+      {/* Área de toque de 44px. No celular o X desce um pouco (top-2): a caixa
+          já não encosta mais no topo da tela (ver .dialog-visible-band), e essa
+          folga extra tira o botão de vez da beirada onde o iPhone desenha o
+          relógio e a bateria. No desktop volta ao lugar de antes. */}
+      <DialogPrimitive.Close className="absolute right-0.5 top-2 sm:top-0.5 w-11 h-11 flex items-center justify-center rounded-lg opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-produmar-500 focus:ring-offset-2 disabled:pointer-events-none">
         <X className="h-4 w-4" />
         <span className="sr-only">Fechar</span>
       </DialogPrimitive.Close>

@@ -6,6 +6,7 @@ import {
   ArchiveRestore,
   Check,
   Copy,
+  HandCoins,
   HardHat,
   Pencil,
   Phone,
@@ -41,6 +42,11 @@ interface Props {
   year: number;
   month: number;
   onEdit: (diarista: DiaristaResumo) => void;
+  /**
+   * Abre a conta dele — adiantamentos e acerto. Quem cuida desse diálogo é a
+   * página: aberto por cima deste, os dois se atropelariam.
+   */
+  onAcerto: (diarista: DiaristaResumo) => void;
 }
 
 /**
@@ -58,6 +64,7 @@ export function DiaristaDetailDialog({
   year,
   month,
   onEdit,
+  onAcerto,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +215,45 @@ export function DiaristaDetailDialog({
               )}
             </div>
 
+            {/* A conta dele: o que se deve hoje, já descontando os vales */}
+            <button
+              type="button"
+              onClick={() => onAcerto(diarista)}
+              className="w-full rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-left active:bg-emerald-100/60 dark:active:bg-emerald-950/40 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <HandCoins className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                  Adiantamento e acerto
+                </span>
+                <span className="ml-auto text-[11px] text-emerald-700/70 dark:text-emerald-400/70">
+                  tocar para abrir
+                </span>
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
+                <Conta
+                  label="A receber"
+                  valor={formatBRL(Number(diarista.pending_value ?? 0))}
+                />
+                <Conta
+                  label="Adiantado"
+                  valor={formatBRL(Number(diarista.advance_pending ?? 0))}
+                  tom="text-amber-600 dark:text-amber-400"
+                />
+                <Conta
+                  label="Saldo"
+                  valor={formatBRL(Number(diarista.balance ?? 0))}
+                  tom={
+                    Number(diarista.balance ?? 0) < 0
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-emerald-700 dark:text-emerald-400"
+                  }
+                  forte
+                />
+              </div>
+            </button>
+
             {/* Calendário — o chefe também marca dia (quando o técnico esquece) */}
             <DiaristaCalendar
               year={ano}
@@ -355,5 +401,33 @@ export function DiaristaDetailDialog({
         />
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Um dos três números da conta do diarista, no bloco verde da ficha. */
+function Conta({
+  label,
+  valor,
+  tom,
+  forte,
+}: {
+  label: string;
+  valor: string;
+  tom?: string;
+  forte?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-none">
+        {label}
+      </p>
+      <p
+        className={`mt-1 tabular-nums leading-none ${forte ? "text-base font-bold" : "text-sm font-semibold"} ${
+          tom ?? "text-slate-800 dark:text-slate-100"
+        }`}
+      >
+        {valor}
+      </p>
+    </div>
   );
 }

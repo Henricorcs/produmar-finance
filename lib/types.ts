@@ -1203,6 +1203,54 @@ export interface DiaristaResumo extends Diarista {
   /** Soma das diárias lançadas (com o valor congelado de cada dia). */
   total_value: number;
   last_work_date: string | null;
+
+  // ── O que ainda se deve a ele (migration 068) ──
+  /** Dias trabalhados que ainda não entraram num acerto. */
+  pending_days?: number;
+  /** VALOR A RECEBER: a soma desses dias. */
+  pending_value?: number;
+  /** VALOR ADIANTADO: vales já pegos e ainda não descontados. */
+  advance_pending?: number;
+  /**
+   * SALDO A RECEBER: a receber − adiantado. Fica NEGATIVO quando ele pegou
+   * mais adiantado do que trabalhou — aí é ele que está devendo.
+   */
+  balance?: number;
+  last_settled_on?: string | null;
+}
+
+/**
+ * Vale do diarista (migration 068) — dinheiro pego no meio da semana, que sai
+ * do valor a receber no próximo acerto. `acerto_id` nulo = ainda em aberto.
+ */
+export interface DiaristaAdiantamento {
+  id: string;
+  diarista_id: string;
+  advance_date: string;
+  amount: number;
+  notes: string | null;
+  acerto_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Acerto do diarista (migration 068) — o pagamento da semana. Os valores ficam
+ * congelados: corrigir uma diária antiga não reescreve o que já foi pago.
+ */
+export interface DiaristaAcerto {
+  id: string;
+  diarista_id: string;
+  settled_on: string;
+  /** Quanto era de diária no momento do acerto. */
+  days_total: number;
+  /** Quanto já tinha sido adiantado e foi descontado. */
+  advance_total: number;
+  /** O que saiu de dinheiro na hora (days_total − advance_total). */
+  amount_paid: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 /**
@@ -1224,6 +1272,11 @@ export interface DiaristaDia {
   daily_rate: number;
   /** Veio só meia diária (migration 064): pinta o dia de amarelo. */
   half_day?: boolean;
+  /**
+   * Em qual acerto este dia foi pago (migration 068). Nulo = ainda se deve, e
+   * é o que mantém o dia verde/amarelo no calendário; preenchido pinta cinza.
+   */
+  acerto_id?: string | null;
   /** Nome de quem marcou o dia, gravado no lançamento. */
   registered_by_name: string | null;
   created_by: string | null;

@@ -45,6 +45,12 @@ function diaristaError(error: { code?: string; message: string }): string {
     return "Esse dia já estava lançado para este diarista";
   if (error.message.includes("half_day"))
     return "Rode a migration 064 no Supabase para usar a meia diária";
+  if (
+    error.message.includes("diarista_adiantamentos") ||
+    error.message.includes("diarista_acertos") ||
+    error.message.includes("acerto_id")
+  )
+    return "Rode a migration 068 no Supabase para usar adiantamento e acerto";
   if (error.code === "23505") return "Já existe um diarista com esse nome";
   if (
     error.code === "42P01" ||
@@ -248,6 +254,181 @@ export async function updateDiaristaDia(id: string, input: DiaristaDiaInput) {
 export async function deleteDiaristaDia(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("diarista_dias").delete().eq("id", id);
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADIANTAMENTO E ACERTO (migration 068)
+// ─────────────────────────────────────────────────────────────────────────────
+// O vale é o dinheiro que o diarista pega no meio da semana. O acerto é o
+// pagamento: ele fecha os dias trabalhados, desconta os vales em aberto e, a
+// partir daí, aqueles dias ficam CINZA no calendário — já foram pagos.
+
+export interface AdiantamentoInput {
+  diarista_id: string;
+  advance_date?: string | null;
+  amount: number;
+  notes?: string | null;
+}
+
+export async function createDiaristaAdiantamento(input: AdiantamentoInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.diarista_id) return { error: "Diarista não informado" };
+  const valor = normMoney(input.amount);
+  if (valor <= 0) return { error: "Informe o valor do adiantamento" };
+
+  const { error } = await supabase.from("diarista_adiantamentos").insert({
+    diarista_id: input.diarista_id,
+    advance_date: cleanDate(input.advance_date) ?? undefined,
+    amount: valor,
+    notes: clean(input.notes),
+    created_by: user.id,
+  });
+
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Só dá para apagar vale em aberto: o que já entrou num acerto está pago. */
+export async function deleteDiaristaAdiantamento(id: string) {
+  const supabase = createClient();
+
+  const { data: vale } = await supabase
+    .from("diarista_adiantamentos")
+    .select("acerto_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (vale?.acerto_id)
+    return {
+      error: "Este adiantamento já entrou num acerto. Desfaça o acerto primeiro.",
+    };
+
+  const { error } = await supabase.from("diarista_adiantamentos").delete().eq("id", id);
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Fecha a conta do diarista: soma as diárias ainda não acertadas, desconta os
+ * vales em aberto e guarda quanto saiu de dinheiro. Os dias e os vales passam a
+ * apontar para este acerto — é isso que pinta o dia de cinza no calendário.
+ *
+ * `settled_on` também serve de corte: dia trabalhado DEPOIS dessa data continua
+ * em aberto, para o acerto de sábado não levar junto o que veio no domingo.
+ */
+export async function createDiaristaAcerto(input: {
+  diarista_id: string;
+  settled_on?: string | null;
+  notes?: string | null;
+}) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.diarista_id) return { error: "Diarista não informado" };
+  const ate = cleanDate(input.settled_on) ?? new Date().toISOString().slice(0, 10);
+
+  const [diasRes, valesRes] = await Promise.all([
+    supabase
+      .from("diarista_dias")
+      .select("id, daily_rate")
+      .eq("diarista_id", input.diarista_id)
+      .is("acerto_id", null)
+      .lte("work_date", ate),
+    supabase
+      .from("diarista_adiantamentos")
+      .select("id, amount")
+      .eq("diarista_id", input.diarista_id)
+      .is("acerto_id", null)
+      .lte("advance_date", ate),
+  ]);
+
+  if (diasRes.error) return { error: diaristaError(diasRes.error) };
+  if (valesRes.error) return { error: diaristaError(valesRes.error) };
+
+  const dias = diasRes.data ?? [];
+  const vales = valesRes.data ?? [];
+  if (dias.length === 0 && vales.length === 0)
+    return { error: "Não há diária nem adiantamento em aberto até essa data" };
+
+  const diasTotal = normMoney(dias.reduce((s, d) => s + Number(d.daily_rate), 0));
+  const valesTotal = normMoney(vales.reduce((s, v) => s + Number(v.amount), 0));
+  const aPagar = normMoney(diasTotal - valesTotal);
+
+  // Adiantado maior que trabalhado: não há o que pagar, e fechar aqui apagaria
+  // a dívida dele. O saldo negativo segue para a semana que vem.
+  if (valesTotal > diasTotal)
+    return {
+      error:
+        "O adiantado é maior que o trabalhado até essa data — não há acerto a fazer. O saldo passa para a próxima semana.",
+    };
+
+  const { data: acerto, error: acertoErr } = await supabase
+    .from("diarista_acertos")
+    .insert({
+      diarista_id: input.diarista_id,
+      settled_on: ate,
+      days_total: diasTotal,
+      advance_total: valesTotal,
+      amount_paid: aPagar,
+      notes: clean(input.notes),
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (acertoErr || !acerto)
+    return { error: acertoErr ? diaristaError(acertoErr) : "Erro ao registrar o acerto" };
+
+  // Carimba os dias e os vales. Se algo falhar aqui, o acerto é desfeito: meio
+  // acerto é pior que nenhum — ficariam dias pagos e dias em aberto sem razão.
+  const acertoId = acerto.id as string;
+
+  if (dias.length > 0) {
+    const { error } = await supabase
+      .from("diarista_dias")
+      .update({ acerto_id: acertoId })
+      .in("id", dias.map((d) => d.id));
+    if (error) {
+      await supabase.from("diarista_acertos").delete().eq("id", acertoId);
+      return { error: diaristaError(error) };
+    }
+  }
+
+  if (vales.length > 0) {
+    const { error } = await supabase
+      .from("diarista_adiantamentos")
+      .update({ acerto_id: acertoId })
+      .in("id", vales.map((v) => v.id));
+    if (error) {
+      await supabase.from("diarista_acertos").delete().eq("id", acertoId);
+      return { error: diaristaError(error) };
+    }
+  }
+
+  revalidate();
+  return { ok: true, acertoId, diasTotal, valesTotal, aPagar };
+}
+
+/**
+ * Desfaz o acerto. Os dias voltam a ficar coloridos no calendário e os vales
+ * voltam a contar como em aberto — as duas colunas são `on delete set null`.
+ */
+export async function deleteDiaristaAcerto(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("diarista_acertos").delete().eq("id", id);
   if (error) return { error: diaristaError(error) };
   revalidate();
   return { ok: true };

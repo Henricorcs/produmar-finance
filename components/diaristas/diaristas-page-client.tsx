@@ -19,9 +19,12 @@ import { DiaristaDialog } from "./diarista-dialog";
 import { DiaristaDetailDialog } from "./diarista-detail-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
 import { RelatorioDialog } from "./relatorio-dialog";
+import { AcertoDialog } from "./acerto-dialog";
 import type { DiaristaObra } from "./lancar-dia-dialog";
 import type {
   Diarista,
+  DiaristaAcerto,
+  DiaristaAdiantamento,
   DiaristaDia,
   DiaristaResumo,
   SupplyObraSector,
@@ -32,6 +35,10 @@ interface Props {
   dias: DiaristaDia[];
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
+  /** Vales de todo mundo — o diálogo do acerto filtra os de cada um (068). */
+  adiantamentos?: DiaristaAdiantamento[];
+  /** Acertos já feitos, para o histórico e para desfazer (068). */
+  acertos?: DiaristaAcerto[];
 }
 
 type Tab = "pessoas" | "dias";
@@ -42,7 +49,14 @@ type Tab = "pessoas" | "dias";
  *
  * Quem marca o dia é o técnico, na tela dele. Aqui é onde isso vira conta.
  */
-export function DiaristasPageClient({ diaristas, dias, obras, sectors }: Props) {
+export function DiaristasPageClient({
+  diaristas,
+  dias,
+  obras,
+  sectors,
+  adiantamentos = [],
+  acertos = [],
+}: Props) {
   const hoje = new Date();
   const [year, setYear] = useState(hoje.getFullYear());
   const [month, setMonth] = useState(hoje.getMonth());
@@ -55,6 +69,8 @@ export function DiaristasPageClient({ diaristas, dias, obras, sectors }: Props) 
   const [detalheId, setDetalheId] = useState<string | null>(null);
   const [detalheDia, setDetalheDia] = useState<DiaristaDia | null>(null);
   const [relatorioOpen, setRelatorioOpen] = useState(false);
+  /** Diarista com a conta aberta — o acerto vive fora da ficha, ver onAcerto. */
+  const [acertoId, setAcertoId] = useState<string | null>(null);
 
   const { from, to } = monthRange(year, month);
 
@@ -106,7 +122,21 @@ export function DiaristasPageClient({ diaristas, dias, obras, sectors }: Props) 
   }, [diaristas, search, mostrarArquivados, resumoDoMes]);
 
   const detalhe = diaristas.find((d) => d.id === detalheId) ?? null;
+  const acertoDiarista = diaristas.find((d) => d.id === acertoId) ?? null;
   const arquivados = diaristas.length - ativos.length;
+
+  /** Sai da ficha e abre a conta — os dois diálogos juntos se atropelam. */
+  function abrirAcerto(id: string) {
+    setDetalheId(null);
+    setAcertoId(id);
+  }
+
+  /** Fechou a conta: volta para a ficha de onde veio. */
+  function fecharAcerto() {
+    const voltarPara = acertoId;
+    setAcertoId(null);
+    if (voltarPara) setDetalheId(voltarPara);
+  }
 
   function stepMonth(delta: number) {
     const d = new Date(year, month + delta, 1);
@@ -379,6 +409,15 @@ export function DiaristasPageClient({ diaristas, dias, obras, sectors }: Props) 
           setEditando(d);
           setCadastroOpen(true);
         }}
+        onAcerto={(d) => abrirAcerto(d.id)}
+      />
+      <AcertoDialog
+        open={!!acertoDiarista}
+        onClose={fecharAcerto}
+        diarista={acertoDiarista}
+        adiantamentos={adiantamentos}
+        acertos={acertos}
+        dias={dias}
       />
 
       <DiaDetailDialog

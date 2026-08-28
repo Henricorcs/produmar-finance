@@ -118,8 +118,24 @@
    só existe abaixo de 640px — o desktop fica exatamente como estava. */
 @media (max-width: 639.98px) {
   .dialog-visible-band {
-    top: calc(var(--dialog-band-top, 0px) + var(--dialog-band-h, 100dvh) / 2) !important;
-    max-height: calc(var(--dialog-band-h, 100dvh) - 1.5rem) !important;
+    /* O app roda com a barra de status TRANSLÚCIDA no iPhone
+       (statusBarStyle black-translucent + viewportFit cover, no layout.tsx):
+       a tela do app começa DEBAIXO do relógio e da bateria. Sem descontar essa
+       faixa, uma caixa alta encostava no topo físico do aparelho e o X de
+       fechar caía embaixo da bateria — o dedo tocava na barra do iOS, não no
+       botão, e não tinha como fechar a tela. Mesmo problema no rodapé, na
+       barra de gestos. */
+    --dialog-safe-top: env(safe-area-inset-top, 0px);
+    --dialog-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --dialog-free-h: calc(
+      var(--dialog-band-h, 100dvh) - var(--dialog-safe-top) - var(--dialog-safe-bottom)
+    );
+
+    top: calc(
+      var(--dialog-band-top, 0px) + var(--dialog-safe-top) + var(--dialog-free-h) / 2
+    ) !important;
+    /* 2,5rem de folga (era 1,5rem): sobra dedo acima do X e abaixo da caixa */
+    max-height: calc(var(--dialog-free-h) - 2.5rem) !important;
   }
 }
 

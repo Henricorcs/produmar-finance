@@ -79,6 +79,9 @@ interface CalendarProps {
  * lançado fica verde e, ao tocar, abre o que foi feito naquele dia. Meia diária
  * fica AMARELA — dá para bater o olho no mês e ver os dias que valem metade.
  *
+ * Depois do acerto o dia fica CINZA (migration 068): cor forte quer dizer "ainda
+ * devo esse dia", cinza quer dizer "já paguei".
+ *
  * Dia futuro fica apagado e não aceita toque: ninguém trabalhou amanhã.
  */
 export function DiaristaCalendar({
@@ -144,7 +147,13 @@ export function DiaristaCalendar({
               disabled={isFuture}
               onClick={() => (dia ? onOpenLaunched(dia) : onToggle(iso))}
               aria-label={`Dia ${numero}${
-                dia ? (dia.half_day ? " — meia diária lançada" : " — já lançado") : ""
+                dia
+                  ? dia.acerto_id
+                    ? " — já acertado"
+                    : dia.half_day
+                      ? " — meia diária lançada"
+                      : " — já lançado"
+                  : ""
               }`}
               // o dia lançado não é um botão de marcar: ele abre o lançamento
               aria-pressed={dia ? undefined : isSelected}
@@ -155,11 +164,15 @@ export function DiaristaCalendar({
                 "aspect-square rounded-lg border text-sm font-semibold tabular-nums flex items-center justify-center transition-colors active:scale-95",
                 isFuture && "opacity-30",
                 dia
-                  ? dia.half_day
-                    ? // meia diária: amarelo com número escuro (branco em cima
-                      // de amarelo não se lê no sol)
-                      "bg-amber-400 border-amber-400 text-amber-950"
-                    : "bg-emerald-500 border-emerald-500 text-white"
+                  ? dia.acerto_id
+                    ? // já acertado: cinza. A cor forte quer dizer "ainda devo"
+                      // — depois de pago o dia apaga e some do que se deve
+                      "bg-slate-300 border-slate-300 text-slate-600 dark:bg-slate-600 dark:border-slate-600 dark:text-slate-200"
+                    : dia.half_day
+                      ? // meia diária: amarelo com número escuro (branco em cima
+                        // de amarelo não se lê no sol)
+                        "bg-amber-400 border-amber-400 text-amber-950"
+                      : "bg-emerald-500 border-emerald-500 text-white"
                   : isSelected
                     ? "bg-produmar-600 border-produmar-600 text-white shadow-sm"
                     : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300",
@@ -176,6 +189,7 @@ export function DiaristaCalendar({
         <Legenda className="bg-produmar-600" label="marcado agora" />
         <Legenda className="bg-emerald-500" label="dia inteiro" />
         <Legenda className="bg-amber-400" label="meia diária" />
+        <Legenda className="bg-slate-300 dark:bg-slate-600" label="já acertado" />
       </div>
     </div>
   );
