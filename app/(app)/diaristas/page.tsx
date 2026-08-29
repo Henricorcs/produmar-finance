@@ -6,6 +6,7 @@ import type {
   DiaristaDia,
   DiaristaResumo,
   SupplyObraSector,
+  SupplyObraServicoView,
 } from "@/lib/types";
 import type { DiaristaObra } from "@/components/diaristas/lancar-dia-dialog";
 
@@ -21,6 +22,7 @@ export default async function DiaristasPage() {
     sectorsRes,
     valesRes,
     acertosRes,
+    servicosRes,
   ] = await Promise.all([
     // cadastro + quanto cada um já trabalhou (migration 059 — sem ela a tela
     // abre vazia com o aviso, em vez de quebrar)
@@ -44,6 +46,13 @@ export default async function DiaristasPage() {
       .select("*")
       .order("settled_on", { ascending: false })
       .limit(500),
+    // serviços por empreita / por metro que caem na conta do colaborador
+    // (migration 069 — sem ela volta vazio e a tela segue igual)
+    supabase
+      .from("v_supply_obra_servicos")
+      .select("*")
+      .order("service_date", { ascending: false })
+      .limit(1000),
   ]);
 
   return (
@@ -54,6 +63,7 @@ export default async function DiaristasPage() {
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
       adiantamentos={(valesRes.data as DiaristaAdiantamento[]) ?? []}
       acertos={(acertosRes.data as DiaristaAcerto[]) ?? []}
+      servicos={(servicosRes.data as SupplyObraServicoView[]) ?? []}
     />
   );
 }

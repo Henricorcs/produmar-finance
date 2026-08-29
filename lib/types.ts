@@ -1014,7 +1014,13 @@ export interface SupplyObraUsage extends SupplyObra {
   expense_value?: number;
   last_expense_date?: string | null;
 
-  /** O que a obra custou: material + mão de obra + despesas. */
+  /** Serviço contratado por empreita ou por metro (migration 069). */
+  services_count?: number;
+  /** Soma do que se paga aos profissionais pelos serviços da obra. */
+  service_value?: number;
+  last_service_date?: string | null;
+
+  /** O que a obra custou: material + diárias + despesas + serviços. */
   total_cost?: number;
 }
 
@@ -1042,6 +1048,85 @@ export interface SupplyObraDespesa {
   created_at: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SERVIÇO CONTRATADO NO SETOR DA OBRA (migration 069)
+// ═══════════════════════════════════════════════════════════════════════════
+// O setor deixou de ser só um nome: agora ele diz QUAL serviço foi feito ali e
+// COMO o profissional foi contratado. Das duas formas sai o mesmo número — o
+// valor a pagar —, que entra no custo da obra e na conta do colaborador.
+
+/** Como o profissional foi contratado para o serviço. */
+export type ContractMode = "empreita" | "metro";
+
+export const CONTRACT_MODE_LABEL: Record<ContractMode, string> = {
+  empreita: "Empreita",
+  metro: "Por metro",
+};
+
+/** Tipos de serviço sugeridos na tela — o campo continua livre. */
+export const SERVICOS_SUGERIDOS = [
+  "CERCA",
+  "ALVENARIA",
+  "PINTURA",
+  "CONCRETAGEM",
+  "TELHADO",
+  "ELÉTRICA",
+  "HIDRÁULICA",
+  "TERRAPLANAGEM",
+  "LIMPEZA DE ÁREA",
+] as const;
+
+/** Unidades do serviço por metro — o rótulo do que foi medido. */
+export const UNIDADES_SERVICO = ["M", "M2", "M3", "UN"] as const;
+
+/**
+ * Um serviço combinado com um profissional, dentro de um setor da obra.
+ *
+ * `total_value` é CALCULADO PELO BANCO (coluna gerada da migration 069): na
+ * empreita é o valor fechado; no metro é `rate_per_unit × quantity`. Nenhuma
+ * tela refaz essa conta — todas leem o mesmo número.
+ */
+export interface SupplyObraServico {
+  id: string;
+  obra_id: string;
+  /** Setor onde o serviço foi feito (null = a obra não tem setor cadastrado). */
+  sector_id: string | null;
+  /** CERCA, ALVENARIA, PINTURA... texto livre, em caixa alta. */
+  service_type: string;
+  /** Quem fez — aponta para o cadastro de colaboradores. Null = ainda sem dono. */
+  diarista_id: string | null;
+  contract_mode: ContractMode;
+  /** Valor fechado da empreita (vale quando contract_mode = "empreita"). */
+  contract_amount: number;
+  /** Valor do metro (vale quando contract_mode = "metro"). */
+  rate_per_unit: number;
+  /** Metragem ou quantidade (vale quando contract_mode = "metro"). */
+  quantity: number;
+  /** Rótulo do que foi medido: M, M2, M3, UN. */
+  unit: string;
+  service_date: string;
+  description: string | null;
+  notes: string | null;
+  /** O valor a pagar ao profissional, já resolvido pelo banco. */
+  total_value: number;
+  /** Em qual acerto este serviço foi pago (068). Nulo = ainda se deve. */
+  acerto_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Linha da view v_supply_obra_servicos — o serviço com os nomes resolvidos. */
+export interface SupplyObraServicoView extends SupplyObraServico {
+  obra_name: string;
+  local_id: string | null;
+  sector_name: string | null;
+  /** Nome do profissional (null quando o serviço ainda não tem dono). */
+  worker_name: string | null;
+  worker_type: WorkerType | null;
+  worker_profession: string | null;
+  worker_pix_key: string | null;
+}
+
 /**
  * Uma linha do extrato da obra (view v_supply_obra_extrato, migration 066) —
  * quando foi, com o que foi, quanto custou e quem usou. Junta as saídas de
@@ -1050,8 +1135,8 @@ export interface SupplyObraDespesa {
 export interface SupplyObraExtrato {
   id: string;
   obra_id: string;
-  /** As três origens de gasto da obra. */
-  kind: "material" | "diaria" | "despesa";
+  /** As quatro origens de gasto da obra ("servico" veio na migration 069). */
+  kind: "material" | "diaria" | "despesa" | "servico";
   /** A data do fato (saída / dia trabalhado / compra), não a da digitação. */
   entry_date: string;
   /** Nome do material, "Diária" / "Meia diária", ou o que foi comprado. */
@@ -1180,7 +1265,33 @@ export interface SupplyFenceRunView extends SupplyFenceRun {
 // técnico: ele marca os dias que cada um veio e escreve o que foi feito. O dia
 // aponta para a obra do Estoque — é o mesmo lugar onde o material foi gasto.
 
-/** Cadastro do diarista — só o chefe mexe aqui. */
+/**
+ * Como o colaborador ganha (migration 069). O DIARISTA ganha por dia marcado
+ * no calendário; o EMPREITEIRO ganha por serviço fechado no setor da obra.
+ * Quem já estava cadastrado antes da 069 é diarista — era o único tipo.
+ */
+export type WorkerType = "diarista" | "empreiteiro";
+
+export const WORKER_TYPE_LABEL: Record<WorkerType, string> = {
+  diarista: "Diarista",
+  empreiteiro: "Empreiteiro",
+};
+
+/** Profissões que aparecem como sugestão no cadastro — o campo é livre. */
+export const PROFISSOES_SUGERIDAS = [
+  "PEDREIRO",
+  "SERVENTE",
+  "PINTOR",
+  "CARPINTEIRO",
+  "ELETRICISTA",
+  "ENCANADOR",
+  "SOLDADOR",
+  "CERQUEIRO",
+  "OPERADOR",
+  "MOTORISTA",
+] as const;
+
+/** Cadastro do colaborador — só o chefe mexe aqui. */
 export interface Diarista {
   id: string;
   name: string;
@@ -1189,6 +1300,10 @@ export interface Diarista {
   pix_key: string | null;
   /** Quanto vale um dia de trabalho. 0 = ainda não combinado. */
   daily_rate: number;
+  /** Diarista ou empreiteiro (migration 069). Sem a migration vem indefinido. */
+  worker_type?: WorkerType;
+  /** Pedreiro, pintor, carpinteiro... texto livre (migration 069). */
+  profession?: string | null;
   notes: string | null;
   active: boolean;
   created_by: string | null;
@@ -1200,14 +1315,31 @@ export interface DiaristaResumo extends Diarista {
   days_count: number;
   /** Quantos desses dias foram meia diária (migration 064). */
   half_days_count?: number;
-  /** Soma das diárias lançadas (com o valor congelado de cada dia). */
+  /** Só as diárias, com o valor congelado de cada dia (migration 069). */
+  days_value?: number;
+  /**
+   * O que ele já rendeu no total: diárias + serviços por empreita/metro.
+   * Antes da migration 069 este número era só o das diárias.
+   */
   total_value: number;
   last_work_date: string | null;
+
+  // ── Serviços por empreita / por metro (migration 069) ──
+  services_count?: number;
+  /** Soma dos serviços feitos por ele, das duas formas de contratação. */
+  services_value?: number;
+  last_service_date?: string | null;
 
   // ── O que ainda se deve a ele (migration 068) ──
   /** Dias trabalhados que ainda não entraram num acerto. */
   pending_days?: number;
-  /** VALOR A RECEBER: a soma desses dias. */
+  /** Só a parte das diárias do valor a receber (migration 069). */
+  pending_days_value?: number;
+  /** Serviços que ainda não entraram num acerto (migration 069). */
+  pending_services?: number;
+  /** Só a parte dos serviços do valor a receber (migration 069). */
+  pending_services_value?: number;
+  /** VALOR A RECEBER: diárias em aberto + serviços em aberto. */
   pending_value?: number;
   /** VALOR ADIANTADO: vales já pegos e ainda não descontados. */
   advance_pending?: number;

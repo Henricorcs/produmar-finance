@@ -29,6 +29,7 @@ import type {
   SupplyObraDespesa,
   SupplyObraExtrato,
   SupplyObraSector,
+  SupplyObraServicoView,
   SupplyObraUsage,
 } from "@/lib/types";
 
@@ -40,8 +41,10 @@ interface Props {
   sectors?: SupplyObraSector[];
   /** Metros de cerca de TODAS as obras — o diálogo filtra os desta (063). */
   fenceRuns?: SupplyFenceRunView[];
+  /** Serviços contratados de TODAS as obras — filtra os desta (069). */
+  servicos?: SupplyObraServicoView[];
   onEdit: (obra: SupplyObraUsage) => void;
-  /** Abre o cadastro de setores já nesta obra. */
+  /** Abre o cadastro de setores e serviços já nesta obra. */
   onManageSectors: (obra: SupplyObraUsage) => void;
   /**
    * Abre o lançamento de despesa desta obra — null lança uma nova, uma despesa
@@ -81,6 +84,7 @@ export function SupplyObraDetailDialog({
   obra,
   sectors = [],
   fenceRuns = [],
+  servicos = [],
   onEdit,
   onManageSectors,
   onDespesa,
@@ -153,6 +157,34 @@ export function SupplyObraDetailDialog({
     };
   }, [fenceRuns, obra?.id]);
 
+  /**
+   * Os serviços contratados nesta obra, agrupados por setor. É a resposta de
+   * "quanto já combinei de mão de obra em cada pedaço da obra" — e, dentro de
+   * cada um, quem faz e por qual contratação.
+   */
+  const servicosDaObra = useMemo(() => {
+    const meus = servicos.filter((s) => s.obra_id === obra?.id);
+    const porSetor = new Map<
+      string,
+      { nome: string; valor: number; itens: SupplyObraServicoView[] }
+    >();
+    for (const s of meus) {
+      const key = s.sector_id ?? "sem";
+      const cur = porSetor.get(key) ?? {
+        nome: s.sector_name ?? "Sem setor",
+        valor: 0,
+        itens: [],
+      };
+      cur.valor += num(s.total_value);
+      cur.itens.push(s);
+      porSetor.set(key, cur);
+    }
+    return {
+      total: meus.reduce((s, v) => s + num(v.total_value), 0),
+      setores: [...porSetor.values()].sort((a, b) => b.valor - a.valor),
+    };
+  }, [servicos, obra?.id]);
+
   /** O extrato do recorte escolhido — é sobre ele que tudo abaixo é somado. */
   const linhas = useMemo(() => {
     const prefixo = prefixoDoPeriodo(periodo);
@@ -160,17 +192,25 @@ export function SupplyObraDetailDialog({
     return extrato.filter((l) => (l.entry_date ?? "").startsWith(prefixo));
   }, [extrato, periodo]);
 
-  /** Quanto o período custou, separando as três origens. */
+  /** Quanto o período custou, separando as quatro origens. */
   const totalPeriodo = useMemo(() => {
     let material = 0;
     let maoDeObra = 0;
     let despesas = 0;
+    let servicoValor = 0;
     for (const l of linhas) {
       if (l.kind === "diaria") maoDeObra += num(l.value);
       else if (l.kind === "despesa") despesas += num(l.value);
+      else if (l.kind === "servico") servicoValor += num(l.value);
       else material += num(l.value);
     }
-    return { material, maoDeObra, despesas, total: material + maoDeObra + despesas };
+    return {
+      material,
+      maoDeObra,
+      despesas,
+      servicos: servicoValor,
+      total: material + maoDeObra + despesas + servicoValor,
+    };
   }, [linhas]);
 
   /**
@@ -218,23 +258,42 @@ export function SupplyObraDetailDialog({
   const porPessoa = useMemo(() => {
     const map = new Map<
       string,
-      { nome: string; material: number; dias: number; maoDeObra: number }
+      {
+        nome: string;
+        material: number;
+        dias: number;
+        maoDeObra: number;
+        servicos: number;
+        servicoValor: number;
+      }
     >();
     for (const l of linhas) {
       // a despesa fica de fora: ali "quem" é o fornecedor, não quem trabalhou
       if (l.kind === "despesa") continue;
       const nome = (l.person ?? "").trim() || "Sem nome";
-      const cur = map.get(nome) ?? { nome, material: 0, dias: 0, maoDeObra: 0 };
+      const cur = map.get(nome) ?? {
+        nome,
+        material: 0,
+        dias: 0,
+        maoDeObra: 0,
+        servicos: 0,
+        servicoValor: 0,
+      };
       if (l.kind === "diaria") {
         cur.dias += num(l.quantity);
         cur.maoDeObra += num(l.value);
+      } else if (l.kind === "servico") {
+        cur.servicos += 1;
+        cur.servicoValor += num(l.value);
       } else {
         cur.material += num(l.value);
       }
       map.set(nome, cur);
     }
     return Array.from(map.values()).sort(
-      (a, b) => b.material + b.maoDeObra - (a.material + a.maoDeObra)
+      (a, b) =>
+        b.material + b.maoDeObra + b.servicoValor -
+        (a.material + a.maoDeObra + a.servicoValor)
     );
   }, [linhas]);
 
@@ -265,7 +324,7 @@ export function SupplyObraDetailDialog({
     const o = obra!;
     if (
       !confirm(
-        `Excluir a obra "${o.name}"? As saídas e as diárias já lançadas NÃO são apagadas — elas ficam sem obra. As despesas avulsas desta obra são apagadas junto.`
+        `Excluir a obra "${o.name}"? As saídas e as diárias já lançadas NÃO são apagadas — elas ficam sem obra. As despesas avulsas e os serviços contratados desta obra são apagados junto.`
       )
     )
       return;
@@ -307,7 +366,7 @@ export function SupplyObraDetailDialog({
             <p className="mt-1.5 text-3xl font-bold text-slate-800 dark:text-slate-100 tabular-nums leading-none">
               {formatBRL(custoTotal)}
             </p>
-            <div className="mt-3 grid grid-cols-3 gap-1.5 text-left">
+            <div className="mt-3 grid grid-cols-2 gap-1.5 text-left">
               <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 px-2 py-1.5">
                 <p className="text-[10px] text-orange-700 dark:text-orange-400 uppercase tracking-wide">
                   Material
@@ -322,13 +381,26 @@ export function SupplyObraDetailDialog({
               </div>
               <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5">
                 <p className="text-[10px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
-                  Mão de obra
+                  Diárias
                 </p>
                 <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums">
                   {formatBRL(num(obra.labor_value))}
                 </p>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">
                   {num(obra.days_count)} {num(obra.days_count) === 1 ? "diária" : "diárias"}
+                </p>
+              </div>
+              {/* Serviço combinado com o profissional — empreita ou metro (069) */}
+              <div className="rounded-lg bg-teal-50 dark:bg-teal-900/20 px-2 py-1.5">
+                <p className="text-[10px] text-teal-700 dark:text-teal-400 uppercase tracking-wide">
+                  Serviços
+                </p>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+                  {formatBRL(num(obra.service_value))}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {num(obra.services_count)}{" "}
+                  {num(obra.services_count) === 1 ? "empreita/metro" : "empreitas/metros"}
                 </p>
               </div>
               <div className="rounded-lg bg-violet-50 dark:bg-violet-900/20 px-2 py-1.5">
@@ -345,18 +417,26 @@ export function SupplyObraDetailDialog({
               </div>
             </div>
 
-            <Button
-              type="button"
-              className="mt-3 w-full"
-              onClick={() => abrirDespesa(null)}
-            >
-              <Plus className="w-4 h-4" />
-              Lançar despesa
-            </Button>
+            <div className="mt-3 flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => onManageSectors(obra!)}
+              >
+                <HardHat className="w-4 h-4" />
+                Serviços
+              </Button>
+              <Button type="button" className="flex-1" onClick={() => abrirDespesa(null)}>
+                <Plus className="w-4 h-4" />
+                Despesa
+              </Button>
+            </div>
 
             <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-              O material sai no Estoque e a diária em Diaristas, as duas escolhendo esta
-              obra. A despesa — compra direta, combustível, frete — é lançada aqui.
+              O material sai no Estoque e a diária em Colaboradores, as duas escolhendo
+              esta obra. O serviço por empreita ou por metro é combinado no setor, e a
+              despesa — compra direta, combustível, frete — é lançada aqui.
             </p>
           </div>
 
@@ -429,6 +509,61 @@ export function SupplyObraDetailDialog({
             </div>
           )}
 
+          {/* Serviços combinados por setor: empreita e metro (migration 069) */}
+          {servicosDaObra.total > 0 && periodo === "tudo" && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <HardHat className="w-3.5 h-3.5 text-teal-600" />
+                  Serviços contratados
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onManageSectors(obra!)}
+                  className="min-h-[36px] px-2 text-[11px] font-medium text-teal-600 dark:text-teal-400 hover:underline"
+                >
+                  + Serviço
+                </button>
+              </div>
+              <div className="rounded-xl border border-teal-200 dark:border-teal-900/50 bg-teal-50/60 dark:bg-teal-950/20 px-3 py-2.5 flex items-baseline justify-between gap-2">
+                <span className="text-xs text-teal-800 dark:text-teal-300">
+                  A pagar aos profissionais
+                </span>
+                <span className="text-lg font-bold text-teal-700 dark:text-teal-300 tabular-nums">
+                  {formatBRL(servicosDaObra.total)}
+                </span>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                {servicosDaObra.setores.map((s) => (
+                  <div key={s.nome} className="px-3 py-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                      <span className="flex-1 min-w-0 text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
+                        {s.nome}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
+                        {formatBRL(s.valor)}
+                      </span>
+                    </div>
+                    {s.itens.map((sv) => (
+                      <p
+                        key={sv.id}
+                        className="text-[11px] text-slate-400 dark:text-slate-500 pl-5 truncate tabular-nums"
+                      >
+                        {sv.service_type} ·{" "}
+                        {sv.contract_mode === "metro"
+                          ? `${formatQty(num(sv.quantity))} ${sv.unit} × ${formatBRL(num(sv.rate_per_unit))}`
+                          : "empreita"}
+                        {sv.worker_name ? ` · ${sv.worker_name}` : ""}
+                        {sv.acerto_id ? " · pago" : ""}
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Quem mexeu na obra */}
           {porPessoa.length > 0 && (
             <div className="space-y-1.5">
@@ -444,14 +579,21 @@ export function SupplyObraDetailDialog({
                         {p.nome}
                       </p>
                       <p className="text-[11px] text-slate-400 tabular-nums">
-                        {p.dias > 0 &&
-                          `${formatQty(p.dias)} ${p.dias === 1 ? "dia" : "dias"}`}
-                        {p.dias > 0 && p.material > 0 ? " · " : ""}
-                        {p.material > 0 && `${formatBRL(p.material)} em material`}
+                        {[
+                          p.dias > 0
+                            ? `${formatQty(p.dias)} ${p.dias === 1 ? "dia" : "dias"}`
+                            : null,
+                          p.servicos > 0
+                            ? `${p.servicos} ${p.servicos === 1 ? "serviço" : "serviços"}`
+                            : null,
+                          p.material > 0 ? `${formatBRL(p.material)} em material` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </p>
                     </div>
                     <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
-                      {formatBRL(p.material + p.maoDeObra)}
+                      {formatBRL(p.material + p.maoDeObra + p.servicoValor)}
                     </p>
                   </div>
                 ))}
@@ -544,7 +686,7 @@ export function SupplyObraDetailDialog({
                     <div
                       key={`${l.kind}-${l.id}`}
                       // só a despesa é editável aqui: o material é do Estoque e a
-                      // diária é do módulo Diaristas, cada um se acerta na sua tela
+                      // diária é do módulo Colaboradores, cada um se acerta na sua
                       onClick={ehDespesa ? () => abrirDespesa(l) : undefined}
                       role={ehDespesa ? "button" : undefined}
                       tabIndex={ehDespesa ? 0 : undefined}
@@ -567,9 +709,11 @@ export function SupplyObraDetailDialog({
                         className={`w-1.5 h-9 rounded-full flex-shrink-0 ${
                           l.kind === "diaria"
                             ? "bg-emerald-400"
-                            : ehDespesa
-                              ? "bg-violet-400"
-                              : "bg-orange-400"
+                            : l.kind === "servico"
+                              ? "bg-teal-400"
+                              : ehDespesa
+                                ? "bg-violet-400"
+                                : "bg-orange-400"
                         }`}
                       />
                       <div className="flex-1 min-w-0">
@@ -598,7 +742,7 @@ export function SupplyObraDetailDialog({
             )}
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               Toque numa despesa para corrigir ou apagar. Material e diária se acertam
-              nas telas de Estoque e Diaristas.
+              nas telas de Estoque e Colaboradores; o serviço, em &quot;Serviços&quot;.
             </p>
           </div>
 
@@ -614,7 +758,7 @@ export function SupplyObraDetailDialog({
                 onClick={() => onManageSectors(obra!)}
                 className="min-h-[36px] px-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
               >
-                {obraSectors.length > 0 ? "Cadastrar / apagar" : "Cadastrar setores"}
+                {obraSectors.length > 0 ? "Setores e serviços" : "Cadastrar setores"}
               </button>
             </div>
 
@@ -631,7 +775,8 @@ export function SupplyObraDetailDialog({
               </div>
             ) : (
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Nenhum setor ainda — é o que o técnico escolhe em &quot;Setor aplicado&quot;.
+                Nenhum setor ainda — é o que o técnico escolhe em &quot;Setor aplicado&quot;,
+                e é onde se define o serviço feito e quanto se paga por ele.
               </p>
             )}
           </div>
@@ -684,10 +829,16 @@ export function SupplyObraCard({
       texto: "text-orange-600 dark:text-orange-400",
     },
     {
-      nome: "Mão de obra",
+      nome: "Diárias",
       valor: num(obra.labor_value),
       cor: "bg-emerald-400",
       texto: "text-emerald-600 dark:text-emerald-400",
+    },
+    {
+      nome: "Serviços",
+      valor: num(obra.service_value),
+      cor: "bg-teal-400",
+      texto: "text-teal-600 dark:text-teal-400",
     },
     {
       nome: "Despesas",

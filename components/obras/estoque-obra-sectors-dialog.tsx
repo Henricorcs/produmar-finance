@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { MapPin, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { HardHat, MapPin, Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,12 +12,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { upperKeepingCaret } from "@/lib/utils";
+import { formatBRL, formatDate, formatQty, upperKeepingCaret } from "@/lib/utils";
+import { num } from "@/components/almoxarifado/supply-shared";
 import {
   createSupplyObraSector,
   deleteSupplyObraSector,
 } from "@/app/(app)/almoxarifado/actions";
-import type { SupplyObraSector, SupplyObraUsage } from "@/lib/types";
+import { ServicoDialog } from "./servico-dialog";
+import type {
+  Diarista,
+  SupplyObraSector,
+  SupplyObraServicoView,
+  SupplyObraUsage,
+} from "@/lib/types";
+
+/** Chave do grupo dos serviços que ficaram sem setor. */
+const SEM_SETOR = "sem-setor";
 
 interface Props {
   open: boolean;
@@ -25,23 +35,45 @@ interface Props {
   obras: SupplyObraUsage[];
   /** Setores de todas as obras — o diálogo filtra os da obra escolhida. */
   sectors: SupplyObraSector[];
+  /** Serviços de todas as obras — idem (migration 069). */
+  servicos?: SupplyObraServicoView[];
+  /** Quem pode receber pelo serviço — o cadastro de Colaboradores. */
+  colaboradores?: Diarista[];
   /** Obra já escolhida (veio do detalhe dela). */
   presetObraId?: string | null;
 }
 
 /**
- * Cadastro dos SETORES de cada obra — o subcadastro que o técnico escolhe em
- * "Setor aplicado". É aqui que o patrão diz quais são os lugares de uma obra
- * ("entrada", "galpão 2", "área externa") para o técnico só tocar, em vez de
- * cada um escrever de um jeito.
+ * Cadastro dos SETORES de cada obra e do SERVIÇO feito em cada um.
  *
- * Apagar um setor NÃO apaga os envios que já usaram ele: eles ficam sem setor.
+ * O setor é o lugar ("entrada", "galpão 2") — é o que o técnico escolhe em
+ * "Setor aplicado". O SERVIÇO é o que foi feito ali e quanto se paga a quem
+ * fez: cerca, alvenaria, pintura, contratados por empreita (preço fechado) ou
+ * por metro (valor do metro × metragem).
+ *
+ * O valor do serviço entra no custo da obra E na conta do colaborador, onde é
+ * quitado no acerto — o empreiteiro fecha a semana como o diarista fecha.
+ *
+ * Apagar um setor NÃO apaga os envios nem os serviços dele: eles ficam sem setor.
  */
-export function SupplyObraSectorsDialog({ open, onClose, obras, sectors, presetObraId }: Props) {
+export function SupplyObraSectorsDialog({
+  open,
+  onClose,
+  obras,
+  sectors,
+  servicos = [],
+  colaboradores = [],
+  presetObraId,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [obraId, setObraId] = useState("");
   const [name, setName] = useState("");
+
+  /** Serviço aberto: `servico` corrige um existente, `sectorId` lança um novo. */
+  const [servicoOpen, setServicoOpen] = useState(false);
+  const [servicoEdit, setServicoEdit] = useState<SupplyObraServicoView | null>(null);
+  const [servicoSectorId, setServicoSectorId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -51,7 +83,36 @@ export function SupplyObraSectorsDialog({ open, onClose, obras, sectors, presetO
     setError(null);
   }, [open, presetObraId, obras]);
 
-  const obraSectors = sectors.filter((s) => s.obra_id === obraId);
+  const obraSectors = useMemo(
+    () => sectors.filter((s) => s.obra_id === obraId),
+    [sectors, obraId]
+  );
+  const obra = obras.find((o) => o.id === obraId) ?? null;
+
+  /** Os serviços desta obra, agrupados pelo setor onde foram feitos. */
+  const porSetor = useMemo(() => {
+    const map = new Map<string, SupplyObraServicoView[]>();
+    for (const s of servicos) {
+      if (s.obra_id !== obraId) continue;
+      const key = s.sector_id ?? SEM_SETOR;
+      const lista = map.get(key) ?? [];
+      lista.push(s);
+      map.set(key, lista);
+    }
+    for (const lista of map.values())
+      lista.sort((a, b) => b.service_date.localeCompare(a.service_date));
+    return map;
+  }, [servicos, obraId]);
+
+  /** Os serviços da obra que ficaram sem setor (o setor foi apagado depois). */
+  const semSetor = porSetor.get(SEM_SETOR) ?? [];
+  const totalServicos = useMemo(
+    () =>
+      servicos
+        .filter((s) => s.obra_id === obraId)
+        .reduce((acc, s) => acc + num(s.total_value), 0),
+    [servicos, obraId]
+  );
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -75,12 +136,11 @@ export function SupplyObraSectorsDialog({ open, onClose, obras, sectors, presetO
   }
 
   function handleDelete(s: SupplyObraSector) {
-    if (
-      !confirm(
-        `Apagar o setor "${s.name}"? Os envios que já usaram ele continuam guardados, só ficam sem setor.`
-      )
-    )
-      return;
+    const qtd = (porSetor.get(s.id) ?? []).length;
+    const aviso = qtd
+      ? `Apagar o setor "${s.name}"? Os ${qtd} ${qtd === 1 ? "serviço" : "serviços"} lançados nele continuam valendo — só ficam sem setor.`
+      : `Apagar o setor "${s.name}"? Os envios que já usaram ele continuam guardados, só ficam sem setor.`;
+    if (!confirm(aviso)) return;
     setError(null);
     startTransition(async () => {
       const r = await deleteSupplyObraSector(s.id);
@@ -88,15 +148,22 @@ export function SupplyObraSectorsDialog({ open, onClose, obras, sectors, presetO
     });
   }
 
+  /** Abre o lançamento: `servico` nulo é um serviço novo naquele setor. */
+  function abrirServico(sectorId: string | null, servico: SupplyObraServicoView | null) {
+    setServicoSectorId(sectorId);
+    setServicoEdit(servico);
+    setServicoOpen(true);
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
             <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-orange-50 text-orange-500 dark:bg-orange-900/30 dark:text-orange-400">
               <MapPin className="w-4 h-4" />
             </span>
-            Setores da obra
+            Setores e serviços
           </DialogTitle>
         </DialogHeader>
 
@@ -147,7 +214,19 @@ export function SupplyObraSectorsDialog({ open, onClose, obras, sectors, presetO
                 </form>
               </div>
 
-              <div className="space-y-1.5">
+              {/* Quanto já foi combinado de serviço nesta obra */}
+              {totalServicos > 0 && (
+                <div className="rounded-xl border border-teal-200 dark:border-teal-900/50 bg-teal-50/60 dark:bg-teal-950/20 px-3 py-2.5 flex items-baseline justify-between gap-2">
+                  <span className="text-xs font-medium text-teal-800 dark:text-teal-300">
+                    Serviços contratados nesta obra
+                  </span>
+                  <span className="text-base font-bold text-teal-700 dark:text-teal-300 tabular-nums">
+                    {formatBRL(totalServicos)}
+                  </span>
+                </div>
+              )}
+
+              <div className="space-y-2">
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
                   {obraSectors.length === 0
                     ? "Nenhum setor nesta obra ainda"
@@ -155,26 +234,46 @@ export function SupplyObraSectorsDialog({ open, onClose, obras, sectors, presetO
                       ? "1 setor cadastrado"
                       : `${obraSectors.length} setores cadastrados`}
                 </p>
-                {obraSectors.length > 0 && (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                    {obraSectors.map((s) => (
-                      <div key={s.id} className="flex items-center gap-2 px-3 py-2">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                        <span className="flex-1 min-w-0 truncate text-sm text-slate-700 dark:text-slate-200">
-                          {s.name}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(s)}
-                          disabled={isPending}
-                          aria-label={`Apagar o setor ${s.name}`}
-                          className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+
+                {obraSectors.map((s) => (
+                  <SetorCard
+                    key={s.id}
+                    setor={s}
+                    servicos={porSetor.get(s.id) ?? []}
+                    disabled={isPending}
+                    onDelete={() => handleDelete(s)}
+                    onNovoServico={() => abrirServico(s.id, null)}
+                    onAbrirServico={(sv) => abrirServico(s.id, sv)}
+                  />
+                ))}
+
+                {/* Serviços cujo setor foi apagado — o valor não some com ele */}
+                {semSetor.length > 0 && (
+                  <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-3 space-y-2">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Serviços sem setor
+                    </p>
+                    {semSetor.map((sv) => (
+                      <ServicoLinha
+                        key={sv.id}
+                        servico={sv}
+                        onClick={() => abrirServico(null, sv)}
+                      />
                     ))}
                   </div>
+                )}
+
+                {/* Serviço sem setor nenhum: a obra pode não ter setor cadastrado */}
+                {obraSectors.length === 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => abrirServico(null, null)}
+                  >
+                    <HardHat className="w-4 h-4" />
+                    Lançar serviço sem setor
+                  </Button>
                 )}
               </div>
             </>
@@ -187,11 +286,125 @@ export function SupplyObraSectorsDialog({ open, onClose, obras, sectors, presetO
           )}
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            É o que o técnico escolhe em &quot;Setor aplicado&quot; quando avisa o material
-            que usou. Sem setor cadastrado ele escreve o lugar na mão.
+            O setor é o que o técnico escolhe em &quot;Setor aplicado&quot;. O serviço diz
+            o que foi feito ali e quanto se paga a quem fez — por empreita ou por metro
+            —, e esse valor cai na conta do colaborador.
           </p>
         </div>
+
+        {obra && (
+          <ServicoDialog
+            open={servicoOpen}
+            onClose={() => setServicoOpen(false)}
+            obraId={obra.id}
+            obraNome={obra.name}
+            sectors={obraSectors}
+            presetSectorId={servicoSectorId}
+            colaboradores={colaboradores}
+            servico={servicoEdit}
+          />
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Um setor com os serviços que foram feitos nele. */
+function SetorCard({
+  setor,
+  servicos,
+  disabled,
+  onDelete,
+  onNovoServico,
+  onAbrirServico,
+}: {
+  setor: SupplyObraSector;
+  servicos: SupplyObraServicoView[];
+  disabled: boolean;
+  onDelete: () => void;
+  onNovoServico: () => void;
+  onAbrirServico: (servico: SupplyObraServicoView) => void;
+}) {
+  const total = servicos.reduce((s, v) => s + num(v.total_value), 0);
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800/60">
+        <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+        <span className="flex-1 min-w-0 truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {setor.name}
+        </span>
+        {total > 0 && (
+          <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 tabular-nums flex-shrink-0">
+            {formatBRL(total)}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={disabled}
+          aria-label={`Apagar o setor ${setor.name}`}
+          className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40 flex-shrink-0"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      {servicos.length > 0 && (
+        <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          {servicos.map((sv) => (
+            <ServicoLinha key={sv.id} servico={sv} onClick={() => onAbrirServico(sv)} />
+          ))}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onNovoServico}
+        className="w-full min-h-[40px] flex items-center justify-center gap-1.5 text-[11px] font-medium text-teal-600 dark:text-teal-400 border-t border-slate-100 dark:border-slate-800 hover:bg-teal-50/60 dark:hover:bg-teal-950/20 transition-colors"
+      >
+        <Plus className="w-3.5 h-3.5" />
+        {servicos.length > 0 ? "Outro serviço neste setor" : "Definir o serviço deste setor"}
+      </button>
+    </div>
+  );
+}
+
+/** Uma linha de serviço: o que foi, como foi contratado e quanto vale. */
+function ServicoLinha({
+  servico,
+  onClick,
+}: {
+  servico: SupplyObraServicoView;
+  onClick: () => void;
+}) {
+  const metro = servico.contract_mode === "metro";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-start gap-2.5 px-3 py-2 text-left active:bg-slate-50 dark:active:bg-slate-800 transition-colors"
+    >
+      <span className="w-1.5 h-9 rounded-full bg-teal-400 flex-shrink-0" />
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+          {servico.service_type}
+        </span>
+        <span className="block text-[11px] text-slate-400 truncate">
+          {metro
+            ? `${formatQty(num(servico.quantity))} ${servico.unit} × ${formatBRL(num(servico.rate_per_unit))}`
+            : "empreita"}
+          {" · "}
+          {formatDate(servico.service_date)}
+        </span>
+        <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">
+          {servico.worker_name ?? "sem profissional"}
+          {servico.acerto_id ? " · já acertado" : ""}
+        </span>
+      </span>
+      <span className="text-sm font-semibold text-teal-700 dark:text-teal-400 tabular-nums flex-shrink-0">
+        {formatBRL(num(servico.total_value))}
+      </span>
+    </button>
   );
 }

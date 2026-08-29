@@ -107,7 +107,7 @@ export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }
             <CardContent className="py-10 text-center space-y-1">
               <Users className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600" />
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Nenhum diarista cadastrado ainda.
+                Nenhum colaborador cadastrado ainda.
               </p>
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
                 Quem cadastra é o chefe — peça para ele incluir a pessoa.
@@ -163,7 +163,7 @@ export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }
         className="flex items-center gap-1.5 min-h-[44px] -ml-1 px-1 text-sm font-medium text-produmar-600 dark:text-produmar-400"
       >
         <ArrowLeft className="w-4 h-4" />
-        Diaristas
+        Colaboradores
       </button>
 
       <div className="flex items-center gap-3">
@@ -240,7 +240,7 @@ function Cabecalho() {
         <Users className="w-6 h-6 text-produmar-600 dark:text-produmar-300" />
       </div>
       <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Diaristas</h1>
+        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Colaboradores</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Hoje, {formatDate(localDateISO())}
         </p>

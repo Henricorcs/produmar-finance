@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 const ABAS = [
   { href: "/tecnico", label: "Material", icon: PackageOpen },
-  { href: "/tecnico/diaristas", label: "Diaristas", icon: Users },
+  { href: "/tecnico/diaristas", label: "Colaborador", icon: Users },
   { href: "/tecnico/cerca", label: "Cerca", icon: Fence },
 ];
 

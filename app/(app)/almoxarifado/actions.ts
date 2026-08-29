@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { removeSupplyPhotoIfUnused } from "@/lib/supply-photos";
-import type { SupplyMovementType } from "@/lib/types";
+import type { ContractMode, SupplyMovementType } from "@/lib/types";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -608,9 +608,10 @@ export async function updateSupplyObra(id: string, input: SupplyObraInput) {
 }
 
 /**
- * O extrato da obra: tudo que ela gastou em linha do tempo — material que saiu
- * do Estoque e diárias — vindo já somado na mesma forma pela view da migration
- * 066. É o que responde quando foi, com o que foi, quanto custou e quem usou.
+ * O extrato da obra: tudo que ela gastou em linha do tempo — material do
+ * Estoque, diárias, despesas avulsas e serviços por empreita/metro — vindo já
+ * somado na mesma forma pela view (migrations 066, 067 e 069). É o que responde
+ * quando foi, com o que foi, quanto custou e quem usou.
  */
 export async function getSupplyObraExtrato(obraId: string) {
   const supabase = createClient();
@@ -856,8 +857,11 @@ export async function rejectSupplyRequest(requestId: string) {
 
 /**
  * Remove a obra. As saídas e as diárias dela NÃO somem — ficam sem obra. As
- * despesas avulsas somem junto (só existiam por causa desta obra), então os
- * comprovantes delas saem do storage antes.
+ * despesas avulsas e os serviços contratados somem junto (só existiam por causa
+ * desta obra), então os comprovantes das despesas saem do storage antes.
+ *
+ * O acerto já feito continua inteiro: ele guarda o valor congelado do que foi
+ * pago (068), então apagar a obra não reescreve o que o colaborador recebeu.
  */
 export async function deleteSupplyObra(id: string) {
   const supabase = createClient();
@@ -910,7 +914,8 @@ export async function createSupplyObraSector(obraId: string, name: string) {
 
 /**
  * Apaga o setor. Os envios que já apontavam para ele NÃO somem — ficam sem
- * setor (o `on delete set null` da 057).
+ * setor (o `on delete set null` da 057). O mesmo vale para os serviços
+ * lançados nele (069): o valor a pagar continua na obra e na conta de quem fez.
  */
 export async function deleteSupplyObraSector(id: string) {
   const supabase = createClient();
@@ -918,6 +923,156 @@ export async function deleteSupplyObraSector(id: string) {
   if (error) return { error: supplyError(error) };
   revalidate();
   revalidatePath("/tecnico");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVIÇO DO SETOR — o que foi feito ali e quanto se paga (migration 069)
+// ─────────────────────────────────────────────────────────────────────────────
+// O setor deixou de ser só um nome: ele diz QUAL serviço foi feito e COMO o
+// profissional foi contratado — empreita (preço fechado) ou por metro (valor do
+// metro × metragem). O valor a pagar sai daí, entra no custo da obra e vai
+// direto para a conta do colaborador, onde é quitado no acerto (068).
+
+function servicoError(error: { code?: string; message: string }): string {
+  if (
+    error.code === "42P01" ||
+    error.message.includes("supply_obra_servicos") ||
+    error.message.includes("worker_type")
+  )
+    return "Rode a migration 069 no Supabase para lançar o serviço do setor";
+  return supplyError(error);
+}
+
+/** Serviço mexe em dinheiro do colaborador: a ficha dele acompanha. */
+function revalidateServico() {
+  revalidate();
+  revalidatePath("/diaristas");
+}
+
+export interface SupplyObraServicoInput {
+  obra_id: string;
+  sector_id?: string | null;
+  /** CERCA, ALVENARIA, PINTURA... texto livre. */
+  service_type: string;
+  /** Quem vai receber. Vazio = o custo fica na obra, sem dono. */
+  diarista_id?: string | null;
+  contract_mode: ContractMode;
+  /** Vale na empreita: o preço fechado do serviço. */
+  contract_amount?: number | null;
+  /** Valem no por metro: o preço do metro e a metragem. */
+  rate_per_unit?: number | null;
+  quantity?: number | null;
+  unit?: string | null;
+  service_date?: string | null;
+  description?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Monta a linha do serviço já com a regra das duas contratações: o lado que não
+ * vale vai ZERADO para o banco. Sem isso, trocar de "por metro" para "empreita"
+ * deixaria a metragem antiga guardada, e a tela mostraria uma conta que não é
+ * a que está sendo paga.
+ */
+function servicoRow(input: SupplyObraServicoInput) {
+  const metro = input.contract_mode === "metro";
+  return {
+    obra_id: input.obra_id,
+    sector_id: input.sector_id || null,
+    service_type: clean(input.service_type),
+    diarista_id: input.diarista_id || null,
+    contract_mode: metro ? "metro" : "empreita",
+    contract_amount: metro ? 0 : normMoney(input.contract_amount),
+    rate_per_unit: metro ? normMoney(input.rate_per_unit) : 0,
+    quantity: metro ? normQty(input.quantity) : 0,
+    unit: clean(input.unit) ?? "M",
+    service_date: input.service_date?.trim() || undefined,
+    description: clean(input.description),
+    notes: clean(input.notes),
+  };
+}
+
+/** O que falta preencher, na ordem em que a tela pergunta. */
+function servicoInvalido(input: SupplyObraServicoInput): string | null {
+  if (!input.obra_id) return "Obra não informada";
+  if (!clean(input.service_type)) return "Informe qual serviço foi feito";
+  if (input.contract_mode === "metro") {
+    if (normMoney(input.rate_per_unit) <= 0) return "Informe o valor do metro";
+    if (normQty(input.quantity) <= 0) return "Informe a metragem (ou a quantidade)";
+    return null;
+  }
+  if (normMoney(input.contract_amount) <= 0) return "Informe o valor da empreita";
+  return null;
+}
+
+export async function createSupplyObraServico(input: SupplyObraServicoInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const falta = servicoInvalido(input);
+  if (falta) return { error: falta };
+
+  const { error } = await supabase
+    .from("supply_obra_servicos")
+    .insert({ ...servicoRow(input), created_by: user.id });
+
+  if (error) return { error: servicoError(error) };
+  revalidateServico();
+  return { ok: true };
+}
+
+/**
+ * Corrige o serviço. Serviço JÁ ACERTADO não muda: o acerto guarda o valor que
+ * foi pago, e mexer aqui faria o recibo contar uma história diferente da conta.
+ */
+export async function updateSupplyObraServico(
+  id: string,
+  input: SupplyObraServicoInput
+) {
+  const supabase = createClient();
+
+  const falta = servicoInvalido(input);
+  if (falta) return { error: falta };
+
+  const { data: atual } = await supabase
+    .from("supply_obra_servicos")
+    .select("acerto_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (atual?.acerto_id)
+    return { error: "Este serviço já foi acertado. Desfaça o acerto primeiro." };
+
+  const { error } = await supabase
+    .from("supply_obra_servicos")
+    .update(servicoRow(input))
+    .eq("id", id);
+
+  if (error) return { error: servicoError(error) };
+  revalidateServico();
+  return { ok: true };
+}
+
+/** Apaga o serviço. Também barrado depois do acerto, pelo mesmo motivo. */
+export async function deleteSupplyObraServico(id: string) {
+  const supabase = createClient();
+
+  const { data: atual } = await supabase
+    .from("supply_obra_servicos")
+    .select("acerto_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (atual?.acerto_id)
+    return { error: "Este serviço já foi acertado. Desfaça o acerto primeiro." };
+
+  const { error } = await supabase.from("supply_obra_servicos").delete().eq("id", id);
+  if (error) return { error: servicoError(error) };
+  revalidateServico();
   return { ok: true };
 }
 

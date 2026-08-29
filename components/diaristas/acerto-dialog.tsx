@@ -30,6 +30,7 @@ import type {
   DiaristaAdiantamento,
   DiaristaDia,
   DiaristaResumo,
+  SupplyObraServicoView,
 } from "@/lib/types";
 
 interface Props {
@@ -46,15 +47,21 @@ interface Props {
    * pode ver na tela o valor que inclui o domingo.
    */
   dias: DiaristaDia[];
+  /** Os serviços fechados (069) — entram no mesmo corte que as diárias. */
+  servicos?: SupplyObraServicoView[];
 }
 
 /**
- * A CONTA do diarista: o que ele tem a receber, o que já pegou adiantado e o
+ * A CONTA do colaborador: o que ele tem a receber, o que já pegou adiantado e o
  * que sobra para pagar no acerto.
  *
+ * O que ele tem a receber vem de duas origens: as DIÁRIAS marcadas no
+ * calendário e os SERVIÇOS fechados no setor da obra — empreita ou metro. O
+ * empreiteiro fecha a conta pela mesma porta que o diarista.
+ *
  * O adiantamento é o vale do meio da semana. O acerto é o pagamento: fecha as
- * diárias em aberto, desconta os vales e pinta aqueles dias de CINZA no
- * calendário — a partir dali eles não entram mais na conta da próxima semana.
+ * diárias e os serviços em aberto, desconta os vales e pinta aqueles dias de
+ * CINZA no calendário — a partir dali nada disso entra na próxima semana.
  */
 export function AcertoDialog({
   open,
@@ -63,6 +70,7 @@ export function AcertoDialog({
   adiantamentos,
   acertos,
   dias,
+  servicos = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -111,30 +119,46 @@ export function AcertoDialog({
   const adiantado = Number(diarista?.advance_pending ?? 0);
   const saldo = Number(diarista?.balance ?? aReceber - adiantado);
   const diasAbertos = Number(diarista?.pending_days ?? 0);
+  const servicosAbertosTotal = Number(diarista?.pending_services ?? 0);
 
   /**
-   * O que ENTRA neste acerto: só o que aconteceu até a data de corte. É a mesma
-   * conta que o servidor refaz na hora de gravar — aqui ela existe para o botão
-   * não prometer um valor diferente do que vai ser pago.
+   * O que ENTRA neste acerto: só o que aconteceu até a data de corte — diárias
+   * E serviços. É a mesma conta que o servidor refaz na hora de gravar; aqui
+   * ela existe para o botão não prometer um valor diferente do que vai ser pago.
    */
   const doAcerto = useMemo(() => {
     const diasNoCorte = dias.filter(
       (d) => d.diarista_id === diarista?.id && !d.acerto_id && d.work_date <= acertoData
     );
+    const servicosNoCorte = servicos.filter(
+      (s) =>
+        s.diarista_id === diarista?.id && !s.acerto_id && s.service_date <= acertoData
+    );
     const valesNoCorte = valesAbertos.filter((v) => v.advance_date <= acertoData);
-    const totalDias = diasNoCorte.reduce((s, d) => s + Number(d.daily_rate), 0);
+    const totalDiarias = diasNoCorte.reduce((s, d) => s + Number(d.daily_rate), 0);
+    const totalServicos = servicosNoCorte.reduce(
+      (s, v) => s + Number(v.total_value),
+      0
+    );
     const totalVales = valesNoCorte.reduce((s, v) => s + Number(v.amount), 0);
     return {
       dias: diasNoCorte.length,
+      servicos: servicosNoCorte.length,
       vales: valesNoCorte.length,
-      totalDias,
+      totalDiarias,
+      totalServicos,
+      /** O que ele tem a receber neste corte, das duas origens somadas. */
+      totalDias: totalDiarias + totalServicos,
       totalVales,
-      aPagar: totalDias - totalVales,
+      aPagar: totalDiarias + totalServicos - totalVales,
     };
-  }, [dias, valesAbertos, diarista?.id, acertoData]);
+  }, [dias, servicos, valesAbertos, diarista?.id, acertoData]);
 
   /** O corte deixou algo de fora? Então vale avisar, para ninguém se assustar. */
-  const sobraForaDoCorte = diasAbertos > doAcerto.dias || valesAbertos.length > doAcerto.vales;
+  const sobraForaDoCorte =
+    diasAbertos > doAcerto.dias ||
+    servicosAbertosTotal > doAcerto.servicos ||
+    valesAbertos.length > doAcerto.vales;
 
   function handleAddVale(e: React.FormEvent) {
     e.preventDefault();
@@ -174,10 +198,15 @@ export function AcertoDialog({
     setError(null);
     const msg =
       `Fechar o acerto de ${diarista!.name} até ${formatDate(acertoData)}?\n\n` +
-      `Diárias: ${formatBRL(doAcerto.totalDias)}\n` +
+      (doAcerto.totalDiarias > 0
+        ? `Diárias: ${formatBRL(doAcerto.totalDiarias)}\n`
+        : "") +
+      (doAcerto.totalServicos > 0
+        ? `Serviços: ${formatBRL(doAcerto.totalServicos)}\n`
+        : "") +
       `Adiantado: −${formatBRL(doAcerto.totalVales)}\n` +
       `A pagar agora: ${formatBRL(doAcerto.aPagar)}\n\n` +
-      `Esses dias ficam cinza no calendário e saem da conta da próxima semana.`;
+      `Esses dias ficam cinza no calendário e os serviços saem da conta da próxima semana.`;
     if (!confirm(msg)) return;
 
     startTransition(async () => {
@@ -196,7 +225,7 @@ export function AcertoDialog({
   function handleDesfazer(a: DiaristaAcerto) {
     if (
       !confirm(
-        `Desfazer o acerto de ${formatDate(a.settled_on)}?\n\nAs diárias voltam a contar como em aberto e os adiantamentos daquele acerto voltam a ser descontados.`
+        `Desfazer o acerto de ${formatDate(a.settled_on)}?\n\nAs diárias e os serviços voltam a contar como em aberto e os adiantamentos daquele acerto voltam a ser descontados.`
       )
     )
       return;
@@ -211,7 +240,8 @@ export function AcertoDialog({
 
   // olha o que entra NESTE corte, não a conta inteira: com a data recuada para
   // antes da primeira diária não há acerto a fazer, e o botão tem que dizer isso
-  const podeAcertar = doAcerto.dias > 0 || doAcerto.vales > 0;
+  const podeAcertar =
+    doAcerto.dias > 0 || doAcerto.servicos > 0 || doAcerto.vales > 0;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -232,9 +262,16 @@ export function AcertoDialog({
             <Linha
               label="Valor a receber"
               hint={
-                diasAbertos > 0
-                  ? `${diasAbertos} ${diasAbertos === 1 ? "diária" : "diárias"} em aberto`
-                  : "nenhuma diária em aberto"
+                [
+                  diasAbertos > 0
+                    ? `${diasAbertos} ${diasAbertos === 1 ? "diária" : "diárias"}`
+                    : null,
+                  servicosAbertosTotal > 0
+                    ? `${servicosAbertosTotal} ${servicosAbertosTotal === 1 ? "serviço" : "serviços"}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" + ") || "nada em aberto"
               }
               valor={formatBRL(aReceber)}
             />
@@ -369,16 +406,25 @@ export function AcertoDialog({
                 onChange={(e) => setAcertoData(e.target.value)}
               />
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Diária lançada depois dessa data continua em aberto para a próxima semana.
+                Diária ou serviço lançado depois dessa data continua em aberto para a
+                próxima semana.
               </p>
             </div>
 
             {podeAcertar && (
               <div className="text-[11px] text-slate-600 dark:text-slate-300 tabular-nums space-y-0.5">
-                <p>
-                  {doAcerto.dias} {doAcerto.dias === 1 ? "diária" : "diárias"} ·{" "}
-                  {formatBRL(doAcerto.totalDias)}
-                </p>
+                {doAcerto.dias > 0 && (
+                  <p>
+                    {doAcerto.dias} {doAcerto.dias === 1 ? "diária" : "diárias"} ·{" "}
+                    {formatBRL(doAcerto.totalDiarias)}
+                  </p>
+                )}
+                {doAcerto.servicos > 0 && (
+                  <p className="text-teal-700 dark:text-teal-400">
+                    {doAcerto.servicos} {doAcerto.servicos === 1 ? "serviço" : "serviços"}{" "}
+                    · {formatBRL(doAcerto.totalServicos)}
+                  </p>
+                )}
                 {doAcerto.totalVales > 0 && (
                   <p className="text-amber-700 dark:text-amber-400">
                     menos {doAcerto.vales}{" "}
@@ -420,7 +466,7 @@ export function AcertoDialog({
                         {formatDate(a.settled_on)}
                       </p>
                       <p className="text-[11px] text-slate-400 tabular-nums">
-                        diárias {formatBRL(Number(a.days_total))}
+                        a receber {formatBRL(Number(a.days_total))}
                         {Number(a.advance_total) > 0 &&
                           ` · adiantado −${formatBRL(Number(a.advance_total))}`}
                       </p>

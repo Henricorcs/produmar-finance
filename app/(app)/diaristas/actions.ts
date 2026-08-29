@@ -2,15 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { WorkerType } from "@/lib/types";
 
 /**
- * O cadastro do diarista é do chefe (/diaristas) e o calendário é do técnico
+ * O cadastro do colaborador é do chefe (/diaristas) e o calendário é do técnico
  * (/tecnico/diaristas): as duas telas mexem nos mesmos dados, então toda ação
- * revalida as duas.
+ * revalida as duas. O acerto também fecha serviço de obra (069), por isso
+ * /obras entra junto.
  */
 function revalidate() {
   revalidatePath("/diaristas");
   revalidatePath("/tecnico/diaristas");
+  revalidatePath("/obras");
 }
 
 function clean(s?: string | null): string | null {
@@ -46,12 +49,18 @@ function diaristaError(error: { code?: string; message: string }): string {
   if (error.message.includes("half_day"))
     return "Rode a migration 064 no Supabase para usar a meia diária";
   if (
+    error.message.includes("worker_type") ||
+    error.message.includes("profession") ||
+    error.message.includes("supply_obra_servicos")
+  )
+    return "Rode a migration 069 no Supabase para usar empreiteiro e serviço de obra";
+  if (
     error.message.includes("diarista_adiantamentos") ||
     error.message.includes("diarista_acertos") ||
     error.message.includes("acerto_id")
   )
     return "Rode a migration 068 no Supabase para usar adiantamento e acerto";
-  if (error.code === "23505") return "Já existe um diarista com esse nome";
+  if (error.code === "23505") return "Já existe um colaborador com esse nome";
   if (
     error.code === "42P01" ||
     error.message.includes("diarista_dias") ||
@@ -71,7 +80,20 @@ export interface DiaristaInput {
   phone?: string | null;
   pix_key?: string | null;
   daily_rate?: number | null;
+  /** Diarista (ganha por dia) ou empreiteiro (ganha por serviço) — 069. */
+  worker_type?: WorkerType | null;
+  /** Pedreiro, pintor, carpinteiro... texto livre (069). */
+  profession?: string | null;
   notes?: string | null;
+}
+
+/**
+ * O tipo é o que decide a tela: quem é diarista aparece no calendário do
+ * técnico, quem é empreiteiro recebe pelo serviço lançado no setor da obra.
+ * Qualquer coisa fora dos dois vira diarista — é como sempre foi.
+ */
+function cleanWorkerType(v?: WorkerType | null): WorkerType {
+  return v === "empreiteiro" ? "empreiteiro" : "diarista";
 }
 
 export async function createDiarista(input: DiaristaInput) {
@@ -82,7 +104,7 @@ export async function createDiarista(input: DiaristaInput) {
   if (!user) return { error: "Não autenticado" };
 
   const name = clean(input.name);
-  if (!name) return { error: "Informe o nome do diarista" };
+  if (!name) return { error: "Informe o nome do colaborador" };
 
   const { data, error } = await supabase
     .from("diaristas")
@@ -91,6 +113,8 @@ export async function createDiarista(input: DiaristaInput) {
       phone: clean(input.phone),
       pix_key: cleanPix(input.pix_key),
       daily_rate: normMoney(input.daily_rate),
+      worker_type: cleanWorkerType(input.worker_type),
+      profession: clean(input.profession),
       notes: clean(input.notes),
       created_by: user.id,
     })
@@ -106,7 +130,7 @@ export async function updateDiarista(id: string, input: DiaristaInput) {
   const supabase = createClient();
 
   const name = clean(input.name);
-  if (!name) return { error: "Informe o nome do diarista" };
+  if (!name) return { error: "Informe o nome do colaborador" };
 
   const { error } = await supabase
     .from("diaristas")
@@ -115,6 +139,8 @@ export async function updateDiarista(id: string, input: DiaristaInput) {
       phone: clean(input.phone),
       pix_key: cleanPix(input.pix_key),
       daily_rate: normMoney(input.daily_rate),
+      worker_type: cleanWorkerType(input.worker_type),
+      profession: clean(input.profession),
       notes: clean(input.notes),
     })
     .eq("id", id);
@@ -319,12 +345,17 @@ export async function deleteDiaristaAdiantamento(id: string) {
 }
 
 /**
- * Fecha a conta do diarista: soma as diárias ainda não acertadas, desconta os
- * vales em aberto e guarda quanto saiu de dinheiro. Os dias e os vales passam a
- * apontar para este acerto — é isso que pinta o dia de cinza no calendário.
+ * Fecha a conta do colaborador: soma as diárias E os serviços ainda não
+ * acertados, desconta os vales em aberto e guarda quanto saiu de dinheiro. Os
+ * dias, os serviços e os vales passam a apontar para este acerto — é isso que
+ * pinta o dia de cinza no calendário e tira o serviço da conta.
  *
- * `settled_on` também serve de corte: dia trabalhado DEPOIS dessa data continua
- * em aberto, para o acerto de sábado não levar junto o que veio no domingo.
+ * O empreiteiro fecha pela MESMA porta que o diarista: quem só tem serviço não
+ * tem dia nenhum no calendário, e mesmo assim acerta normalmente.
+ *
+ * `settled_on` também serve de corte: dia trabalhado (ou serviço feito) DEPOIS
+ * dessa data continua em aberto, para o acerto de sábado não levar junto o que
+ * veio no domingo.
  */
 export async function createDiaristaAcerto(input: {
   diarista_id: string;
@@ -337,10 +368,10 @@ export async function createDiaristaAcerto(input: {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
 
-  if (!input.diarista_id) return { error: "Diarista não informado" };
+  if (!input.diarista_id) return { error: "Colaborador não informado" };
   const ate = cleanDate(input.settled_on) ?? new Date().toISOString().slice(0, 10);
 
-  const [diasRes, valesRes] = await Promise.all([
+  const [diasRes, valesRes, servicosRes] = await Promise.all([
     supabase
       .from("diarista_dias")
       .select("id, daily_rate")
@@ -353,6 +384,14 @@ export async function createDiaristaAcerto(input: {
       .eq("diarista_id", input.diarista_id)
       .is("acerto_id", null)
       .lte("advance_date", ate),
+    // sem a migration 069 a tabela não existe: o acerto segue só com as
+    // diárias, exatamente como era antes (ver o tratamento do erro abaixo)
+    supabase
+      .from("supply_obra_servicos")
+      .select("id, total_value")
+      .eq("diarista_id", input.diarista_id)
+      .is("acerto_id", null)
+      .lte("service_date", ate),
   ]);
 
   if (diasRes.error) return { error: diaristaError(diasRes.error) };
@@ -360,10 +399,20 @@ export async function createDiaristaAcerto(input: {
 
   const dias = diasRes.data ?? [];
   const vales = valesRes.data ?? [];
-  if (dias.length === 0 && vales.length === 0)
-    return { error: "Não há diária nem adiantamento em aberto até essa data" };
+  // a tabela pode não existir ainda (migration 069 não rodada) — nesse caso o
+  // acerto continua funcionando com o que existia antes, sem quebrar a tela
+  const servicos = servicosRes.error ? [] : servicosRes.data ?? [];
 
-  const diasTotal = normMoney(dias.reduce((s, d) => s + Number(d.daily_rate), 0));
+  if (dias.length === 0 && vales.length === 0 && servicos.length === 0)
+    return { error: "Não há diária, serviço nem adiantamento em aberto até essa data" };
+
+  const diariasTotal = normMoney(dias.reduce((s, d) => s + Number(d.daily_rate), 0));
+  const servicosTotal = normMoney(
+    servicos.reduce((s, v) => s + Number(v.total_value), 0)
+  );
+  // days_total é a coluna do recibo (068): guarda o que ele TINHA A RECEBER,
+  // venha de dia trabalhado ou de serviço fechado
+  const diasTotal = normMoney(diariasTotal + servicosTotal);
   const valesTotal = normMoney(vales.reduce((s, v) => s + Number(v.amount), 0));
   const aPagar = normMoney(diasTotal - valesTotal);
 
@@ -392,8 +441,9 @@ export async function createDiaristaAcerto(input: {
   if (acertoErr || !acerto)
     return { error: acertoErr ? diaristaError(acertoErr) : "Erro ao registrar o acerto" };
 
-  // Carimba os dias e os vales. Se algo falhar aqui, o acerto é desfeito: meio
-  // acerto é pior que nenhum — ficariam dias pagos e dias em aberto sem razão.
+  // Carimba os dias, os serviços e os vales. Se algo falhar aqui, o acerto é
+  // desfeito: meio acerto é pior que nenhum — ficariam dias pagos e dias em
+  // aberto sem razão.
   const acertoId = acerto.id as string;
 
   if (dias.length > 0) {
@@ -401,6 +451,17 @@ export async function createDiaristaAcerto(input: {
       .from("diarista_dias")
       .update({ acerto_id: acertoId })
       .in("id", dias.map((d) => d.id));
+    if (error) {
+      await supabase.from("diarista_acertos").delete().eq("id", acertoId);
+      return { error: diaristaError(error) };
+    }
+  }
+
+  if (servicos.length > 0) {
+    const { error } = await supabase
+      .from("supply_obra_servicos")
+      .update({ acerto_id: acertoId })
+      .in("id", servicos.map((v) => v.id));
     if (error) {
       await supabase.from("diarista_acertos").delete().eq("id", acertoId);
       return { error: diaristaError(error) };
@@ -419,7 +480,7 @@ export async function createDiaristaAcerto(input: {
   }
 
   revalidate();
-  return { ok: true, acertoId, diasTotal, valesTotal, aPagar };
+  return { ok: true, acertoId, diasTotal, diariasTotal, servicosTotal, valesTotal, aPagar };
 }
 
 /**

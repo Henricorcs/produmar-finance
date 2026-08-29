@@ -72,7 +72,7 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
         className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex items-center justify-between px-6 pb-3 shadow-lg"
         style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
       >
-        <span className="font-semibold text-sm">Diaristas</span>
+        <span className="font-semibold text-sm">Colaboradores</span>
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
@@ -102,7 +102,7 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
               <h1 className="text-[22px] font-black text-produmar-700 tracking-tight leading-none">
                 PRODUMAR
               </h1>
-              <p className="text-[10px] text-slate-500 mt-1">Controle de diaristas</p>
+              <p className="text-[10px] text-slate-500 mt-1">Controle de diárias dos colaboradores</p>
             </div>
             <div className="text-right">
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.15em]">
@@ -126,7 +126,7 @@ export function DiaristasPrint({ dias, from, to, filterLabel }: Props) {
               <table className="w-full text-[12px]">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 text-left">
-                    <th className="py-1.5 px-2 font-semibold border border-slate-200">Diarista</th>
+                    <th className="py-1.5 px-2 font-semibold border border-slate-200">Colaborador</th>
                     <th className="py-1.5 px-2 font-semibold border border-slate-200">Chave PIX</th>
                     <th className="py-1.5 px-2 font-semibold border border-slate-200 text-center">
                       Dias

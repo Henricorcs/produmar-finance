@@ -28,7 +28,10 @@ import type {
   DiaristaDia,
   DiaristaResumo,
   SupplyObraSector,
+  SupplyObraServicoView,
+  WorkerType,
 } from "@/lib/types";
+import { WORKER_TYPE_LABEL } from "@/lib/types";
 
 interface Props {
   diaristas: DiaristaResumo[];
@@ -39,15 +42,23 @@ interface Props {
   adiantamentos?: DiaristaAdiantamento[];
   /** Acertos já feitos, para o histórico e para desfazer (068). */
   acertos?: DiaristaAcerto[];
+  /**
+   * Serviços por empreita / por metro combinados nos setores das obras (069).
+   * Eles são lançados em Obras; aqui entram na conta de quem os fez.
+   */
+  servicos?: SupplyObraServicoView[];
 }
 
-type Tab = "pessoas" | "dias";
+type Tab = "pessoas" | "dias" | "servicos";
 
 /**
- * A tela do chefe: quem são os diaristas, quanto cada um ganha por dia, para
- * onde vai o PIX — e o fechamento do mês, dia a dia, com o relatório para pagar.
+ * A tela do chefe: quem são os colaboradores — diaristas e empreiteiros —,
+ * quanto cada um ganha, para onde vai o PIX, e o fechamento do mês com o
+ * relatório para pagar.
  *
- * Quem marca o dia é o técnico, na tela dele. Aqui é onde isso vira conta.
+ * O diarista vem por dia: quem marca o dia é o técnico, na tela dele. O
+ * empreiteiro vem por serviço: quem lança o serviço é o chefe, no setor da
+ * obra. As duas coisas caem aqui, viram conta e são pagas no mesmo acerto.
  */
 export function DiaristasPageClient({
   diaristas,
@@ -56,6 +67,7 @@ export function DiaristasPageClient({
   sectors,
   adiantamentos = [],
   acertos = [],
+  servicos = [],
 }: Props) {
   const hoje = new Date();
   const [year, setYear] = useState(hoje.getFullYear());
@@ -63,6 +75,8 @@ export function DiaristasPageClient({
   const [tab, setTab] = useState<Tab>("pessoas");
   const [search, setSearch] = useState("");
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
+  /** Filtro por tipo: "" = todos, "diarista", "empreiteiro". */
+  const [tipoFiltro, setTipoFiltro] = useState<"" | WorkerType>("");
 
   const [cadastroOpen, setCadastroOpen] = useState(false);
   const [editando, setEditando] = useState<Diarista | null>(null);
@@ -89,21 +103,58 @@ export function DiaristasPageClient({
     [dias, from, to]
   );
 
-  /** Quantos dias (e quantas meias) e quanto cada um fez no mês. */
+  /** Os serviços feitos no mês que está na tela — a metade do empreiteiro. */
+  const servicosDoMes = useMemo(
+    () =>
+      servicos
+        .filter((s) => s.service_date >= from && s.service_date <= to)
+        .sort((a, b) => b.service_date.localeCompare(a.service_date)),
+    [servicos, from, to]
+  );
+
+  /**
+   * Quanto cada um fez no mês, das DUAS origens: os dias marcados e os serviços
+   * fechados. É o número que aparece no cartão da pessoa.
+   */
   const resumoDoMes = useMemo(() => {
-    const map = new Map<string, { dias: number; meias: number; total: number }>();
+    const map = new Map<
+      string,
+      { dias: number; meias: number; servicos: number; total: number }
+    >();
     for (const d of diasDoMes) {
-      const cur = map.get(d.diarista_id) ?? { dias: 0, meias: 0, total: 0 };
+      const cur = map.get(d.diarista_id) ?? {
+        dias: 0,
+        meias: 0,
+        servicos: 0,
+        total: 0,
+      };
       cur.dias += 1;
       if (d.half_day) cur.meias += 1;
       // o valor da meia diária já está pela metade no lançamento (migration 064)
       cur.total += Number(d.daily_rate);
       map.set(d.diarista_id, cur);
     }
+    for (const s of servicosDoMes) {
+      if (!s.diarista_id) continue;
+      const cur = map.get(s.diarista_id) ?? {
+        dias: 0,
+        meias: 0,
+        servicos: 0,
+        total: 0,
+      };
+      cur.servicos += 1;
+      cur.total += Number(s.total_value);
+      map.set(s.diarista_id, cur);
+    }
     return map;
-  }, [diasDoMes]);
+  }, [diasDoMes, servicosDoMes]);
 
-  const totalMes = diasDoMes.reduce((s, d) => s + Number(d.daily_rate), 0);
+  const totalDiariasMes = diasDoMes.reduce((s, d) => s + Number(d.daily_rate), 0);
+  const totalServicosMes = servicosDoMes.reduce(
+    (s, v) => s + Number(v.total_value),
+    0
+  );
+  const totalMes = totalDiariasMes + totalServicosMes;
   const meiasDoMes = diasDoMes.filter((d) => d.half_day).length;
   const ativos = diaristas.filter((d) => d.active);
 
@@ -111,19 +162,29 @@ export function DiaristasPageClient({
     const q = search.trim().toLowerCase();
     return diaristas
       .filter((d) => (mostrarArquivados ? true : d.active))
-      .filter((d) => (q ? d.name.toLowerCase().includes(q) : true))
+      .filter((d) =>
+        q
+          ? d.name.toLowerCase().includes(q) ||
+            (d.profession ?? "").toLowerCase().includes(q)
+          : true
+      )
+      .filter((d) => (tipoFiltro ? (d.worker_type ?? "diarista") === tipoFiltro : true))
       .sort((a, b) => {
         // quem trabalhou no mês sobe: é neles que o chefe mexe
-        const na = resumoDoMes.get(a.id)?.dias ?? 0;
-        const nb = resumoDoMes.get(b.id)?.dias ?? 0;
+        const ra = resumoDoMes.get(a.id);
+        const rb = resumoDoMes.get(b.id);
+        const na = (ra?.dias ?? 0) + (ra?.servicos ?? 0);
+        const nb = (rb?.dias ?? 0) + (rb?.servicos ?? 0);
         if (na !== nb) return nb - na;
         return a.name.localeCompare(b.name);
       });
-  }, [diaristas, search, mostrarArquivados, resumoDoMes]);
+  }, [diaristas, search, mostrarArquivados, resumoDoMes, tipoFiltro]);
 
   const detalhe = diaristas.find((d) => d.id === detalheId) ?? null;
   const acertoDiarista = diaristas.find((d) => d.id === acertoId) ?? null;
   const arquivados = diaristas.length - ativos.length;
+  /** Sem nenhum empreiteiro cadastrado, o filtro por tipo só ocupa espaço. */
+  const temEmpreiteiro = diaristas.some((d) => d.worker_type === "empreiteiro");
 
   /** Sai da ficha e abre a conta — os dois diálogos juntos se atropelam. */
   function abrirAcerto(id: string) {
@@ -154,9 +215,11 @@ export function DiaristasPageClient({
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Diaristas</h1>
+          <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">
+            Colaboradores
+          </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
-            Quem vem por dia — e quanto tem a receber
+            Diaristas e empreiteiros — e quanto cada um tem a receber
           </p>
         </div>
         <Button onClick={novoDiarista} className="flex-shrink-0">
@@ -189,8 +252,9 @@ export function DiaristasPageClient({
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <Numero label="diaristas" value={String(ativos.length)} />
+        {/* dois por linha no celular: com quatro colunas o "a pagar" truncava */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+          <Numero label="colaboradores" value={String(ativos.length)} />
           <Numero
             label={
               meiasDoMes > 0
@@ -199,8 +263,17 @@ export function DiaristasPageClient({
             }
             value={String(diasDoMes.length)}
           />
+          <Numero label="serviços no mês" value={String(servicosDoMes.length)} />
           <Numero label="a pagar no mês" value={formatBRL(totalMes)} destaque />
         </div>
+
+        {/* De onde vem o "a pagar": as duas metades, quando as duas existem */}
+        {totalDiariasMes > 0 && totalServicosMes > 0 && (
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center tabular-nums">
+            {formatBRL(totalDiariasMes)} em diárias + {formatBRL(totalServicosMes)} em
+            serviços
+          </p>
+        )}
 
         <button
           type="button"
@@ -216,8 +289,14 @@ export function DiaristasPageClient({
       <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
         {(
           [
-            { value: "pessoas", label: "Diaristas", icon: Users, count: listados.length },
-            { value: "dias", label: "Dias do mês", icon: CalendarDays, count: diasDoMes.length },
+            { value: "pessoas", label: "Pessoas", icon: Users, count: listados.length },
+            { value: "dias", label: "Dias", icon: CalendarDays, count: diasDoMes.length },
+            {
+              value: "servicos",
+              label: "Serviços",
+              icon: HardHat,
+              count: servicosDoMes.length,
+            },
           ] as const
         ).map((t) => {
           const Icon = t.icon;
@@ -247,11 +326,38 @@ export function DiaristasPageClient({
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar diarista..."
+              placeholder="Buscar por nome ou profissão..."
               className="pl-9"
               autoComplete="off"
             />
           </div>
+
+          {/* Filtro por tipo — só aparece quando existem os dois */}
+          {temEmpreiteiro && (
+            <div className="flex gap-1.5">
+              {(
+                [
+                  { v: "" as const, label: "Todos" },
+                  { v: "diarista" as const, label: "Diaristas" },
+                  { v: "empreiteiro" as const, label: "Empreiteiros" },
+                ] as const
+              ).map((t) => (
+                <button
+                  key={t.v}
+                  type="button"
+                  onClick={() => setTipoFiltro(t.v)}
+                  className={cn(
+                    "flex-1 min-h-[36px] rounded-full text-xs font-medium border transition-colors",
+                    tipoFiltro === t.v
+                      ? "bg-produmar-600 border-produmar-600 text-white"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {arquivados > 0 && (
             <button
@@ -270,18 +376,18 @@ export function DiaristasPageClient({
               icon={Users}
               texto={
                 diaristas.length === 0
-                  ? "Nenhum diarista cadastrado."
-                  : "Ninguém encontrado com essa busca."
+                  ? "Nenhum colaborador cadastrado."
+                  : "Ninguém encontrado com esse filtro."
               }
               dica={
                 diaristas.length === 0
-                  ? "Cadastre quem trabalha por dia, com a chave PIX e o valor da diária — o técnico só marca no calendário quem veio."
+                  ? "Cadastre quem trabalha na obra — diarista ou empreiteiro —, com a profissão, a chave PIX e o valor da diária."
                   : undefined
               }
               acao={
                 diaristas.length === 0 ? (
                   <Button size="sm" onClick={novoDiarista}>
-                    <Plus className="w-4 h-4" /> Novo diarista
+                    <Plus className="w-4 h-4" /> Novo colaborador
                   </Button>
                 ) : undefined
               }
@@ -290,6 +396,8 @@ export function DiaristasPageClient({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {listados.map((d) => {
                 const r = resumoDoMes.get(d.id);
+                const tipo = d.worker_type ?? "diarista";
+                const empreiteiro = tipo === "empreiteiro";
                 return (
                   <button
                     key={d.id}
@@ -302,7 +410,14 @@ export function DiaristasPageClient({
                         : "border-dashed border-slate-200 dark:border-slate-700 opacity-70"
                     )}
                   >
-                    <span className="w-11 h-11 rounded-xl bg-produmar-50 dark:bg-produmar-900/40 text-produmar-600 dark:text-produmar-300 flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                    <span
+                      className={cn(
+                        "w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-xs font-bold",
+                        empreiteiro
+                          ? "bg-teal-50 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300"
+                          : "bg-produmar-50 dark:bg-produmar-900/40 text-produmar-600 dark:text-produmar-300"
+                      )}
+                    >
                       {getInitials(d.name)}
                     </span>
                     <span className="flex-1 min-w-0">
@@ -314,10 +429,31 @@ export function DiaristasPageClient({
                           </span>
                         )}
                       </span>
+                      {/* Quem ele é: o tipo e a profissão, que é o que o chefe
+                          procura quando precisa de "um pedreiro" */}
+                      <span className="flex items-center gap-1 flex-wrap">
+                        <span
+                          className={cn(
+                            "text-[10px] font-semibold px-1.5 py-px rounded-full",
+                            empreiteiro
+                              ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
+                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                          )}
+                        >
+                          {WORKER_TYPE_LABEL[tipo]}
+                        </span>
+                        {d.profession && (
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {d.profession}
+                          </span>
+                        )}
+                      </span>
                       <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                        {Number(d.daily_rate) > 0
-                          ? `${formatBRL(Number(d.daily_rate))}/dia`
-                          : "diária não combinada"}
+                        {empreiteiro
+                          ? "paga por serviço"
+                          : Number(d.daily_rate) > 0
+                            ? `${formatBRL(Number(d.daily_rate))}/dia`
+                            : "diária não combinada"}
                         {d.pix_key ? ` · PIX ${d.pix_key}` : ""}
                       </span>
                     </span>
@@ -326,7 +462,16 @@ export function DiaristasPageClient({
                         {formatBRL(r?.total ?? 0)}
                       </span>
                       <span className="block text-[11px] text-slate-400 tabular-nums">
-                        {r?.dias ?? 0} {(r?.dias ?? 0) === 1 ? "dia" : "dias"}
+                        {[
+                          (r?.dias ?? 0) > 0
+                            ? `${r?.dias} ${r?.dias === 1 ? "dia" : "dias"}`
+                            : null,
+                          (r?.servicos ?? 0) > 0
+                            ? `${r?.servicos} ${r?.servicos === 1 ? "serviço" : "serviços"}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "0 dias"}
                       </span>
                     </span>
                   </button>
@@ -343,7 +488,7 @@ export function DiaristasPageClient({
             <Vazio
               icon={CalendarDays}
               texto="Nenhuma diária lançada neste mês."
-              dica="Quem marca os dias é o técnico, na tela dele — mas você também marca, abrindo o diarista."
+              dica="Quem marca os dias é o técnico, na tela dele — mas você também marca, abrindo o colaborador."
             />
           ) : (
             <ul className="rounded-xl border border-produmar-100/60 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
@@ -389,6 +534,55 @@ export function DiaristasPageClient({
         </div>
       )}
 
+      {tab === "servicos" && (
+        <div className="space-y-3">
+          {servicosDoMes.length === 0 ? (
+            <Vazio
+              icon={HardHat}
+              texto="Nenhum serviço fechado neste mês."
+              dica="O serviço por empreita ou por metro é combinado em Obras, dentro do setor. O valor cai aqui, na conta de quem fez."
+            />
+          ) : (
+            <ul className="rounded-xl border border-produmar-100/60 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+              {servicosDoMes.map((s) => (
+                <li key={s.id} className="flex items-start gap-3 px-4 py-3">
+                  <span className="w-12 flex-shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums pt-0.5">
+                    {formatDate(s.service_date).slice(0, 5)}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                      {s.worker_name ?? "sem profissional"}
+                    </span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                      {s.service_type}
+                      {s.contract_mode === "metro"
+                        ? ` · ${Number(s.quantity)} ${s.unit} × ${formatBRL(Number(s.rate_per_unit))}`
+                        : " · empreita"}
+                    </span>
+                    <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                      <HardHat className="w-3 h-3 flex-shrink-0" />
+                      {s.obra_name}
+                      {s.sector_name ? ` · ${s.sector_name}` : ""}
+                    </span>
+                  </span>
+                  <span className="text-right flex-shrink-0">
+                    <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 tabular-nums">
+                      {formatBRL(Number(s.total_value))}
+                    </span>
+                    <span className="block text-[10px] font-semibold text-slate-400">
+                      {s.acerto_id ? "pago" : "em aberto"}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Para lançar ou corrigir um serviço, vá em Obras → Setores e serviços.
+          </p>
+        </div>
+      )}
+
       <DiaristaDialog
         open={cadastroOpen}
         onClose={() => setCadastroOpen(false)}
@@ -402,6 +596,7 @@ export function DiaristasPageClient({
         dias={dias}
         obras={obras}
         sectors={sectors}
+        servicos={servicos}
         year={year}
         month={month}
         onEdit={(d) => {
@@ -418,6 +613,7 @@ export function DiaristasPageClient({
         adiantamentos={adiantamentos}
         acertos={acertos}
         dias={dias}
+        servicos={servicos}
       />
 
       <DiaDetailDialog

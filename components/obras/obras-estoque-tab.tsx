@@ -13,10 +13,12 @@ import { LocaisDialog } from "./locais-dialog";
 import { DespesaDialog } from "./despesa-dialog";
 import { EmptyState } from "./obra-shared";
 import type {
+  Diarista,
   SupplyFenceRunView,
   SupplyLocal,
   SupplyObraDespesa,
   SupplyObraSector,
+  SupplyObraServicoView,
   SupplyObraUsage,
 } from "@/lib/types";
 
@@ -28,6 +30,10 @@ interface Props {
   locais?: SupplyLocal[];
   /** Metros de cerca — o detalhe da obra mostra o resumo por setor. */
   fenceRuns: SupplyFenceRunView[];
+  /** Serviços por empreita / por metro lançados nos setores (migration 069). */
+  servicos?: SupplyObraServicoView[];
+  /** Cadastro de Colaboradores — quem pode receber pelo serviço. */
+  colaboradores?: Diarista[];
 }
 
 /** A chave de agrupamento das obras sem local — vale como um grupo à parte. */
@@ -40,10 +46,18 @@ const SEM_LOCAL = "sem-local";
  * é o pedaço dentro dela (entrada, curral). Por isso a lista vem agrupada por
  * local: é assim que se enxerga quanto uma fazenda inteira já custou.
  *
- * O custo mostrado tem as três origens: o material que saiu do Estoque, as
- * diárias lançadas na obra e a despesa avulsa comprada direto para ela.
+ * O custo mostrado tem quatro origens: o material que saiu do Estoque, as
+ * diárias lançadas na obra, a despesa avulsa comprada direto para ela e o
+ * serviço combinado com o profissional no setor (empreita ou metro).
  */
-export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Props) {
+export function ObrasEstoqueTab({
+  obras,
+  sectors,
+  locais = [],
+  fenceRuns,
+  servicos = [],
+  colaboradores = [],
+}: Props) {
   const [obraDialogOpen, setObraDialogOpen] = useState(false);
   const [editObra, setEditObra] = useState<SupplyObraUsage | null>(null);
   const [detailObraId, setDetailObraId] = useState<string | null>(null);
@@ -82,7 +96,9 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
     let despesas = 0;
     for (const o of obras) {
       material += num(o.total_value);
-      maoDeObra += num(o.labor_value);
+      // diária e serviço são as duas formas de pagar gente: no número do topo
+      // eles andam juntos, e o detalhe da obra é que separa um do outro
+      maoDeObra += num(o.labor_value) + num(o.service_value);
       despesas += num(o.expense_value);
     }
     return { material, maoDeObra, despesas, total: material + maoDeObra + despesas };
@@ -191,7 +207,7 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
         {obras.length > 0 && (
           <Button variant="outline" size="sm" onClick={() => openSectors(null)}>
             <MapPin className="w-3.5 h-3.5" />
-            Setores
+            Setores e serviços
             {sectors.length > 0 && (
               <span className="opacity-60 tabular-nums">{sectors.length}</span>
             )}
@@ -235,6 +251,7 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
               label="Mão de obra"
               value={formatBRL(totais.maoDeObra)}
               tone="emerald"
+              hint="diárias + serviços"
             />
             <Kpi
               icon={Receipt}
@@ -336,6 +353,8 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
         onClose={() => setSectorsOpen(false)}
         obras={obras}
         sectors={sectors}
+        servicos={servicos}
+        colaboradores={colaboradores}
         presetObraId={sectorsObraId}
       />
       <SupplyObraDetailDialog
@@ -344,6 +363,7 @@ export function ObrasEstoqueTab({ obras, sectors, locais = [], fenceRuns }: Prop
         obra={detailObra}
         sectors={sectors}
         fenceRuns={fenceRuns}
+        servicos={servicos}
         onManageSectors={(o) => {
           // sai do detalhe direto para o cadastro — dois diálogos se atropelam
           setDetailObraId(null);
@@ -403,11 +423,14 @@ function Kpi({
   label,
   value,
   tone,
+  hint,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
   tone: "produmar" | "orange" | "emerald" | "violet";
+  /** Uma linha a mais dizendo de que o número é a soma. */
+  hint?: string;
 }) {
   const tones = {
     produmar: "bg-produmar-50 text-produmar-600 dark:bg-produmar-900/30 dark:text-produmar-400",
@@ -424,6 +447,9 @@ function Kpi({
         {value}
       </p>
       <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{label}</p>
+      {hint && (
+        <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">{hint}</p>
+      )}
     </div>
   );
 }

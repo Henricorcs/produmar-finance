@@ -72,7 +72,7 @@ export function RelatorioDialog({
             <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-produmar-50 text-produmar-600 dark:bg-produmar-900/40 dark:text-produmar-300">
               <FileText className="w-4 h-4" />
             </span>
-            Relatório de diaristas
+            Relatório de colaboradores
           </DialogTitle>
         </DialogHeader>
 
@@ -101,7 +101,7 @@ export function RelatorioDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Diarista</Label>
+            <Label>Colaborador</Label>
             <SearchableSelect
               items={diaristas}
               value={diaristaId}
@@ -109,8 +109,8 @@ export function RelatorioDialog({
               getId={(d) => d.id}
               getLabel={(d) => d.name}
               placeholder="Todos"
-              searchPlaceholder="Buscar diarista..."
-              emptyMessage="Nenhum diarista cadastrado"
+              searchPlaceholder="Buscar colaborador..."
+              emptyMessage="Nenhum colaborador cadastrado"
             />
           </div>
 
@@ -140,7 +140,8 @@ export function RelatorioDialog({
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
             Abre numa aba nova, pronto para imprimir ou salvar em PDF. Sai um bloco
-            por diarista, com os dias, o que foi feito, a chave PIX e o total.
+            por colaborador, com os dias, o que foi feito, a chave PIX e o total. O
+            serviço por empreita não entra nesta folha — ele fica na ficha e no acerto.
           </p>
         </div>
       </DialogContent>

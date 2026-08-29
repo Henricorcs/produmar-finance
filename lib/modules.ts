@@ -95,14 +95,19 @@ export const APP_MODULES: AppModule[] = [
     // Módulo próprio, mas atrelado ao Estoque: o dia trabalhado é lançado numa
     // obra do Estoque (supply_obras), e quem manda no Estoque também manda
     // aqui. O acesso, porém, pode ser dado sozinho — ver a migration 060.
+    // O slug continua "diaristas" de propósito: ele está gravado no
+    // profiles.allowed_modules de quem já tem acesso, e trocar aqui tiraria a
+    // permissão dessas pessoas. O que mudou foi o NOME da tela (migration 069).
     slug: "diaristas",
-    name: "Diaristas",
-    description: "Quem veio trabalhar por dia, lançado nas obras do Estoque",
+    name: "Colaboradores",
+    description: "Diaristas e empreiteiros — dias, serviços e o que se deve a cada um",
     href: "/diaristas",
     icon: Users,
     accentIcon:
       "bg-violet-50 text-violet-600 dark:bg-violet-900/40 dark:text-violet-400",
-    tabs: [{ href: "/diaristas", label: "Diaristas", short: "Diarist.", icon: Users }],
+    tabs: [
+      { href: "/diaristas", label: "Colaboradores", short: "Colab.", icon: Users },
+    ],
   },
   {
     // Duas listas de obra moram aqui: as do cadastro (public.obras, com número,

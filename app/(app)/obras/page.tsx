@@ -2,11 +2,13 @@ import { createClient } from "@/lib/supabase/server";
 import { ObrasPageClient } from "@/components/obras/obras-page-client";
 import type {
   Contact,
+  Diarista,
   ObraItem,
   ObraSummary,
   SupplyFenceRunView,
   SupplyLocal,
   SupplyObraSector,
+  SupplyObraServicoView,
   SupplyObraUsage,
 } from "@/lib/types";
 import type {
@@ -31,6 +33,8 @@ export default async function ObrasPage() {
     supplySectorsRes,
     supplyLocaisRes,
     supplyFenceRes,
+    supplyServicosRes,
+    colaboradoresRes,
   ] = await Promise.all([
     supabase
       .from("v_obra_summary")
@@ -77,6 +81,15 @@ export default async function ObrasPage() {
       .select("*")
       .order("work_date", { ascending: false })
       .limit(1000),
+    // serviços combinados no setor — empreita e metro (migration 069; sem ela
+    // volta vazio e a tela segue funcionando como antes)
+    supabase
+      .from("v_supply_obra_servicos")
+      .select("*")
+      .order("service_date", { ascending: false })
+      .limit(1000),
+    // quem pode receber pelo serviço — o cadastro de Colaboradores
+    supabase.from("diaristas").select("*").order("name", { ascending: true }),
   ]);
 
   return (
@@ -91,6 +104,8 @@ export default async function ObrasPage() {
       supplySectors={(supplySectorsRes.data as SupplyObraSector[]) ?? []}
       supplyLocais={(supplyLocaisRes.data as SupplyLocal[]) ?? []}
       supplyFenceRuns={(supplyFenceRes.data as SupplyFenceRunView[]) ?? []}
+      supplyServicos={(supplyServicosRes.data as SupplyObraServicoView[]) ?? []}
+      colaboradores={(colaboradoresRes.data as Diarista[]) ?? []}
     />
   );
 }

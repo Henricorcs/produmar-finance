@@ -170,7 +170,7 @@ export function DiaDetailDialog({
         {dia && !editing && (
           <div className="space-y-4">
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
-              <Linha icon={User} label="Diarista" value={diaristaName} />
+              <Linha icon={User} label="Colaborador" value={diaristaName} />
               <Linha
                 icon={Wallet}
                 label={dia.half_day ? "Meia diária" : "Valor do dia"}

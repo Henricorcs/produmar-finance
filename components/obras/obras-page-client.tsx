@@ -14,9 +14,11 @@ import type {
   ObraItem,
   ObraStatus,
   ObraSummary,
+  Diarista,
   SupplyFenceRunView,
   SupplyLocal,
   SupplyObraSector,
+  SupplyObraServicoView,
   SupplyObraUsage,
 } from "@/lib/types";
 
@@ -65,6 +67,10 @@ interface Props {
   supplyLocais?: SupplyLocal[];
   /** Metros de cerca — o detalhe da obra mostra o resumo por setor. */
   supplyFenceRuns?: SupplyFenceRunView[];
+  /** Serviços contratados nos setores — empreita e metro (migration 069). */
+  supplyServicos?: SupplyObraServicoView[];
+  /** Cadastro de Colaboradores — quem pode receber pelo serviço. */
+  colaboradores?: Diarista[];
 }
 
 type StatusFilter = "todas" | ObraStatus;
@@ -82,6 +88,8 @@ export function ObrasPageClient({
   supplySectors = [],
   supplyLocais = [],
   supplyFenceRuns = [],
+  supplyServicos = [],
+  colaboradores = [],
 }: Props) {
   // Só existe uma lista de obra na tela: a que veio do Estoque.
   const [tab] = useState<Tab>("estoque");
@@ -281,6 +289,8 @@ export function ObrasPageClient({
         sectors={supplySectors}
         locais={supplyLocais}
         fenceRuns={supplyFenceRuns}
+        servicos={supplyServicos}
+        colaboradores={colaboradores}
       />
 
       {/* Dialogs */}

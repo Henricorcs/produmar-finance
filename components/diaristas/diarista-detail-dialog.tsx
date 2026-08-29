@@ -25,7 +25,13 @@ import { deleteDiarista, setDiaristaActive } from "@/app/(app)/diaristas/actions
 import { DiaristaCalendar, monthRange } from "./diarista-shared";
 import { LancarDiaDialog, type DiaristaObra } from "./lancar-dia-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
-import type { DiaristaDia, DiaristaResumo, SupplyObraSector } from "@/lib/types";
+import {
+  WORKER_TYPE_LABEL,
+  type DiaristaDia,
+  type DiaristaResumo,
+  type SupplyObraSector,
+  type SupplyObraServicoView,
+} from "@/lib/types";
 
 /** Nenhum dia marcado — mesma referência sempre, para não redesenhar à toa. */
 const NENHUM = new Set<string>();
@@ -38,6 +44,8 @@ interface Props {
   dias: DiaristaDia[];
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
+  /** Serviços de todo mundo — o diálogo filtra os desta pessoa (069). */
+  servicos?: SupplyObraServicoView[];
   /** Mês que está aberto na tela, para o calendário começar no mesmo lugar. */
   year: number;
   month: number;
@@ -50,9 +58,10 @@ interface Props {
 }
 
 /**
- * A ficha do diarista para o chefe: quanto ele ganha por dia, a chave PIX para
- * pagar e o calendário do mês — que aqui também é editável, porque quando o
- * técnico esquece de marcar quem sobra é o escritório.
+ * A ficha do colaborador para o chefe: o tipo e a profissão dele, quanto ganha
+ * por dia, a chave PIX para pagar, o calendário do mês — que aqui também é
+ * editável, porque quando o técnico esquece de marcar quem sobra é o escritório
+ * — e os serviços por empreita/metro que ele fechou nas obras.
  */
 export function DiaristaDetailDialog({
   open,
@@ -61,6 +70,7 @@ export function DiaristaDetailDialog({
   dias,
   obras,
   sectors,
+  servicos = [],
   year,
   month,
   onEdit,
@@ -117,6 +127,16 @@ export function DiaristaDetailDialog({
     [obras]
   );
 
+  /** Os serviços dele — todos, não só os do mês: uma empreita atravessa meses. */
+  const meusServicos = useMemo(
+    () =>
+      servicos
+        .filter((s) => s.diarista_id === diarista?.id)
+        .sort((a, b) => b.service_date.localeCompare(a.service_date)),
+    [servicos, diarista?.id]
+  );
+  const servicosAbertos = meusServicos.filter((s) => !s.acerto_id);
+
   function stepMonth(delta: number) {
     const d = new Date(ano, mes + delta, 1);
     setAno(d.getFullYear());
@@ -149,7 +169,9 @@ export function DiaristaDetailDialog({
     const aviso =
       diarista.days_count > 0
         ? `Apagar ${diarista.name} APAGA JUNTO os ${diarista.days_count} dias lançados dele. Para só tirar da lista use "Arquivar". Apagar mesmo assim?`
-        : `Apagar ${diarista.name} do cadastro?`;
+        : meusServicos.length > 0
+          ? `Apagar ${diarista.name} do cadastro? Os ${meusServicos.length} serviços dele continuam no custo das obras, só ficam sem dono.`
+          : `Apagar ${diarista.name} do cadastro?`;
     if (!confirm(aviso)) return;
     setError(null);
     startTransition(async () => {
@@ -169,6 +191,12 @@ export function DiaristaDetailDialog({
             </span>
             <span className="min-w-0 truncate">{diarista?.name}</span>
           </DialogTitle>
+          {diarista && (
+            <p className="text-[11px] text-slate-400">
+              {WORKER_TYPE_LABEL[diarista.worker_type ?? "diarista"]}
+              {diarista.profession ? ` · ${diarista.profession}` : ""}
+            </p>
+          )}
         </DialogHeader>
 
         {diarista && (
@@ -230,6 +258,23 @@ export function DiaristaDetailDialog({
                   tocar para abrir
                 </span>
               </div>
+
+              {/* De onde vem o "a receber": dia trabalhado e serviço fechado */}
+              {(Number(diarista.pending_days ?? 0) > 0 ||
+                Number(diarista.pending_services ?? 0) > 0) && (
+                <p className="mt-1 text-[11px] text-emerald-700/80 dark:text-emerald-400/80 tabular-nums">
+                  {[
+                    Number(diarista.pending_days ?? 0) > 0
+                      ? `${diarista.pending_days} ${Number(diarista.pending_days) === 1 ? "diária" : "diárias"} · ${formatBRL(Number(diarista.pending_days_value ?? 0))}`
+                      : null,
+                    Number(diarista.pending_services ?? 0) > 0
+                      ? `${diarista.pending_services} ${Number(diarista.pending_services) === 1 ? "serviço" : "serviços"} · ${formatBRL(Number(diarista.pending_services_value ?? 0))}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join("  +  ")}
+                </p>
+              )}
 
               <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
                 <Conta
@@ -325,6 +370,58 @@ export function DiaristaDetailDialog({
               )}
             </div>
 
+            {/* Os serviços dele — a metade que não passa pelo calendário */}
+            {meusServicos.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <HardHat className="w-3.5 h-3.5 text-teal-600" />
+                    Serviços fechados
+                  </span>
+                  {servicosAbertos.length > 0 && (
+                    <span className="text-[11px] text-teal-700 dark:text-teal-400 tabular-nums">
+                      {servicosAbertos.length} em aberto
+                    </span>
+                  )}
+                </div>
+                <ul className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 max-h-52 overflow-y-auto">
+                  {meusServicos.map((s) => (
+                    <li key={s.id} className="flex items-start gap-2.5 px-3 py-2.5">
+                      <span className="w-11 flex-shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums pt-0.5">
+                        {formatDate(s.service_date).slice(0, 5)}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm text-slate-800 dark:text-slate-100 truncate">
+                          {s.service_type}
+                          {s.contract_mode === "metro"
+                            ? ` · ${Number(s.quantity)} ${s.unit}`
+                            : " · empreita"}
+                        </span>
+                        <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                          <HardHat className="w-3 h-3 flex-shrink-0" />
+                          {s.obra_name}
+                          {s.sector_name ? ` · ${s.sector_name}` : ""}
+                        </span>
+                      </span>
+                      <span className="text-right flex-shrink-0">
+                        <span className="block text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+                          {formatBRL(Number(s.total_value))}
+                        </span>
+                        {s.acerto_id && (
+                          <span className="block text-[10px] font-semibold text-slate-400">
+                            pago
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  O serviço é combinado em Obras, dentro do setor. Aqui ele só é pago.
+                </p>
+              </div>
+            )}
+
             {error && (
               <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
                 {error}
@@ -374,7 +471,7 @@ export function DiaristaDetailDialog({
 
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               Arquivar tira da lista do técnico e guarda o histórico. Apagar leva os
-              dias lançados junto.
+              dias lançados junto; os serviços ficam nas obras, sem dono.
             </p>
           </div>
         )}
