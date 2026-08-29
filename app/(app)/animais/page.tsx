@@ -4,6 +4,8 @@ import type {
   AnimalBirth,
   AnimalBirthRequest,
   AnimalBreed,
+  AnimalDespesa,
+  AnimalFinanceiroLinha,
   AnimalTreatment,
   AnimalVaccine,
   AnimalVaccinePending,
@@ -27,6 +29,8 @@ export default async function AnimaisPage() {
     pendingRes,
     weightsRes,
     birthRequestsRes,
+    financeiroRes,
+    despesasRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -61,6 +65,19 @@ export default async function AnimaisPage() {
       .from("animal_birth_requests")
       .select("*")
       .order("created_at", { ascending: true }),
+    // a ficha de receitas e despesas por espécie (migration 072 — sem ela a
+    // aba abre vazia e o resto da tela segue igual)
+    supabase
+      .from("v_animal_financeiro")
+      .select("*")
+      .order("entry_date", { ascending: false })
+      .limit(2000),
+    // as despesas cruas: é por elas que a ficha abre uma na correção
+    supabase
+      .from("animal_despesas")
+      .select("*")
+      .order("expense_date", { ascending: false })
+      .limit(2000),
   ]);
 
   return (
@@ -74,6 +91,8 @@ export default async function AnimaisPage() {
       pendings={(pendingRes.data as AnimalVaccinePending[]) ?? []}
       weights={(weightsRes.data as AnimalWeight[]) ?? []}
       birthRequests={(birthRequestsRes.data as AnimalBirthRequest[]) ?? []}
+      financeiro={(financeiroRes.data as AnimalFinanceiroLinha[]) ?? []}
+      despesas={(despesasRes.data as AnimalDespesa[]) ?? []}
     />
   );
 }

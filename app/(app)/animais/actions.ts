@@ -3,7 +3,12 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { AnimalExitReason, AnimalSex, AnimalSpecies } from "@/lib/types";
+import type {
+  AnimalExitReason,
+  AnimalSaleMode,
+  AnimalSex,
+  AnimalSpecies,
+} from "@/lib/types";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -23,6 +28,12 @@ function clean(s?: string | null): string | null {
 
 function normWeight(v?: number | null): number {
   return Math.max(0, v ?? 0);
+}
+
+/** Dinheiro (e quilo) sempre positivo, com 2 casas. */
+function money(v?: number | null): number {
+  const n = Math.abs(Number(v ?? 0));
+  return isNaN(n) ? 0 : Math.round(n * 100) / 100;
 }
 
 /** Nome do tipo em português para as mensagens de erro ("um SUÍNO com esse número"). */
@@ -1044,6 +1055,8 @@ function pendingTableError(error: { code?: string; message: string }): string {
 
 /** As colunas vêm da migration 056 — sem ela o erro do Postgres não diz nada. */
 function exitColumnError(error: { code?: string; message: string }): string {
+  if (error.message.includes("sale_mode") || error.message.includes("sale_weight"))
+    return "Rode a migration 072 no Supabase para vender no peso";
   if (error.code === "42703" || error.message.includes("exit_"))
     return "Rode a migration 056 no Supabase para registrar venda ou morte";
   return error.message;
@@ -1054,8 +1067,17 @@ export interface AnimalExitInput {
   reason: AnimalExitReason;
   /** Data da venda / da morte (YYYY-MM-DD). */
   exit_date: string;
-  /** Só na venda — é este valor que entra no financeiro. */
+  /**
+   * Só na venda — é este valor que entra no financeiro. SEMPRE o total: na
+   * venda no peso ele é o resultado de peso × preço do quilo.
+   */
   amount?: number | null;
+  /** Só na venda — na unidade ou no peso (migration 072). */
+  sale_mode?: AnimalSaleMode | null;
+  /** Só na venda no peso — quantos quilos saíram. */
+  sale_weight_kg?: number | null;
+  /** Só na venda no peso — por quanto o quilo foi vendido. */
+  sale_price_per_kg?: number | null;
   /** Só na venda — quem comprou. */
   buyer?: string | null;
   notes?: string | null;
@@ -1070,10 +1092,30 @@ export async function registerAnimalExit(input: AnimalExitInput) {
 
   const reason: AnimalExitReason = input.reason === "morte" ? "morte" : "venda";
   const isSale = reason === "venda";
-  const amount = isSale ? Math.round(Math.max(0, input.amount ?? 0) * 100) / 100 : 0;
   const exitDate = input.exit_date || new Date().toISOString().slice(0, 10);
 
+  // Como foi vendido. Só a venda no peso tem peso e preço do quilo; na unidade
+  // as duas colunas ficam zeradas para não sobrar número que não vale nada.
+  const saleMode: AnimalSaleMode =
+    isSale && input.sale_mode === "peso" ? "peso" : "unidade";
+  const noPeso = isSale && saleMode === "peso";
+  const weight = noPeso ? money(input.sale_weight_kg) : 0;
+  const pricePerKg = noPeso ? money(input.sale_price_per_kg) : 0;
+
+  // O TOTAL é o que entra no financeiro e o que a ficha soma. Na venda no peso
+  // a conta é feita AQUI, e não na tela: quem lança digita o peso e o preço, e
+  // o servidor é que decide quanto é — assim os dois nunca discordam.
+  const amount = !isSale
+    ? 0
+    : noPeso
+      ? money(weight * pricePerKg)
+      : money(input.amount);
+
   if (!input.animal_id) return { error: "Animal não informado" };
+  if (isSale && noPeso) {
+    if (weight <= 0) return { error: "Informe o peso vendido" };
+    if (pricePerKg <= 0) return { error: "Informe o valor do quilo" };
+  }
   if (isSale && amount <= 0) return { error: "Informe o valor da venda" };
 
   const { data: animal } = await supabase
@@ -1093,6 +1135,9 @@ export async function registerAnimalExit(input: AnimalExitInput) {
       exit_reason: reason,
       exit_date: exitDate,
       exit_amount: amount,
+      sale_mode: isSale ? saleMode : null,
+      sale_weight_kg: weight,
+      sale_price_per_kg: pricePerKg,
       exit_buyer: isSale ? clean(input.buyer) : null,
       exit_notes: clean(input.notes),
       exit_transaction_id: null,
@@ -1110,13 +1155,18 @@ export async function registerAnimalExit(input: AnimalExitInput) {
       .maybeSingle<{ id: string }>();
 
     const buyer = clean(input.buyer);
+    // a conta vai na descrição: quem abre Contas seis meses depois precisa ver
+    // que os R$ 4.800 foram 400 kg a R$ 12,00, e não um preço fechado
+    const comoFoi = noPeso
+      ? ` (${weight} KG X ${pricePerKg.toFixed(2).replace(".", ",")}/KG)`
+      : "";
     const { data: tx, error: txErr } = await supabase
       .from("transactions")
       .insert({
         type: "entrada",
         status: "recebido",
         amount,
-        description: `VENDA DE ANIMAL Nº ${animal.tag}${buyer ? ` - ${buyer}` : ""}`,
+        description: `VENDA DE ANIMAL Nº ${animal.tag}${comoFoi}${buyer ? ` - ${buyer}` : ""}`,
         due_date: exitDate,
         paid_date: exitDate,
         category_id: cat?.id ?? null,
@@ -1135,6 +1185,9 @@ export async function registerAnimalExit(input: AnimalExitInput) {
           exit_reason: null,
           exit_date: null,
           exit_amount: 0,
+          sale_mode: null,
+          sale_weight_kg: 0,
+          sale_price_per_kg: 0,
           exit_buyer: null,
           exit_notes: null,
           exit_transaction_id: null,
@@ -1180,6 +1233,9 @@ export async function undoAnimalExit(animalId: string) {
       exit_reason: null,
       exit_date: null,
       exit_amount: 0,
+      sale_mode: null,
+      sale_weight_kg: 0,
+      sale_price_per_kg: 0,
       exit_buyer: null,
       exit_notes: null,
       exit_transaction_id: null,
@@ -1187,6 +1243,99 @@ export async function undoAnimalExit(animalId: string) {
     .eq("id", animalId);
   if (error) return { error: exitColumnError(error) };
 
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DESPESA COM ANIMAIS — a ficha de custo por espécie (migration 072)
+// ─────────────────────────────────────────────────────────────────────────────
+// A venda já ia para o financeiro; o GASTO com os bichos não tinha onde ser
+// lançado. Sem os dois lados juntos não dá para responder "o caprino se paga?".
+//
+// A ESPÉCIE é obrigatória de propósito: é ela que a ficha separa. Despesa sem
+// espécie não entra em conta nenhuma.
+//
+// Isto NÃO cria lançamento no módulo Contas — é registro e relatório dentro de
+// Animais, como a despesa da obra (migration 067).
+
+function despesaError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.message.includes("animal_despesas"))
+    return "Rode a migration 072 no Supabase para lançar despesas com animais";
+  return error.message;
+}
+
+export interface AnimalDespesaInput {
+  species: AnimalSpecies;
+  /** Só quando o gasto foi de UM animal — em branco vale para a espécie toda. */
+  animal_id?: string | null;
+  expense_date?: string | null;
+  category?: string | null;
+  description: string;
+  amount: number;
+  supplier?: string | null;
+  notes?: string | null;
+}
+
+/** Monta a linha, com a espécie já validada contra o que o banco aceita. */
+function despesaRow(input: AnimalDespesaInput) {
+  return {
+    species: SPECIES_LABEL[input.species] ? input.species : "bovino",
+    animal_id: input.animal_id || null,
+    expense_date: input.expense_date?.trim() || undefined,
+    category: clean(input.category),
+    description: clean(input.description),
+    amount: money(input.amount),
+    supplier: clean(input.supplier),
+    notes: clean(input.notes),
+  };
+}
+
+function despesaInvalida(input: AnimalDespesaInput): string | null {
+  if (!clean(input.description)) return "Escreva o que foi a despesa";
+  if (money(input.amount) <= 0) return "Informe o valor da despesa";
+  return null;
+}
+
+export async function createAnimalDespesa(input: AnimalDespesaInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const falta = despesaInvalida(input);
+  if (falta) return { error: falta };
+
+  const { error } = await supabase
+    .from("animal_despesas")
+    .insert({ ...despesaRow(input), created_by: user.id });
+
+  if (error) return { error: despesaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function updateAnimalDespesa(id: string, input: AnimalDespesaInput) {
+  const supabase = createClient();
+
+  const falta = despesaInvalida(input);
+  if (falta) return { error: falta };
+
+  const { error } = await supabase
+    .from("animal_despesas")
+    .update(despesaRow(input))
+    .eq("id", id);
+
+  if (error) return { error: despesaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function deleteAnimalDespesa(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_despesas").delete().eq("id", id);
+  if (error) return { error: despesaError(error) };
   revalidate();
   return { ok: true };
 }

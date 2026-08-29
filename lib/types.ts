@@ -712,6 +712,19 @@ export interface AnimalBreed {
 /** Por que o animal saiu do rebanho: foi vendido ou morreu. */
 export type AnimalExitReason = "venda" | "morte";
 
+/**
+ * Como o animal foi vendido (migration 072):
+ *   unidade → um valor fechado pelo animal;
+ *   peso    → tantos quilos a tanto o quilo, e o total sai da conta.
+ * Venda lançada antes da 072 não tem forma: vale como "unidade".
+ */
+export type AnimalSaleMode = "unidade" | "peso";
+
+export const SALE_MODE_LABEL: Record<AnimalSaleMode, string> = {
+  unidade: "Na unidade",
+  peso: "No peso",
+};
+
 export interface Animal {
   id: string;
   /** Número do animal (brinco). */
@@ -729,8 +742,14 @@ export interface Animal {
   /** Motivo da saída — null enquanto o animal está no rebanho (migration 056). */
   exit_reason?: AnimalExitReason | null;
   exit_date?: string | null;
-  /** Quanto entrou na venda (0 na morte). */
+  /** Quanto entrou na venda, SEMPRE o total (0 na morte). */
   exit_amount?: number | null;
+  /** Como foi vendido (migration 072). Null em venda antiga = na unidade. */
+  sale_mode?: AnimalSaleMode | null;
+  /** Peso vendido, em kg — só vale quando `sale_mode` é "peso". */
+  sale_weight_kg?: number | null;
+  /** Preço do quilo — só vale quando `sale_mode` é "peso". */
+  sale_price_per_kg?: number | null;
   exit_buyer?: string | null;
   exit_notes?: string | null;
   /** Lançamento gerado no financeiro pela venda — some junto se a saída for desfeita. */
@@ -848,6 +867,77 @@ export interface AnimalWeight {
   protocol_id: string | null;
   notes: string | null;
   created_by: string | null;
+  created_at: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FICHA DE RECEITAS E DESPESAS COM ANIMAIS (migration 072)
+// ═══════════════════════════════════════════════════════════════════════════
+// A venda do animal já ia para o financeiro, mas sumia no meio de tudo, e o
+// gasto com os bichos não tinha onde ser lançado. Com os dois lados juntos e
+// SEMPRE amarrados à espécie, a ficha responde "o caprino se paga?".
+
+/** Categorias sugeridas na despesa — o campo continua livre. */
+export const DESPESAS_ANIMAIS_SUGERIDAS = [
+  "RAÇÃO",
+  "SAL MINERAL",
+  "MEDICAMENTO",
+  "VACINA",
+  "VETERINÁRIO",
+  "COMPRA DE ANIMAL",
+  "FRETE",
+  "PASTAGEM",
+  "MÃO DE OBRA",
+] as const;
+
+/**
+ * Gasto com animais, sempre grudado numa ESPÉCIE — é ela que a ficha separa.
+ * `animal_id` só é preenchido quando o gasto foi de um animal só.
+ *
+ * NÃO cria lançamento no módulo Contas: é registro e relatório dentro de
+ * Animais, como a despesa da obra (migration 067). A VENDA, essa sim, continua
+ * indo para Contas.
+ */
+export interface AnimalDespesa {
+  id: string;
+  species: AnimalSpecies;
+  /** Null = a despesa é do lote inteiro, não de um bicho. */
+  animal_id: string | null;
+  /** A data do gasto, não a da digitação. */
+  expense_date: string;
+  /** Ração, sal mineral, medicamento... texto livre; agrupa o relatório. */
+  category: string | null;
+  description: string;
+  amount: number;
+  /** De quem se comprou, quem prestou o serviço. */
+  supplier: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Uma linha da ficha (view v_animal_financeiro): a venda de um animal, uma
+ * despesa lançada ou um tratamento que teve custo. `value` é sempre positivo —
+ * quem diz se entra ou sai é o `kind`.
+ */
+export interface AnimalFinanceiroLinha {
+  id: string;
+  kind: "venda" | "despesa" | "tratamento";
+  species: AnimalSpecies;
+  animal_id: string | null;
+  animal_tag: string | null;
+  entry_date: string;
+  description: string;
+  value: number;
+  category: string | null;
+  /** Comprador na venda, fornecedor na despesa, remédio no tratamento. */
+  person: string | null;
+  /** Só a venda traz: como ela foi feita. */
+  sale_mode: AnimalSaleMode | null;
+  weight_kg: number;
+  price_per_kg: number;
+  notes: string | null;
   created_at: string;
 }
 

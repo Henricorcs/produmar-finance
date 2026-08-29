@@ -13,11 +13,12 @@ import {
   Search,
   Settings2,
   Syringe,
+  Wallet,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn, formatBRL, formatDate, localDateISO } from "@/lib/utils";
+import { cn, formatBRL, formatDate, formatQty, localDateISO } from "@/lib/utils";
 import {
   applyVaccineProtocol,
   deleteVaccination,
@@ -37,6 +38,7 @@ import { BirthRequestDialog } from "./birth-request-dialog";
 import { BirthRequestDetailDialog } from "./birth-request-detail-dialog";
 import { QuickAddRow } from "./quick-add-row";
 import { WeightDialog } from "./weight-dialog";
+import { AnimalFinanceiroTab } from "./animal-financeiro-tab";
 import {
   SPECIES_META,
   SPECIES_OPTIONS,
@@ -61,6 +63,8 @@ import type {
   AnimalBirthRequest,
   AnimalBreed,
   AnimalCategory,
+  AnimalDespesa,
+  AnimalFinanceiroLinha,
   AnimalSpecies,
   AnimalTreatment,
   AnimalVaccination,
@@ -90,9 +94,13 @@ interface Props {
   weights?: AnimalWeight[];
   /** Nascimentos enviados pelo vaqueiro, aguardando o patrão conferir. */
   birthRequests: AnimalBirthRequest[];
+  /** A ficha de receitas e despesas — venda, despesa e tratamento (072). */
+  financeiro?: AnimalFinanceiroLinha[];
+  /** As despesas cruas, para corrigir uma a partir da ficha. */
+  despesas?: AnimalDespesa[];
 }
 
-type Tab = "rebanho" | "vacinacao" | "nascimentos" | "saidas";
+type Tab = "rebanho" | "vacinacao" | "nascimentos" | "saidas" | "financeiro";
 type CategoryFilter = "todos" | AnimalCategory;
 /** Filtro pelo tipo do animal — só aparece quando o rebanho tem mais de um. */
 type SpeciesFilter = "todos" | AnimalSpecies;
@@ -131,6 +139,8 @@ export function AnimaisPageClient({
   pendings,
   weights = [],
   birthRequests,
+  financeiro = [],
+  despesas = [],
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -633,6 +643,7 @@ export function AnimaisPageClient({
       alert: pendingCount > 0,
     },
     { value: "saidas", label: "Saídas", icon: HandCoins },
+    { value: "financeiro", label: "Ficha", icon: Wallet },
   ];
 
   const categoryFilters: { value: CategoryFilter; label: string; count: number }[] = [
@@ -676,8 +687,8 @@ export function AnimaisPageClient({
         </Button>
       </div>
 
-      {/* Abas */}
-      <div className="grid grid-cols-4 gap-1 sm:flex sm:gap-1.5">
+      {/* Abas — 5 no celular, cabendo na largura da tela */}
+      <div className="grid grid-cols-5 gap-1 sm:flex sm:gap-1.5">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = tab === t.value;
@@ -1169,6 +1180,15 @@ export function AnimaisPageClient({
             </>
           )}
         </>
+      )}
+
+      {/* ── Aba: Ficha — receitas e despesas, separadas por espécie ────── */}
+      {tab === "financeiro" && (
+        <AnimalFinanceiroTab
+          linhas={financeiro}
+          despesas={despesas}
+          animals={allAnimals}
+        />
       )}
 
       {/* Dialogs */}
@@ -1771,6 +1791,14 @@ function ExitCard({
           </span>
         )}
       </div>
+
+      {/* Vendido no peso: a conta por extenso, para o valor não ficar solto */}
+      {!died && animal.sale_mode === "peso" && (
+        <p className="mt-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums">
+          {formatQty(Number(animal.sale_weight_kg ?? 0))} kg ×{" "}
+          {formatBRL(Number(animal.sale_price_per_kg ?? 0))} = {formatBRL(amount)}
+        </p>
+      )}
 
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {categoryLabel(animal.category, animal.sex, animal.species)}
