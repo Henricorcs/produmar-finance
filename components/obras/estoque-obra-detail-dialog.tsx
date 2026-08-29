@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { formatBRL, formatDate, formatQty } from "@/lib/utils";
+import { formatBRL, formatDate, formatQty, servicoConta } from "@/lib/utils";
 import { deleteSupplyObra, getSupplyObraExtrato } from "@/app/(app)/almoxarifado/actions";
 import { num } from "@/components/almoxarifado/supply-shared";
 import type {
@@ -550,10 +550,7 @@ export function SupplyObraDetailDialog({
                         key={sv.id}
                         className="text-[11px] text-slate-400 dark:text-slate-500 pl-5 truncate tabular-nums"
                       >
-                        {sv.service_type} ·{" "}
-                        {sv.contract_mode === "metro"
-                          ? `${formatQty(num(sv.quantity))} ${sv.unit} × ${formatBRL(num(sv.rate_per_unit))}`
-                          : "empreita"}
+                        {sv.service_type} · {servicoConta(sv).completo}
                         {sv.worker_name ? ` · ${sv.worker_name}` : ""}
                         {sv.acerto_id ? " · pago" : ""}
                       </p>

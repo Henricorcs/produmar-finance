@@ -12,7 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatBRL, formatDate, formatQty, upperKeepingCaret } from "@/lib/utils";
+import {
+  formatBRL,
+  formatDate,
+  servicoConta,
+  upperKeepingCaret,
+} from "@/lib/utils";
 import { num } from "@/components/almoxarifado/supply-shared";
 import {
   createSupplyObraSector,
@@ -378,7 +383,7 @@ function ServicoLinha({
   servico: SupplyObraServicoView;
   onClick: () => void;
 }) {
-  const metro = servico.contract_mode === "metro";
+  const conta = servicoConta(servico);
   return (
     <button
       type="button"
@@ -390,14 +395,12 @@ function ServicoLinha({
         <span className="block text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
           {servico.service_type}
         </span>
-        <span className="block text-[11px] text-slate-400 truncate">
-          {metro
-            ? `${formatQty(num(servico.quantity))} ${servico.unit} × ${formatBRL(num(servico.rate_per_unit))}`
-            : "empreita"}
-          {" · "}
-          {formatDate(servico.service_date)}
+        {/* a conta por extenso: 10 M × R$ 2,00 = R$ 20,00 */}
+        <span className="block text-[11px] font-medium text-teal-700 dark:text-teal-400 tabular-nums truncate">
+          {conta.formula ? `${conta.formula} = ${conta.total}` : `empreita = ${conta.total}`}
         </span>
         <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">
+          {formatDate(servico.service_date)} ·{" "}
           {servico.worker_name ?? "sem profissional"}
           {servico.acerto_id ? " · já acertado" : ""}
         </span>

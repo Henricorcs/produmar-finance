@@ -20,15 +20,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { formatBRL, formatDate, getInitials } from "@/lib/utils";
+import { formatBRL, formatDate, getInitials, servicoConta } from "@/lib/utils";
 import { deleteDiarista, setDiaristaActive } from "@/app/(app)/diaristas/actions";
 import { DiaristaCalendar, monthRange } from "./diarista-shared";
 import { LancarDiaDialog, type DiaristaObra } from "./lancar-dia-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
 import {
+  PAYMENT_MODE_LABEL,
+  PAYMENT_MODE_RATE_LABEL,
   WORKER_TYPE_LABEL,
   type DiaristaDia,
   type DiaristaResumo,
+  type PaymentMode,
   type SupplyObraSector,
   type SupplyObraServicoView,
 } from "@/lib/types";
@@ -137,6 +140,15 @@ export function DiaristaDetailDialog({
   );
   const servicosAbertos = meusServicos.filter((s) => !s.acerto_id);
 
+  /** Como ele é pago e quanto vale essa forma — o preço combinado no cadastro. */
+  const modoPagamento: PaymentMode = diarista?.payment_mode ?? "diaria";
+  const precoCombinado =
+    modoPagamento === "metro"
+      ? Number(diarista?.meter_rate ?? 0)
+      : modoPagamento === "obra"
+        ? Number(diarista?.job_rate ?? 0)
+        : Number(diarista?.daily_rate ?? 0);
+
   function stepMonth(delta: number) {
     const d = new Date(ano, mes + delta, 1);
     setAno(d.getFullYear());
@@ -195,6 +207,9 @@ export function DiaristaDetailDialog({
             <p className="text-[11px] text-slate-400">
               {WORKER_TYPE_LABEL[diarista.worker_type ?? "diarista"]}
               {diarista.profession ? ` · ${diarista.profession}` : ""}
+              {diarista.worker_type === "empreiteiro"
+                ? ` · ${PAYMENT_MODE_LABEL[modoPagamento].toLowerCase()}`
+                : ""}
             </p>
           )}
         </DialogHeader>
@@ -202,15 +217,35 @@ export function DiaristaDetailDialog({
         {diarista && (
           <div className="space-y-4">
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+              {/*
+                O preço combinado com ele, do jeito que foi combinado. Mostrar
+                sempre "Diária" escondia o essencial de um empreiteiro pago no
+                metro — que é justamente o valor do metro.
+              */}
               <div className="flex items-center gap-2.5 px-3 py-2.5">
                 <Wallet className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                <span className="text-xs text-slate-500 dark:text-slate-400">Diária</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {PAYMENT_MODE_RATE_LABEL[modoPagamento]}
+                </span>
                 <span className="ml-auto text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
-                  {Number(diarista.daily_rate) > 0
-                    ? formatBRL(Number(diarista.daily_rate))
-                    : "não combinada"}
+                  {precoCombinado > 0
+                    ? `${formatBRL(precoCombinado)}${modoPagamento === "metro" ? "/m" : ""}`
+                    : "não combinado"}
                 </span>
               </div>
+
+              {/* A diária continua aparecendo à parte quando ele também vem por dia */}
+              {modoPagamento !== "diaria" && Number(diarista.daily_rate) > 0 && (
+                <div className="flex items-center gap-2.5 px-3 py-2.5">
+                  <Wallet className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Diária, quando vem por dia
+                  </span>
+                  <span className="ml-auto text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
+                    {formatBRL(Number(diarista.daily_rate))}
+                  </span>
+                </div>
+              )}
 
               {diarista.pix_key && (
                 <button
@@ -393,9 +428,12 @@ export function DiaristaDetailDialog({
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm text-slate-800 dark:text-slate-100 truncate">
                           {s.service_type}
-                          {s.contract_mode === "metro"
-                            ? ` · ${Number(s.quantity)} ${s.unit}`
-                            : " · empreita"}
+                        </span>
+                        {/* a conta por extenso: 10 M × R$ 2,00 = R$ 20,00 */}
+                        <span className="block text-[11px] font-medium text-teal-700 dark:text-teal-400 tabular-nums truncate">
+                          {servicoConta(s).formula
+                            ? `${servicoConta(s).formula} = ${servicoConta(s).total}`
+                            : `empreita = ${servicoConta(s).total}`}
                         </span>
                         <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 truncate">
                           <HardHat className="w-3 h-3 flex-shrink-0" />

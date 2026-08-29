@@ -4,6 +4,7 @@ import { twMerge } from "tailwind-merge";
 import {
   FREIGHT_CATEGORIES,
   MACHINE_CATEGORIES,
+  type ContractMode,
   type Loan,
   type MachineCategory,
   type ServiceBillingMode,
@@ -105,6 +106,37 @@ export function formatBRLInput(raw: string | number): string {
  */
 export function formatQty(value: number): string {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(value);
+}
+
+/**
+ * A CONTA DO SERVIÇO escrita do jeito que se fala: "10 M × R$ 2,00 = R$ 20,00".
+ *
+ * É o que tira a dúvida na hora de pagar. Sem isso a tela mostrava só o total,
+ * e quem conferia não sabia se os 20 reais vieram de 10 metros a 2,00 ou de
+ * 2 metros a 10,00.
+ *
+ * Na empreita não há conta a fazer — o preço é fechado —, então a fórmula vem
+ * vazia e só o total tem o que dizer.
+ */
+export function servicoConta(s: {
+  contract_mode: ContractMode;
+  quantity?: number | null;
+  unit?: string | null;
+  rate_per_unit?: number | null;
+  contract_amount?: number | null;
+  total_value?: number | null;
+}): { formula: string; total: string; completo: string } {
+  const total = Number(s.total_value ?? 0);
+  const totalTexto = formatBRL(total);
+
+  if (s.contract_mode !== "metro") {
+    return { formula: "", total: totalTexto, completo: `Empreita = ${totalTexto}` };
+  }
+
+  const qtd = Number(s.quantity ?? 0);
+  const preco = Number(s.rate_per_unit ?? 0);
+  const formula = `${formatQty(qtd)} ${(s.unit ?? "M").trim() || "M"} × ${formatBRL(preco)}`;
+  return { formula, total: totalTexto, completo: `${formula} = ${totalTexto}` };
 }
 
 /**

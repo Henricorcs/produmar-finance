@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { WorkerType } from "@/lib/types";
+import type { PaymentMode, WorkerType } from "@/lib/types";
 
 /**
  * O cadastro do colaborador é do chefe (/diaristas) e o calendário é do técnico
@@ -49,6 +49,12 @@ function diaristaError(error: { code?: string; message: string }): string {
   if (error.message.includes("half_day"))
     return "Rode a migration 064 no Supabase para usar a meia diária";
   if (
+    error.message.includes("payment_mode") ||
+    error.message.includes("meter_rate") ||
+    error.message.includes("job_rate")
+  )
+    return "Rode a migration 070 no Supabase para usar a forma de pagamento do colaborador";
+  if (
     error.message.includes("worker_type") ||
     error.message.includes("profession") ||
     error.message.includes("supply_obra_servicos")
@@ -84,6 +90,12 @@ export interface DiaristaInput {
   worker_type?: WorkerType | null;
   /** Pedreiro, pintor, carpinteiro... texto livre (069). */
   profession?: string | null;
+  /** Como ele costuma ser pago: diária, metro ou valor da obra (070). */
+  payment_mode?: PaymentMode | null;
+  /** Preço combinado do metro (070). */
+  meter_rate?: number | null;
+  /** Preço combinado da obra inteira (070). */
+  job_rate?: number | null;
   notes?: string | null;
 }
 
@@ -94,6 +106,14 @@ export interface DiaristaInput {
  */
 function cleanWorkerType(v?: WorkerType | null): WorkerType {
   return v === "empreiteiro" ? "empreiteiro" : "diarista";
+}
+
+/**
+ * A forma de pagamento. Qualquer coisa fora das três vira "diaria", que é como
+ * o sistema inteiro funcionava antes da migration 070.
+ */
+function cleanPaymentMode(v?: PaymentMode | null): PaymentMode {
+  return v === "metro" || v === "obra" ? v : "diaria";
 }
 
 export async function createDiarista(input: DiaristaInput) {
@@ -115,6 +135,9 @@ export async function createDiarista(input: DiaristaInput) {
       daily_rate: normMoney(input.daily_rate),
       worker_type: cleanWorkerType(input.worker_type),
       profession: clean(input.profession),
+      payment_mode: cleanPaymentMode(input.payment_mode),
+      meter_rate: normMoney(input.meter_rate),
+      job_rate: normMoney(input.job_rate),
       notes: clean(input.notes),
       created_by: user.id,
     })
@@ -141,6 +164,9 @@ export async function updateDiarista(id: string, input: DiaristaInput) {
       daily_rate: normMoney(input.daily_rate),
       worker_type: cleanWorkerType(input.worker_type),
       profession: clean(input.profession),
+      payment_mode: cleanPaymentMode(input.payment_mode),
+      meter_rate: normMoney(input.meter_rate),
+      job_rate: normMoney(input.job_rate),
       notes: clean(input.notes),
     })
     .eq("id", id);

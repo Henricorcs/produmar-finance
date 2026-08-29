@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn, formatBRL, formatDate, getInitials } from "@/lib/utils";
+import { cn, formatBRL, formatDate, getInitials, servicoConta } from "@/lib/utils";
 import { monthLabel, monthRange } from "./diarista-shared";
 import { DiaristaDialog } from "./diarista-dialog";
 import { DiaristaDetailDialog } from "./diarista-detail-dialog";
@@ -50,6 +50,25 @@ interface Props {
 }
 
 type Tab = "pessoas" | "dias" | "servicos";
+
+/**
+ * O preço combinado com a pessoa, escrito do jeito que ela é paga: "R$ 2,00/m"
+ * para quem ganha no metro, "R$ 500,00 por obra" para a empreita fechada,
+ * "R$ 120,00/dia" para o diarista.
+ */
+function precoCombinado(d: DiaristaResumo): string {
+  const modo = d.payment_mode ?? "diaria";
+  if (modo === "metro") {
+    const v = Number(d.meter_rate ?? 0);
+    return v > 0 ? `${formatBRL(v)}/m` : "metro não combinado";
+  }
+  if (modo === "obra") {
+    const v = Number(d.job_rate ?? 0);
+    return v > 0 ? `${formatBRL(v)} por obra` : "valor da obra não combinado";
+  }
+  const v = Number(d.daily_rate ?? 0);
+  return v > 0 ? `${formatBRL(v)}/dia` : "diária não combinada";
+}
 
 /**
  * A tela do chefe: quem são os colaboradores — diaristas e empreiteiros —,
@@ -148,6 +167,45 @@ export function DiaristasPageClient({
     }
     return map;
   }, [diasDoMes, servicosDoMes]);
+
+  /**
+   * Os serviços do mês agrupados POR PESSOA, com o total de cada uma. É o que
+   * responde "quanto eu devo pra cada um": a lista corrida mostrava serviço a
+   * serviço e não somava nada por quem fez.
+   */
+  const servicosPorPessoa = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        nome: string;
+        itens: SupplyObraServicoView[];
+        total: number;
+        emAberto: number;
+      }
+    >();
+    for (const s of servicosDoMes) {
+      const key = s.diarista_id ?? "sem-dono";
+      const g = map.get(key) ?? {
+        id: key,
+        nome: s.worker_name ?? "Sem profissional",
+        itens: [],
+        total: 0,
+        emAberto: 0,
+      };
+      g.itens.push(s);
+      g.total += Number(s.total_value);
+      if (!s.acerto_id) g.emAberto += Number(s.total_value);
+      map.set(key, g);
+    }
+    // quem tem mais a receber primeiro; "sem profissional" por último, que é
+    // uma pendência de cadastro, não uma conta a pagar
+    return [...map.values()].sort((a, b) => {
+      if (a.id === "sem-dono") return 1;
+      if (b.id === "sem-dono") return -1;
+      return b.total - a.total;
+    });
+  }, [servicosDoMes]);
 
   const totalDiariasMes = diasDoMes.reduce((s, d) => s + Number(d.daily_rate), 0);
   const totalServicosMes = servicosDoMes.reduce(
@@ -381,7 +439,7 @@ export function DiaristasPageClient({
               }
               dica={
                 diaristas.length === 0
-                  ? "Cadastre quem trabalha na obra — diarista ou empreiteiro —, com a profissão, a chave PIX e o valor da diária."
+                  ? "Cadastre quem trabalha na obra — diarista ou empreiteiro —, com a profissão, a chave PIX e o preço combinado: a diária, o metro ou o valor da obra."
                   : undefined
               }
               acao={
@@ -448,12 +506,11 @@ export function DiaristasPageClient({
                           </span>
                         )}
                       </span>
+                      {/* o preço combinado, do jeito que foi combinado: dizer
+                          só "R$ X/dia" escondia o valor do metro de quem é
+                          pago no metro, que é o número que o chefe procura */}
                       <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                        {empreiteiro
-                          ? "paga por serviço"
-                          : Number(d.daily_rate) > 0
-                            ? `${formatBRL(Number(d.daily_rate))}/dia`
-                            : "diária não combinada"}
+                        {precoCombinado(d)}
                         {d.pix_key ? ` · PIX ${d.pix_key}` : ""}
                       </span>
                     </span>
@@ -543,42 +600,88 @@ export function DiaristasPageClient({
               dica="O serviço por empreita ou por metro é combinado em Obras, dentro do setor. O valor cai aqui, na conta de quem fez."
             />
           ) : (
-            <ul className="rounded-xl border border-produmar-100/60 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-              {servicosDoMes.map((s) => (
-                <li key={s.id} className="flex items-start gap-3 px-4 py-3">
-                  <span className="w-12 flex-shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums pt-0.5">
-                    {formatDate(s.service_date).slice(0, 5)}
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-                      {s.worker_name ?? "sem profissional"}
+            /*
+              Um bloco por pessoa, com a conta de cada serviço escrita por
+              extenso e o total dela embaixo. É a resposta de "quanto eu devo
+              pra cada um" — a lista corrida não somava nada por pessoa.
+            */
+            <div className="space-y-3">
+              {servicosPorPessoa.map((g) => (
+                <div
+                  key={g.id}
+                  className="rounded-xl border border-produmar-100/60 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden"
+                >
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-teal-50/60 dark:bg-teal-950/20 border-b border-teal-100 dark:border-teal-900/40">
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                        {g.nome}
+                      </span>
+                      <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {g.itens.length}{" "}
+                        {g.itens.length === 1 ? "serviço" : "serviços"} no mês
+                        {g.emAberto > 0 ? ` · ${formatBRL(g.emAberto)} em aberto` : ""}
+                      </span>
                     </span>
-                    <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                      {s.service_type}
-                      {s.contract_mode === "metro"
-                        ? ` · ${Number(s.quantity)} ${s.unit} × ${formatBRL(Number(s.rate_per_unit))}`
-                        : " · empreita"}
+                    <span className="text-right flex-shrink-0">
+                      <span className="block text-base font-bold text-teal-700 dark:text-teal-300 tabular-nums">
+                        {formatBRL(g.total)}
+                      </span>
+                      <span className="block text-[10px] text-slate-400 uppercase tracking-wide">
+                        no mês
+                      </span>
                     </span>
-                    <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                      <HardHat className="w-3 h-3 flex-shrink-0" />
-                      {s.obra_name}
-                      {s.sector_name ? ` · ${s.sector_name}` : ""}
-                    </span>
-                  </span>
-                  <span className="text-right flex-shrink-0">
-                    <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 tabular-nums">
-                      {formatBRL(Number(s.total_value))}
-                    </span>
-                    <span className="block text-[10px] font-semibold text-slate-400">
-                      {s.acerto_id ? "pago" : "em aberto"}
-                    </span>
-                  </span>
-                </li>
+                  </div>
+
+                  <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {g.itens.map((s) => {
+                      const conta = servicoConta(s);
+                      return (
+                        <li key={s.id} className="flex items-start gap-3 px-4 py-2.5">
+                          <span className="w-12 flex-shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums pt-0.5">
+                            {formatDate(s.service_date).slice(0, 5)}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm text-slate-800 dark:text-slate-100 truncate">
+                              {s.service_type}
+                            </span>
+                            {/* a conta por extenso: 10 M × R$ 2,00 = R$ 20,00 */}
+                            <span className="block text-[11px] font-medium text-teal-700 dark:text-teal-400 tabular-nums truncate">
+                              {conta.formula
+                                ? `${conta.formula} = ${conta.total}`
+                                : `empreita = ${conta.total}`}
+                            </span>
+                            <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                              <HardHat className="w-3 h-3 flex-shrink-0" />
+                              {s.obra_name}
+                              {s.sector_name ? ` · ${s.sector_name}` : ""}
+                            </span>
+                          </span>
+                          <span className="text-right flex-shrink-0">
+                            <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 tabular-nums">
+                              {formatBRL(Number(s.total_value))}
+                            </span>
+                            <span
+                              className={cn(
+                                "block text-[10px] font-semibold",
+                                s.acerto_id
+                                  ? "text-slate-400"
+                                  : "text-emerald-600 dark:text-emerald-400"
+                              )}
+                            >
+                              {s.acerto_id ? "pago" : "em aberto"}
+                            </span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Para lançar ou corrigir um serviço, vá em Obras → Setores e serviços.
+            Para lançar ou corrigir um serviço, vá em Obras → Setores e serviços. O
+            preço de cada um vem do cadastro dele, aqui em Colaboradores.
           </p>
         </div>
       )}

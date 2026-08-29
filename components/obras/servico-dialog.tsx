@@ -25,9 +25,11 @@ import {
   formatBRLInput,
   localDateISO,
   parseMoney,
+  servicoConta,
   upperKeepingCaret,
 } from "@/lib/utils";
 import {
+  PAYMENT_MODE_LABEL,
   SERVICOS_SUGERIDOS,
   UNIDADES_SERVICO,
   WORKER_TYPE_LABEL,
@@ -126,8 +128,47 @@ export function ServicoDialog({
 
   const metro = mode === "metro";
 
+  /** O profissional escolhido — é dele que vem o preço já combinado. */
+  const profissional = profissionais.find((c) => c.id === diaristaId) ?? null;
+
   /** O valor a pagar — a mesma conta que o banco refaz ao gravar. */
   const total = metro ? parseQty(quantity) * parseMoney(rate) : parseMoney(amount);
+
+  /** "10 M × R$ 2,00 = R$ 20,00" — a conta escrita do jeito que se fala. */
+  const conta = servicoConta({
+    contract_mode: mode,
+    quantity: parseQty(quantity),
+    unit,
+    rate_per_unit: parseMoney(rate),
+    contract_amount: parseMoney(amount),
+    total_value: total,
+  });
+
+  /**
+   * Escolheu o profissional: o preço combinado com ele no cadastro entra
+   * sozinho — a forma de pagamento e o valor unitário. É o ponto do cadastro:
+   * ninguém precisa lembrar de cabeça quanto foi acertado com cada um.
+   *
+   * Só preenche o que ainda está em branco quando se está CORRIGINDO um
+   * serviço: o valor daquele lançamento é o que vale, não o do cadastro.
+   */
+  function escolherProfissional(id: string) {
+    setDiaristaId(id);
+    if (servico) return;
+
+    const c = profissionais.find((p) => p.id === id);
+    if (!c) return;
+
+    if (c.payment_mode === "metro" && Number(c.meter_rate ?? 0) > 0) {
+      setMode("metro");
+      setRate(formatBRLInput(Number(c.meter_rate)));
+      return;
+    }
+    if (c.payment_mode === "obra" && Number(c.job_rate ?? 0) > 0) {
+      setMode("empreita");
+      setAmount(formatBRLInput(Number(c.job_rate)));
+    }
+  }
 
   /** Serviço já pago não se corrige: o acerto guarda o valor que foi entregue. */
   const travado = !!servico?.acerto_id;
@@ -266,7 +307,7 @@ export function ServicoDialog({
             <SearchableSelect
               items={profissionais}
               value={diaristaId}
-              onChange={setDiaristaId}
+              onChange={escolherProfissional}
               getId={(c) => c.id}
               getLabel={(c) => c.name}
               renderItem={(c) => (
@@ -282,6 +323,26 @@ export function ServicoDialog({
               searchPlaceholder="Buscar colaborador..."
               emptyMessage="Nenhum colaborador cadastrado"
             />
+            {/* O que está combinado com ele no cadastro — é o que veio preenchido */}
+            {profissional && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Combinado no cadastro:{" "}
+                <span className="font-medium">
+                  {PAYMENT_MODE_LABEL[profissional.payment_mode ?? "diaria"]}
+                </span>
+                {profissional.payment_mode === "metro" &&
+                Number(profissional.meter_rate ?? 0) > 0
+                  ? ` · ${formatBRL(Number(profissional.meter_rate))}/m`
+                  : ""}
+                {profissional.payment_mode === "obra" &&
+                Number(profissional.job_rate ?? 0) > 0
+                  ? ` · ${formatBRL(Number(profissional.job_rate))} por obra`
+                  : ""}
+                {(profissional.payment_mode ?? "diaria") === "diaria"
+                  ? ` · ${formatBRL(Number(profissional.daily_rate))}/dia — a diária é marcada no calendário, não aqui`
+                  : ""}
+              </p>
+            )}
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               O valor entra direto no &quot;a receber&quot; dele, em Colaboradores. Em
               branco, o gasto fica só na obra.
@@ -394,14 +455,25 @@ export function ServicoDialog({
             </div>
           )}
 
-          {/* O que vai ser pago — o número que interessa, sempre à vista */}
-          <div className="rounded-xl border border-teal-200 dark:border-teal-900/50 bg-teal-50/60 dark:bg-teal-950/20 px-3 py-2.5 flex items-baseline justify-between gap-2">
-            <span className="text-xs font-medium text-teal-800 dark:text-teal-300">
-              A pagar ao profissional
-            </span>
-            <span className="text-lg font-bold text-teal-700 dark:text-teal-300 tabular-nums">
-              {formatBRL(total)}
-            </span>
+          {/*
+            A CONTA, escrita do jeito que se fala: "10 M × R$ 2,00 = R$ 20,00".
+            Sem a fórmula à vista, quem confere via só os 20 reais e não sabia se
+            vieram de 10 metros a 2,00 ou de 2 metros a 10,00.
+          */}
+          <div className="rounded-xl border border-teal-200 dark:border-teal-900/50 bg-teal-50/60 dark:bg-teal-950/20 px-3 py-2.5 space-y-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs font-medium text-teal-800 dark:text-teal-300">
+                A pagar ao profissional
+              </span>
+              <span className="text-lg font-bold text-teal-700 dark:text-teal-300 tabular-nums">
+                {formatBRL(total)}
+              </span>
+            </div>
+            {metro && (
+              <p className="text-[11px] text-teal-700/80 dark:text-teal-400/80 tabular-nums">
+                {conta.formula} = {conta.total}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">

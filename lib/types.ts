@@ -1125,6 +1125,8 @@ export interface SupplyObraServicoView extends SupplyObraServico {
   worker_type: WorkerType | null;
   worker_profession: string | null;
   worker_pix_key: string | null;
+  /** Como ele costuma ser pago, do cadastro dele (migration 070). */
+  worker_payment_mode?: PaymentMode | null;
 }
 
 /**
@@ -1277,6 +1279,30 @@ export const WORKER_TYPE_LABEL: Record<WorkerType, string> = {
   empreiteiro: "Empreiteiro",
 };
 
+/**
+ * Como o colaborador é pago (migration 070). É o preço combinado UMA VEZ, no
+ * cadastro — o lançamento do serviço já vem com ele preenchido, para ninguém
+ * ter que lembrar de cabeça quanto foi acertado com cada um.
+ *
+ *   diaria → por dia trabalhado, marcado no calendário
+ *   metro  → por metro feito (o valor sai de metro × preço)
+ *   obra   → valor fechado da obra, a empreita
+ */
+export type PaymentMode = "diaria" | "metro" | "obra";
+
+export const PAYMENT_MODE_LABEL: Record<PaymentMode, string> = {
+  diaria: "Na diária",
+  metro: "No metro",
+  obra: "No valor da obra",
+};
+
+/** O rótulo do preço unitário de cada forma de pagamento. */
+export const PAYMENT_MODE_RATE_LABEL: Record<PaymentMode, string> = {
+  diaria: "Valor da diária",
+  metro: "Valor do metro",
+  obra: "Valor da obra",
+};
+
 /** Profissões que aparecem como sugestão no cadastro — o campo é livre. */
 export const PROFISSOES_SUGERIDAS = [
   "PEDREIRO",
@@ -1304,6 +1330,16 @@ export interface Diarista {
   worker_type?: WorkerType;
   /** Pedreiro, pintor, carpinteiro... texto livre (migration 069). */
   profession?: string | null;
+  /**
+   * Como ele costuma ser pago (migration 070). É o que a tela do serviço traz
+   * preenchido; os três preços abaixo convivem, porque o mesmo pedreiro pode
+   * ter metro combinado E vir um dia avulso na diária.
+   */
+  payment_mode?: PaymentMode;
+  /** Preço combinado do metro. 0 = não combinado (migration 070). */
+  meter_rate?: number;
+  /** Preço combinado da obra inteira, a empreita. 0 = não combinado (070). */
+  job_rate?: number;
   notes: string | null;
   active: boolean;
   created_by: string | null;

@@ -13,8 +13,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createDiarista, updateDiarista } from "@/app/(app)/diaristas/actions";
-import { formatBRLInput, parseMoney, upperKeepingCaret } from "@/lib/utils";
-import { PROFISSOES_SUGERIDAS, type Diarista, type WorkerType } from "@/lib/types";
+import { formatBRL, formatBRLInput, parseMoney, upperKeepingCaret } from "@/lib/utils";
+import {
+  PAYMENT_MODE_LABEL,
+  PROFISSOES_SUGERIDAS,
+  type Diarista,
+  type PaymentMode,
+  type WorkerType,
+} from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -40,9 +46,12 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
   const [name, setName] = useState("");
   const [workerType, setWorkerType] = useState<WorkerType>("diarista");
   const [profession, setProfession] = useState("");
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>("diaria");
   const [phone, setPhone] = useState("");
   const [pixKey, setPixKey] = useState("");
   const [dailyRate, setDailyRate] = useState("");
+  const [meterRate, setMeterRate] = useState("");
+  const [jobRate, setJobRate] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -52,14 +61,28 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
     // era o único que existia
     setWorkerType(diarista?.worker_type ?? "diarista");
     setProfession(diarista?.profession ?? "");
+    // e quem veio antes da 070 é pago na diária, do mesmo jeito
+    setPaymentMode(diarista?.payment_mode ?? "diaria");
     setPhone(diarista?.phone ?? "");
     setPixKey(diarista?.pix_key ?? "");
     setDailyRate(diarista ? formatBRLInput(Number(diarista.daily_rate)) : "");
+    setMeterRate(diarista ? formatBRLInput(Number(diarista.meter_rate ?? 0)) : "");
+    setJobRate(diarista ? formatBRLInput(Number(diarista.job_rate ?? 0)) : "");
     setNotes(diarista?.notes ?? "");
     setError(null);
   }, [open, diarista]);
 
   const empreiteiro = workerType === "empreiteiro";
+
+  /**
+   * O diarista é pago por dia, e ponto: a escolha da forma de pagamento só
+   * aparece para o empreiteiro. Trocar o tipo para diarista devolve "na diária"
+   * — do contrário o cadastro guardaria um "no metro" que a tela nem mostra.
+   */
+  function trocarTipo(t: WorkerType) {
+    setWorkerType(t);
+    if (t === "diarista") setPaymentMode("diaria");
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +90,19 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
 
     if (!name.trim()) {
       setError("Informe o nome do colaborador");
+      return;
+    }
+
+    const modo = empreiteiro ? paymentMode : "diaria";
+
+    // o preço da forma escolhida é o que vai ser usado no lançamento — sem ele
+    // o serviço nasce zerado e ninguém sabe quanto tem a receber
+    if (modo === "metro" && parseMoney(meterRate) <= 0) {
+      setError("Informe o valor do metro combinado com ele");
+      return;
+    }
+    if (modo === "obra" && parseMoney(jobRate) <= 0) {
+      setError("Informe o valor da obra combinado com ele");
       return;
     }
 
@@ -78,6 +114,9 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
         daily_rate: parseMoney(dailyRate),
         worker_type: workerType,
         profession,
+        payment_mode: modo,
+        meter_rate: parseMoney(meterRate),
+        job_rate: parseMoney(jobRate),
         notes,
       };
       const r = diarista
@@ -128,7 +167,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
                 <button
                   key={t.v}
                   type="button"
-                  onClick={() => setWorkerType(t.v)}
+                  onClick={() => trocarTipo(t.v)}
                   className={`min-h-[56px] rounded-xl border px-3 py-2 text-left transition-colors ${
                     workerType === t.v
                       ? "bg-produmar-50 border-produmar-400 dark:bg-produmar-950/40 dark:border-produmar-700"
@@ -150,10 +189,82 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
             </div>
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               {empreiteiro
-                ? "O empreiteiro recebe pelo serviço lançado no setor da obra — empreita ou por metro. Ele não precisa ser marcado no calendário."
+                ? "O empreiteiro recebe pelo serviço lançado no setor da obra. Ele não precisa ser marcado no calendário."
                 : "O diarista é marcado no calendário e ganha por dia. Ele também pode pegar um serviço por empreita, se for o caso."}
             </p>
           </div>
+
+          {/* A FORMA DE PAGAMENTO — só do empreiteiro: o diarista ganha por dia */}
+          {empreiteiro && (
+            <div className="space-y-1.5">
+              <Label>Forma de pagamento *</Label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(["diaria", "metro", "obra"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setPaymentMode(m)}
+                    className={`min-h-[44px] rounded-lg border px-1.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                      paymentMode === m
+                        ? "bg-teal-600 border-teal-600 text-white"
+                        : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                    }`}
+                  >
+                    {PAYMENT_MODE_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                É o preço combinado com ele uma vez. O lançamento do serviço já vem
+                preenchido com esse valor — ninguém precisa lembrar de cabeça.
+              </p>
+            </div>
+          )}
+
+          {/* O preço do metro — o que faz "10 m × R$ 2,00 = R$ 20,00" */}
+          {empreiteiro && paymentMode === "metro" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="di_metro">Valor do metro (R$) *</Label>
+              <Input
+                id="di_metro"
+                value={meterRate}
+                onChange={(e) => setMeterRate(formatBRLInput(e.target.value))}
+                placeholder="0,00"
+                inputMode="decimal"
+                className="tabular-nums text-lg font-semibold"
+                autoComplete="off"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                No serviço, este valor multiplica a metragem: 10 m a{" "}
+                {parseMoney(meterRate) > 0 ? formatBRL(parseMoney(meterRate)) : "R$ 2,00"}{" "}
+                ={" "}
+                <span className="font-semibold text-slate-500 dark:text-slate-400">
+                  {formatBRL(parseMoney(meterRate) * 10 || 20)}
+                </span>
+                .
+              </p>
+            </div>
+          )}
+
+          {/* O preço da obra fechada */}
+          {empreiteiro && paymentMode === "obra" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="di_obra">Valor da obra (R$) *</Label>
+              <Input
+                id="di_obra"
+                value={jobRate}
+                onChange={(e) => setJobRate(formatBRLInput(e.target.value))}
+                placeholder="0,00"
+                inputMode="decimal"
+                className="tabular-nums text-lg font-semibold"
+                autoComplete="off"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                O preço fechado do serviço inteiro, do jeito que foi combinado. No
+                lançamento dá para mudar, quando a obra for outra.
+              </p>
+            </div>
+          )}
 
           {/* A profissão */}
           <div className="space-y-1.5">
@@ -186,7 +297,10 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
 
           <div className="space-y-1.5">
             <Label htmlFor="di_rate">
-              Valor da diária (R$){empreiteiro ? " — se ele também vier por dia" : ""}
+              Valor da diária (R$)
+              {empreiteiro && paymentMode !== "diaria"
+                ? " — se ele também vier por dia"
+                : ""}
             </Label>
             <Input
               id="di_rate"
