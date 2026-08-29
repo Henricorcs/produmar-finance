@@ -428,6 +428,11 @@ export function DiaristaDetailDialog({
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm text-slate-800 dark:text-slate-100 truncate">
                           {s.service_type}
+                          {s.is_obra_contract && (
+                            <span className="ml-1.5 text-[10px] font-semibold text-produmar-600 dark:text-produmar-400">
+                              obra inteira
+                            </span>
+                          )}
                         </span>
                         {/* a conta por extenso: 10 M × R$ 2,00 = R$ 20,00 */}
                         <span className="block text-[11px] font-medium text-teal-700 dark:text-teal-400 tabular-nums truncate">

@@ -24,6 +24,7 @@ import {
   deleteSupplyObraSector,
 } from "@/app/(app)/almoxarifado/actions";
 import { ServicoDialog } from "./servico-dialog";
+import { ObraResponsavel } from "./obra-responsavel";
 import type {
   Diarista,
   SupplyObraSector,
@@ -94,11 +95,25 @@ export function SupplyObraSectorsDialog({
   );
   const obra = obras.find((o) => o.id === obraId) ?? null;
 
-  /** Os serviços desta obra, agrupados pelo setor onde foram feitos. */
+  /**
+   * O fechamento da obra com o responsável (migration 071) — mora no painel
+   * dele, não na lista de setores: é o acerto da obra inteira, não de um pedaço.
+   */
+  const fechamento = useMemo(
+    () =>
+      servicos.find((s) => s.obra_id === obraId && s.is_obra_contract) ?? null,
+    [servicos, obraId]
+  );
+
+  /**
+   * Os serviços desta obra, agrupados pelo setor onde foram feitos. O
+   * fechamento fica DE FORA: ele já aparece no painel do responsável, e listado
+   * aqui também apareceria duas vezes.
+   */
   const porSetor = useMemo(() => {
     const map = new Map<string, SupplyObraServicoView[]>();
     for (const s of servicos) {
-      if (s.obra_id !== obraId) continue;
+      if (s.obra_id !== obraId || s.is_obra_contract) continue;
       const key = s.sector_id ?? SEM_SETOR;
       const lista = map.get(key) ?? [];
       lista.push(s);
@@ -200,6 +215,14 @@ export function SupplyObraSectorsDialog({
             />
           </div>
 
+          {obra && (
+            <ObraResponsavel
+              obra={obra}
+              colaboradores={colaboradores}
+              fechamento={fechamento}
+            />
+          )}
+
           {obraId && (
             <>
               <div className="space-y-1.5">
@@ -223,7 +246,10 @@ export function SupplyObraSectorsDialog({
               {totalServicos > 0 && (
                 <div className="rounded-xl border border-teal-200 dark:border-teal-900/50 bg-teal-50/60 dark:bg-teal-950/20 px-3 py-2.5 flex items-baseline justify-between gap-2">
                   <span className="text-xs font-medium text-teal-800 dark:text-teal-300">
-                    Serviços contratados nesta obra
+                    Total a pagar de serviço
+                    <span className="block text-[10px] font-normal text-teal-700/70 dark:text-teal-400/70">
+                      o fechamento da obra mais os serviços dos setores
+                    </span>
                   </span>
                   <span className="text-base font-bold text-teal-700 dark:text-teal-300 tabular-nums">
                     {formatBRL(totalServicos)}

@@ -965,6 +965,12 @@ export interface SupplyObra {
   client: string | null;
   /** Onde a obra acontece — aponta para supply_locais (migration 066). */
   local_id?: string | null;
+  /**
+   * Quem toca a obra: o colaborador com quem o preço dela foi combinado
+   * (migration 071). É a forma de pagamento DELE que decide como o fechamento
+   * da obra é calculado.
+   */
+  responsavel_id?: string | null;
   notes: string | null;
   active: boolean;
   /** Preço por metro de cerca da obra inteira (migration 063). 0 = sem preço. */
@@ -993,6 +999,20 @@ export interface SupplyObraSector {
 export interface SupplyObraUsage extends SupplyObra {
   /** Nome do local, já resolvido pela view (migration 066). */
   local_name?: string | null;
+
+  // ── O responsável pela obra, já resolvido pela view (migration 071) ──
+  responsavel_name?: string | null;
+  responsavel_profession?: string | null;
+  /** Como ele é pago, do cadastro dele — é o que decide o fechamento. */
+  responsavel_payment_mode?: PaymentMode | null;
+  responsavel_daily_rate?: number | null;
+  responsavel_meter_rate?: number | null;
+  responsavel_job_rate?: number | null;
+  /** Diárias DELE já lançadas nesta obra — o valor de quem é pago por dia. */
+  responsavel_days_count?: number;
+  responsavel_days_value?: number;
+  /** O fechamento da obra já lançado com ele. 0 = ainda não fechado. */
+  contract_value?: number;
 
   /** Quantos materiais diferentes saíram para esta obra. */
   items_count: number;
@@ -1107,6 +1127,11 @@ export interface SupplyObraServico {
   service_date: string;
   description: string | null;
   notes: string | null;
+  /**
+   * É o FECHAMENTO DA OBRA com o responsável, e não um serviço de setor
+   * (migration 071). Uma obra tem no máximo um — garantido por índice único.
+   */
+  is_obra_contract?: boolean;
   /** O valor a pagar ao profissional, já resolvido pelo banco. */
   total_value: number;
   /** Em qual acerto este serviço foi pago (068). Nulo = ainda se deve. */

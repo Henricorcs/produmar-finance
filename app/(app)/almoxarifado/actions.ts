@@ -935,6 +935,13 @@ export async function deleteSupplyObraSector(id: string) {
 // direto para a conta do colaborador, onde é quitado no acerto (068).
 
 function servicoError(error: { code?: string; message: string }): string {
+  if (error.code === "23505" && error.message.includes("uq_supply_obra_contrato"))
+    return "Esta obra já tem um fechamento com o responsável";
+  if (
+    error.message.includes("is_obra_contract") ||
+    error.message.includes("responsavel_id")
+  )
+    return "Rode a migration 071 no Supabase para usar o responsável pela obra";
   if (
     error.code === "42P01" ||
     error.message.includes("supply_obra_servicos") ||
@@ -1071,6 +1078,214 @@ export async function deleteSupplyObraServico(id: string) {
     return { error: "Este serviço já foi acertado. Desfaça o acerto primeiro." };
 
   const { error } = await supabase.from("supply_obra_servicos").delete().eq("id", id);
+  if (error) return { error: servicoError(error) };
+  revalidateServico();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O RESPONSÁVEL PELA OBRA E O FECHAMENTO COM ELE (migration 071)
+// ─────────────────────────────────────────────────────────────────────────────
+// O responsável é quem TOCA a obra — o empreiteiro com quem o preço dela foi
+// combinado. Esse acerto não cabe em setor nenhum: é da obra inteira.
+//
+// A forma de pagamento NÃO se escolhe aqui: ela vem da ficha do colaborador
+// (migration 070). É esse o ponto — cadastrar o preço uma vez e o sistema saber
+// sozinho como pagar.
+
+/**
+ * Diz quem toca a obra.
+ *
+ * Com um fechamento já lançado, a troca é BARRADA: aquele valor é uma dívida
+ * com uma pessoa de nome e sobrenome, e trocar o responsável por baixo dele
+ * deixaria o dinheiro no colo de quem não fez o serviço. Quem quer trocar tira
+ * o fechamento primeiro — é um toque no painel.
+ */
+export async function setSupplyObraResponsavel(
+  obraId: string,
+  diaristaId: string | null
+) {
+  const supabase = createClient();
+  if (!obraId) return { error: "Obra não informada" };
+
+  const { data: obra } = await supabase
+    .from("supply_obras")
+    .select("responsavel_id")
+    .eq("id", obraId)
+    .maybeSingle();
+
+  const trocou = (obra?.responsavel_id ?? null) !== (diaristaId || null);
+
+  if (trocou) {
+    const { data: fechamento } = await supabase
+      .from("supply_obra_servicos")
+      .select("id, acerto_id")
+      .eq("obra_id", obraId)
+      .eq("is_obra_contract", true)
+      .maybeSingle();
+
+    if (fechamento)
+      return {
+        error: fechamento.acerto_id
+          ? "Esta obra já foi fechada e paga com o responsável atual. Desfaça o acerto na ficha dele antes de trocar."
+          : "Esta obra já tem um fechamento com o responsável atual. Tire o fechamento antes de trocar de responsável.",
+      };
+  }
+
+  const { error } = await supabase
+    .from("supply_obras")
+    .update({ responsavel_id: diaristaId || null })
+    .eq("id", obraId);
+
+  if (error) return { error: servicoError(error) };
+  revalidateServico();
+  return { ok: true };
+}
+
+export interface SupplyObraFechamentoInput {
+  obra_id: string;
+  /** O que foi feito na obra — CERCA, ALVENARIA... vira o nome do lançamento. */
+  service_type?: string | null;
+  /** Vale quando o responsável é pago no metro: a metragem da obra. */
+  quantity?: number | null;
+  unit?: string | null;
+  /**
+   * O preço unitário deste fechamento. Em branco, vale o que está na ficha
+   * dele — que é o normal. Preenchido, é uma obra que foi combinada diferente.
+   */
+  rate?: number | null;
+  service_date?: string | null;
+  description?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Grava (ou corrige) o FECHAMENTO da obra com o responsável.
+ *
+ * O modo e o preço saem da FICHA do responsável, não da tela:
+ *   ficha "no valor da obra" → empreita, com o job_rate dele;
+ *   ficha "no metro"         → metro, com o meter_rate dele × a metragem;
+ *   ficha "na diária"        → não há fechamento — ele recebe pelos dias
+ *                              marcados no calendário, que já entram na conta.
+ *
+ * O lançamento é um serviço da obra com `is_obra_contract`, então ele já cai no
+ * "a receber" do colaborador e é quitado no acerto, como qualquer outro.
+ */
+export async function saveSupplyObraFechamento(input: SupplyObraFechamentoInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.obra_id) return { error: "Obra não informada" };
+
+  const { data: obra, error: obraErr } = await supabase
+    .from("supply_obras")
+    .select("id, name, responsavel_id")
+    .eq("id", input.obra_id)
+    .maybeSingle();
+  if (obraErr) return { error: servicoError(obraErr) };
+  if (!obra) return { error: "Obra não encontrada" };
+  if (!obra.responsavel_id)
+    return { error: "Escolha primeiro o responsável pela obra" };
+
+  const { data: resp, error: respErr } = await supabase
+    .from("diaristas")
+    .select("id, name, payment_mode, meter_rate, job_rate")
+    .eq("id", obra.responsavel_id)
+    .maybeSingle();
+  if (respErr) return { error: servicoError(respErr) };
+  if (!resp) return { error: "Responsável não encontrado" };
+
+  const modo = (resp.payment_mode as string) ?? "diaria";
+  if (modo === "diaria")
+    return {
+      error:
+        "Este colaborador é pago na diária: o valor dele vem dos dias marcados no calendário, não de um fechamento.",
+    };
+
+  const metro = modo === "metro";
+  const precoFicha = normMoney(metro ? resp.meter_rate : resp.job_rate);
+  const preco = input.rate != null && input.rate > 0 ? normMoney(input.rate) : precoFicha;
+
+  if (preco <= 0)
+    return {
+      error: metro
+        ? "O valor do metro dele ainda não foi combinado — cadastre em Colaboradores"
+        : "O valor da obra dele ainda não foi combinado — cadastre em Colaboradores",
+    };
+
+  const metragem = normQty(input.quantity);
+  if (metro && metragem <= 0)
+    return { error: "Informe a metragem da obra" };
+
+  const row = {
+    obra_id: obra.id,
+    sector_id: null,
+    is_obra_contract: true,
+    service_type: clean(input.service_type) ?? "OBRA",
+    diarista_id: obra.responsavel_id,
+    contract_mode: metro ? "metro" : "empreita",
+    contract_amount: metro ? 0 : preco,
+    rate_per_unit: metro ? preco : 0,
+    quantity: metro ? metragem : 0,
+    unit: clean(input.unit) ?? "M",
+    service_date: input.service_date?.trim() || undefined,
+    description: clean(input.description),
+    notes: clean(input.notes),
+  };
+
+  // Uma obra tem UM fechamento (índice único da 071): existindo, corrige.
+  const { data: atual } = await supabase
+    .from("supply_obra_servicos")
+    .select("id, acerto_id")
+    .eq("obra_id", obra.id)
+    .eq("is_obra_contract", true)
+    .maybeSingle();
+
+  if (atual?.acerto_id)
+    return {
+      error: "O fechamento desta obra já foi acertado. Desfaça o acerto primeiro.",
+    };
+
+  const { error } = atual
+    ? await supabase.from("supply_obra_servicos").update(row).eq("id", atual.id)
+    : await supabase
+        .from("supply_obra_servicos")
+        .insert({ ...row, created_by: user.id });
+
+  if (error) return { error: servicoError(error) };
+  revalidateServico();
+  return { ok: true };
+}
+
+/**
+ * Desfaz o fechamento da obra. O responsável continua no cadastro da obra — o
+ * que sai é só o valor a pagar por ela.
+ */
+export async function deleteSupplyObraFechamento(obraId: string) {
+  const supabase = createClient();
+  if (!obraId) return { error: "Obra não informada" };
+
+  const { data: atual } = await supabase
+    .from("supply_obra_servicos")
+    .select("id, acerto_id")
+    .eq("obra_id", obraId)
+    .eq("is_obra_contract", true)
+    .maybeSingle();
+
+  if (!atual) return { ok: true };
+  if (atual.acerto_id)
+    return {
+      error: "O fechamento desta obra já foi acertado. Desfaça o acerto primeiro.",
+    };
+
+  const { error } = await supabase
+    .from("supply_obra_servicos")
+    .delete()
+    .eq("id", atual.id);
+
   if (error) return { error: servicoError(error) };
   revalidateServico();
   return { ok: true };

@@ -12,6 +12,7 @@ import {
   Receipt,
   Trash2,
   User,
+  UserCog,
   Users,
 } from "lucide-react";
 import {
@@ -164,11 +165,15 @@ export function SupplyObraDetailDialog({
    */
   const servicosDaObra = useMemo(() => {
     const meus = servicos.filter((s) => s.obra_id === obra?.id);
+    // o fechamento com o responsável é da obra INTEIRA: sai da conta por setor
+    // e ganha linha própria, para não parecer serviço de um pedaço só
+    const fechamento = meus.find((s) => s.is_obra_contract) ?? null;
     const porSetor = new Map<
       string,
       { nome: string; valor: number; itens: SupplyObraServicoView[] }
     >();
     for (const s of meus) {
+      if (s.is_obra_contract) continue;
       const key = s.sector_id ?? "sem";
       const cur = porSetor.get(key) ?? {
         nome: s.sector_name ?? "Sem setor",
@@ -180,6 +185,7 @@ export function SupplyObraDetailDialog({
       porSetor.set(key, cur);
     }
     return {
+      fechamento,
       total: meus.reduce((s, v) => s + num(v.total_value), 0),
       setores: [...porSetor.values()].sort((a, b) => b.valor - a.valor),
     };
@@ -350,6 +356,13 @@ export function SupplyObraDetailDialog({
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400 flex items-center gap-1">
                 <MapPinned className="w-3 h-3" />
                 {obra.local_name}
+              </span>
+            )}
+            {/* quem toca a obra — é com ele que o preço dela foi combinado */}
+            {obra.responsavel_name && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-produmar-50 text-produmar-700 dark:bg-produmar-900/30 dark:text-produmar-300 flex items-center gap-1">
+                <UserCog className="w-3 h-3" />
+                {obra.responsavel_name}
               </span>
             )}
             {obra.client && <p className="text-[11px] text-slate-400">{obra.client}</p>}
@@ -533,6 +546,27 @@ export function SupplyObraDetailDialog({
                   {formatBRL(servicosDaObra.total)}
                 </span>
               </div>
+              {/* O fechamento da obra com o responsável — o acerto do serviço
+                  inteiro, que não é de setor nenhum */}
+              {servicosDaObra.fechamento && (
+                <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 flex items-start gap-2">
+                  <UserCog className="w-3.5 h-3.5 text-produmar-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                      Fechamento com {servicosDaObra.fechamento.worker_name ?? "o responsável"}
+                    </p>
+                    <p className="text-[11px] text-slate-400 truncate tabular-nums">
+                      {servicosDaObra.fechamento.service_type} ·{" "}
+                      {servicoConta(servicosDaObra.fechamento).completo}
+                      {servicosDaObra.fechamento.acerto_id ? " · pago" : ""}
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">
+                    {formatBRL(num(servicosDaObra.fechamento.total_value))}
+                  </p>
+                </div>
+              )}
+
               <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
                 {servicosDaObra.setores.map((s) => (
                   <div key={s.nome} className="px-3 py-2 space-y-1">
@@ -866,6 +900,13 @@ export function SupplyObraCard({
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
             {obra.name}
           </p>
+          {/* quem toca a obra vem antes do cliente: é quem tem a receber */}
+          {obra.responsavel_name && (
+            <p className="text-[11px] text-produmar-600 dark:text-produmar-400 truncate flex items-center gap-1 mt-0.5">
+              <UserCog className="w-3 h-3" />
+              {obra.responsavel_name}
+            </p>
+          )}
           {obra.client && (
             <p className="text-[11px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
               <User className="w-3 h-3" />
