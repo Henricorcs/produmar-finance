@@ -8,11 +8,13 @@ import {
   Beef,
   ChevronRight,
   HandCoins,
+  LayoutGrid,
   Plus,
   Printer,
   Search,
   Settings2,
   Syringe,
+  Table2,
   Wallet,
   X,
 } from "lucide-react";
@@ -37,6 +39,8 @@ import { BirthDialog } from "./birth-dialog";
 import { BirthRequestDialog } from "./birth-request-dialog";
 import { BirthRequestDetailDialog } from "./birth-request-detail-dialog";
 import { QuickAddRow } from "./quick-add-row";
+import { QuickAddBar } from "./quick-add-bar";
+import { RebanhoGrid } from "./rebanho-grid";
 import { WeightDialog } from "./weight-dialog";
 import { AnimalFinanceiroTab } from "./animal-financeiro-tab";
 import {
@@ -123,6 +127,18 @@ interface VaccinePlanGroup {
 /** Ordem da planilha. */
 type SortKey = "tag" | "recente" | "alterado";
 
+/** Como o rebanho aparece na tela. */
+type View = "numeros" | "planilha";
+
+const VIEWS: {
+  value: View;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { value: "numeros", label: "Números", icon: LayoutGrid },
+  { value: "planilha", label: "Planilha", icon: Table2 },
+];
+
 const SORTS: { value: SortKey; label: string }[] = [
   { value: "tag", label: "Nº do animal" },
   { value: "recente", label: "Cadastrados por último" },
@@ -155,6 +171,12 @@ export function AnimaisPageClient({
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
   const [onlyPending, setOnlyPending] = useState(false);
   const [sort, setSort] = useState<SortKey>("tag");
+  /**
+   * A tela abre no quadro de NÚMEROS — só o nº de cada animal, separado por
+   * criação. A planilha larga (raça, peso, pariu, uma coluna por vacina) fica
+   * a um toque, para quem está no curral vacinando o lote.
+   */
+  const [view, setView] = useState<View>("numeros");
 
   // dialogs
   const [animalDialogOpen, setAnimalDialogOpen] = useState(false);
@@ -437,6 +459,18 @@ export function AnimaisPageClient({
       return byTag(a, b);
     });
   }, [speciesAnimals, search, categoryFilter, filterPending, pendingAnimalIds, sort]);
+
+  /** O recado de lista vazia — o mesmo no quadro de números e na planilha. */
+  const emptyMessage =
+    filtered.length > 0
+      ? undefined
+      : animals.length === 0
+        ? "Nenhum animal ainda — digite o número aí em cima e aperte Enter."
+        : filterPending
+          ? "Ninguém marcado como pendente."
+          : species !== "todos" && speciesAnimals.length === 0
+            ? `Nenhum ${SPECIES_META[species].label.toLowerCase()} no rebanho ainda — o cadastro aí em cima já está pronto para o primeiro.`
+            : "Nada encontrado com esse filtro.";
 
   /**
    * Registro de vacinação: quem foi vacinado, quando, com qual vacina e
@@ -826,13 +860,38 @@ export function AnimaisPageClient({
                 />
               </div>
 
-              {/* Ordem da planilha: por número (a de sempre) ou pelo que mexeu por último */}
+              {/* Como ver o rebanho: só os números (a tela limpa) ou a
+                  planilha larga com as colunas de vacina */}
+              <div className="flex flex-1 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:flex-none dark:border-slate-700 dark:bg-slate-800/60">
+                {VIEWS.map((v) => {
+                  const Icon = v.icon;
+                  const active = view === v.value;
+                  return (
+                    <button
+                      key={v.value}
+                      type="button"
+                      onClick={() => setView(v.value)}
+                      className={cn(
+                        "flex flex-1 items-center justify-center gap-1.5 h-9 px-2.5 rounded-lg text-xs font-semibold transition-colors active:scale-[0.97] sm:flex-none",
+                        active
+                          ? "bg-white text-produmar-700 shadow-sm dark:bg-slate-900 dark:text-produmar-400"
+                          : "text-slate-500 dark:text-slate-400"
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {v.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Ordem da lista: por número (a de sempre) ou pelo que mexeu por último */}
               <div className="relative flex-1 sm:flex-none">
                 <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value as SortKey)}
-                  aria-label="Ordem da planilha"
+                  aria-label="Ordem da lista"
                   className="w-full h-11 pl-9 pr-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 dark:bg-slate-800/60 dark:border-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-produmar-400"
                 >
                   {SORTS.map((s) => (
@@ -872,74 +931,94 @@ export function AnimaisPageClient({
             </div>
           </div>
 
-          {/* A planilha fica sempre na tela: a primeira linha é de digitação —
-              cadastra o animal sem abrir formulário. */}
-          <RebanhoTable
-            animals={filtered}
-            breeds={breeds}
-            quickAddSpecies={species === "todos" ? null : species}
-            vaccines={tableVaccines}
-            lastByKey={lastByKey}
-            birthsByMother={birthsByMother}
-            treatmentsByAnimal={treatmentsByAnimal}
-            weightsByAnimal={weightsByAnimal}
-            pendingKeys={pendingKeys}
-            onOpenAnimal={(id) => setDetailAnimalId(id)}
-            onApplyNow={applyNow}
-            onUndo={undoToday}
-            onBirth={(a) => openBirth(a)}
-            onWeigh={(a) => openWeight(a)}
-            applyingKey={applyingKey}
-            emptyMessage={
-              filtered.length > 0
-                ? undefined
-                : animals.length === 0
-                ? "Nenhum animal ainda — digite o número na linha acima e aperte Enter."
-                : filterPending
-                ? "Ninguém marcado como pendente."
-                : species !== "todos" && speciesAnimals.length === 0
-                ? `Nenhum ${SPECIES_META[species].label.toLowerCase()} no rebanho ainda — a linha acima já está pronta para cadastrar o primeiro.`
-                : "Nada encontrado com esse filtro."
-            }
-          />
-          {/* Rebanho misturado: a planilha ficou sem coluna de vacina de
-              propósito — o recado diz onde elas estão, senão parece defeito. */}
-          {vaccinesNeedSpecies && (
-            <button
-              type="button"
-              onClick={() => setSpecies(speciesPresent[0])}
-              className="w-full flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-produmar-200 bg-produmar-50/60 text-left text-sm font-medium text-produmar-700 dark:border-slate-700 dark:bg-slate-800/40 dark:text-produmar-400 active:scale-[0.98] transition-transform"
-            >
-              <Syringe className="w-4 h-4 flex-shrink-0" />
-              <span className="flex-1">
-                Escolha o tipo aí em cima para ver as vacinas — cada criação tem as suas
-              </span>
-              <ChevronRight className="w-4 h-4 flex-shrink-0" />
-            </button>
-          )}
+          {/* Quadro de NÚMEROS (o padrão) ou a planilha larga.
 
-          {/* O manual da planilha é comprido e só se lê uma vez: fica dobrado,
-              a um toque de quem precisar. */}
-          <details className="group normal-case">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
-              <ChevronRight className="w-4 h-4 flex-shrink-0 transition-transform group-open:rotate-90" />
-              Como usar a planilha
-            </summary>
-            <p className="mt-2 pl-6 text-sm text-slate-500 dark:text-slate-400">
-              Digite na primeira linha para cadastrar (Enter salva); na coluna &quot;Cat.&quot;
-              escolha o tipo do animal — bovino, equino, caprino, ovino ou suíno — e ele manda
-              no nome da categoria, nas raças da lista e nas vacinas. As colunas de vacina só
-              aparecem com UM tipo escolhido lá em cima: cada criação toma as suas, e
-              misturadas a planilha não caberia na tela. Em &quot;Pariu&quot;, a data do parto
-              pede M ou F e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
-              toque na coluna para ver os partos da mãe e apagar o que entrou errado. Toque no
-              peso para pesar de novo: embaixo dele fica quanto o animal ganhou desde a última
-              pesagem e em quanto tempo. Célula vermelha = os ml a aplicar (vacina nunca dada ou
-              vencida); toque nela para registrar. Para deixar uma vacina pendente de propósito,
-              abra o animal na aba Vacinas — o que for marcado ganha a tarja laranja e entra no
-              filtro de pendentes.
-            </p>
-          </details>
+              O quadro é o cadastro do rebanho: só o número de cada animal,
+              separado por criação — Bovinos, Equinos... Toque no número e a
+              ficha abre; é lá que entram vacina, peso, parto, foto e
+              tratamento. A planilha, com uma coluna por vacina, continua para
+              o dia de vacinar o lote inteiro no curral. */}
+          {view === "numeros" ? (
+            <>
+              {/* Cadastro rápido: nº + F/M e Enter — o resto é na ficha */}
+              <QuickAddBar species={species === "todos" ? null : species} />
+
+              <RebanhoGrid
+                animals={filtered}
+                groupBySpecies={species === "todos"}
+                pendingAnimalIds={pendingAnimalIds}
+                onOpen={(id) => setDetailAnimalId(id)}
+                emptyMessage={emptyMessage}
+              />
+
+              <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
+                Toque no número para abrir a ficha do animal — vacina, peso, parto, foto e
+                tratamento entram por lá. Para vacinar o lote no curral, troque para
+                &quot;Planilha&quot;.
+              </p>
+            </>
+          ) : (
+            <>
+              {/* A planilha fica sempre na tela: a primeira linha é de digitação —
+                  cadastra o animal sem abrir formulário. */}
+              <RebanhoTable
+                animals={filtered}
+                breeds={breeds}
+                quickAddSpecies={species === "todos" ? null : species}
+                vaccines={tableVaccines}
+                lastByKey={lastByKey}
+                birthsByMother={birthsByMother}
+                treatmentsByAnimal={treatmentsByAnimal}
+                weightsByAnimal={weightsByAnimal}
+                pendingKeys={pendingKeys}
+                onOpenAnimal={(id) => setDetailAnimalId(id)}
+                onApplyNow={applyNow}
+                onUndo={undoToday}
+                onBirth={(a) => openBirth(a)}
+                onWeigh={(a) => openWeight(a)}
+                applyingKey={applyingKey}
+                emptyMessage={emptyMessage}
+              />
+              {/* Rebanho misturado: a planilha ficou sem coluna de vacina de
+                  propósito — o recado diz onde elas estão, senão parece defeito. */}
+              {vaccinesNeedSpecies && (
+                <button
+                  type="button"
+                  onClick={() => setSpecies(speciesPresent[0])}
+                  className="w-full flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-produmar-200 bg-produmar-50/60 text-left text-sm font-medium text-produmar-700 dark:border-slate-700 dark:bg-slate-800/40 dark:text-produmar-400 active:scale-[0.98] transition-transform"
+                >
+                  <Syringe className="w-4 h-4 flex-shrink-0" />
+                  <span className="flex-1">
+                    Escolha o tipo aí em cima para ver as vacinas — cada criação tem as suas
+                  </span>
+                  <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                </button>
+              )}
+
+              {/* O manual da planilha é comprido e só se lê uma vez: fica dobrado,
+                  a um toque de quem precisar. */}
+              <details className="group normal-case">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
+                  <ChevronRight className="w-4 h-4 flex-shrink-0 transition-transform group-open:rotate-90" />
+                  Como usar a planilha
+                </summary>
+                <p className="mt-2 pl-6 text-sm text-slate-500 dark:text-slate-400">
+                  Digite na primeira linha para cadastrar (Enter salva); na coluna &quot;Cat.&quot;
+                  escolha o tipo do animal — bovino, equino, caprino, ovino ou suíno — e ele manda
+                  no nome da categoria, nas raças da lista e nas vacinas. As colunas de vacina só
+                  aparecem com UM tipo escolhido lá em cima: cada criação toma as suas, e
+                  misturadas a planilha não caberia na tela. Em &quot;Pariu&quot;, a data do parto
+                  pede M ou F e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
+                  toque na coluna para ver os partos da mãe e apagar o que entrou errado. Toque no
+                  peso para pesar de novo: embaixo dele fica quanto o animal ganhou desde a última
+                  pesagem e em quanto tempo. Célula vermelha = os ml a aplicar (vacina nunca dada ou
+                  vencida); toque nela para registrar. Para deixar uma vacina pendente de propósito,
+                  abra o animal na aba Vacinas — o que for marcado ganha a tarja laranja e entra no
+                  filtro de pendentes.
+                </p>
+              </details>
+            </>
+          )}
         </div>
       )}
 
