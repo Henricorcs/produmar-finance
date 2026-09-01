@@ -70,6 +70,7 @@ export default async function FrotaPage({
       internos: 0,
       a_receber: 0,
       servicos: 0,
+      abertas: 0,
       ultimo_movimento: null,
     }));
   }

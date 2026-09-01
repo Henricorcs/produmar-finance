@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { MACHINE_SERVICO_KINDS, type MachineServicoKind } from "@/lib/types";
+import {
+  MACHINE_SERVICO_KINDS,
+  type MachineServicoKind,
+  type MachineServicoStatus,
+} from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FROTA — o serviço e a despesa de cada máquina/veículo (migration 073)
@@ -48,12 +52,20 @@ function frotaError(error: { code?: string; message: string }): string {
     return "Rode a migration 073 no Supabase para usar a ficha das máquinas";
   if (error.message.includes("machine_despesas"))
     return "Rode a migration 073 no Supabase para lançar despesas do veículo";
+  // coluna que não existe: é a `status`, que só entra na 074
+  if (error.code === "42703")
+    return "Rode a migration 074 no Supabase para a OS ter situação (aberta/concluída)";
   return error.message;
 }
 
 function normalizeKind(kind?: string | null): MachineServicoKind {
   const found = MACHINE_SERVICO_KINDS.find((k) => k.value === kind);
   return found ? found.value : "diaria";
+}
+
+/** A OS nasce ABERTA — é ela que fica verde no calendário do veículo. */
+function normalizeStatus(status?: string | null): MachineServicoStatus {
+  return status === "concluida" ? "concluida" : "aberta";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,6 +84,7 @@ export interface MachineServicoInput {
   unit_price: number;
   operator?: string | null;
   internal?: boolean;
+  status?: MachineServicoStatus;
   paid?: boolean;
   notes?: string | null;
 }
@@ -91,6 +104,8 @@ function servicoRow(input: MachineServicoInput) {
     destination: clean(input.destination),
     operator: clean(input.operator),
     internal: !!input.internal,
+    // dinheiro na mão é serviço acabado: recebido fecha a OS sozinho
+    status: input.paid ? "concluida" : normalizeStatus(input.status),
     paid: !!input.paid,
     notes: clean(input.notes),
   };
@@ -153,7 +168,21 @@ export async function deleteMachineServico(id: string) {
 /** Marcar/desmarcar recebido direto na ficha, sem abrir o lançamento. */
 export async function setMachineServicoPaid(id: string, paid: boolean) {
   const supabase = createClient();
-  const { error } = await supabase.from("machine_servicos").update({ paid }).eq("id", id);
+  // receber fecha a OS junto; desmarcar não reabre (o serviço continua feito)
+  const patch = paid ? { paid, status: "concluida" } : { paid };
+  const { error } = await supabase.from("machine_servicos").update(patch).eq("id", id);
+  if (error) return { error: frotaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Abrir/concluir a OS com um toque na ficha — é o verde do calendário. */
+export async function setMachineServicoStatus(id: string, status: MachineServicoStatus) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("machine_servicos")
+    .update({ status: normalizeStatus(status) })
+    .eq("id", id);
   if (error) return { error: frotaError(error) };
   revalidate();
   return { ok: true };

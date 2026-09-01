@@ -78,7 +78,7 @@ export const APP_MODULES: AppModule[] = [
     // a migration 073.
     slug: "frota",
     name: "Máquinas e Veículos",
-    description: "Serviço, diária, frete e viagem de cada veículo — despesas e receitas",
+    description: "A OS de cada veículo no calendário, com as despesas e as receitas",
     href: "/frota",
     icon: Tractor,
     accentIcon:

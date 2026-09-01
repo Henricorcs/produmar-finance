@@ -1583,6 +1583,13 @@ export interface DiaristaDiaRow extends DiaristaDia {
 export type MachineServicoKind = "diaria" | "hora" | "viagem" | "km" | "servico";
 
 /**
+ * A OS da ficha está em andamento ou já acabou. É o que pinta o calendário do
+ * veículo: dia com OS aberta fica verde. Não confundir com `paid`, que responde
+ * outra pergunta — o serviço acabou não quer dizer que o dinheiro entrou.
+ */
+export type MachineServicoStatus = "aberta" | "concluida";
+
+/**
  * As formas de cobrança, na ordem em que aparecem na tela. `unit` é o que se
  * conta (dias, horas, viagens, km) e vira o rótulo do campo de quantidade.
  */
@@ -1640,6 +1647,8 @@ export interface MachineServico {
   operator: string | null;
   /** Serviço da própria firma: trabalho feito, mas sem dinheiro entrando. */
   internal: boolean;
+  /** Aberta = ainda em andamento (verde no calendário). */
+  status: MachineServicoStatus;
   /** Já recebeu? É o que responde "quem ainda me deve". */
   paid: boolean;
   notes: string | null;
@@ -1693,6 +1702,8 @@ export interface MachineFichaLinha {
   operator: string | null;
   /** Nulo na OS: lá o recebimento mora em Contas. */
   paid: boolean | null;
+  /** Só a OS da ficha tem: aberta ou concluida. Nas outras linhas vem nulo. */
+  status: MachineServicoStatus | null;
   liters: number | null;
   odometer: number | null;
   /** Nº da OS, quando a linha veio de Operações. */
@@ -1710,5 +1721,7 @@ export interface MachineResumo extends Machine {
   internos: number;
   a_receber: number;
   servicos: number;
+  /** OS da ficha ainda não concluídas — o que o veículo tem em aberto. */
+  abertas: number;
   ultimo_movimento: string | null;
 }

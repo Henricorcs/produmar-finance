@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import {
   Check,
+  CheckCheck,
   Download,
   FileText,
   Fuel,
@@ -26,7 +27,11 @@ import {
   formatQty,
   machineCategoryLabel,
 } from "@/lib/utils";
-import { setMachineServicoPaid } from "@/app/(app)/frota/actions";
+import {
+  setMachineServicoPaid,
+  setMachineServicoStatus,
+} from "@/app/(app)/frota/actions";
+import { FrotaCalendario, type DiaDaFrota } from "./frota-calendario";
 import { ServicoDialog } from "./servico-dialog";
 import { DespesaDialog } from "./despesa-dialog";
 import { Chip, Numero, categoryChip, contaDoServico, kindMeta, toneResultado } from "./frota-shared";
@@ -46,7 +51,7 @@ const FILTROS: { value: Filtro; label: string }[] = [
   { value: "servico", label: "Diárias e serviços" },
   { value: "frete", label: "Fretes e viagens" },
   { value: "despesa", label: "Despesas" },
-  { value: "os", label: "Ordens de serviço" },
+  { value: "os", label: "Vindas de Operações" },
 ];
 
 /** Frete é o que se conta por viagem ou por km — o resto é diária/hora/fechado. */
@@ -84,6 +89,12 @@ interface Props {
   contratantes: string[];
   /** "setembro de 2026" — o mês que a ficha está mostrando. */
   mesLabel: string;
+  /** O mês da tela, para o calendário: ano e mês 0-11. */
+  year: number;
+  month: number;
+  /** Virar o mês — mexe no mês da TELA, e a ficha vem junto. */
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
 }
 
 /**
@@ -106,6 +117,10 @@ export function VeiculoFichaDialog({
   despesas,
   contratantes,
   mesLabel,
+  year,
+  month,
+  onPrevMonth,
+  onNextMonth,
 }: Props) {
   const [filtro, setFiltro] = useState<Filtro>("tudo");
   const [isPending, startTransition] = useTransition();
@@ -113,6 +128,8 @@ export function VeiculoFichaDialog({
 
   const [servicoOpen, setServicoOpen] = useState(false);
   const [editServico, setEditServico] = useState<MachineServico | null>(null);
+  /** O dia tocado no calendário — a OS nova nasce nele. */
+  const [diaEscolhido, setDiaEscolhido] = useState<string | null>(null);
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [editDespesa, setEditDespesa] = useState<MachineDespesa | null>(null);
 
@@ -158,11 +175,35 @@ export function VeiculoFichaDialog({
     };
   }, [doFiltro]);
 
+  /**
+   * As OS de cada dia do mês — é o que pinta o calendário. Só entra a OS da
+   * ficha: a de Operações tem o status dela lá e a despesa não abre nem fecha.
+   */
+  const porDia = useMemo(() => {
+    const map = new Map<string, DiaDaFrota>();
+    for (const l of linhas) {
+      if (l.kind !== "servico") continue;
+      const cur = map.get(l.entry_date) ?? { abertas: 0, total: 0 };
+      cur.total += 1;
+      if (l.status === "aberta") cur.abertas += 1;
+      map.set(l.entry_date, cur);
+    }
+    return map;
+  }, [linhas]);
+
+  /** Quantas OS deste mês ainda estão em aberto. */
+  const abertasNoMes = useMemo(() => {
+    let n = 0;
+    for (const d of porDia.values()) n += d.abertas;
+    return n;
+  }, [porDia]);
+
   const servicoPorId = useMemo(() => new Map(servicos.map((s) => [s.id, s])), [servicos]);
   const despesaPorId = useMemo(() => new Map(despesas.map((d) => [d.id, d])), [despesas]);
 
-  function abrirServico(s: MachineServico | null) {
+  function abrirServico(s: MachineServico | null, dia?: string | null) {
     setEditServico(s);
+    setDiaEscolhido(dia ?? null);
     setServicoOpen(true);
   }
 
@@ -175,6 +216,15 @@ export function VeiculoFichaDialog({
     setErro(null);
     startTransition(async () => {
       const falha = actionError(await setMachineServicoPaid(s.id, !s.paid));
+      if (falha) setErro(falha);
+    });
+  }
+
+  /** Fechar a OS com um toque: o dia deixa de ficar verde no calendário. */
+  function concluir(s: MachineServico) {
+    setErro(null);
+    startTransition(async () => {
+      const falha = actionError(await setMachineServicoStatus(s.id, "concluida"));
       if (falha) setErro(falha);
     });
   }
@@ -192,6 +242,7 @@ export function VeiculoFichaDialog({
       "De onde",
       "Para onde",
       "Operador",
+      "Situação",
       "Recebido",
     ];
     const rows = doFiltro.map((l) => [
@@ -210,6 +261,7 @@ export function VeiculoFichaDialog({
       l.origin ?? "",
       l.destination ?? "",
       l.operator ?? "",
+      l.status === "aberta" ? "aberta" : l.status === "concluida" ? "concluída" : "",
       l.paid === null ? "" : l.paid ? "sim" : "não",
     ]);
 
@@ -326,10 +378,31 @@ export function VeiculoFichaDialog({
               </p>
             )}
 
+            {/* O CALENDÁRIO DO VEÍCULO — toque no dia e lance a OS dele */}
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+              <FrotaCalendario
+                year={year}
+                month={month}
+                onPrevMonth={onPrevMonth}
+                onNextMonth={onNextMonth}
+                porDia={porDia}
+                onDayClick={(iso) => abrirServico(null, iso)}
+              />
+            </div>
+
+            {abertasNoMes > 0 && (
+              <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                {abertasNoMes === 1
+                  ? "1 OS aberta neste mês"
+                  : `${abertasNoMes} OS abertas neste mês`}
+                {" — o dia verde é serviço que ainda não foi concluído."}
+              </p>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <Button className="h-11" onClick={() => abrirServico(null)}>
                 <Plus className="w-4 h-4" />
-                Serviço
+                Nova OS
               </Button>
               <Button variant="outline" className="h-11" onClick={() => abrirDespesa(null)}>
                 <Plus className="w-4 h-4" />
@@ -379,8 +452,8 @@ export function VeiculoFichaDialog({
 
               {doFiltro.length === 0 ? (
                 <p className="text-xs text-slate-400 dark:text-slate-500 py-6 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
-                  Nada neste mês. Lance o serviço que a máquina fez ou o gasto que ela
-                  teve nos botões acima.
+                  Nada neste mês. Toque num dia do calendário para lançar a OS daquele
+                  dia, ou use os botões acima.
                 </p>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -401,6 +474,7 @@ export function VeiculoFichaDialog({
                         : "";
                     const trecho = [l.origin, l.destination].filter(Boolean).join(" → ");
                     const aReceber = receita && !l.internal && l.paid === false;
+                    const aberta = l.kind === "servico" && l.status === "aberta";
 
                     return (
                       <div
@@ -456,15 +530,34 @@ export function VeiculoFichaDialog({
                             {trecho ? ` · ${trecho}` : ""}
                             {l.operator ? ` · ${l.operator}` : ""}
                             {l.category ? ` · ${l.category}` : ""}
-                            {l.order_number ? ` · OS nº ${l.order_number}` : ""}
+                            {l.order_number ? ` · OS nº ${l.order_number} (Operações)` : ""}
                             {l.liters ? ` · ${formatQty(Number(l.liters))} L` : ""}
                           </p>
-                          {(aReceber || l.internal) && (
-                            <div className="mt-1 flex items-center gap-1.5">
+                          {(aberta || aReceber || l.internal) && (
+                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                               {l.internal && (
                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                                   DA FIRMA
                                 </span>
+                              )}
+                              {aberta && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                                  ABERTA
+                                </span>
+                              )}
+                              {aberta && servico && (
+                                <button
+                                  type="button"
+                                  disabled={isPending}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    concluir(servico);
+                                  }}
+                                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300 flex items-center gap-1 disabled:opacity-40"
+                                >
+                                  <CheckCheck className="w-3 h-3" />
+                                  concluir
+                                </button>
                               )}
                               {aReceber && (
                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
@@ -514,9 +607,9 @@ export function VeiculoFichaDialog({
               )}
 
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                As linhas de OS vêm do módulo Operações e são só leitura aqui — elas se
-                corrigem lá. O serviço e a despesa lançados na ficha se corrigem com um
-                toque na linha.
+                A OS e a despesa lançadas na ficha se corrigem com um toque na linha. As
+                linhas que vieram do módulo Operações são só leitura aqui — elas se
+                corrigem lá.
               </p>
             </div>
           </div>
@@ -528,6 +621,7 @@ export function VeiculoFichaDialog({
         onClose={() => setServicoOpen(false)}
         servico={editServico}
         presetMachineId={machine.id}
+        presetDate={diaEscolhido}
         machines={machines}
         contratantes={contratantes}
       />

@@ -48,6 +48,8 @@ interface NoMes {
   internos: number;
   aReceber: number;
   lancamentos: number;
+  /** OS da ficha que ainda não foram concluídas — o verde do calendário. */
+  abertas: number;
 }
 
 const ZERO: NoMes = {
@@ -57,6 +59,7 @@ const ZERO: NoMes = {
   internos: 0,
   aReceber: 0,
   lancamentos: 0,
+  abertas: 0,
 };
 
 /**
@@ -116,6 +119,7 @@ export function FrotaPageClient({
       const cur = { ...(map.get(l.machine_id) ?? ZERO) };
       const v = Number(l.value);
       cur.lancamentos += 1;
+      if (l.kind === "servico" && l.status === "aberta") cur.abertas += 1;
       if (l.internal) cur.internos += v;
       else if (l.flow === "receita") {
         cur.receitas += v;
@@ -212,7 +216,8 @@ export function FrotaPageClient({
             Máquinas e Veículos
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            A ficha de cada um: serviço, diária, frete e viagem — com despesas e receitas
+            A ficha de cada um: a OS no calendário — diária, frete, viagem — com despesas
+            e receitas
           </p>
         </div>
         <Button variant="outline" className="flex-shrink-0" onClick={() => setNovoVeiculoOpen(true)}>
@@ -241,7 +246,7 @@ export function FrotaPageClient({
         <div className="grid grid-cols-2 gap-2">
           <Button className="h-11 sm:h-10" onClick={() => setServicoOpen(true)}>
             <Plus className="w-4 h-4" />
-            Serviço
+            Nova OS
           </Button>
           <Button
             variant="outline"
@@ -396,6 +401,13 @@ export function FrotaPageClient({
                   {n.internos > 0 ? ` · ${formatBRL(n.internos)} da firma` : ""}
                 </p>
 
+                {/* O que ainda está em aberto — é o verde do calendário da ficha */}
+                {n.abertas > 0 && (
+                  <p className="mt-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                    {n.abertas === 1 ? "1 OS aberta" : `${n.abertas} OS abertas`}
+                  </p>
+                )}
+
                 {m.ultimo_movimento && (
                   <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500 truncate">
                     Último movimento em {formatDate(m.ultimo_movimento)} · resultado de sempre{" "}
@@ -453,6 +465,10 @@ export function FrotaPageClient({
           despesas={despesas.filter((d) => d.machine_id === fichaMachine.id)}
           contratantes={contratantes}
           mesLabel={mesLabel}
+          year={year}
+          month={monthNum - 1}
+          onPrevMonth={() => navigateMonth(-1)}
+          onNextMonth={() => navigateMonth(1)}
         />
       )}
 

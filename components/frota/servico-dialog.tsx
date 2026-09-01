@@ -40,6 +40,7 @@ import {
   type Machine,
   type MachineServico,
   type MachineServicoKind,
+  type MachineServicoStatus,
 } from "@/lib/types";
 
 interface Props {
@@ -52,6 +53,8 @@ interface Props {
   machines: Machine[];
   /** Contratantes já usados, para não digitar o nome de novo. */
   contratantes?: string[];
+  /** Dia tocado no calendário — a OS nova já nasce com essa data. */
+  presetDate?: string | null;
 }
 
 /**
@@ -71,6 +74,7 @@ export function ServicoDialog({
   presetMachineId,
   machines,
   contratantes = [],
+  presetDate,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +90,7 @@ export function ServicoDialog({
   const [unitPrice, setUnitPrice] = useState("");
   const [operator, setOperator] = useState("");
   const [internal, setInternal] = useState(false);
+  const [status, setStatus] = useState<MachineServicoStatus>("aberta");
   const [paid, setPaid] = useState(false);
   const [notes, setNotes] = useState("");
 
@@ -93,7 +98,8 @@ export function ServicoDialog({
     if (!open) return;
     setMachineId(servico?.machine_id ?? presetMachineId ?? "");
     setKind(servico?.kind ?? "diaria");
-    setDate(servico?.service_date ?? localDateISO());
+    // OS nova aberta pelo calendário nasce no dia que foi tocado
+    setDate(servico?.service_date ?? presetDate ?? localDateISO());
     setContratante(servico?.contratante ?? "");
     setDescription(servico?.description ?? "");
     setOrigin(servico?.origin ?? "");
@@ -102,10 +108,11 @@ export function ServicoDialog({
     setUnitPrice(servico ? formatBRLInput(Number(servico.unit_price)) : "");
     setOperator(servico?.operator ?? "");
     setInternal(servico?.internal ?? false);
+    setStatus(servico?.status ?? "aberta");
     setPaid(servico?.paid ?? false);
     setNotes(servico?.notes ?? "");
     setError(null);
-  }, [open, servico, presetMachineId]);
+  }, [open, servico, presetMachineId, presetDate]);
 
   const meta = kindMeta(kind);
   const fechado = kind === "servico";
@@ -155,6 +162,7 @@ export function ServicoDialog({
         unit_price: valor,
         operator,
         internal,
+        status,
         paid,
         notes,
       };
@@ -172,7 +180,7 @@ export function ServicoDialog({
 
   function handleDelete() {
     if (!servico) return;
-    if (!confirm("Apagar este serviço da ficha? Isso não tem volta.")) return;
+    if (!confirm("Apagar esta OS da ficha? Isso não tem volta.")) return;
     setError(null);
     startTransition(async () => {
       const falha = actionError(await deleteMachineServico(servico.id));
@@ -192,7 +200,7 @@ export function ServicoDialog({
             <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400">
               <Truck className="w-4 h-4" />
             </span>
-            {servico ? "Editar serviço" : "Lançar serviço"}
+            {servico ? "Editar ordem de serviço" : "Nova ordem de serviço"}
           </DialogTitle>
         </DialogHeader>
 
@@ -339,6 +347,39 @@ export function ServicoDialog({
             />
           </div>
 
+          {/* Aberta ou concluída — é o verde do calendário do veículo */}
+          <div className="space-y-1.5">
+            <Label>Situação da OS</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { v: "aberta", label: "Aberta", hint: "ainda em andamento" },
+                  { v: "concluida", label: "Concluída", hint: "serviço acabado" },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setStatus(o.v)}
+                  className={cn(
+                    "min-h-[48px] rounded-lg border flex flex-col items-center justify-center gap-0.5 transition-colors",
+                    status === o.v
+                      ? o.v === "aberta"
+                        ? "bg-emerald-500 border-emerald-500 text-white"
+                        : "bg-slate-400 border-slate-400 text-white dark:bg-slate-600 dark:border-slate-600"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  )}
+                >
+                  <span className="text-xs font-semibold">{o.label}</span>
+                  <span className="text-[10px] opacity-80">{o.hint}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              O dia fica verde no calendário enquanto a OS estiver aberta.
+            </p>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="ms_desc">O que foi feito</Label>
             <Input
@@ -395,7 +436,12 @@ export function ServicoDialog({
               label="Já recebi este serviço"
               hint="Desmarcado, ele entra no que o contratante ainda deve."
               ativo={paid}
-              onClick={() => setPaid((v) => !v)}
+              onClick={() => {
+                const recebeu = !paid;
+                setPaid(recebeu);
+                // dinheiro na mão é serviço acabado
+                if (recebeu) setStatus("concluida");
+              }}
               disabled={internal}
             />
             <Toggle
@@ -424,8 +470,8 @@ export function ServicoDialog({
           </div>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            O serviço fica aqui, na ficha do veículo — ele não vira lançamento no
-            módulo Contas.
+            A OS fica aqui, na ficha do veículo — ela não vira lançamento no módulo
+            Contas.
           </p>
 
           {error && (
@@ -440,7 +486,7 @@ export function ServicoDialog({
                 type="button"
                 onClick={handleDelete}
                 disabled={isPending}
-                aria-label="Apagar serviço"
+                aria-label="Apagar OS"
                 className="h-11 px-4 rounded-md border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40 sm:h-10"
               >
                 <Trash2 className="w-4 h-4 inline" />
@@ -460,7 +506,7 @@ export function ServicoDialog({
               disabled={isPending}
               className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}
             >
-              {isPending ? "Salvando..." : servico ? "Salvar" : "Lançar serviço"}
+              {isPending ? "Salvando..." : servico ? "Salvar" : "Lançar OS"}
             </Button>
           </DialogFooter>
         </form>
