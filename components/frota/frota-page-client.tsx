@@ -35,6 +35,8 @@ interface Props {
   ficha: MachineFichaLinha[];
   servicos: MachineServico[];
   despesas: MachineDespesa[];
+  /** Operadores com login — a OS pode ser enviada para o celular de um deles. */
+  operators: { id: string; name: string }[];
   month: string;
   /** Migration 073 ainda não rodou: a tela abre, mas avisa. */
   migrationPendente?: boolean;
@@ -74,6 +76,7 @@ export function FrotaPageClient({
   ficha,
   servicos,
   despesas,
+  operators,
   month,
   migrationPendente = false,
 }: Props) {
@@ -464,6 +467,7 @@ export function FrotaPageClient({
           servicos={servicos.filter((s) => s.machine_id === fichaMachine.id)}
           despesas={despesas.filter((d) => d.machine_id === fichaMachine.id)}
           contratantes={contratantes}
+          operators={operators}
           mesLabel={mesLabel}
           year={year}
           month={monthNum - 1}
@@ -479,6 +483,7 @@ export function FrotaPageClient({
         servico={null}
         machines={ativos}
         contratantes={contratantes}
+        operators={operators}
       />
       <DespesaDialog
         open={despesaOpen}

@@ -55,6 +55,8 @@ interface Props {
   contratantes?: string[];
   /** Dia tocado no calendário — a OS nova já nasce com essa data. */
   presetDate?: string | null;
+  /** Operadores com login — a OS pode ser enviada para o celular de um deles. */
+  operators?: { id: string; name: string }[];
 }
 
 /**
@@ -75,6 +77,7 @@ export function ServicoDialog({
   machines,
   contratantes = [],
   presetDate,
+  operators = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +93,7 @@ export function ServicoDialog({
   const [unitPrice, setUnitPrice] = useState("");
   const [operator, setOperator] = useState("");
   const [internal, setInternal] = useState(false);
+  const [assignedTo, setAssignedTo] = useState("");
   const [status, setStatus] = useState<MachineServicoStatus>("aberta");
   const [paid, setPaid] = useState(false);
   const [notes, setNotes] = useState("");
@@ -107,6 +111,7 @@ export function ServicoDialog({
     setQuantity(servico ? formatQty(Number(servico.quantity)) : "1");
     setUnitPrice(servico ? formatBRLInput(Number(servico.unit_price)) : "");
     setOperator(servico?.operator ?? "");
+    setAssignedTo(servico?.assigned_to ?? "");
     setInternal(servico?.internal ?? false);
     setStatus(servico?.status ?? "aberta");
     setPaid(servico?.paid ?? false);
@@ -164,6 +169,7 @@ export function ServicoDialog({
         internal,
         status,
         paid,
+        assigned_to: assignedTo || null,
         notes,
       };
       const r = servico
@@ -456,6 +462,27 @@ export function ServicoDialog({
               }}
             />
           </div>
+
+          {/* ENVIAR PARA O OPERADOR — a OS cai no celular dele */}
+          {operators.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>Enviar para o operador</Label>
+              <SearchableSelect
+                items={operators}
+                value={assignedTo}
+                onChange={setAssignedTo}
+                getId={(o) => o.id}
+                getLabel={(o) => o.name}
+                placeholder="Ninguém — a OS fica só aqui"
+                searchPlaceholder="Buscar pelo nome..."
+                emptyMessage="Nenhum operador cadastrado"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Ele recebe esta OS no painel dele e fecha pelo celular: toca em
+                INICIAR ao começar e em FINALIZAR ao terminar, contando o que fez.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="ms_notes">Observação</Label>

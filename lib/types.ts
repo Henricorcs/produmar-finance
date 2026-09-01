@@ -1651,9 +1651,23 @@ export interface MachineServico {
   status: MachineServicoStatus;
   /** Já recebeu? É o que responde "quem ainda me deve". */
   paid: boolean;
+  /** Operador para quem a OS foi enviada — ela aparece no painel dele. */
+  assigned_to?: string | null;
+  /** Quando o operador tocou em INICIAR / FINALIZAR no painel. */
+  started_at?: string | null;
+  finished_at?: string | null;
+  /** Quem fechou a OS no painel do operador. */
+  finalized_by?: string | null;
+  /** O que o operador escreveu que fez, ao finalizar. */
+  completion_notes?: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
+}
+
+/** A OS da ficha como o painel do operador precisa dela: com o veículo junto. */
+export interface MachineServicoDoOperador extends MachineServico {
+  machines: { name: string; plate: string | null; tracking_type: string | null } | null;
 }
 
 /** Gasto de uma máquina/veículo. Litros e marcação só no abastecimento. */

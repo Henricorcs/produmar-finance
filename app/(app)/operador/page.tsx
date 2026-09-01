@@ -4,6 +4,7 @@ import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OperadorClient } from "@/components/operador/operador-client";
 import type {
+  MachineServicoDoOperador,
   Profile,
   ServiceOrder,
   ServiceOrderAttachment,
@@ -64,26 +65,46 @@ export default async function OperadorPage() {
     }
   })();
 
-  // As três não dependem uma da outra — vão na mesma leva em vez de uma
+  // Nenhuma depende da outra — vão todas na mesma leva, em vez de uma
   // esperar a outra.
-  const [assigned, finished, operators, profile] = await Promise.all([
-    supabase
-      .from("service_orders")
-      .select(select)
-      .in("status", ["pendente", "em_andamento"])
-      .eq("assigned_to", userId)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("service_orders")
-      .select(finishedSelect)
-      .eq("status", "entregue")
-      .eq("finalized_by", userId)
-      .order("delivery_date", { ascending: false })
-      .limit(100),
-    operatorsPromise,
-    // perfil do cache da requisição (o layout já buscou) — não consulta de novo
-    getProfile(),
-  ]);
+  const [assigned, finished, operators, profile, frotaRes, frotaFeitasRes] =
+    await Promise.all([
+      supabase
+        .from("service_orders")
+        .select(select)
+        .in("status", ["pendente", "em_andamento"])
+        .eq("assigned_to", userId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("service_orders")
+        .select(finishedSelect)
+        .eq("status", "entregue")
+        .eq("finalized_by", userId)
+        .order("delivery_date", { ascending: false })
+        .limit(100),
+      operatorsPromise,
+      // perfil do cache da requisição (o layout já buscou) — não consulta de novo
+      getProfile(),
+      // A OS DE MÁQUINA da ficha do veículo (migrations 073-075), enviada para
+      // este operador e ainda em aberto. Best-effort: sem as migrations, a
+      // consulta falha e o painel segue igual, só sem esta lista.
+      supabase
+        .from("machine_servicos")
+        .select("*, machines(name, plate, tracking_type)")
+        .eq("assigned_to", userId)
+        .eq("status", "aberta")
+        .order("service_date", { ascending: true }),
+      // e o histórico: o que ELE mesmo finalizou na máquina (só leitura)
+      supabase
+        .from("machine_servicos")
+        .select("*, machines(name, plate, tracking_type)")
+        .eq("finalized_by", userId)
+        .order("finished_at", { ascending: false })
+        .limit(50),
+    ]);
+
+  const frotaOS = (frotaRes.data as MachineServicoDoOperador[]) ?? [];
+  const frotaFinalizadas = (frotaFeitasRes.data as MachineServicoDoOperador[]) ?? [];
 
   // Coluna assigned_to ausente (migration 023 não aplicada): mostra todas as OS
   // abertas — assim o painel não fica vazio antes da migration rodar.
@@ -185,6 +206,8 @@ export default async function OperadorPage() {
     <OperadorClient
       orders={list}
       finalizedOrders={finalizedList}
+      frotaOS={frotaOS}
+      frotaFinalizadas={frotaFinalizadas}
       operadorName={profile?.full_name ?? profile?.email ?? "Operador"}
       lastKmByMachine={lastKmByMachine}
       operators={operators}

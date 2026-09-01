@@ -18,6 +18,8 @@ function revalidate() {
   revalidatePath("/frota");
   // o cadastro do veículo é o mesmo de Operações
   revalidatePath("/cadastros-operacionais");
+  // a OS enviada aparece (e some) no painel do operador
+  revalidatePath("/operador");
 }
 
 /** Texto de cadastro: sempre em CAIXA ALTA, vazio vira null. */
@@ -52,9 +54,9 @@ function frotaError(error: { code?: string; message: string }): string {
     return "Rode a migration 073 no Supabase para usar a ficha das máquinas";
   if (error.message.includes("machine_despesas"))
     return "Rode a migration 073 no Supabase para lançar despesas do veículo";
-  // coluna que não existe: é a `status`, que só entra na 074
+  // coluna que não existe: são as da 074 (situação) e da 075 (envio ao operador)
   if (error.code === "42703")
-    return "Rode a migration 074 no Supabase para a OS ter situação (aberta/concluída)";
+    return "Rode as migrations 074 e 075 no Supabase para a OS ter situação e ser enviada ao operador";
   return error.message;
 }
 
@@ -86,6 +88,8 @@ export interface MachineServicoInput {
   internal?: boolean;
   status?: MachineServicoStatus;
   paid?: boolean;
+  /** Operador para quem a OS vai — vazio deixa a OS só no escritório. */
+  assigned_to?: string | null;
   notes?: string | null;
 }
 
@@ -107,6 +111,7 @@ function servicoRow(input: MachineServicoInput) {
     // dinheiro na mão é serviço acabado: recebido fecha a OS sozinho
     status: input.paid ? "concluida" : normalizeStatus(input.status),
     paid: !!input.paid,
+    assigned_to: input.assigned_to || null,
     notes: clean(input.notes),
   };
 }
@@ -183,6 +188,67 @@ export async function setMachineServicoStatus(id: string, status: MachineServico
     .from("machine_servicos")
     .update({ status: normalizeStatus(status) })
     .eq("id", id);
+  if (error) return { error: frotaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O PAINEL DO OPERADOR — a OS enviada para o celular dele
+// ─────────────────────────────────────────────────────────────────────────────
+// O operador só alcança a OS que foi enviada a ele: as duas actions abaixo
+// filtram por assigned_to, e a policy da migration 075 faz o mesmo no banco.
+
+/** INICIAR: marca a hora em que a máquina começou o serviço. */
+export async function iniciarMachineServico(id: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { error } = await supabase
+    .from("machine_servicos")
+    .update({ started_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("assigned_to", user.id);
+
+  if (error) return { error: frotaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * FINALIZAR: fecha a OS pelo painel. O operador conta o que realmente fez —
+ * se foram 4 viagens e não 3, o valor acompanha, porque quem estava na rua era
+ * ele. A OS vira concluída e o dia deixa de ficar verde no calendário.
+ */
+export async function finalizarMachineServico(
+  id: string,
+  input: { quantity?: number | null; completion_notes?: string | null }
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const patch: Record<string, unknown> = {
+    status: "concluida",
+    finished_at: new Date().toISOString(),
+    finalized_by: user.id,
+    completion_notes: clean(input.completion_notes),
+  };
+  // quantidade só entra se veio preenchida: em branco mantém a combinada
+  if (input.quantity !== null && input.quantity !== undefined && qty(input.quantity) > 0)
+    patch.quantity = qty(input.quantity);
+
+  const { error } = await supabase
+    .from("machine_servicos")
+    .update(patch)
+    .eq("id", id)
+    .eq("assigned_to", user.id);
+
   if (error) return { error: frotaError(error) };
   revalidate();
   return { ok: true };

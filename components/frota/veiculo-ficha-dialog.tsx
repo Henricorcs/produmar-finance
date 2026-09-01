@@ -87,6 +87,8 @@ interface Props {
   despesas: MachineDespesa[];
   /** Contratantes já usados, para sugerir no lançamento. */
   contratantes: string[];
+  /** Operadores com login — para enviar a OS ao celular deles. */
+  operators: { id: string; name: string }[];
   /** "setembro de 2026" — o mês que a ficha está mostrando. */
   mesLabel: string;
   /** O mês da tela, para o calendário: ano e mês 0-11. */
@@ -116,6 +118,7 @@ export function VeiculoFichaDialog({
   servicos,
   despesas,
   contratantes,
+  operators,
   mesLabel,
   year,
   month,
@@ -197,6 +200,12 @@ export function VeiculoFichaDialog({
     for (const d of porDia.values()) n += d.abertas;
     return n;
   }, [porDia]);
+
+  /** Nome do operador para quem a OS foi enviada. */
+  const nomeDoOperador = useMemo(
+    () => new Map(operators.map((o) => [o.id, o.name])),
+    [operators]
+  );
 
   const servicoPorId = useMemo(() => new Map(servicos.map((s) => [s.id, s])), [servicos]);
   const despesaPorId = useMemo(() => new Map(despesas.map((d) => [d.id, d])), [despesas]);
@@ -545,6 +554,13 @@ export function VeiculoFichaDialog({
                                   ABERTA
                                 </span>
                               )}
+                              {/* Enviada para o celular de alguém — e se já começou */}
+                              {aberta && servico?.assigned_to && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-produmar-100 text-produmar-700 dark:bg-produmar-900/40 dark:text-produmar-400">
+                                  {servico.started_at ? "EM ANDAMENTO COM " : "COM "}
+                                  {nomeDoOperador.get(servico.assigned_to) ?? "OPERADOR"}
+                                </span>
+                              )}
                               {aberta && servico && (
                                 <button
                                   type="button"
@@ -624,6 +640,7 @@ export function VeiculoFichaDialog({
         presetDate={diaEscolhido}
         machines={machines}
         contratantes={contratantes}
+        operators={operators}
       />
       <DespesaDialog
         open={despesaOpen}

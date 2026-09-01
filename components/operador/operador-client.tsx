@@ -37,6 +37,7 @@ import { TripFinishDialog } from "./trip-finish-dialog";
 import { PauseDialog } from "./pause-dialog";
 import { ResumeDialog } from "./resume-dialog";
 import { ForwardDialog } from "./forward-dialog";
+import { FrotaOSFinalizadas, FrotaOSList } from "./frota-os-list";
 import {
   startTrip,
   finishTrip,
@@ -46,6 +47,7 @@ import {
 } from "@/app/(app)/operacoes/actions";
 import { osStatusLabel } from "@/lib/utils";
 import type {
+  MachineServicoDoOperador,
   ServiceBillingMode,
   ServiceOrder,
   ServiceOrderAttachment,
@@ -75,6 +77,14 @@ interface Props {
   orders: OrderWithDetails[];
   /** OS que ESTE operador finalizou — histórico somente leitura. */
   finalizedOrders?: OrderWithDetails[];
+  /**
+   * A OS de máquina enviada da ficha do veículo (Máquinas e Veículos). Desde
+   * que a OS de máquina saiu de Operações, é por aqui que o serviço da
+   * caçamba, do trator e do caminhão chega no celular.
+   */
+  frotaOS?: MachineServicoDoOperador[];
+  /** O que este operador já finalizou na máquina — histórico só leitura. */
+  frotaFinalizadas?: MachineServicoDoOperador[];
   operadorName: string;
   /** Último km conhecido de cada veículo (facilita anotar o km no Iniciar). */
   lastKmByMachine?: Record<string, number>;
@@ -141,6 +151,8 @@ function fmtForwardWhen(iso: string): string {
 export function OperadorClient({
   orders: initialOrders,
   finalizedOrders = [],
+  frotaOS = [],
+  frotaFinalizadas = [],
   operadorName,
   lastKmByMachine = {},
   operators = [],
@@ -309,7 +321,8 @@ export function OperadorClient({
     setFinalizeTarget(o);
   }
 
-  const tasksCount = pending.length + emAndamento.length;
+  const tasksCount = pending.length + emAndamento.length + frotaOS.length;
+  const finalizadasCount = finalizedOrders.length + frotaFinalizadas.length;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -324,9 +337,7 @@ export function OperadorClient({
             {
               value: "finalizadas",
               label:
-                finalizedOrders.length > 0
-                  ? `Finalizadas (${finalizedOrders.length})`
-                  : "Finalizadas",
+                finalizadasCount > 0 ? `Finalizadas (${finalizadasCount})` : "Finalizadas",
             },
           ]}
           active={view}
@@ -335,9 +346,17 @@ export function OperadorClient({
       </div>
 
       {view === "finalizadas" ? (
-        <FinalizedList orders={finalizedOrders} />
+        <div className="space-y-4">
+          <FrotaOSFinalizadas items={frotaFinalizadas} />
+          {/* O vazio de "nada finalizado" só aparece quando não há nada mesmo */}
+          {(finalizedOrders.length > 0 || frotaFinalizadas.length === 0) && (
+            <FinalizedList orders={finalizedOrders} />
+          )}
+        </div>
       ) : (
       <>
+      {/* O serviço de máquina, que agora vem da ficha do veículo */}
+      <FrotaOSList items={frotaOS} />
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-200 dark:border-amber-900/50 rounded-2xl p-4">
@@ -355,7 +374,7 @@ export function OperadorClient({
       </div>
 
       {/* Empty state */}
-      {orders.length === 0 && (
+      {orders.length === 0 && frotaOS.length === 0 && (
         <Card>
           <div className="flex flex-col items-center justify-center py-16 text-center px-4">
             <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center mb-4">
