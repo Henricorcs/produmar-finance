@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FilterTabs } from "@/components/ui/filter-tabs";
 import { MonthNav } from "@/components/ui/month-nav";
 import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { QuickCreateMachineDialog } from "@/components/operacoes/quick-create-machine-dialog";
@@ -20,13 +21,17 @@ import { cn, formatBRL, formatDate, machineCategoryLabel } from "@/lib/utils";
 import { ServicoDialog } from "./servico-dialog";
 import { DespesaDialog } from "./despesa-dialog";
 import { VeiculoFichaDialog } from "./veiculo-ficha-dialog";
+import { ParceriasTab } from "./parcerias-tab";
 import { Chip, categoryChip, toneResultado } from "./frota-shared";
 import {
   MACHINE_CATEGORIES,
   type MachineDespesa,
   type MachineFichaLinha,
+  type MachineParceiro,
+  type MachineParceiroSaldo,
   type MachineResumo,
   type MachineServico,
+  type MachineTroca,
 } from "@/lib/types";
 
 interface Props {
@@ -37,10 +42,24 @@ interface Props {
   despesas: MachineDespesa[];
   /** Operadores com login — a OS pode ser enviada para o celular de um deles. */
   operators: { id: string; name: string }[];
+  /** A troca de diárias de máquina com o parceiro (aba 2). */
+  parceiros: MachineParceiro[];
+  trocas: MachineTroca[];
+  saldos: MachineParceiroSaldo[];
   month: string;
   /** Migration 073 ainda não rodou: a tela abre, mas avisa. */
   migrationPendente?: boolean;
+  /** Migration 076 ainda não rodou: a aba da parceria avisa. */
+  parceriaPendente?: boolean;
 }
+
+/** As duas metades da tela: a frota e o escambo de diárias com o parceiro. */
+type Aba = "veiculos" | "parceria";
+
+const ABAS = [
+  { value: "veiculos" as const, label: "Veículos" },
+  { value: "parceria" as const, label: "Troca com parceiro" },
+];
 
 /** O que um veículo fez no mês — é o que o card mostra. */
 interface NoMes {
@@ -77,13 +96,18 @@ export function FrotaPageClient({
   servicos,
   despesas,
   operators,
+  parceiros,
+  trocas,
+  saldos,
   month,
   migrationPendente = false,
+  parceriaPendente = false,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const [, startTransition] = useTransition();
 
+  const [aba, setAba] = useState<Aba>("veiculos");
   const [search, setSearch] = useState("");
   const [categoria, setCategoria] = useState<string>("todas");
   const [fichaMachineId, setFichaMachineId] = useState<string | null>(null);
@@ -223,11 +247,21 @@ export function FrotaPageClient({
             e receitas
           </p>
         </div>
-        <Button variant="outline" className="flex-shrink-0" onClick={() => setNovoVeiculoOpen(true)}>
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Veículo</span>
-        </Button>
+        {/* O cadastro de veículo é da primeira aba; na parceria ele só atrapalha */}
+        {aba === "veiculos" && (
+          <Button
+            variant="outline"
+            className="flex-shrink-0"
+            onClick={() => setNovoVeiculoOpen(true)}
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Veículo</span>
+          </Button>
+        )}
       </div>
+
+      {/* As duas metades da tela */}
+      <FilterTabs tabs={ABAS} active={aba} onChange={setAba} />
 
       {migrationPendente && (
         <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400 flex items-start gap-2">
@@ -239,6 +273,8 @@ export function FrotaPageClient({
         </p>
       )}
 
+      {aba === "veiculos" ? (
+      <>
       {/* Mês */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
         <MonthNav
@@ -454,6 +490,20 @@ export function FrotaPageClient({
             ))}
           </div>
         </div>
+      )}
+
+      </>
+      ) : (
+        <ParceriasTab
+          parceiros={parceiros}
+          trocas={trocas}
+          saldos={saldos}
+          year={year}
+          month={monthNum - 1}
+          onPrevMonth={() => navigateMonth(-1)}
+          onNextMonth={() => navigateMonth(1)}
+          migrationPendente={parceriaPendente}
+        />
       )}
 
       {/* A ficha do veículo escolhido */}

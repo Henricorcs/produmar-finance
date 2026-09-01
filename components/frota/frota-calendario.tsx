@@ -10,10 +10,10 @@ import { cn, localDateISO } from "@/lib/utils";
 // a OS apareceria lançada amanhã. `localDateISO` resolve isso. Mesma conta do
 // calendário dos Colaboradores.
 
-const WEEKDAY_INITIALS = ["D", "S", "T", "Q", "Q", "S", "S"];
+export const WEEKDAY_INITIALS = ["D", "S", "T", "Q", "Q", "S", "S"];
 
 /** Mês por extenso ("setembro de 2026"). */
-function monthLabel(year: number, month: number): string {
+export function monthLabel(year: number, month: number): string {
   return new Date(year, month, 1).toLocaleDateString("pt-BR", {
     month: "long",
     year: "numeric",
@@ -24,7 +24,7 @@ function monthLabel(year: number, month: number): string {
  * As casas do calendário: os buracos até o primeiro dia (domingo à esquerda) e
  * depois um YYYY-MM-DD por dia do mês.
  */
-function monthCells(year: number, month: number): (string | null)[] {
+export function monthCells(year: number, month: number): (string | null)[] {
   const startPad = new Date(year, month, 1).getDay();
   const total = new Date(year, month + 1, 0).getDate();
   const cells: (string | null)[] = Array(startPad).fill(null);

@@ -333,3 +333,152 @@ export async function deleteMachineDespesa(id: string) {
   revalidate();
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARCEIRO — a troca de diárias de máquina (migration 076)
+// ─────────────────────────────────────────────────────────────────────────────
+// Aqui não entra dinheiro: é dia de máquina pagando dia de máquina. Por isso
+// nada disto soma na receita nem na despesa da ficha do veículo.
+
+/** Erro das tabelas da parceria → recado que diz o que fazer. */
+function parceriaError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01")
+    return "Rode a migration 076 no Supabase para usar a troca com o parceiro";
+  if (error.code === "23505" && error.message.includes("uq_machine_parceiros_nome"))
+    return "Já existe um parceiro com esse nome";
+  return error.message;
+}
+
+export interface MachineParceiroInput {
+  name: string;
+  phone?: string | null;
+  notes?: string | null;
+  active?: boolean;
+}
+
+export async function createMachineParceiro(input: MachineParceiroInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!clean(input.name)) return { error: "Escreva o nome do parceiro" };
+
+  const { error } = await supabase.from("machine_parceiros").insert({
+    name: clean(input.name),
+    phone: input.phone?.trim() || null,
+    notes: clean(input.notes),
+    created_by: user.id,
+  });
+
+  if (error) return { error: parceriaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function updateMachineParceiro(id: string, input: MachineParceiroInput) {
+  const supabase = createClient();
+
+  if (!clean(input.name)) return { error: "Escreva o nome do parceiro" };
+
+  const { error } = await supabase
+    .from("machine_parceiros")
+    .update({
+      name: clean(input.name),
+      phone: input.phone?.trim() || null,
+      notes: clean(input.notes),
+      ...(input.active === undefined ? {} : { active: input.active }),
+    })
+    .eq("id", id);
+
+  if (error) return { error: parceriaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Apagar o parceiro leva junto o histórico de troca dele (on delete cascade). */
+export async function deleteMachineParceiro(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("machine_parceiros").delete().eq("id", id);
+  if (error) return { error: parceriaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export interface MachineTrocaInput {
+  parceiro_id: string;
+  entry_date: string;
+  category: string;
+  /** Quantas máquinas DELE trabalharam para nós no dia. */
+  recebidas: number;
+  /** Quantas máquinas NOSSAS trabalharam para ele no dia. */
+  cedidas: number;
+  notes?: string | null;
+}
+
+/** Diária de máquina: nunca negativa, e aceita a metade (0,5). */
+function diarias(v?: number | null): number {
+  const n = Math.abs(Number(v ?? 0));
+  return isNaN(n) ? 0 : Math.round(n * 100) / 100;
+}
+
+/**
+ * O DIA DA TROCA — grava (ou corrige) o dia inteiro de um tipo de máquina.
+ *
+ * Um dia + um tipo = uma linha só: salvar de novo corrige o que estava lá, não
+ * soma escondido. Zerar os dois números APAGA o dia — é assim que se desmarca
+ * um dia lançado por engano.
+ */
+export async function salvarMachineTroca(input: MachineTrocaInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.parceiro_id) return { error: "Escolha o parceiro" };
+  if (!input.entry_date) return { error: "Escolha o dia" };
+
+  const recebidas = diarias(input.recebidas);
+  const cedidas = diarias(input.cedidas);
+  const category = input.category?.trim() || "cacamba";
+
+  // Dia zerado nos dois lados não é troca nenhuma: sai do calendário.
+  if (recebidas === 0 && cedidas === 0) {
+    const { error } = await supabase
+      .from("machine_trocas")
+      .delete()
+      .eq("parceiro_id", input.parceiro_id)
+      .eq("entry_date", input.entry_date)
+      .eq("category", category);
+    if (error) return { error: parceriaError(error) };
+    revalidate();
+    return { ok: true };
+  }
+
+  const { error } = await supabase.from("machine_trocas").upsert(
+    {
+      parceiro_id: input.parceiro_id,
+      entry_date: input.entry_date,
+      category,
+      recebidas,
+      cedidas,
+      notes: clean(input.notes),
+      created_by: user.id,
+    },
+    { onConflict: "parceiro_id,entry_date,category" }
+  );
+
+  if (error) return { error: parceriaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function deleteMachineTroca(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("machine_trocas").delete().eq("id", id);
+  if (error) return { error: parceriaError(error) };
+  revalidate();
+  return { ok: true };
+}

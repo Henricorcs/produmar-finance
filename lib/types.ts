@@ -1739,3 +1739,54 @@ export interface MachineResumo extends Machine {
   abertas: number;
   ultimo_movimento: string | null;
 }
+
+// ── Frota: a troca de diárias com o parceiro ────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// Um acerto que não é dinheiro: as máquinas se revezam. Quando tem serviço
+// aqui, a caçamba dele vem; quando não tem, a nossa vai. Paga-se em DIÁRIA —
+// um dia de máquina dele se paga com um dia de máquina nossa. Ver migration 076.
+
+/** Com quem a frota troca diárias de máquina. */
+export interface MachineParceiro {
+  id: string;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Um dia de troca, por tipo de máquina. Uma linha por parceiro + dia + tipo:
+ * lançar o mesmo dia de novo CORRIGE o que estava lá, não soma escondido.
+ */
+export interface MachineTroca {
+  id: string;
+  parceiro_id: string;
+  entry_date: string;
+  /** cacamba, caminhao, trator... as mesmas categorias do cadastro de veículos. */
+  category: string;
+  /** Quantas máquinas DELE trabalharam para nós no dia (0,5 = meio dia). */
+  recebidas: number;
+  /** Quantas máquinas NOSSAS trabalharam para ele no dia. */
+  cedidas: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * O confronto por parceiro e tipo de máquina (view v_machine_parceiro_saldo).
+ * `saldo` = cedidas − recebidas: negativo é diária que NÓS devemos; positivo é
+ * diária que ELE deve.
+ */
+export interface MachineParceiroSaldo {
+  parceiro_id: string;
+  category: string;
+  recebidas: number;
+  cedidas: number;
+  saldo: number;
+  dias: number;
+  ultimo_dia: string | null;
+}

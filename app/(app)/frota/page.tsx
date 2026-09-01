@@ -5,8 +5,11 @@ import type {
   Machine,
   MachineDespesa,
   MachineFichaLinha,
+  MachineParceiro,
+  MachineParceiroSaldo,
   MachineResumo,
   MachineServico,
+  MachineTroca,
   Profile,
 } from "@/lib/types";
 
@@ -37,7 +40,15 @@ export default async function FrotaPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [resumoRes, fichaRes, servicosRes, despesasRes] = await Promise.all([
+  const [
+    resumoRes,
+    fichaRes,
+    servicosRes,
+    despesasRes,
+    parceirosRes,
+    trocasRes,
+    saldosRes,
+  ] = await Promise.all([
     supabase.from("v_machine_resumo").select("*").order("name"),
     supabase
       .from("v_machine_ficha")
@@ -56,6 +67,16 @@ export default async function FrotaPage({
       .select("*")
       .gte("expense_date", startDate)
       .lte("expense_date", endDate),
+    // A troca de diárias com o parceiro (migration 076). Best-effort: sem a
+    // migration, a aba abre avisando o que fazer e o resto da tela segue igual.
+    supabase.from("machine_parceiros").select("*").eq("active", true).order("name"),
+    supabase
+      .from("machine_trocas")
+      .select("*")
+      .gte("entry_date", startDate)
+      .lte("entry_date", endDate),
+    // o confronto é de SEMPRE: a dívida de diária não zera no fim do mês
+    supabase.from("v_machine_parceiro_saldo").select("*"),
   ]);
 
   // Migration 073 ainda não rodou: a tela abre com o cadastro que já existe e
@@ -104,8 +125,12 @@ export default async function FrotaPage({
       servicos={(servicosRes.data as MachineServico[]) ?? []}
       despesas={(despesasRes.data as MachineDespesa[]) ?? []}
       operators={operators}
+      parceiros={(parceirosRes.data as MachineParceiro[]) ?? []}
+      trocas={(trocasRes.data as MachineTroca[]) ?? []}
+      saldos={(saldosRes.data as MachineParceiroSaldo[]) ?? []}
       month={month}
       migrationPendente={migrationPendente}
+      parceriaPendente={!!parceirosRes.error}
     />
   );
 }
