@@ -40,6 +40,27 @@ async function freightMachineError(
   return null;
 }
 
+/**
+ * OS DE MÁQUINA NÃO NASCE MAIS AQUI.
+ *
+ * Frete (viagem/km/diária) e prestação de serviço são trabalho de veículo, e
+ * agora se lançam na FICHA dele, no módulo Máquinas e Veículos — é lá que o
+ * dono vê o que cada máquina rendeu e custou. Entrega de material continua
+ * nesta tela (ela vende material e baixa o estoque da jazida), e serviço rápido
+ * também (é tarefa de funcionário, sem máquina).
+ *
+ * As OS que já existem desses dois tipos continuam abrindo, editando,
+ * imprimindo e finalizando normalmente: o que acabou foi a criação.
+ */
+const TIPOS_DA_FROTA: ServiceOrderType[] = ["frete", "prestacao_servico"];
+
+const RECADO_FROTA =
+  "Frete e serviço de máquina agora se lançam na ficha do veículo, em Máquinas e Veículos.";
+
+function tipoDaFrota(type: ServiceOrderType): boolean {
+  return TIPOS_DA_FROTA.includes(type);
+}
+
 function revalidate() {
   revalidatePath("/operacoes");
   revalidatePath("/configuracoes");
@@ -462,6 +483,9 @@ async function syncServiceOrderFinance(
 }
 
 export async function createServiceOrder(input: ServiceOrderInput) {
+  // OS de máquina nasce na ficha do veículo, não aqui
+  if (tipoDaFrota(input.type)) return { error: RECADO_FROTA };
+
   const err = validate(input);
   if (err) return { error: err };
 
@@ -507,6 +531,17 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
   if (err) return { error: err };
 
   const supabase = createClient();
+
+  // Editar uma OS de máquina ANTIGA continua liberado; o que não se faz mais é
+  // TRANSFORMAR uma OS em frete/prestação de serviço por esta tela.
+  if (tipoDaFrota(input.type)) {
+    const { data: atual } = await supabase
+      .from("service_orders")
+      .select("type")
+      .eq("id", id)
+      .maybeSingle<{ type: ServiceOrderType }>();
+    if (atual && atual.type !== input.type) return { error: RECADO_FROTA };
+  }
   const freightErr = await freightMachineError(supabase, input);
   if (freightErr) return { error: freightErr };
 

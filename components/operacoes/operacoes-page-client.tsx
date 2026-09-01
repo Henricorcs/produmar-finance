@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Plus,
@@ -20,6 +21,7 @@ import {
   Search,
   Download,
   HardHat,
+  Tractor,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -271,8 +273,16 @@ export function OperacoesPageClient({
         <div>
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Operações</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Ordens de serviço — entregas e prestação de serviço
+            Ordens de serviço — entrega de material e serviço rápido
           </p>
+          {/* A OS de máquina mudou de casa: o caminho fica à mão */}
+          <Link
+            href="/frota"
+            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
+          >
+            <Tractor className="w-3.5 h-3.5" />
+            Frete e serviço de máquina agora é na ficha do veículo
+          </Link>
         </div>
         <div className="flex items-center gap-2">
           {orders.length > 0 && (

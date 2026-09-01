@@ -345,6 +345,30 @@ export function ServiceOrderDialog({
   // Serviço rápido: tarefa/errand interna, sem máquina/cobrança/material.
   const isQuick = type === "servico_rapido";
 
+  // ── OS de máquina saiu daqui ─────────────────────────────────────────────
+  // Frete e prestação de serviço são trabalho de veículo e agora nascem na
+  // FICHA dele (módulo Máquinas e Veículos). Nesta tela ficam a entrega de
+  // material (que baixa o estoque da jazida) e o serviço rápido (tarefa de
+  // funcionário, sem máquina).
+  //
+  // As OS antigas desses dois tipos continuam abrindo, editando, imprimindo e
+  // finalizando por aqui — o tipo delas aparece, mas travado: o que acabou foi
+  // a criação, e converter uma OS em frete também.
+  const osDaFrota =
+    !!order && (order.type === "frete" || order.type === "prestacao_servico");
+
+  const TIPOS_DE_OS = [
+    { v: "entrega_material",  label: "Entrega de material",  icon: Truck },
+    { v: "frete",             label: "Frete",                icon: Route },
+    { v: "prestacao_servico", label: "Prestação de serviço", icon: Wrench },
+    { v: "servico_rapido",    label: "Serviço rápido",       icon: Zap },
+  ] as const;
+
+  const tiposDaTela = osDaFrota
+    ? // OS de máquina antiga: só o tipo dela, travado
+      TIPOS_DE_OS.filter((t) => t.v === order?.type)
+    : TIPOS_DE_OS.filter((t) => t.v !== "frete" && t.v !== "prestacao_servico");
+
   // ── Computed values ──────────────────────────────────────────────────────
   const hoursWorked = useMemo(() => {
     const s = parseFloat(hourmeterStart.replace(",", "."));
@@ -703,22 +727,22 @@ export function ServiceOrderDialog({
             {/* Type toggle */}
             <div className="space-y-1.5">
               <Label>Tipo *</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {([
-                  { v: "entrega_material",  label: "Entrega de material",  icon: Truck },
-                  { v: "frete",             label: "Frete",                icon: Route },
-                  { v: "prestacao_servico", label: "Prestação de serviço", icon: Wrench },
-                  { v: "servico_rapido",    label: "Serviço rápido",       icon: Zap },
-                ] as const).map(({ v, label, icon: Icon }) => (
+              <div
+                className={`grid gap-2 ${
+                  tiposDaTela.length > 2 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"
+                }`}
+              >
+                {tiposDaTela.map(({ v, label, icon: Icon }) => (
                   <button
                     key={v}
                     type="button"
+                    disabled={osDaFrota}
                     onClick={() => {
                       setType(v);
                       // Serviço rápido é sempre uma tarefa interna.
                       if (v === "servico_rapido") setFreightType("interno");
                     }}
-                    className={`flex flex-col items-center justify-center gap-1 py-2.5 text-sm rounded-lg border font-medium transition-colors ${
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 text-sm rounded-lg border font-medium transition-colors disabled:opacity-100 ${
                       type === v
                         ? "bg-produmar-50 border-produmar-300 text-produmar-700 dark:bg-produmar-900/30 dark:border-produmar-600 dark:text-produmar-400"
                         : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -729,6 +753,11 @@ export function ServiceOrderDialog({
                   </button>
                 ))}
               </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                {osDaFrota
+                  ? "Esta é uma OS de máquina, das antigas: dá para editar e finalizar aqui, mas as novas se lançam na ficha do veículo, em Máquinas e Veículos."
+                  : "Frete, diária e hora de máquina se lançam na ficha do veículo, em Máquinas e Veículos."}
+              </p>
             </div>
 
             {/* Cobrança do frete (só tipo frete) */}
