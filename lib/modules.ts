@@ -15,6 +15,7 @@ import {
   Beef,
   PackageOpen,
   Users,
+  Tractor,
   type LucideIcon,
 } from "lucide-react";
 
@@ -70,6 +71,19 @@ export const APP_MODULES: AppModule[] = [
       { href: "/estoque",                label: "Estoque",   short: "Estoque",   icon: Boxes },
       { href: "/cadastros-operacionais", label: "Cadastros", short: "Cadastros", icon: ClipboardList },
     ],
+  },
+  {
+    // A ficha do VEÍCULO, que a OS não dava: a OS é do cliente, a ficha é da
+    // máquina. Quem já manda em Materiais e Serviços também manda aqui — ver
+    // a migration 073.
+    slug: "frota",
+    name: "Máquinas e Veículos",
+    description: "Serviço, diária, frete e viagem de cada veículo — despesas e receitas",
+    href: "/frota",
+    icon: Tractor,
+    accentIcon:
+      "bg-teal-50 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400",
+    tabs: [{ href: "/frota", label: "Máquinas e Veículos", short: "Frota", icon: Tractor }],
   },
   {
     slug: "ferramentas",

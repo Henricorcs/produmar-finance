@@ -47,6 +47,8 @@ function revalidate() {
   revalidatePath("/contas");
   revalidatePath("/estoque");
   revalidatePath("/operador");
+  // o cadastro da máquina é o mesmo da Frota
+  revalidatePath("/frota");
 }
 
 function normalizeProductUnit(unit?: string | null): string {

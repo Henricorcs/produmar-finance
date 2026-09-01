@@ -1571,3 +1571,144 @@ export interface DiaristaDiaRow extends DiaristaDia {
   diaristas: { name: string; pix_key: string | null } | null;
   supply_obras: { name: string } | null;
 }
+
+// ── Frota (máquinas e veículos) ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// A OS é do CLIENTE; a ficha é do VEÍCULO. Aqui ficam os dois lados da conta de
+// cada máquina: o que ela rendeu (diária, hora, viagem, km ou valor fechado,
+// sempre com o contratante) e o que ela custou (diesel, manutenção, peça,
+// motorista). Ver a migration 073.
+
+/** Como o serviço da máquina foi cobrado. */
+export type MachineServicoKind = "diaria" | "hora" | "viagem" | "km" | "servico";
+
+/**
+ * As formas de cobrança, na ordem em que aparecem na tela. `unit` é o que se
+ * conta (dias, horas, viagens, km) e vira o rótulo do campo de quantidade.
+ */
+export const MACHINE_SERVICO_KINDS: {
+  value: MachineServicoKind;
+  label: string;
+  /** Singular/plural do que se conta — "3 viagens", "1 dia". */
+  unit: string;
+  unitPlural: string;
+  /** Rótulo do valor unitário. */
+  priceLabel: string;
+}[] = [
+  { value: "diaria",  label: "Diária",  unit: "dia",    unitPlural: "dias",    priceLabel: "Valor da diária" },
+  { value: "viagem",  label: "Viagem",  unit: "viagem", unitPlural: "viagens", priceLabel: "Valor da viagem" },
+  { value: "hora",    label: "Hora",    unit: "hora",   unitPlural: "horas",   priceLabel: "Valor da hora" },
+  { value: "km",      label: "Km",      unit: "km",     unitPlural: "km",      priceLabel: "Valor do km" },
+  { value: "servico", label: "Fechado", unit: "serviço", unitPlural: "serviços", priceLabel: "Valor combinado" },
+];
+
+/** Categorias sugeridas na despesa do veículo — o campo continua livre. */
+export const DESPESAS_MAQUINA_SUGERIDAS = [
+  "COMBUSTÍVEL",
+  "MANUTENÇÃO",
+  "PEÇA",
+  "PNEU",
+  "ÓLEO E FILTRO",
+  "MOTORISTA",
+  "IMPOSTO",
+  "SEGURO",
+  "LAVAGEM",
+  "MULTA",
+] as const;
+
+/**
+ * Um serviço da máquina: a diária, a hora, a viagem, o km ou o valor fechado.
+ * `total` é coluna gerada no banco (quantity x unit_price) — não se manda.
+ *
+ * NÃO cria lançamento no módulo Contas: é registro e relatório dentro da Frota,
+ * como a despesa da obra (067) e a dos animais (072).
+ */
+export interface MachineServico {
+  id: string;
+  machine_id: string;
+  service_date: string;
+  kind: MachineServicoKind;
+  /** Pra quem foi o serviço — texto livre, como o cliente da OS. */
+  contratante: string | null;
+  description: string | null;
+  origin: string | null;
+  destination: string | null;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  /** Motorista/operador que estava na máquina. */
+  operator: string | null;
+  /** Serviço da própria firma: trabalho feito, mas sem dinheiro entrando. */
+  internal: boolean;
+  /** Já recebeu? É o que responde "quem ainda me deve". */
+  paid: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Gasto de uma máquina/veículo. Litros e marcação só no abastecimento. */
+export interface MachineDespesa {
+  id: string;
+  machine_id: string;
+  expense_date: string;
+  category: string | null;
+  description: string;
+  amount: number;
+  supplier: string | null;
+  /** Litros abastecidos — com a marcação, dá a média. */
+  liters: number | null;
+  /** Hodômetro (km) ou horímetro (horas) na hora do gasto. */
+  odometer: number | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Uma linha da ficha do veículo (view v_machine_ficha), venha ela de um
+ * lançamento da Frota ou de uma OS do módulo Operações.
+ */
+export interface MachineFichaLinha {
+  id: string;
+  machine_id: string;
+  /** De onde a linha veio — a OS é só leitura aqui. */
+  kind: "servico" | "despesa" | "os" | "os_custo";
+  /** Entrou ou saiu. O valor é sempre positivo. */
+  flow: "receita" | "despesa";
+  /** Trabalho da própria firma: não conta como dinheiro entrando. */
+  internal: boolean;
+  entry_date: string;
+  description: string;
+  /** Só o serviço da Frota tem: diaria, viagem, hora, km, servico. */
+  servico_kind: MachineServicoKind | null;
+  category: string | null;
+  /** Contratante (receita) ou fornecedor (despesa). */
+  person: string | null;
+  quantity: number;
+  unit_price: number;
+  value: number;
+  origin: string | null;
+  destination: string | null;
+  operator: string | null;
+  /** Nulo na OS: lá o recebimento mora em Contas. */
+  paid: boolean | null;
+  liters: number | null;
+  odometer: number | null;
+  /** Nº da OS, quando a linha veio de Operações. */
+  order_number: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+/** Máquina com a conta fechada de sempre (view v_machine_resumo). */
+export interface MachineResumo extends Machine {
+  receitas: number;
+  despesas: number;
+  resultado: number;
+  /** O que a máquina rodou para a própria firma, sem cobrança. */
+  internos: number;
+  a_receber: number;
+  servicos: number;
+  ultimo_movimento: string | null;
+}

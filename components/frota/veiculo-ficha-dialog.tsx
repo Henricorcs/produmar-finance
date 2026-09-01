@@ -1,0 +1,553 @@
+"use client";
+
+import { useMemo, useState, useTransition } from "react";
+import {
+  Check,
+  Download,
+  FileText,
+  Fuel,
+  Pencil,
+  Plus,
+  Receipt,
+  Truck,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { actionError } from "@/lib/action-result";
+import {
+  cn,
+  formatBRL,
+  formatDate,
+  formatQty,
+  machineCategoryLabel,
+} from "@/lib/utils";
+import { setMachineServicoPaid } from "@/app/(app)/frota/actions";
+import { ServicoDialog } from "./servico-dialog";
+import { DespesaDialog } from "./despesa-dialog";
+import { Chip, Numero, categoryChip, contaDoServico, kindMeta, toneResultado } from "./frota-shared";
+import type {
+  Machine,
+  MachineDespesa,
+  MachineFichaLinha,
+  MachineResumo,
+  MachineServico,
+} from "@/lib/types";
+
+/** Os recortes da ficha — é a pergunta que o dono faz olhando o veículo. */
+type Filtro = "tudo" | "servico" | "frete" | "despesa" | "os";
+
+const FILTROS: { value: Filtro; label: string }[] = [
+  { value: "tudo", label: "Tudo" },
+  { value: "servico", label: "Diárias e serviços" },
+  { value: "frete", label: "Fretes e viagens" },
+  { value: "despesa", label: "Despesas" },
+  { value: "os", label: "Ordens de serviço" },
+];
+
+/** Frete é o que se conta por viagem ou por km — o resto é diária/hora/fechado. */
+function ehFrete(l: MachineFichaLinha): boolean {
+  return l.servico_kind === "viagem" || l.servico_kind === "km";
+}
+
+function combina(l: MachineFichaLinha, filtro: Filtro): boolean {
+  switch (filtro) {
+    case "tudo":
+      return true;
+    case "servico":
+      return l.kind === "servico" && !ehFrete(l);
+    case "frete":
+      return l.kind === "servico" && ehFrete(l);
+    case "despesa":
+      return l.flow === "despesa";
+    case "os":
+      return l.kind === "os" || l.kind === "os_custo";
+  }
+}
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  machine: MachineResumo;
+  /** Todos os veículos — os diálogos de lançamento precisam da lista. */
+  machines: Machine[];
+  /** As linhas da ficha DESTE veículo, no mês da tela. */
+  linhas: MachineFichaLinha[];
+  /** Os lançamentos crus do mês: é por eles que a linha abre para corrigir. */
+  servicos: MachineServico[];
+  despesas: MachineDespesa[];
+  /** Contratantes já usados, para sugerir no lançamento. */
+  contratantes: string[];
+  /** "setembro de 2026" — o mês que a ficha está mostrando. */
+  mesLabel: string;
+}
+
+/**
+ * A FICHA DO VEÍCULO — os dois lados da conta de uma máquina, no mês.
+ *
+ * De um lado o que ela rendeu: a diária, a hora, a viagem, o km, o valor
+ * fechado — cada um com o CONTRATANTE e o que ainda falta receber. Do outro o
+ * que ela custou: diesel, mecânico, peça, motorista.
+ *
+ * As linhas de OS vêm do módulo Operações e são só leitura aqui: quem manda
+ * nelas continua sendo aquela tela.
+ */
+export function VeiculoFichaDialog({
+  open,
+  onClose,
+  machine,
+  machines,
+  linhas,
+  servicos,
+  despesas,
+  contratantes,
+  mesLabel,
+}: Props) {
+  const [filtro, setFiltro] = useState<Filtro>("tudo");
+  const [isPending, startTransition] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
+
+  const [servicoOpen, setServicoOpen] = useState(false);
+  const [editServico, setEditServico] = useState<MachineServico | null>(null);
+  const [despesaOpen, setDespesaOpen] = useState(false);
+  const [editDespesa, setEditDespesa] = useState<MachineDespesa | null>(null);
+
+  const doFiltro = useMemo(
+    () =>
+      linhas
+        .filter((l) => combina(l, filtro))
+        .sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    [linhas, filtro]
+  );
+
+  /** O que entrou, o que saiu e o que sobrou no recorte escolhido. */
+  const totais = useMemo(() => {
+    let receitas = 0;
+    let gastos = 0;
+    let internos = 0;
+    let aReceber = 0;
+    let litros = 0;
+    let combustivel = 0;
+    for (const l of doFiltro) {
+      const v = Number(l.value);
+      if (l.internal) {
+        internos += v;
+        continue;
+      }
+      if (l.flow === "receita") {
+        receitas += v;
+        if (l.paid === false) aReceber += v;
+      } else {
+        gastos += v;
+        if (l.liters) litros += Number(l.liters);
+        if ((l.category ?? "").includes("COMBUST")) combustivel += v;
+      }
+    }
+    return {
+      receitas,
+      gastos,
+      internos,
+      aReceber,
+      litros,
+      combustivel,
+      resultado: receitas - gastos,
+    };
+  }, [doFiltro]);
+
+  const servicoPorId = useMemo(() => new Map(servicos.map((s) => [s.id, s])), [servicos]);
+  const despesaPorId = useMemo(() => new Map(despesas.map((d) => [d.id, d])), [despesas]);
+
+  function abrirServico(s: MachineServico | null) {
+    setEditServico(s);
+    setServicoOpen(true);
+  }
+
+  function abrirDespesa(d: MachineDespesa | null) {
+    setEditDespesa(d);
+    setDespesaOpen(true);
+  }
+
+  function marcarRecebido(s: MachineServico) {
+    setErro(null);
+    startTransition(async () => {
+      const falha = actionError(await setMachineServicoPaid(s.id, !s.paid));
+      if (falha) setErro(falha);
+    });
+  }
+
+  function exportarCSV() {
+    const headers = [
+      "Data",
+      "Origem",
+      "Tipo",
+      "Descrição",
+      "Contratante/Fornecedor",
+      "Quantidade",
+      "Valor unitário",
+      "Total (R$)",
+      "De onde",
+      "Para onde",
+      "Operador",
+      "Recebido",
+    ];
+    const rows = doFiltro.map((l) => [
+      l.entry_date,
+      l.flow === "receita" ? "Receita" : "Despesa",
+      l.kind === "servico"
+        ? kindMeta(l.servico_kind).label
+        : l.kind === "despesa"
+          ? l.category ?? "Despesa"
+          : `OS nº ${l.order_number ?? ""}`,
+      l.description,
+      l.person ?? "",
+      formatQty(Number(l.quantity)),
+      Number(l.unit_price).toFixed(2).replace(".", ","),
+      Number(l.value).toFixed(2).replace(".", ","),
+      l.origin ?? "",
+      l.destination ?? "",
+      l.operator ?? "",
+      l.paid === null ? "" : l.paid ? "sim" : "não",
+    ]);
+
+    const csv =
+      "﻿" +
+      [headers, ...rows]
+        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
+        .join("\r\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ficha-${machine.name.toLowerCase().replace(/\s+/g, "-")}-${mesLabel
+      .toLowerCase()
+      .replace(/\s+/g, "-")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
+              <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400">
+                <Truck className="w-4 h-4" />
+              </span>
+              <span className="truncate">{machine.name}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Quem é o veículo */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {machine.category && (
+                <span
+                  className={cn(
+                    "text-[11px] font-semibold px-2 py-0.5 rounded-full",
+                    categoryChip(machine.category)
+                  )}
+                >
+                  {machineCategoryLabel(machine.category)}
+                </span>
+              )}
+              {machine.plate && (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  {machine.plate}
+                </span>
+              )}
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                {machine.tracking_type === "km" ? "Hodômetro (km)" : "Horímetro (horas)"}
+              </span>
+            </div>
+
+            {/* A conta do mês, seguindo o recorte escolhido */}
+            <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
+              <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
+                <Numero
+                  label="RECEITAS"
+                  valor={formatBRL(totais.receitas)}
+                  tom="text-emerald-700 dark:text-emerald-400"
+                />
+                <Numero
+                  label="DESPESAS"
+                  valor={formatBRL(totais.gastos)}
+                  tom="text-rose-700 dark:text-rose-400"
+                />
+                <Numero
+                  label="RESULTADO"
+                  valor={formatBRL(totais.resultado)}
+                  tom={toneResultado(totais.resultado)}
+                />
+              </div>
+              <p className="text-[11px] text-center text-slate-400 dark:text-slate-500 pb-2 capitalize">
+                {mesLabel}
+              </p>
+            </div>
+
+            {/* O que a conta do mês não mostra sozinha */}
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <Mini
+                label="A receber"
+                valor={formatBRL(totais.aReceber)}
+                tom={totais.aReceber > 0 ? "text-amber-700 dark:text-amber-400" : ""}
+              />
+              <Mini
+                label="Serviço interno"
+                valor={formatBRL(totais.internos)}
+                tom="text-slate-600 dark:text-slate-300"
+              />
+              <Mini
+                label="Resultado de sempre"
+                valor={formatBRL(Number(machine.resultado))}
+                tom={toneResultado(Number(machine.resultado))}
+              />
+              <Mini
+                label="A receber de sempre"
+                valor={formatBRL(Number(machine.a_receber))}
+                tom={Number(machine.a_receber) > 0 ? "text-amber-700 dark:text-amber-400" : ""}
+              />
+            </div>
+
+            {/* Combustível do mês: o que o veículo bebeu e por quanto */}
+            {(totais.litros > 0 || totais.combustivel > 0) && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 tabular-nums">
+                <Fuel className="w-3.5 h-3.5 flex-shrink-0" />
+                {totais.litros > 0 ? `${formatQty(totais.litros)} litros no mês` : "Combustível no mês"}
+                {totais.combustivel > 0 ? ` · ${formatBRL(totais.combustivel)}` : ""}
+                {totais.litros > 0 && totais.combustivel > 0
+                  ? ` · ${formatBRL(totais.combustivel / totais.litros)} o litro`
+                  : ""}
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-11" onClick={() => abrirServico(null)}>
+                <Plus className="w-4 h-4" />
+                Serviço
+              </Button>
+              <Button variant="outline" className="h-11" onClick={() => abrirDespesa(null)}>
+                <Plus className="w-4 h-4" />
+                Despesa
+              </Button>
+            </div>
+
+            {/* Os recortes da ficha */}
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+              {FILTROS.map((f) => (
+                <Chip
+                  key={f.value}
+                  label={f.label}
+                  ativo={filtro === f.value}
+                  onClick={() => setFiltro(f.value)}
+                />
+              ))}
+            </div>
+
+            {erro && (
+              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+                {erro}
+              </p>
+            )}
+
+            {/* O extrato: cada movimento, na ordem em que aconteceu */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  {doFiltro.length === 0
+                    ? "Nenhum lançamento"
+                    : doFiltro.length === 1
+                      ? "1 lançamento"
+                      : `${doFiltro.length} lançamentos`}
+                </p>
+                {doFiltro.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={exportarCSV}
+                    className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Baixar
+                  </button>
+                )}
+              </div>
+
+              {doFiltro.length === 0 ? (
+                <p className="text-xs text-slate-400 dark:text-slate-500 py-6 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                  Nada neste mês. Lance o serviço que a máquina fez ou o gasto que ela
+                  teve nos botões acima.
+                </p>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  {doFiltro.map((l) => {
+                    const receita = l.flow === "receita";
+                    const servico = l.kind === "servico" ? servicoPorId.get(l.id) ?? null : null;
+                    const despesa = l.kind === "despesa" ? despesaPorId.get(l.id) ?? null : null;
+                    const editavel = !!servico || !!despesa;
+                    const Icone =
+                      l.kind === "servico"
+                        ? kindMeta(l.servico_kind).icon
+                        : l.kind === "despesa"
+                          ? Receipt
+                          : FileText;
+                    const conta =
+                      l.kind === "servico"
+                        ? contaDoServico(l.servico_kind, Number(l.quantity), Number(l.unit_price))
+                        : "";
+                    const trecho = [l.origin, l.destination].filter(Boolean).join(" → ");
+                    const aReceber = receita && !l.internal && l.paid === false;
+
+                    return (
+                      <div
+                        key={`${l.kind}-${l.id}`}
+                        onClick={
+                          editavel
+                            ? () => (servico ? abrirServico(servico) : abrirDespesa(despesa))
+                            : undefined
+                        }
+                        role={editavel ? "button" : undefined}
+                        tabIndex={editavel ? 0 : undefined}
+                        onKeyDown={
+                          editavel
+                            ? (e) => {
+                                if (e.key !== "Enter" && e.key !== " ") return;
+                                e.preventDefault();
+                                if (servico) abrirServico(servico);
+                                else abrirDespesa(despesa);
+                              }
+                            : undefined
+                        }
+                        className={cn(
+                          "flex items-start gap-2.5 px-3 py-2.5 bg-white dark:bg-slate-900",
+                          editavel &&
+                            "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            l.internal
+                              ? "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                              : receita
+                                ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                : "bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
+                          )}
+                        >
+                          <Icone className="w-4 h-4" />
+                        </span>
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                            {l.description}
+                          </p>
+                          {conta && (
+                            <p className="text-[11px] font-medium text-produmar-700 dark:text-produmar-400 tabular-nums truncate">
+                              {conta} = {formatBRL(Number(l.value))}
+                            </p>
+                          )}
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                            {formatDate(l.entry_date)}
+                            {l.person ? ` · ${l.person}` : ""}
+                            {trecho ? ` · ${trecho}` : ""}
+                            {l.operator ? ` · ${l.operator}` : ""}
+                            {l.category ? ` · ${l.category}` : ""}
+                            {l.order_number ? ` · OS nº ${l.order_number}` : ""}
+                            {l.liters ? ` · ${formatQty(Number(l.liters))} L` : ""}
+                          </p>
+                          {(aReceber || l.internal) && (
+                            <div className="mt-1 flex items-center gap-1.5">
+                              {l.internal && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                  DA FIRMA
+                                </span>
+                              )}
+                              {aReceber && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                                  A RECEBER
+                                </span>
+                              )}
+                              {aReceber && servico && (
+                                <button
+                                  type="button"
+                                  disabled={isPending}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    marcarRecebido(servico);
+                                  }}
+                                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-emerald-200 text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400 flex items-center gap-1 disabled:opacity-40"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  recebi
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <p
+                            className={cn(
+                              "text-sm font-semibold tabular-nums",
+                              l.internal
+                                ? "text-slate-500 dark:text-slate-400"
+                                : receita
+                                  ? "text-emerald-700 dark:text-emerald-400"
+                                  : "text-rose-700 dark:text-rose-400"
+                            )}
+                          >
+                            {receita ? "" : "− "}
+                            {formatBRL(Number(l.value))}
+                          </p>
+                          {editavel && (
+                            <Pencil className="w-3 h-3 text-slate-300 dark:text-slate-600" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                As linhas de OS vêm do módulo Operações e são só leitura aqui — elas se
+                corrigem lá. O serviço e a despesa lançados na ficha se corrigem com um
+                toque na linha.
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ServicoDialog
+        open={servicoOpen}
+        onClose={() => setServicoOpen(false)}
+        servico={editServico}
+        presetMachineId={machine.id}
+        machines={machines}
+        contratantes={contratantes}
+      />
+      <DespesaDialog
+        open={despesaOpen}
+        onClose={() => setDespesaOpen(false)}
+        despesa={editDespesa}
+        presetMachineId={machine.id}
+        machines={machines}
+      />
+    </>
+  );
+}
+
+/** Número pequeno de apoio (a receber, interno, resultado de sempre). */
+function Mini({ label, valor, tom }: { label: string; valor: string; tom: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-2 bg-white dark:bg-slate-900">
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{label}</p>
+      <p className={cn("text-sm font-semibold tabular-nums truncate", tom)}>{valor}</p>
+    </div>
+  );
+}
