@@ -14,6 +14,7 @@ export const ASSIGNABLE_MODULE_SLUGS = [
   "diaristas",
   "obras",
   "animais",
+  "alugueis",
 ] as const;
 
 export type ModuleSlug = (typeof ASSIGNABLE_MODULE_SLUGS)[number];
@@ -44,6 +45,8 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   diaristas: ["/diaristas"],
   obras: ["/obras"],
   animais: ["/animais"],
+  // Aluguéis: imóveis, contratos e o aluguel de cada mês (migration 078)
+  alugueis: ["/alugueis"],
 };
 
 /**

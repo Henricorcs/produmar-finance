@@ -1818,3 +1818,153 @@ export function parceiroVeiculoLabel(v: {
 }): string {
   return (v.plate?.trim() || v.name?.trim() || "").toUpperCase();
 }
+
+// ── Aluguéis (imóveis, contratos e o aluguel de cada mês) ───────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// O imóvel tem um CÓDIGO na ordem de cadastro; o contrato diz quem é o
+// inquilino, quanto e em que dia vence; e a cobrança de cada mês nasce dessa
+// conta — o que se grava é a BAIXA. Ver a migration 078.
+
+/** Tipo do imóvel (controlado pela tela; a coluna é texto livre). */
+export const RENTAL_KINDS: { value: string; label: string }[] = [
+  { value: "casa",        label: "Casa" },
+  { value: "apartamento", label: "Apartamento" },
+  { value: "ponto",       label: "Ponto comercial" },
+  { value: "sala",        label: "Sala" },
+  { value: "galpao",      label: "Galpão" },
+  { value: "terreno",     label: "Terreno" },
+  { value: "outro",       label: "Outro" },
+];
+
+export function rentalKindLabel(kind?: string | null): string {
+  return RENTAL_KINDS.find((k) => k.value === kind)?.label ?? "Imóvel";
+}
+
+/** Formas de pagamento sugeridas na baixa do aluguel. */
+export const RENTAL_METHODS = [
+  "PIX",
+  "DINHEIRO",
+  "TRANSFERÊNCIA",
+  "BOLETO",
+  "DEPÓSITO",
+  "CHEQUE",
+] as const;
+
+/** O imóvel. `code` é dado pelo banco, na ordem de cadastro. */
+export interface RentalProperty {
+  id: string;
+  code: number;
+  name: string | null;
+  kind: string;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  registration: string | null;
+  iptu_code: string | null;
+  water_code: string | null;
+  power_code: string | null;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type RentalContractStatus = "ativo" | "encerrado";
+
+/** O contrato de locação — é dele que sai a cobrança do mês e a impressão. */
+export interface RentalContract {
+  id: string;
+  property_id: string;
+
+  tenant_name: string;
+  tenant_document: string | null;
+  tenant_rg: string | null;
+  tenant_birthplace: string | null;
+  tenant_nationality: string | null;
+  tenant_marital_status: string | null;
+  tenant_profession: string | null;
+  tenant_phone: string | null;
+  tenant_email: string | null;
+  tenant_address: string | null;
+
+  guarantor_name: string | null;
+  guarantor_document: string | null;
+  guarantor_rg: string | null;
+  guarantor_phone: string | null;
+  guarantor_address: string | null;
+
+  monthly_amount: number;
+  /** Dia do mês em que vence. Num mês curto, cai no último dia. */
+  due_day: number;
+  deposit_amount: number;
+  late_fee_percent: number | null;
+  interest_percent: number | null;
+  readjust_index: string | null;
+
+  start_date: string;
+  end_date: string | null;
+  months: number | null;
+
+  purpose: string | null;
+  signed_at: string | null;
+  forum_city: string | null;
+
+  status: RentalContractStatus;
+  notes: string | null;
+
+  created_by: string | null;
+  created_at: string;
+}
+
+/** O contrato com o imóvel junto e o resumo do que já foi recebido (view). */
+export interface RentalContractView extends RentalContract {
+  property_code: number;
+  property_name: string | null;
+  property_kind: string;
+  property_street: string | null;
+  property_number: string | null;
+  property_complement: string | null;
+  property_district: string | null;
+  property_city: string | null;
+  property_state: string | null;
+  property_zip: string | null;
+  property_registration: string | null;
+  property_iptu_code: string | null;
+  property_water_code: string | null;
+  property_power_code: string | null;
+  property_active: boolean;
+  meses_pagos: number;
+  total_recebido: number;
+  ultimo_pagamento: string | null;
+}
+
+/** A baixa do aluguel de um mês. Só existe quando há o que registrar. */
+export interface RentalPayment {
+  id: string;
+  contract_id: string;
+  /** O mês de referência, sempre no dia 1. */
+  competencia: string;
+  due_date: string;
+  amount: number;
+  paid_at: string | null;
+  paid_amount: number;
+  method: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** O modelo do contrato, com os campos {{ASSIM}} trocados na impressão. */
+export interface RentalContractTemplate {
+  id: string;
+  name: string;
+  body: string;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}

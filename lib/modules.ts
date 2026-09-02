@@ -16,6 +16,7 @@ import {
   PackageOpen,
   Users,
   Tractor,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -135,6 +136,18 @@ export const APP_MODULES: AppModule[] = [
     accentIcon:
       "bg-orange-50 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400",
     tabs: [{ href: "/obras", label: "Obras", short: "Obras", icon: HardHat }],
+  },
+  {
+    // Os imóveis alugados: cadastro com código, contrato preenchido e o
+    // aluguel de cada mês dando baixa — ver a migration 078.
+    slug: "alugueis",
+    name: "Aluguéis",
+    description: "Imóveis, contratos e o aluguel de cada mês",
+    href: "/alugueis",
+    icon: Building2,
+    accentIcon:
+      "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400",
+    tabs: [{ href: "/alugueis", label: "Aluguéis", short: "Aluguéis", icon: Building2 }],
   },
   {
     slug: "animais",

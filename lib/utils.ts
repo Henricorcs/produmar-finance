@@ -293,3 +293,98 @@ export function getInitials(name?: string | null): string {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
+
+// ── Número e data por extenso (contrato de locação) ──────────────────────────
+// Contrato se escreve com o valor nos dois jeitos: "R$ 1.000,00 (um mil reais)".
+// Quem digita não deve ter que escrever o extenso na mão — é onde nasce o erro
+// que só aparece na hora de cobrar.
+
+const EXTENSO_UNIDADES = [
+  "", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove",
+  "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete",
+  "dezoito", "dezenove",
+];
+const EXTENSO_DEZENAS = [
+  "", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta",
+  "oitenta", "noventa",
+];
+const EXTENSO_CENTENAS = [
+  "", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos",
+  "seiscentos", "setecentos", "oitocentos", "novecentos",
+];
+
+function extensoAte999(n: number): string {
+  if (n <= 0) return "";
+  if (n === 100) return "cem";
+  const centena = Math.floor(n / 100);
+  const resto = n % 100;
+  const partes: string[] = [];
+  if (centena) partes.push(EXTENSO_CENTENAS[centena]);
+  if (resto) {
+    if (resto < 20) partes.push(EXTENSO_UNIDADES[resto]);
+    else {
+      const dezena = Math.floor(resto / 10);
+      const unidade = resto % 10;
+      partes.push(
+        unidade
+          ? `${EXTENSO_DEZENAS[dezena]} e ${EXTENSO_UNIDADES[unidade]}`
+          : EXTENSO_DEZENAS[dezena]
+      );
+    }
+  }
+  return partes.join(" e ");
+}
+
+/**
+ * Número inteiro por extenso ("doze", "um mil", "mil e quinhentos").
+ *
+ * O mil vem como "um mil" de propósito: é assim que o contrato de vocês
+ * escreve ("Um mil reais"). Serve para os valores do dia a dia (até milhões).
+ */
+export function numeroPorExtenso(valor: number): string {
+  const n = Math.floor(Math.abs(Number(valor) || 0));
+  if (n === 0) return "zero";
+
+  const milhoes = Math.floor(n / 1_000_000);
+  const milhares = Math.floor((n % 1_000_000) / 1000);
+  const resto = n % 1000;
+
+  const partes: string[] = [];
+  if (milhoes) partes.push(milhoes === 1 ? "um milhão" : `${extensoAte999(milhoes)} milhões`);
+  if (milhares) partes.push(`${extensoAte999(milhares)} mil`);
+  if (resto) partes.push(extensoAte999(resto));
+
+  return partes.join(" e ");
+}
+
+/** "12 (doze)" — o número do jeito que contrato pede. */
+export function numeroComExtenso(valor: number): string {
+  const n = Math.floor(Math.abs(Number(valor) || 0));
+  return `${n} (${numeroPorExtenso(n)})`;
+}
+
+/** Valor em reais por extenso ("um mil reais", "mil e quinhentos reais e cinquenta centavos"). */
+export function valorPorExtenso(valor: number): string {
+  const v = Math.abs(Number(valor) || 0);
+  const inteiro = Math.floor(v);
+  const centavos = Math.round((v - inteiro) * 100);
+
+  const partes: string[] = [];
+  if (inteiro) partes.push(`${numeroPorExtenso(inteiro)} ${inteiro === 1 ? "real" : "reais"}`);
+  if (centavos)
+    partes.push(`${numeroPorExtenso(centavos)} ${centavos === 1 ? "centavo" : "centavos"}`);
+
+  if (partes.length === 0) return "zero reais";
+  return partes.join(" e ");
+}
+
+/** "2026-08-24" → "24 de agosto de 2026" (a data de assinatura do contrato). */
+export function dataPorExtenso(date: string | Date): string {
+  const d = parseLocalDate(date);
+  return d.toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** Primeira letra maiúscula, sem mexer no resto ("um mil reais" → "Um mil reais"). */
+export function primeiraMaiuscula(texto: string): string {
+  return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : texto;
+}
