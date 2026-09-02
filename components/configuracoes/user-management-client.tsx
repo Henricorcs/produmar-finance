@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen } from "lucide-react";
+import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import {
 } from "@/app/(app)/configuracoes/actions";
 import { machineCategoryLabel } from "@/lib/utils";
 import { actionError } from "@/lib/action-result";
+import Link from "next/link";
 import { APP_MODULES } from "@/lib/modules";
 import { MACHINE_CATEGORIES, type Profile, type UserRole } from "@/lib/types";
 
@@ -178,7 +179,18 @@ export function UserManagementClient({ users, currentUserId }: Props) {
           const Icon = ROLE_ICON[u.role];
           const isMe = u.id === currentUserId;
           const isOperador = u.role === "operador";
+          const isTecnico = u.role === "tecnico";
           const isFinanceiro = u.role === "financeiro";
+          /**
+           * VER COMO ELE: o admin abre a tela do operador (ou do técnico) para
+           * conferir se a OS chegou, sem precisar da senha da pessoa. É só
+           * leitura — a tela abre com uma faixa avisando e não aceita toque.
+           */
+          const espiar = isOperador
+            ? `/operador?ver=${u.id}`
+            : isTecnico
+              ? `/tecnico?ver=${u.id}`
+              : null;
           const canHaveModules = isFinanceiro || isOperador;
           const cats = u.allowed_categories ?? [];
           const mods = u.allowed_modules ?? [];
@@ -232,6 +244,15 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                   >
                     {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
                   </button>
+                )}
+                {espiar && !isMe && (
+                  <Link
+                    href={espiar}
+                    title={`Ver a tela de ${u.full_name || u.email}`}
+                    className="p-1 text-slate-300 dark:text-slate-600 hover:text-produmar-600 dark:hover:text-produmar-400 transition-colors flex-shrink-0"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                  </Link>
                 )}
                 {isOperador && (
                   <button

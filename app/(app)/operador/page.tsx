@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OperadorClient } from "@/components/operador/operador-client";
+import { PreviewBanner } from "@/components/layout/preview-banner";
 import type {
   MachineServicoDoOperador,
   Profile,
@@ -26,12 +27,26 @@ type OrderWithDetails = ServiceOrder & {
   service_order_forwards?: ServiceOrderForward[];
 };
 
-export default async function OperadorPage() {
+export default async function OperadorPage({
+  searchParams,
+}: {
+  searchParams: { ver?: string };
+}) {
   const supabase = createClient();
 
   // Id vem do header que o middleware preencheu — sem ida e volta ao Supabase.
-  const userId = await getCurrentUserId();
-  if (!userId) redirect("/login");
+  const meuId = await getCurrentUserId();
+  if (!meuId) redirect("/login");
+
+  // VER COMO O OPERADOR: o admin abre o painel de outra pessoa para conferir se
+  // a OS chegou, sem precisar da senha dela. Só o admin, e só leitura — a faixa
+  // no topo desliga o toque no que vem abaixo. (Iniciar e finalizar já são
+  // travados no servidor pelo assigned_to, então nem por fora daria.)
+  //
+  // O perfil vem do cache da requisição: o layout já buscou.
+  const eu = await getProfile();
+  const vendoOutro = eu?.role === "admin" && !!searchParams.ver && searchParams.ver !== meuId;
+  const userId = vendoOutro ? (searchParams.ver as string) : meuId;
 
   // Busca OS em aberto (pendente ou em andamento) ENVIADAS para este operador.
   // Isolamento estrito: cada operador só vê o que foi direcionado a ele — a OS
@@ -67,7 +82,7 @@ export default async function OperadorPage() {
 
   // Nenhuma depende da outra — vão todas na mesma leva, em vez de uma
   // esperar a outra.
-  const [assigned, finished, operators, profile, frotaRes, frotaFeitasRes] =
+  const [assigned, finished, operators, perfilRes, frotaRes, frotaFeitasRes] =
     await Promise.all([
       supabase
         .from("service_orders")
@@ -83,8 +98,10 @@ export default async function OperadorPage() {
         .order("delivery_date", { ascending: false })
         .limit(100),
       operatorsPromise,
-      // perfil do cache da requisição (o layout já buscou) — não consulta de novo
-      getProfile(),
+      // de quem é o painel: o meu, ou o de quem o admin está olhando
+      vendoOutro
+        ? supabase.from("profiles").select("*").eq("id", userId).maybeSingle()
+        : Promise.resolve({ data: eu }),
       // A OS DE MÁQUINA da ficha do veículo (migrations 073-075), enviada para
       // este operador e ainda em aberto. Best-effort: sem as migrations, a
       // consulta falha e o painel segue igual, só sem esta lista.
@@ -102,6 +119,9 @@ export default async function OperadorPage() {
         .order("finished_at", { ascending: false })
         .limit(50),
     ]);
+
+  // De quem é o painel: o meu perfil, ou o de quem o admin está olhando.
+  const profile = (perfilRes.data as Profile | null) ?? null;
 
   const frotaOS = (frotaRes.data as MachineServicoDoOperador[]) ?? [];
   const frotaFinalizadas = (frotaFeitasRes.data as MachineServicoDoOperador[]) ?? [];
@@ -207,7 +227,7 @@ export default async function OperadorPage() {
     }
   }
 
-  return (
+  const painel = (
     <OperadorClient
       orders={list}
       finalizedOrders={finalizedList}
@@ -218,5 +238,18 @@ export default async function OperadorPage() {
       lastKmByMachine={lastKmByMachine}
       operators={operators}
     />
+  );
+
+  if (!vendoOutro) return painel;
+
+  return (
+    <>
+      <PreviewBanner
+        nome={profile?.full_name ?? profile?.email ?? "operador"}
+        tela="o painel"
+      />
+      {/* só leitura: nada aqui aceita toque */}
+      <div className="pointer-events-none select-none">{painel}</div>
+    </>
   );
 }

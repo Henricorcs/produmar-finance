@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { TecnicoClient } from "@/components/tecnico/tecnico-client";
+import { PreviewBanner } from "@/components/layout/preview-banner";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { SupplyObraSector, SupplyRequestRow } from "@/lib/types";
 import type {
   TecnicoItem,
@@ -11,7 +13,11 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-export default async function TecnicoPage() {
+export default async function TecnicoPage({
+  searchParams,
+}: {
+  searchParams: { ver?: string };
+}) {
   const supabase = createClient();
 
   // Perfil já carregado pelo layout nesta mesma requisição — vem do cache, sem
@@ -21,6 +27,29 @@ export default async function TecnicoPage() {
 
   // Tela fechada: só o técnico (e o admin, para conferir/testar).
   if (profile?.role !== "tecnico" && profile?.role !== "admin") redirect("/inicio");
+
+  // VER COMO O TÉCNICO: o admin abre a tela de um técnico para conferir. Só
+  // leitura — a faixa do topo desliga o toque no que vem abaixo.
+  const vendoOutro =
+    profile.role === "admin" && !!searchParams.ver && searchParams.ver !== profile.id;
+  const alvoId = vendoOutro ? (searchParams.ver as string) : profile.id;
+
+  // o nome de quem está sendo olhado (a RLS de profiles só deixa o admin ver os
+  // outros pelo service-role; sem a chave, mostra "técnico" e segue)
+  let nomeDoAlvo = "técnico";
+  if (vendoOutro) {
+    try {
+      const admin = createAdminClient();
+      const { data } = await admin
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", alvoId)
+        .maybeSingle<{ full_name: string | null; email: string }>();
+      nomeDoAlvo = data?.full_name || data?.email || "técnico";
+    } catch {
+      nomeDoAlvo = "técnico";
+    }
+  }
 
   const [itemsRes, obrasRes, sectorsRes, machinesRes, mineRes] = await Promise.all([
     // só o catálogo: nome e unidade. O técnico não precisa (nem deve) ver saldo.
@@ -43,12 +72,12 @@ export default async function TecnicoPage() {
     supabase
       .from("supply_requests")
       .select("*, supply_items(name, unit), supply_obras(name)")
-      .eq("created_by", profile.id)
+      .eq("created_by", alvoId)
       .order("created_at", { ascending: false })
       .limit(20),
   ]);
 
-  return (
+  const tela = (
     <TecnicoClient
       items={(itemsRes.data as TecnicoItem[]) ?? []}
       obras={(obrasRes.data as TecnicoObra[]) ?? []}
@@ -56,5 +85,15 @@ export default async function TecnicoPage() {
       machines={(machinesRes.data as TecnicoMachine[]) ?? []}
       pending={(mineRes.data as SupplyRequestRow[]) ?? []}
     />
+  );
+
+  if (!vendoOutro) return tela;
+
+  return (
+    <>
+      <PreviewBanner nome={nomeDoAlvo} tela="a tela" />
+      {/* só leitura: nada aqui aceita toque */}
+      <div className="pointer-events-none select-none">{tela}</div>
+    </>
   );
 }
