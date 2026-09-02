@@ -1771,6 +1771,10 @@ export interface MachineTroca {
   recebidas: number;
   /** Quantas máquinas NOSSAS trabalharam para ele no dia. */
   cedidas: number;
+  /** Quais máquinas DELE vieram — placas do momento do lançamento. */
+  veiculos_dele?: string | null;
+  /** Quais máquinas NOSSAS foram. */
+  veiculos_meus?: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -1789,4 +1793,28 @@ export interface MachineParceiroSaldo {
   saldo: number;
   dias: number;
   ultimo_dia: string | null;
+}
+
+/**
+ * Um veículo do parceiro (migration 077). A placa é o que identifica na
+ * conversa; o apelido serve para quem chama de "caçamba vermelha".
+ */
+export interface MachineParceiroVeiculo {
+  id: string;
+  parceiro_id: string;
+  plate: string | null;
+  name: string | null;
+  category: string;
+  notes: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Como o veículo do parceiro aparece na tela: placa, ou o apelido se não tem. */
+export function parceiroVeiculoLabel(v: {
+  plate?: string | null;
+  name?: string | null;
+}): string {
+  return (v.plate?.trim() || v.name?.trim() || "").toUpperCase();
 }

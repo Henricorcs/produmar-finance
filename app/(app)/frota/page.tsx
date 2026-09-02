@@ -7,6 +7,7 @@ import type {
   MachineFichaLinha,
   MachineParceiro,
   MachineParceiroSaldo,
+  MachineParceiroVeiculo,
   MachineResumo,
   MachineServico,
   MachineTroca,
@@ -48,6 +49,7 @@ export default async function FrotaPage({
     parceirosRes,
     trocasRes,
     saldosRes,
+    veiculosParceiroRes,
   ] = await Promise.all([
     supabase.from("v_machine_resumo").select("*").order("name"),
     supabase
@@ -77,6 +79,8 @@ export default async function FrotaPage({
       .lte("entry_date", endDate),
     // o confronto é de SEMPRE: a dívida de diária não zera no fim do mês
     supabase.from("v_machine_parceiro_saldo").select("*"),
+    // as placas das máquinas dele (migration 077)
+    supabase.from("machine_parceiro_veiculos").select("*").order("plate"),
   ]);
 
   // Migration 073 ainda não rodou: a tela abre com o cadastro que já existe e
@@ -128,6 +132,7 @@ export default async function FrotaPage({
       parceiros={(parceirosRes.data as MachineParceiro[]) ?? []}
       trocas={(trocasRes.data as MachineTroca[]) ?? []}
       saldos={(saldosRes.data as MachineParceiroSaldo[]) ?? []}
+      veiculosDeParceiro={(veiculosParceiroRes.data as MachineParceiroVeiculo[]) ?? []}
       month={month}
       migrationPendente={migrationPendente}
       parceriaPendente={!!parceirosRes.error}

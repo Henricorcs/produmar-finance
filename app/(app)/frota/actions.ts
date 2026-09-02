@@ -342,8 +342,11 @@ export async function deleteMachineDespesa(id: string) {
 
 /** Erro das tabelas da parceria → recado que diz o que fazer. */
 function parceriaError(error: { code?: string; message: string }): string {
-  if (error.code === "42P01")
-    return "Rode a migration 076 no Supabase para usar a troca com o parceiro";
+  if (error.code === "42P01" || error.message.includes("machine_parceiro_veiculos"))
+    return "Rode as migrations 076 e 077 no Supabase para usar a troca com o parceiro";
+  // coluna que falta aqui é veiculos_dele/veiculos_meus, da 077
+  if (error.code === "42703")
+    return "Rode a migration 077 no Supabase para marcar as placas no dia da troca";
   if (error.code === "23505" && error.message.includes("uq_machine_parceiros_nome"))
     return "Já existe um parceiro com esse nome";
   return error.message;
@@ -414,6 +417,9 @@ export interface MachineTrocaInput {
   recebidas: number;
   /** Quantas máquinas NOSSAS trabalharam para ele no dia. */
   cedidas: number;
+  /** Quais foram — placas do momento, marcadas na caixa do dia. */
+  veiculos_dele?: string | null;
+  veiculos_meus?: string | null;
   notes?: string | null;
 }
 
@@ -464,6 +470,8 @@ export async function salvarMachineTroca(input: MachineTrocaInput) {
       category,
       recebidas,
       cedidas,
+      veiculos_dele: clean(input.veiculos_dele),
+      veiculos_meus: clean(input.veiculos_meus),
       notes: clean(input.notes),
       created_by: user.id,
     },
@@ -478,6 +486,90 @@ export async function salvarMachineTroca(input: MachineTrocaInput) {
 export async function deleteMachineTroca(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("machine_trocas").delete().eq("id", id);
+  if (error) return { error: parceriaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OS VEÍCULOS DO PARCEIRO (migration 077)
+// ─────────────────────────────────────────────────────────────────────────────
+// A placa é o que identifica o veículo na conversa do fim do mês: "a caçamba
+// ABC-1234 trabalhou dia 12 e parou dia 13".
+
+export interface MachineParceiroVeiculoInput {
+  parceiro_id: string;
+  plate?: string | null;
+  name?: string | null;
+  category?: string | null;
+  notes?: string | null;
+  active?: boolean;
+}
+
+function veiculoRow(input: MachineParceiroVeiculoInput) {
+  return {
+    parceiro_id: input.parceiro_id,
+    plate: clean(input.plate),
+    name: clean(input.name),
+    category: input.category?.trim() || "cacamba",
+    notes: clean(input.notes),
+    ...(input.active === undefined ? {} : { active: input.active }),
+  };
+}
+
+/** Sem placa e sem apelido ninguém reconhece o veículo no dia. */
+function veiculoInvalido(input: MachineParceiroVeiculoInput): string | null {
+  if (!input.parceiro_id) return "Escolha o parceiro";
+  if (!clean(input.plate) && !clean(input.name))
+    return "Informe a placa (ou pelo menos um apelido)";
+  return null;
+}
+
+export async function createMachineParceiroVeiculo(input: MachineParceiroVeiculoInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const falta = veiculoInvalido(input);
+  if (falta) return { error: falta };
+
+  const { error } = await supabase
+    .from("machine_parceiro_veiculos")
+    .insert({ ...veiculoRow(input), created_by: user.id });
+
+  if (error) return { error: parceriaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function updateMachineParceiroVeiculo(
+  id: string,
+  input: MachineParceiroVeiculoInput
+) {
+  const supabase = createClient();
+
+  const falta = veiculoInvalido(input);
+  if (falta) return { error: falta };
+
+  const { error } = await supabase
+    .from("machine_parceiro_veiculos")
+    .update(veiculoRow(input))
+    .eq("id", id);
+
+  if (error) return { error: parceriaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Apagar o veículo do cadastro NÃO apaga o histórico: o dia guardou a placa
+ * como texto, então o que já passou continua contando a história certa.
+ */
+export async function deleteMachineParceiroVeiculo(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("machine_parceiro_veiculos").delete().eq("id", id);
   if (error) return { error: parceriaError(error) };
   revalidate();
   return { ok: true };

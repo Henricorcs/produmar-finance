@@ -17,11 +17,15 @@ import { cn, formatDate, formatQty, localDateISO, machineCategoryLabel } from "@
 import { WEEKDAY_INITIALS, monthCells, monthLabel } from "./frota-calendario";
 import { Chip, categoryChip } from "./frota-shared";
 import { ParceiroDialog } from "./parceiro-dialog";
+import { ParceiroVeiculoDialog } from "./parceiro-veiculo-dialog";
 import { TrocaDiaDialog } from "./troca-dia-dialog";
-import type {
-  MachineParceiro,
-  MachineParceiroSaldo,
-  MachineTroca,
+import {
+  parceiroVeiculoLabel,
+  type Machine,
+  type MachineParceiro,
+  type MachineParceiroSaldo,
+  type MachineParceiroVeiculo,
+  type MachineTroca,
 } from "@/lib/types";
 
 /** Os dois números de um dia do calendário. */
@@ -36,6 +40,10 @@ interface Props {
   trocas: MachineTroca[];
   /** O confronto de SEMPRE, por parceiro e tipo de máquina. */
   saldos: MachineParceiroSaldo[];
+  /** Os veículos cadastrados dos parceiros — as placas que se marca no dia. */
+  veiculos: MachineParceiroVeiculo[];
+  /** As nossas máquinas, para marcar qual foi trabalhar para ele. */
+  minhasMaquinas: Machine[];
   year: number;
   /** Mês 0-11, como no Date do JavaScript. */
   month: number;
@@ -61,6 +69,8 @@ export function ParceriasTab({
   parceiros,
   trocas,
   saldos,
+  veiculos,
+  minhasMaquinas,
   year,
   month,
   onPrevMonth,
@@ -71,6 +81,10 @@ export function ParceriasTab({
   const [diaAberto, setDiaAberto] = useState<string | null>(null);
   const [parceiroDialogOpen, setParceiroDialogOpen] = useState(false);
   const [editParceiro, setEditParceiro] = useState<MachineParceiro | null>(null);
+  const [veiculoDialogOpen, setVeiculoDialogOpen] = useState(false);
+  const [editVeiculo, setEditVeiculo] = useState<MachineParceiroVeiculo | null>(null);
+  /** Tipo que estava escolhido na caixa do dia quando pediu "+ placa". */
+  const [veiculoCategory, setVeiculoCategory] = useState("cacamba");
 
   // O primeiro parceiro já vem escolhido: quase sempre é só um.
   useEffect(() => {
@@ -84,6 +98,12 @@ export function ParceriasTab({
   const parceiro = useMemo(
     () => parceiros.find((p) => p.id === parceiroId) ?? null,
     [parceiros, parceiroId]
+  );
+
+  /** Os veículos cadastrados do parceiro escolhido. */
+  const veiculosDoParceiro = useMemo(
+    () => veiculos.filter((v) => v.parceiro_id === parceiroId),
+    [veiculos, parceiroId]
   );
 
   /** As trocas do mês, só do parceiro escolhido. */
@@ -147,6 +167,12 @@ export function ParceriasTab({
   function abrirParceiro(p: MachineParceiro | null) {
     setEditParceiro(p);
     setParceiroDialogOpen(true);
+  }
+
+  function abrirVeiculo(v: MachineParceiroVeiculo | null, category?: string) {
+    setEditVeiculo(v);
+    setVeiculoCategory(v?.category ?? category ?? "cacamba");
+    setVeiculoDialogOpen(true);
   }
 
   const primeiroNome = parceiro ? parceiro.name.split(" ")[0] : "ele";
@@ -369,6 +395,22 @@ export function ParceriasTab({
                           {formatQty(Number(t.cedidas))}
                           {t.notes ? ` · ${t.notes}` : ""}
                         </p>
+                        {/* QUAIS foram — é o que responde no fim do mês */}
+                        {(t.veiculos_dele || t.veiculos_meus) && (
+                          <p className="text-[11px] truncate">
+                            {t.veiculos_dele && (
+                              <span className="text-amber-700 dark:text-amber-400">
+                                {t.veiculos_dele}
+                              </span>
+                            )}
+                            {t.veiculos_dele && t.veiculos_meus ? " · " : ""}
+                            {t.veiculos_meus && (
+                              <span className="text-emerald-700 dark:text-emerald-400">
+                                {t.veiculos_meus}
+                              </span>
+                            )}
+                          </p>
+                        )}
                       </div>
                       <span
                         className={cn(
@@ -389,6 +431,44 @@ export function ParceriasTab({
                   );
                 })}
               </div>
+            )}
+          </div>
+
+          {/* Os veículos dele: é a placa que responde qual máquina foi */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Veículos de {primeiroNome}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {veiculosDoParceiro.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => abrirVeiculo(v)}
+                  className={cn(
+                    "px-2.5 py-1.5 rounded-lg text-[11px] font-semibold",
+                    categoryChip(v.category)
+                  )}
+                >
+                  {parceiroVeiculoLabel(v)}
+                  {v.plate && v.name ? (
+                    <span className="font-normal opacity-70"> · {v.name}</span>
+                  ) : null}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => abrirVeiculo(null)}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-dashed border-slate-300 text-slate-500 dark:border-slate-600 dark:text-slate-400"
+              >
+                + veículo
+              </button>
+            </div>
+            {veiculosDoParceiro.length === 0 && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Cadastre a placa das máquinas dele para marcar, em cada dia, qual
+                trabalhou e qual parou.
+              </p>
             )}
           </div>
 
@@ -413,6 +493,19 @@ export function ParceriasTab({
           onClose={() => setDiaAberto(null)}
           parceiro={parceiro}
           doDia={doDiaAberto}
+          veiculosDoParceiro={veiculosDoParceiro}
+          minhasMaquinas={minhasMaquinas}
+          onNovoVeiculo={(category) => abrirVeiculo(null, category)}
+        />
+      )}
+
+      {parceiro && (
+        <ParceiroVeiculoDialog
+          open={veiculoDialogOpen}
+          onClose={() => setVeiculoDialogOpen(false)}
+          parceiro={parceiro}
+          veiculo={editVeiculo}
+          presetCategory={veiculoCategory}
         />
       )}
 

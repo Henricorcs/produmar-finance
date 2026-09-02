@@ -29,6 +29,7 @@ import {
   type MachineFichaLinha,
   type MachineParceiro,
   type MachineParceiroSaldo,
+  type MachineParceiroVeiculo,
   type MachineResumo,
   type MachineServico,
   type MachineTroca,
@@ -46,6 +47,7 @@ interface Props {
   parceiros: MachineParceiro[];
   trocas: MachineTroca[];
   saldos: MachineParceiroSaldo[];
+  veiculosDeParceiro: MachineParceiroVeiculo[];
   month: string;
   /** Migration 073 ainda não rodou: a tela abre, mas avisa. */
   migrationPendente?: boolean;
@@ -99,6 +101,7 @@ export function FrotaPageClient({
   parceiros,
   trocas,
   saldos,
+  veiculosDeParceiro,
   month,
   migrationPendente = false,
   parceriaPendente = false,
@@ -498,6 +501,8 @@ export function FrotaPageClient({
           parceiros={parceiros}
           trocas={trocas}
           saldos={saldos}
+          veiculos={veiculosDeParceiro}
+          minhasMaquinas={machines}
           year={year}
           month={monthNum - 1}
           onPrevMonth={() => navigateMonth(-1)}
