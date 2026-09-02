@@ -106,6 +106,11 @@ export default async function OperadorPage() {
   const frotaOS = (frotaRes.data as MachineServicoDoOperador[]) ?? [];
   const frotaFinalizadas = (frotaFeitasRes.data as MachineServicoDoOperador[]) ?? [];
 
+  // A consulta da OS de máquina falha quando as migrations 073-075 ainda não
+  // rodaram (tabela ou coluna que não existe). Sem este aviso o painel ficava
+  // vazio sem dizer por quê — e quem está na rua achava que não tinha serviço.
+  const frotaIndisponivel = !!frotaRes.error;
+
   // Coluna assigned_to ausente (migration 023 não aplicada): mostra todas as OS
   // abertas — assim o painel não fica vazio antes da migration rodar.
   let orders = assigned.data;
@@ -208,6 +213,7 @@ export default async function OperadorPage() {
       finalizedOrders={finalizedList}
       frotaOS={frotaOS}
       frotaFinalizadas={frotaFinalizadas}
+      frotaIndisponivel={frotaIndisponivel}
       operadorName={profile?.full_name ?? profile?.email ?? "Operador"}
       lastKmByMachine={lastKmByMachine}
       operators={operators}

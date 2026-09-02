@@ -463,6 +463,16 @@ export function ServicoDialog({
             />
           </div>
 
+          {/* Sem lista de operadores não dá para enviar — e é melhor dizer
+              isso do que sumir com o campo sem explicação. */}
+          {operators.length === 0 && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+              Nenhum operador com login para enviar esta OS. Cadastre o operador em
+              Configurações → Usuários (papel &quot;operador&quot;) para ela cair no
+              celular dele.
+            </p>
+          )}
+
           {/* ENVIAR PARA O OPERADOR — a OS cai no celular dele */}
           {operators.length > 0 && (
             <div className="space-y-1.5">

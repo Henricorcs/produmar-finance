@@ -85,6 +85,8 @@ interface Props {
   frotaOS?: MachineServicoDoOperador[];
   /** O que este operador já finalizou na máquina — histórico só leitura. */
   frotaFinalizadas?: MachineServicoDoOperador[];
+  /** A lista de OS de máquina não pôde ser carregada (migration pendente). */
+  frotaIndisponivel?: boolean;
   operadorName: string;
   /** Último km conhecido de cada veículo (facilita anotar o km no Iniciar). */
   lastKmByMachine?: Record<string, number>;
@@ -153,6 +155,7 @@ export function OperadorClient({
   finalizedOrders = [],
   frotaOS = [],
   frotaFinalizadas = [],
+  frotaIndisponivel = false,
   operadorName,
   lastKmByMachine = {},
   operators = [],
@@ -356,6 +359,17 @@ export function OperadorClient({
       ) : (
       <>
       {/* O serviço de máquina, que agora vem da ficha do veículo */}
+      {frotaIndisponivel && (
+        <Card className="p-4 border-2 border-amber-300 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30">
+          <p className="text-base font-semibold text-amber-800 dark:text-amber-300">
+            O serviço de máquina não carregou
+          </p>
+          <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+            Avise o escritório: faltam rodar as migrations 073, 074 e 075 no
+            Supabase. Suas outras tarefas continuam funcionando normalmente.
+          </p>
+        </Card>
+      )}
       <FrotaOSList items={frotaOS} />
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3">
