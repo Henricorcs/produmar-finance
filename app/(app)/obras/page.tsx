@@ -5,6 +5,7 @@ import type {
   Diarista,
   ObraItem,
   ObraSummary,
+  SupplyCategory,
   SupplyFenceRunView,
   SupplyItemWithStock,
   SupplyLocal,
@@ -37,6 +38,7 @@ export default async function ObrasPage() {
     supplyServicosRes,
     colaboradoresRes,
     supplyItemsRes,
+    supplyCategoriesRes,
   ] = await Promise.all([
     supabase
       .from("v_obra_summary")
@@ -95,6 +97,8 @@ export default async function ObrasPage() {
     // o estoque com saldo: é dele que sai o material lançado direto na obra
     // (migration 049 — sem ela volta vazio e o resto da tela segue igual)
     supabase.from("v_supply_stock").select("*").order("name", { ascending: true }),
+    // as categorias do Estoque, para cadastrar o material que faltava sem sair
+    supabase.from("supply_categories").select("*").order("name", { ascending: true }),
   ]);
 
   return (
@@ -112,6 +116,7 @@ export default async function ObrasPage() {
       supplyServicos={(supplyServicosRes.data as SupplyObraServicoView[]) ?? []}
       colaboradores={(colaboradoresRes.data as Diarista[]) ?? []}
       supplyItems={(supplyItemsRes.data as SupplyItemWithStock[]) ?? []}
+      supplyCategories={(supplyCategoriesRes.data as SupplyCategory[]) ?? []}
     />
   );
 }

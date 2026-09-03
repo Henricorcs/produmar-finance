@@ -369,6 +369,73 @@ export async function createSupplyMovement(input: SupplyMovementInput) {
 }
 
 /**
+ * Corrige um lançamento já feito: quanto saiu, quem pegou, onde aplicou e o
+ * dia. O item, o tipo e a obra NÃO mudam — trocar o material é cancelar e
+ * lançar de novo, senão o histórico passa a contar outra história.
+ *
+ * Aumentar a quantidade de uma saída tira mais do estoque: a diferença tem que
+ * caber no saldo de hoje, do mesmo jeito que no lançamento normal.
+ */
+export async function updateSupplyMovement(
+  id: string,
+  input: {
+    quantity: number;
+    person?: string | null;
+    destination?: string | null;
+    movement_date?: string | null;
+    notes?: string | null;
+  }
+) {
+  const supabase = createClient();
+
+  const { data: mov } = await supabase
+    .from("supply_movements")
+    .select("item_id, type, quantity")
+    .eq("id", id)
+    .maybeSingle();
+  if (!mov) return { error: "Lançamento não encontrado" };
+  if (mov.type === "ajuste")
+    return { error: "Ajuste não se corrige — confira o estoque de novo" };
+
+  const qty = normQty(input.quantity);
+  if (qty <= 0) return { error: "Informe a quantidade" };
+
+  // o que muda no saldo é só a DIFERENÇA: quem baixou 10 e viu que foram 12
+  // precisa que o estoque tenha os 2 a mais, não os 12
+  const delta = Math.round((qty - Number(mov.quantity)) * 1000) / 1000;
+  if (mov.type === "saida" && delta > 0) {
+    const { data: stock } = await supabase
+      .from("v_supply_stock")
+      .select("current_quantity, unit")
+      .eq("id", mov.item_id)
+      .maybeSingle();
+    const available = Number(stock?.current_quantity ?? 0);
+    if (delta > available)
+      return {
+        error:
+          `Dá para aumentar no máximo ${available} ${stock?.unit ?? ""} — é o que ainda tem no estoque`.trim(),
+      };
+  }
+
+  const { error } = await supabase
+    .from("supply_movements")
+    .update({
+      quantity: qty,
+      person: clean(input.person),
+      destination: clean(input.destination),
+      movement_date: input.movement_date || undefined,
+      // a observação só muda se veio: quem corrige a quantidade na obra não
+      // manda esse campo, e apagar o que estava escrito seria perder recado
+      ...(input.notes === undefined ? {} : { notes: clean(input.notes) }),
+    })
+    .eq("id", id);
+
+  if (error) return { error: supplyError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
  * Acerta o saldo para o valor contado na prateleira. Grava a DIFERENÇA como
  * ajuste (positiva ou negativa) — o histórico continua contando a história toda.
  */

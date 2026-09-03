@@ -45,6 +45,11 @@ interface Props {
    */
   onEscrever?: () => void;
   /**
+   * "Cadastrar material" — a saída de quem NÃO pode escrever na mão: o chefe
+   * cadastra o item que faltava sem sair da obra e já continua a baixa.
+   */
+  onCadastrar?: () => void;
+  /**
    * O que aparece na ponta direita de cada linha. O padrão é a unidade — a obra
    * troca pelo saldo, que o chefe precisa ver e o técnico não pode.
    */
@@ -75,6 +80,7 @@ export function MaterialPickerDialog({
   escolhidos,
   onToggle,
   onEscrever,
+  onCadastrar,
   getHint,
   titulo = "Qual material você usou?",
 }: Props) {
@@ -119,6 +125,18 @@ export function MaterialPickerDialog({
     ? "Nenhum material cadastrado ainda."
     : "Nenhum material com saldo no estoque.";
 
+  /**
+   * A saída de quem não achou o que procurava. O técnico escreve o nome na mão
+   * (o chefe acha no cadastro depois); o chefe cadastra o material na hora,
+   * porque na obra o lançamento já vira baixa — e baixa só existe de item
+   * cadastrado.
+   */
+  const semSaida = onEscrever
+    ? { curto: "Não achei", longo: "Escrever o nome na mão", acao: onEscrever }
+    : onCadastrar
+      ? { curto: "Cadastrar", longo: "Cadastrar este material", acao: onCadastrar }
+      : null;
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
@@ -162,18 +180,18 @@ export function MaterialPickerDialog({
               <p className="text-sm text-slate-500 dark:text-slate-400 px-4">
                 {busca ? `Nenhum material com “${busca}”.` : vazio}
               </p>
-              {onEscrever && (
+              {semSaida && (
                 <Button
                   type="button"
                   variant="outline"
                   className="h-11"
                   onClick={() => {
-                    onEscrever();
+                    semSaida.acao();
                     onClose();
                   }}
                 >
                   <Pencil className="w-4 h-4" />
-                  Escrever o nome na mão
+                  {semSaida.longo}
                 </Button>
               )}
             </div>
@@ -219,18 +237,18 @@ export function MaterialPickerDialog({
 
         {/* O rodapé: escrever na mão, ou fechar com o que já foi marcado */}
         <div className="flex-shrink-0 flex items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-          {onEscrever && (
+          {semSaida && (
             <Button
               type="button"
               variant="outline"
               className="flex-1 h-12"
               onClick={() => {
-                onEscrever();
+                semSaida.acao();
                 onClose();
               }}
             >
               <Pencil className="w-4 h-4" />
-              Não achei
+              {semSaida.curto}
             </Button>
           )}
           <Button type="button" className="flex-[2] h-12 font-semibold" onClick={onClose}>

@@ -58,7 +58,7 @@ interface Props {
    * Abre o lançamento de material desta obra. Quem cuida do diálogo é a lista,
    * pelo mesmo motivo da despesa: aqui os dois se atropelariam.
    */
-  onMaterial: (obra: SupplyObraUsage) => void;
+  onMaterial: (obra: SupplyObraUsage, linha: SupplyObraExtrato | null) => void;
 }
 
 /** Os recortes de tempo do extrato — o que o dono pergunta no dia a dia. */
@@ -448,7 +448,7 @@ export function SupplyObraDetailDialog({
               </Button>
               {/* O material que o técnico não avisou: lança aqui mesmo, sem
                   precisar ir até o Estoque procurar a obra de novo */}
-              <Button type="button" onClick={() => onMaterial(obra!)}>
+              <Button type="button" onClick={() => onMaterial(obra!, null)}>
                 <PackageOpen className="w-4 h-4" />
                 Material
               </Button>
@@ -653,7 +653,7 @@ export function SupplyObraDetailDialog({
               </p>
               <button
                 type="button"
-                onClick={() => onMaterial(obra!)}
+                onClick={() => onMaterial(obra!, null)}
                 className="min-h-[36px] px-2 text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:underline"
               >
                 + Material
@@ -735,25 +735,31 @@ export function SupplyObraDetailDialog({
               <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 max-h-72 overflow-y-auto">
                 {linhas.map((l) => {
                   const ehDespesa = l.kind === "despesa";
+                  // A despesa e o material se corrigem aqui mesmo (o material
+                  // mexendo no estoque junto). A diária é do módulo
+                  // Colaboradores e o serviço, de "Serviços": cada um na sua.
+                  const corrigir = ehDespesa
+                    ? () => abrirDespesa(l)
+                    : l.kind === "material"
+                      ? () => onMaterial(obra!, l)
+                      : null;
                   return (
                     <div
                       key={`${l.kind}-${l.id}`}
-                      // só a despesa é editável aqui: o material é do Estoque e a
-                      // diária é do módulo Colaboradores, cada um se acerta na sua
-                      onClick={ehDespesa ? () => abrirDespesa(l) : undefined}
-                      role={ehDespesa ? "button" : undefined}
-                      tabIndex={ehDespesa ? 0 : undefined}
+                      onClick={corrigir ?? undefined}
+                      role={corrigir ? "button" : undefined}
+                      tabIndex={corrigir ? 0 : undefined}
                       onKeyDown={
-                        ehDespesa
+                        corrigir
                           ? (e) => {
                               if (e.key !== "Enter" && e.key !== " ") return;
                               e.preventDefault();
-                              abrirDespesa(l);
+                              corrigir();
                             }
                           : undefined
                       }
                       className={`flex items-center gap-2.5 px-3 py-2 ${
-                        ehDespesa
+                        corrigir
                           ? "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                           : ""
                       }`}
@@ -794,8 +800,9 @@ export function SupplyObraDetailDialog({
               </div>
             )}
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              Toque numa despesa para corrigir ou apagar. Material e diária se acertam
-              nas telas de Estoque e Colaboradores; o serviço, em &quot;Serviços&quot;.
+              Toque numa despesa ou num material para corrigir ou apagar — mexer no
+              material acerta o estoque junto. A diária se acerta em Colaboradores; o
+              serviço, em &quot;Serviços&quot;.
             </p>
           </div>
 

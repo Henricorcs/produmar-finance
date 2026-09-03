@@ -15,6 +15,7 @@ import type {
   ObraStatus,
   ObraSummary,
   Diarista,
+  SupplyCategory,
   SupplyFenceRunView,
   SupplyItemWithStock,
   SupplyLocal,
@@ -74,6 +75,8 @@ interface Props {
   colaboradores?: Diarista[];
   /** O estoque com saldo — a obra lança o material usado direto dele. */
   supplyItems?: SupplyItemWithStock[];
+  /** Categorias do Estoque — só para cadastrar o material que faltava. */
+  supplyCategories?: SupplyCategory[];
 }
 
 type StatusFilter = "todas" | ObraStatus;
@@ -94,6 +97,7 @@ export function ObrasPageClient({
   supplyServicos = [],
   colaboradores = [],
   supplyItems = [],
+  supplyCategories = [],
 }: Props) {
   // Só existe uma lista de obra na tela: a que veio do Estoque.
   const [tab] = useState<Tab>("estoque");
@@ -296,6 +300,7 @@ export function ObrasPageClient({
         servicos={supplyServicos}
         colaboradores={colaboradores}
         supplyItems={supplyItems}
+        supplyCategories={supplyCategories}
       />
 
       {/* Dialogs */}

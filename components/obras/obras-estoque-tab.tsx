@@ -11,14 +11,16 @@ import { SupplyObraCard, SupplyObraDetailDialog } from "./estoque-obra-detail-di
 import { SupplyObraSectorsDialog } from "./estoque-obra-sectors-dialog";
 import { LocaisDialog } from "./locais-dialog";
 import { DespesaDialog } from "./despesa-dialog";
-import { MaterialObraDialog } from "./material-obra-dialog";
+import { CorrigirMaterialDialog, MaterialObraDialog } from "./material-obra-dialog";
 import { EmptyState } from "./obra-shared";
 import type {
   Diarista,
+  SupplyCategory,
   SupplyFenceRunView,
   SupplyItemWithStock,
   SupplyLocal,
   SupplyObraDespesa,
+  SupplyObraExtrato,
   SupplyObraSector,
   SupplyObraServicoView,
   SupplyObraUsage,
@@ -38,6 +40,8 @@ interface Props {
   colaboradores?: Diarista[];
   /** O estoque com saldo — é dele que sai o material lançado na obra. */
   supplyItems?: SupplyItemWithStock[];
+  /** Categorias do Estoque — só para cadastrar o material que faltava. */
+  supplyCategories?: SupplyCategory[];
 }
 
 /** A chave de agrupamento das obras sem local — vale como um grupo à parte. */
@@ -62,6 +66,7 @@ export function ObrasEstoqueTab({
   servicos = [],
   colaboradores = [],
   supplyItems = [],
+  supplyCategories = [],
 }: Props) {
   const [obraDialogOpen, setObraDialogOpen] = useState(false);
   const [editObra, setEditObra] = useState<SupplyObraUsage | null>(null);
@@ -82,6 +87,8 @@ export function ObrasEstoqueTab({
   /** Material usado na obra — mesmo vaivém da despesa: sai do detalhe e volta. */
   const [materialOpen, setMaterialOpen] = useState(false);
   const [materialObra, setMaterialObra] = useState<SupplyObraUsage | null>(null);
+  /** A baixa que já existe e está sendo corrigida — null lança uma nova. */
+  const [materialLinha, setMaterialLinha] = useState<SupplyObraExtrato | null>(null);
 
   const [search, setSearch] = useState("");
   /** Local escolhido no filtro — "" = todos. */
@@ -201,10 +208,14 @@ export function ObrasEstoqueTab({
     if (despesaObra) setDetailObraId(despesaObra.id);
   }
 
-  /** Sai do detalhe e abre o lançamento de material desta obra. */
-  function abrirMaterial(obra: SupplyObraUsage) {
+  /**
+   * Sai do detalhe e abre o material desta obra: `null` lança uma baixa nova,
+   * uma linha do extrato abre a correção daquela baixa.
+   */
+  function abrirMaterial(obra: SupplyObraUsage, linha: SupplyObraExtrato | null) {
     setDetailObraId(null);
     setMaterialObra(obra);
+    setMaterialLinha(linha);
     setMaterialOpen(true);
   }
 
@@ -407,15 +418,24 @@ export function ObrasEstoqueTab({
           despesa={editDespesa}
         />
       )}
-      {materialObra && (
-        <MaterialObraDialog
-          open={materialOpen}
-          onClose={fecharMaterial}
-          obra={materialObra}
-          items={supplyItems}
-          sectors={sectors}
-        />
-      )}
+      {materialObra &&
+        (materialLinha ? (
+          <CorrigirMaterialDialog
+            open={materialOpen}
+            onClose={fecharMaterial}
+            obraNome={materialObra.name}
+            linha={materialLinha}
+          />
+        ) : (
+          <MaterialObraDialog
+            open={materialOpen}
+            onClose={fecharMaterial}
+            obra={materialObra}
+            items={supplyItems}
+            sectors={sectors}
+            categories={supplyCategories}
+          />
+        ))}
     </div>
   );
 }

@@ -31,9 +31,17 @@ interface Props {
   categories: SupplyCategory[];
   /** Categoria que a tela está filtrando — já vem escolhida no cadastro. */
   defaultCategoryId?: string | null;
-  onManageCategories: () => void;
-  /** Avisa quem abriu qual item acabou de nascer (ex.: pra já selecionar). */
-  onCreated?: (itemId: string) => void;
+  /** Sem isto o atalho de categorias some — quem abre de fora do Estoque. */
+  onManageCategories?: () => void;
+  /**
+   * Avisa quem abriu qual item acabou de nascer (ex.: pra já selecionar). Vai
+   * junto o que foi digitado, para a tela de quem chamou já mostrar o item
+   * antes de os dados novos chegarem do servidor.
+   */
+  onCreated?: (
+    itemId: string,
+    criado: { name: string; unit: string; quantity: number }
+  ) => void;
 }
 
 export function ItemDialog({
@@ -141,7 +149,12 @@ export function ItemDialog({
         }
       }
 
-      if (!item && itemId) onCreated?.(itemId);
+      if (!item && itemId)
+        onCreated?.(itemId, {
+          name: name.trim().toUpperCase(),
+          unit: unit.trim() || "un",
+          quantity: parseQty(initialQty),
+        });
       onClose();
     });
   }
@@ -202,14 +215,16 @@ export function ItemDialog({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="si_category">Categoria</Label>
-              <button
-                type="button"
-                onClick={onManageCategories}
-                className="flex items-center gap-1 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
-              >
-                <Settings2 className="w-3 h-3" />
-                Gerenciar
-              </button>
+              {onManageCategories && (
+                <button
+                  type="button"
+                  onClick={onManageCategories}
+                  className="flex items-center gap-1 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
+                >
+                  <Settings2 className="w-3 h-3" />
+                  Gerenciar
+                </button>
+              )}
             </div>
             <select
               id="si_category"
