@@ -6,6 +6,7 @@ import {
   HardHat,
   MapPin,
   MapPinned,
+  PackageOpen,
   Paperclip,
   Pencil,
   Plus,
@@ -53,6 +54,11 @@ interface Props {
    * cima deste e os dois se atropelariam.
    */
   onDespesa: (obra: SupplyObraUsage, despesa: SupplyObraDespesa | null) => void;
+  /**
+   * Abre o lançamento de material desta obra. Quem cuida do diálogo é a lista,
+   * pelo mesmo motivo da despesa: aqui os dois se atropelariam.
+   */
+  onMaterial: (obra: SupplyObraUsage) => void;
 }
 
 /** Os recortes de tempo do extrato — o que o dono pergunta no dia a dia. */
@@ -89,6 +95,7 @@ export function SupplyObraDetailDialog({
   onEdit,
   onManageSectors,
   onDespesa,
+  onMaterial,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [extrato, setExtrato] = useState<SupplyObraExtrato[]>([]);
@@ -430,26 +437,32 @@ export function SupplyObraDetailDialog({
               </div>
             </div>
 
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 grid grid-cols-3 gap-2">
               <Button
                 type="button"
                 variant="outline"
-                className="flex-1"
                 onClick={() => onManageSectors(obra!)}
               >
                 <HardHat className="w-4 h-4" />
                 Serviços
               </Button>
-              <Button type="button" className="flex-1" onClick={() => abrirDespesa(null)}>
+              {/* O material que o técnico não avisou: lança aqui mesmo, sem
+                  precisar ir até o Estoque procurar a obra de novo */}
+              <Button type="button" onClick={() => onMaterial(obra!)}>
+                <PackageOpen className="w-4 h-4" />
+                Material
+              </Button>
+              <Button type="button" onClick={() => abrirDespesa(null)}>
                 <Plus className="w-4 h-4" />
                 Despesa
               </Button>
             </div>
 
             <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-              O material sai no Estoque e a diária em Colaboradores, as duas escolhendo
-              esta obra. O serviço por empreita ou por metro é combinado no setor, e a
-              despesa — compra direta, combustível, frete — é lançada aqui.
+              O material usado e a despesa — compra direta, combustível, frete — são
+              lançados aqui; o material também pode vir do Estoque ou do recado do
+              técnico. A diária sai em Colaboradores, escolhendo esta obra, e o serviço
+              por empreita ou por metro é combinado no setor.
             </p>
           </div>
 
@@ -634,9 +647,18 @@ export function SupplyObraDetailDialog({
 
           {/* Consumo por material */}
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Consumo por material
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Consumo por material
+              </p>
+              <button
+                type="button"
+                onClick={() => onMaterial(obra!)}
+                className="min-h-[36px] px-2 text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:underline"
+              >
+                + Material
+              </button>
+            </div>
             {porMaterial.length === 0 ? (
               <p className="text-xs text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
                 {loading ? "Carregando..." : "Nenhum material saiu para esta obra no período."}

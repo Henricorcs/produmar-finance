@@ -11,10 +11,12 @@ import { SupplyObraCard, SupplyObraDetailDialog } from "./estoque-obra-detail-di
 import { SupplyObraSectorsDialog } from "./estoque-obra-sectors-dialog";
 import { LocaisDialog } from "./locais-dialog";
 import { DespesaDialog } from "./despesa-dialog";
+import { MaterialObraDialog } from "./material-obra-dialog";
 import { EmptyState } from "./obra-shared";
 import type {
   Diarista,
   SupplyFenceRunView,
+  SupplyItemWithStock,
   SupplyLocal,
   SupplyObraDespesa,
   SupplyObraSector,
@@ -34,6 +36,8 @@ interface Props {
   servicos?: SupplyObraServicoView[];
   /** Cadastro de Colaboradores — quem pode receber pelo serviço. */
   colaboradores?: Diarista[];
+  /** O estoque com saldo — é dele que sai o material lançado na obra. */
+  supplyItems?: SupplyItemWithStock[];
 }
 
 /** A chave de agrupamento das obras sem local — vale como um grupo à parte. */
@@ -57,6 +61,7 @@ export function ObrasEstoqueTab({
   fenceRuns,
   servicos = [],
   colaboradores = [],
+  supplyItems = [],
 }: Props) {
   const [obraDialogOpen, setObraDialogOpen] = useState(false);
   const [editObra, setEditObra] = useState<SupplyObraUsage | null>(null);
@@ -74,6 +79,9 @@ export function ObrasEstoqueTab({
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [despesaObra, setDespesaObra] = useState<SupplyObraUsage | null>(null);
   const [editDespesa, setEditDespesa] = useState<SupplyObraDespesa | null>(null);
+  /** Material usado na obra — mesmo vaivém da despesa: sai do detalhe e volta. */
+  const [materialOpen, setMaterialOpen] = useState(false);
+  const [materialObra, setMaterialObra] = useState<SupplyObraUsage | null>(null);
 
   const [search, setSearch] = useState("");
   /** Local escolhido no filtro — "" = todos. */
@@ -191,6 +199,19 @@ export function ObrasEstoqueTab({
   function fecharDespesa() {
     setDespesaOpen(false);
     if (despesaObra) setDetailObraId(despesaObra.id);
+  }
+
+  /** Sai do detalhe e abre o lançamento de material desta obra. */
+  function abrirMaterial(obra: SupplyObraUsage) {
+    setDetailObraId(null);
+    setMaterialObra(obra);
+    setMaterialOpen(true);
+  }
+
+  /** Fechou o material (lançou ou desistiu): volta para o detalhe da obra. */
+  function fecharMaterial() {
+    setMaterialOpen(false);
+    if (materialObra) setDetailObraId(materialObra.id);
   }
 
   return (
@@ -375,6 +396,7 @@ export function ObrasEstoqueTab({
           setObraDialogOpen(true);
         }}
         onDespesa={abrirDespesa}
+        onMaterial={abrirMaterial}
       />
       {despesaObra && (
         <DespesaDialog
@@ -383,6 +405,15 @@ export function ObrasEstoqueTab({
           obraId={despesaObra.id}
           obraNome={despesaObra.name}
           despesa={editDespesa}
+        />
+      )}
+      {materialObra && (
+        <MaterialObraDialog
+          open={materialOpen}
+          onClose={fecharMaterial}
+          obra={materialObra}
+          items={supplyItems}
+          sectors={sectors}
         />
       )}
     </div>

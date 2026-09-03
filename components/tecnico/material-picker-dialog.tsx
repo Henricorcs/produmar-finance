@@ -10,7 +10,17 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { TecnicoItem } from "./tecnico-client";
+
+/**
+ * O mínimo que a lista precisa saber de um material: o nome que aparece e a
+ * unidade. Quem chama passa o cadastro dele — o técnico manda o catálogo enxuto
+ * e a obra manda o item com saldo; aqui só interessam estes três campos.
+ */
+export interface MaterialPickerItem {
+  id: string;
+  name: string;
+  unit: string;
+}
 
 /** Os acentos, para tirar da comparação: "areia" tem que achar "AREIA". */
 const ACENTOS = /[̀-ͯ]/g;
@@ -23,13 +33,24 @@ function normalizar(texto: string): string {
 interface Props {
   open: boolean;
   onClose: () => void;
-  items: TecnicoItem[];
+  items: MaterialPickerItem[];
   /** Ids já escolhidos — aparecem marcados e não entram duas vezes. */
   escolhidos: string[];
   /** Tocou num material: entra na lista (ou sai, se já estava). */
-  onToggle: (item: TecnicoItem) => void;
-  /** "Não achei" — abre uma linha para escrever o nome na mão. */
-  onEscrever: () => void;
+  onToggle: (item: MaterialPickerItem) => void;
+  /**
+   * "Não achei" — abre uma linha para escrever o nome na mão. Sem isto o botão
+   * some: na obra o lançamento vira saída do estoque na hora, e saída só
+   * existe de item cadastrado.
+   */
+  onEscrever?: () => void;
+  /**
+   * O que aparece na ponta direita de cada linha. O padrão é a unidade — a obra
+   * troca pelo saldo, que o chefe precisa ver e o técnico não pode.
+   */
+  getHint?: (item: MaterialPickerItem) => string;
+  /** O título da caixa — cada tela pergunta do seu jeito. */
+  titulo?: string;
 }
 
 /**
@@ -43,6 +64,9 @@ interface Props {
  *
  * O que ele tocar já entra marcado com o certo, para ele saber o que já pegou
  * sem precisar fechar e conferir.
+ *
+ * A mesma lista serve ao chefe em Obras, quando é ele quem lança o material que
+ * o técnico não avisou — lá ela mostra o saldo e não deixa escrever na mão.
  */
 export function MaterialPickerDialog({
   open,
@@ -51,6 +75,8 @@ export function MaterialPickerDialog({
   escolhidos,
   onToggle,
   onEscrever,
+  getHint,
+  titulo = "Qual material você usou?",
 }: Props) {
   const [busca, setBusca] = useState("");
   const campo = useRef<HTMLInputElement>(null);
@@ -72,7 +98,7 @@ export function MaterialPickerDialog({
     const q = normalizar(busca.trim());
     if (!q) return items;
 
-    const achados: { item: TecnicoItem; peso: number; pos: number }[] = [];
+    const achados: { item: MaterialPickerItem; peso: number; pos: number }[] = [];
     for (const item of items) {
       const nome = normalizar(item.name);
       const pos = nome.indexOf(q);
@@ -88,12 +114,16 @@ export function MaterialPickerDialog({
   }, [items, busca]);
 
   const marcados = escolhidos.length;
+  /** Lista vazia sem ninguém ter digitado nada: falta cadastro, não busca. */
+  const vazio = onEscrever
+    ? "Nenhum material cadastrado ainda."
+    : "Nenhum material com saldo no estoque.";
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">Qual material você usou?</DialogTitle>
+          <DialogTitle className="dark:text-slate-100">{titulo}</DialogTitle>
         </DialogHeader>
 
         {/* A busca que vai afinando a lista */}
@@ -130,20 +160,22 @@ export function MaterialPickerDialog({
           {encontrados.length === 0 ? (
             <div className="py-8 text-center space-y-3">
               <p className="text-sm text-slate-500 dark:text-slate-400 px-4">
-                Nenhum material com “{busca}”.
+                {busca ? `Nenhum material com “${busca}”.` : vazio}
               </p>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11"
-                onClick={() => {
-                  onEscrever();
-                  onClose();
-                }}
-              >
-                <Pencil className="w-4 h-4" />
-                Escrever o nome na mão
-              </Button>
+              {onEscrever && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11"
+                  onClick={() => {
+                    onEscrever();
+                    onClose();
+                  }}
+                >
+                  <Pencil className="w-4 h-4" />
+                  Escrever o nome na mão
+                </Button>
+              )}
             </div>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -174,8 +206,8 @@ export function MaterialPickerDialog({
                       <span className="flex-1 min-w-0 text-base font-medium text-slate-800 dark:text-slate-100 truncate">
                         {item.name}
                       </span>
-                      <span className="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0">
-                        {item.unit}
+                      <span className="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0 tabular-nums">
+                        {getHint ? getHint(item) : item.unit}
                       </span>
                     </button>
                   </li>
@@ -187,18 +219,20 @@ export function MaterialPickerDialog({
 
         {/* O rodapé: escrever na mão, ou fechar com o que já foi marcado */}
         <div className="flex-shrink-0 flex items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 h-12"
-            onClick={() => {
-              onEscrever();
-              onClose();
-            }}
-          >
-            <Pencil className="w-4 h-4" />
-            Não achei
-          </Button>
+          {onEscrever && (
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 h-12"
+              onClick={() => {
+                onEscrever();
+                onClose();
+              }}
+            >
+              <Pencil className="w-4 h-4" />
+              Não achei
+            </Button>
+          )}
           <Button type="button" className="flex-[2] h-12 font-semibold" onClick={onClose}>
             {marcados > 0 ? `Pronto (${marcados})` : "Fechar"}
           </Button>
