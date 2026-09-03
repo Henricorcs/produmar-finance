@@ -11,6 +11,7 @@ import {
 } from "@/components/diaristas/lancar-dia-dialog";
 import { DiaDetailDialog } from "@/components/diaristas/dia-detail-dialog";
 import type { Diarista, DiaristaDia, SupplyObraSector } from "@/lib/types";
+import { useAtualizarAoVoltar } from "./use-atualizar-ao-voltar";
 
 interface Props {
   /** Só os diaristas ativos: o técnico escolhe, nunca cadastra. */
@@ -33,6 +34,9 @@ const NENHUM = new Set<string>();
  * Tocou noutro dia, abre de novo: um dia, uma descrição.
  */
 export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }: Props) {
+  // colaborador, obra e setor vêm de novo quando ele volta para a tela
+  useAtualizarAoVoltar();
+
   const hoje = new Date();
   const [openId, setOpenId] = useState<string | null>(null);
   const [year, setYear] = useState(hoje.getFullYear());

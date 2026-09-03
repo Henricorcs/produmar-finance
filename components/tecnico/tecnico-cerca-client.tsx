@@ -12,6 +12,7 @@ import { cancelFenceRun, registerFenceRun } from "@/app/(app)/tecnico/actions";
 import { PhotoField, formatQtyInput, parseQty } from "@/components/almoxarifado/supply-shared";
 import type { SupplyFenceRun, SupplyObraSector } from "@/lib/types";
 import type { TecnicoObra } from "./tecnico-client";
+import { useAtualizarAoVoltar } from "./use-atualizar-ao-voltar";
 
 interface Props {
   obras: TecnicoObra[];
@@ -31,6 +32,9 @@ interface Props {
  * metro feito, do mesmo jeito que o material é informado sem ver saldo.
  */
 export function TecnicoCercaClient({ obras, sectors, runs, meId }: Props) {
+  // obra e setor vêm de novo quando ele volta para a tela
+  useAtualizarAoVoltar();
+
   const [isPending, startTransition] = useTransition();
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

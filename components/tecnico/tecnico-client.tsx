@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Check,
   Clock,
@@ -18,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { MaterialPickerDialog } from "./material-picker-dialog";
+import { useAtualizarAoVoltar } from "./use-atualizar-ao-voltar";
 import {
   cn,
   formatDate,
@@ -101,12 +104,19 @@ function novaLinha(): Linha {
  * aba "Pendentes" do Estoque.
  */
 export function TecnicoClient({ items, obras, sectors, machines, pending }: Props) {
+  // o cadastro (obra, setor, material) vem de novo quando ele volta para a tela
+  useAtualizarAoVoltar();
+  const router = useRouter();
+
   const [isPending, startTransition] = useTransition();
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [linhas, setLinhas] = useState<Linha[]>(() => [novaLinha()]);
+  // Começa vazia: em vez de uma caixa em branco esperando, o técnico toca em
+  // "Adicionar material" e escolhe da lista do estoque.
+  const [linhas, setLinhas] = useState<Linha[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [obraId, setObraId] = useState("");
   const [sectorId, setSectorId] = useState("");
   /** O setor não estava na lista: o técnico escreve o lugar na mão. */
@@ -164,14 +174,32 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
     setLinhas((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
 
-  function addLinha() {
-    setLinhas((prev) => [...prev, novaLinha()]);
+  /**
+   * Tocou num material da lista: entra no envio; tocou de novo, sai. É o mesmo
+   * toque para as duas coisas, para ele poder corrigir sem fechar a caixa.
+   */
+  function alternarItem(item: TecnicoItem) {
+    setLinhas((prev) => {
+      const jaTem = prev.find((l) => l.itemId === item.id);
+      if (jaTem) return prev.filter((l) => l.key !== jaTem.key);
+      return [...prev, { ...novaLinha(), itemId: item.id }];
+    });
+  }
+
+  /** "Não achei na lista": entra uma linha para escrever o nome na mão. */
+  function adicionarEscrito() {
+    setLinhas((prev) => [...prev, { ...novaLinha(), freeText: true }]);
   }
 
   function removeLinha(key: string) {
-    // sempre sobra uma: a tela sem nenhum campo de material não diz o que fazer
-    setLinhas((prev) => (prev.length === 1 ? [novaLinha()] : prev.filter((l) => l.key !== key)));
+    setLinhas((prev) => prev.filter((l) => l.key !== key));
   }
+
+  /** Os materiais do estoque já escolhidos — a caixa mostra marcados. */
+  const idsEscolhidos = useMemo(
+    () => linhas.filter((l) => l.itemId).map((l) => l.itemId),
+    [linhas]
+  );
 
   /** Linhas que o técnico realmente preencheu (as em branco são ignoradas). */
   const preenchidas = useMemo(
@@ -248,7 +276,7 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
       // A obra, o setor e a máquina ficam: quem está numa obra manda vários
       // envios seguidos. Zeram os materiais, a observação, a foto e o que é do
       // momento (leitura do painel e abastecimento).
-      setLinhas([novaLinha()]);
+      setLinhas([]);
       setNotes("");
       setPhoto(null);
       setReadingStart("");
@@ -296,6 +324,15 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
         </div>
       )}
 
+      <MaterialPickerDialog
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        items={items}
+        escolhidos={idsEscolhidos}
+        onToggle={alternarItem}
+        onEscrever={adicionarEscrito}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">O que você usou</CardTitle>
@@ -312,13 +349,17 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
                 )}
               </div>
 
-              {linhas.map((linha, i) => (
+              {linhas.length === 0 && (
+                <p className="text-sm text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700 px-4">
+                  Toque no botão abaixo e escolha na lista o que você usou.
+                </p>
+              )}
+
+              {linhas.map((linha) => (
                 <MaterialLinha
                   key={linha.key}
                   linha={linha}
-                  numero={i + 1}
-                  total={linhas.length}
-                  items={items}
+                  nome={itemById.get(linha.itemId)?.name ?? ""}
                   unit={itemById.get(linha.itemId)?.unit ?? ""}
                   onChange={(patch) => patchLinha(linha.key, patch)}
                   onRemove={() => removeLinha(linha.key)}
@@ -327,11 +368,11 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
 
               <button
                 type="button"
-                onClick={addLinha}
-                className="w-full flex items-center justify-center gap-2 min-h-[48px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-sm font-medium text-produmar-600 dark:text-produmar-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                onClick={() => setPickerOpen(true)}
+                className="w-full flex items-center justify-center gap-2 min-h-[52px] rounded-lg border-2 border-dashed border-produmar-300 dark:border-produmar-700 text-base font-semibold text-produmar-600 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-slate-800 transition-colors"
               >
-                <Plus className="w-4 h-4" />
-                Adicionar outro material
+                <Plus className="w-5 h-5" />
+                Adicionar material
               </button>
             </div>
 
@@ -418,6 +459,17 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
                     ? "Esta obra ainda não tem setor cadastrado (o chefe cadastra em Almoxarifado → Obras → Setores) — por enquanto, escreva o lugar."
                     : "Escolha o local da obra acima para aparecerem os setores dele."}
               </p>
+
+              {/* O chefe acabou de cadastrar? Busca a lista de novo, sem sair. */}
+              {!!obraId && !useSectorList && !sectorFreeText && (
+                <button
+                  type="button"
+                  onClick={() => router.refresh()}
+                  className="text-left text-[11px] font-medium text-produmar-600 dark:text-produmar-400 underline underline-offset-2 min-h-[36px]"
+                >
+                  O chefe acabou de cadastrar? Toque para atualizar a lista.
+                </button>
+              )}
             </div>
 
             {/* Máquina — o serviço nem sempre é só material */}
@@ -717,96 +769,59 @@ function SimNao({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
-/** Um material do envio: escolher (ou escrever) e dizer quanto usou. */
+/**
+ * Um material já escolhido: o nome de um lado, quanto usou do outro.
+ *
+ * A escolha acontece na caixa da lista — aqui ele só diz a quantidade e, se
+ * precisar, tira da lista. O material escrito na mão continua editável, porque
+ * esse nome não veio de cadastro nenhum.
+ */
 function MaterialLinha({
   linha,
-  numero,
-  total,
-  items,
+  nome,
   unit,
   onChange,
   onRemove,
 }: {
   linha: Linha;
-  numero: number;
-  total: number;
-  items: TecnicoItem[];
+  nome: string;
   unit: string;
   onChange: (patch: Partial<Linha>) => void;
   onRemove: () => void;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
-          {total > 1 ? `Material ${numero}` : "Material"}
-        </span>
-        <div className="flex items-center gap-1">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           {linha.freeText ? (
-            <button
-              type="button"
-              onClick={() => onChange({ freeText: false, itemText: "" })}
-              className="flex items-center gap-1 min-h-[36px] px-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
-            >
-              <List className="w-3 h-3" />
-              Escolher da lista
-            </button>
+            <>
+              <Input
+                value={linha.itemText}
+                onChange={(e) => onChange({ itemText: upperKeepingCaret(e) })}
+                placeholder="ex: cano 50mm"
+                className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+                autoComplete="off"
+              />
+              <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                Escreva do jeito que você chama — o chefe acha no cadastro.
+              </p>
+            </>
           ) : (
-            <button
-              type="button"
-              onClick={() => onChange({ freeText: true, itemId: "" })}
-              className="flex items-center gap-1 min-h-[36px] px-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
-            >
-              <Pencil className="w-3 h-3" />
-              Não achei na lista
-            </button>
-          )}
-          {total > 1 && (
-            <button
-              type="button"
-              onClick={onRemove}
-              aria-label={`Tirar o material ${numero}`}
-              className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <p className="text-base font-semibold text-slate-800 dark:text-slate-100 break-words leading-snug">
+              {nome || "Material"}
+            </p>
           )}
         </div>
-      </div>
 
-      {linha.freeText ? (
-        <>
-          <Input
-            value={linha.itemText}
-            onChange={(e) => onChange({ itemText: upperKeepingCaret(e) })}
-            placeholder="ex: cano 50mm"
-            className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
-            autoComplete="off"
-          />
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Escreva do jeito que você chama — o chefe acha no cadastro.
-          </p>
-        </>
-      ) : (
-        <SearchableSelect
-          items={items}
-          value={linha.itemId}
-          onChange={(id) => onChange({ itemId: id })}
-          getId={(i) => i.id}
-          getLabel={(i) => i.name}
-          renderItem={(i) => (
-            <div className="flex items-center justify-between gap-2 min-w-0">
-              <span className="truncate">{i.name}</span>
-              <span className="text-[10px] text-slate-400 flex-shrink-0">{i.unit}</span>
-            </div>
-          )}
-          placeholder="Toque para escolher..."
-          searchPlaceholder="Buscar material..."
-          emptyMessage="Nenhum material cadastrado"
-          onCreateNew={() => onChange({ freeText: true, itemId: "" })}
-          createNewLabel="Não achei — escrever o nome"
-        />
-      )}
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Tirar ${nome || "o material"} da lista`}
+          className="w-11 h-11 -mt-1 -mr-1 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors flex-shrink-0"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
 
       <div className="space-y-1.5">
         <Label htmlFor={`tc_qty_${linha.key}`}>
