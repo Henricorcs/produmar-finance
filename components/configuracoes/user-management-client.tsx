@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Smartphone } from "lucide-react";
+import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Smartphone, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +29,7 @@ const ROLES: { value: UserRole; label: string; desc: string }[] = [
   { value: "admin",       label: "Admin",       desc: "Acesso total"                   },
   { value: "financeiro",  label: "Financeiro",  desc: "Lançamentos e relatórios"       },
   { value: "operador",    label: "Operador",    desc: "Painel de ordens de serviço"    },
+  { value: "encarregado", label: "Encarregado", desc: "Painel de OS + os módulos liberados" },
   { value: "visualizador",label: "Visualizador",desc: "Somente leitura"                },
   { value: "vaqueiro",    label: "Vaqueiro",    desc: "Só o nascimento de bezerro"     },
   { value: "tecnico",     label: "Técnico",     desc: "Só avisar o material que usou"  },
@@ -38,6 +39,7 @@ const ROLE_BADGE: Record<UserRole, string> = {
   admin:        "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400",
   financeiro:   "bg-produmar-100 dark:bg-produmar-900/40 text-produmar-700 dark:text-produmar-400",
   operador:     "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400",
+  encarregado:  "bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400",
   visualizador: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400",
   vaqueiro:     "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400",
   tecnico:      "bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-400",
@@ -47,6 +49,7 @@ const ROLE_ICON: Record<UserRole, React.ComponentType<{ className?: string }>> =
   admin:        ShieldCheck,
   financeiro:   User,
   operador:     Wrench,
+  encarregado:  UserCog,
   visualizador: Eye,
   vaqueiro:     Beef,
   tecnico:      PackageOpen,
@@ -139,12 +142,20 @@ export function UserManagementClient({ users, currentUserId }: Props) {
     formData.set("role", selectedRole);
     formData.set(
       "allowed_categories",
-      JSON.stringify(selectedRole === "operador" ? inviteCategories : [])
+      JSON.stringify(
+        selectedRole === "operador" || selectedRole === "encarregado"
+          ? inviteCategories
+          : []
+      )
     );
     formData.set(
       "allowed_modules",
       JSON.stringify(
-        selectedRole === "financeiro" || selectedRole === "operador" ? inviteModules : []
+        selectedRole === "financeiro" ||
+          selectedRole === "operador" ||
+          selectedRole === "encarregado"
+          ? inviteModules
+          : []
       )
     );
 
@@ -178,7 +189,10 @@ export function UserManagementClient({ users, currentUserId }: Props) {
         {users.map((u) => {
           const Icon = ROLE_ICON[u.role];
           const isMe = u.id === currentUserId;
-          const isOperador = u.role === "operador";
+          // O encarregado recebe OS como o operador E mexe nos módulos
+          // liberados para ele — por isso aparece nos dois lugares.
+          const isEncarregado = u.role === "encarregado";
+          const isOperador = u.role === "operador" || isEncarregado;
           const isTecnico = u.role === "tecnico";
           const isFinanceiro = u.role === "financeiro";
           /**
@@ -532,7 +546,7 @@ export function UserManagementClient({ users, currentUserId }: Props) {
           </div>
 
           {/* Categorias liberadas — só para operador (opcional) */}
-          {selectedRole === "operador" && (
+          {(selectedRole === "operador" || selectedRole === "encarregado") && (
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <HardHat className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
@@ -572,7 +586,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
           )}
 
           {/* Módulos liberados — para financeiro e operador (opcional) */}
-          {(selectedRole === "financeiro" || selectedRole === "operador") && (
+          {(selectedRole === "financeiro" ||
+            selectedRole === "operador" ||
+            selectedRole === "encarregado") && (
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <LayoutGrid className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
@@ -605,7 +621,7 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                 })}
               </div>
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                {selectedRole === "operador"
+                {selectedRole === "operador" || selectedRole === "encarregado"
                   ? "Opcional. O operador sempre tem o Painel de OS. Marque módulos extras (ex.: Obras) para liberar além do painel."
                   : "Opcional. Deixe em branco para liberar todos os módulos. Marque só para limitar (ex.: apenas Obras e Patrimônio)."}
               </p>

@@ -2,7 +2,14 @@ export type UserRole =
   | "admin"
   | "financeiro"
   | "visualizador"
+  /** Recebe a OS no celular e faz só isso. */
   | "operador"
+  /**
+   * O degrau entre o operador e o admin: recebe OS como o operador E manda nos
+   * módulos liberados para ele — é quem toma conta da frota, alimenta as
+   * diárias e distribui serviço para os motoristas. Ver a migration 079.
+   */
+  | "encarregado"
   | "vaqueiro"
   | "tecnico";
 export type TransactionType = "entrada" | "saida";

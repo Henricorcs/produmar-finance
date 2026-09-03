@@ -95,7 +95,7 @@ export default async function OperacoesPage({
     const { data } = await admin
       .from("profiles")
       .select("*")
-      .eq("role", "operador")
+      .in("role", ["operador", "encarregado"])
       .order("full_name", { ascending: true });
     operators = (data as Profile[]) ?? [];
   } catch {

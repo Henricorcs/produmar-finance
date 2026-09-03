@@ -33,7 +33,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
 
   const isVisualizador = profile?.role === "visualizador";
-  const isOperador     = profile?.role === "operador";
+  // O encarregado anda pelo mesmo caminho do operador: painel de OS + os
+  // módulos liberados para ele (migration 079).
+  const isOperador     = profile?.role === "operador" || profile?.role === "encarregado";
   const isVaqueiro     = profile?.role === "vaqueiro";
   const isTecnico      = profile?.role === "tecnico";
 

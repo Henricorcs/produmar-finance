@@ -114,9 +114,11 @@ export async function updateSession(request: NextRequest) {
       return data?.allowed_modules ?? [];
     };
 
-    // Operador: sempre acessa /operador e /imprimir (comprovantes). Se tiver
-    // módulos liberados, também acessa o hub, as configurações e esses módulos.
-    if (role === "operador" && !isPublicRoute) {
+    // Operador e encarregado: sempre acessam /operador e /imprimir
+    // (comprovantes). Com módulos liberados, também o hub, as configurações e
+    // esses módulos. O encarregado é o mesmo caminho — o que muda é que ele
+    // costuma ter módulo liberado, e por isso trabalha nas duas telas.
+    if ((role === "operador" || role === "encarregado") && !isPublicRoute) {
       const slug = moduleSlugForPath(path);
       const podeVer = (mods: string[]) =>
         path.startsWith("/operador") ||
@@ -144,6 +146,7 @@ export async function updateSession(request: NextRequest) {
     if (
       role !== "admin" &&
       role !== "operador" &&
+      role !== "encarregado" &&
       role !== "visualizador" &&
       role !== "vaqueiro" &&
       role !== "tecnico" &&

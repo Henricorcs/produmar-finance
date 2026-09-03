@@ -112,7 +112,7 @@ export default async function FrotaPage({
     const { data } = await admin
       .from("profiles")
       .select("id, full_name, email")
-      .eq("role", "operador")
+      .in("role", ["operador", "encarregado"])
       .order("full_name", { ascending: true });
     operators = ((data as Pick<Profile, "id" | "full_name" | "email">[]) ?? []).map((p) => ({
       id: p.id,

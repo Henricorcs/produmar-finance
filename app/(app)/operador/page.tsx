@@ -70,7 +70,7 @@ export default async function OperadorPage({
       const { data } = await admin
         .from("profiles")
         .select("id, full_name, email")
-        .eq("role", "operador")
+        .in("role", ["operador", "encarregado"])
         .order("full_name", { ascending: true });
       return ((data as Pick<Profile, "id" | "full_name" | "email">[]) ?? [])
         .filter((p) => p.id !== userId)

@@ -9,6 +9,7 @@ import type { AlertType, UserRole } from "@/lib/types";
 const ROLE_MIGRATION: Partial<Record<UserRole, { migration: string; label: string }>> = {
   vaqueiro: { migration: "048", label: "Vaqueiro" },
   tecnico: { migration: "052", label: "Técnico" },
+  encarregado: { migration: "079", label: "Encarregado" },
 };
 
 /**
@@ -124,7 +125,7 @@ export async function inviteUser(
   } catch {
     allowedCategories = [];
   }
-  if (role !== "operador") allowedCategories = [];
+  if (role !== "operador" && role !== "encarregado") allowedCategories = [];
 
   // Módulos liberados (só faz sentido p/ financeiro) — enviado como JSON.
   let allowedModules: string[] = [];
@@ -137,11 +138,16 @@ export async function inviteUser(
   } catch {
     allowedModules = [];
   }
-  if (role !== "financeiro" && role !== "operador") allowedModules = [];
+  if (role !== "financeiro" && role !== "operador" && role !== "encarregado")
+    allowedModules = [];
 
   if (!email) return { error: "Email obrigatório" };
   if (!password || password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };
-  if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro", "tecnico"].includes(role))
+  if (
+    !["admin", "financeiro", "visualizador", "operador", "encarregado", "vaqueiro", "tecnico"].includes(
+      role
+    )
+  )
     return { error: "Perfil de acesso inválido" };
 
   try {
@@ -210,7 +216,11 @@ export async function updateUserRole(
     .single();
   if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
 
-  if (!["admin", "financeiro", "visualizador", "operador", "vaqueiro", "tecnico"].includes(role))
+  if (
+    !["admin", "financeiro", "visualizador", "operador", "encarregado", "vaqueiro", "tecnico"].includes(
+      role
+    )
+  )
     return { error: "Perfil de acesso inválido" };
 
   // rebaixar a si mesmo tira o próprio acesso de admin e tranca a porta por dentro

@@ -41,7 +41,7 @@ export default async function RelatoriosPage() {
     const { data } = await admin
       .from("profiles")
       .select("*")
-      .eq("role", "operador")
+      .in("role", ["operador", "encarregado"])
       .order("full_name", { ascending: true });
     operators = (data as Profile[]) ?? [];
   } catch {

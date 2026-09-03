@@ -11,7 +11,9 @@ export default async function InicioPage() {
   const profile = await getProfile();
 
   const modules = modulesForProfile(profile?.allowed_modules, profile?.role);
-  const isOperador = profile?.role === "operador";
+  // Operador e encarregado recebem OS: os dois têm o painel.
+  const isOperador =
+    profile?.role === "operador" || profile?.role === "encarregado";
 
   return (
     <div className="animate-fade-in max-w-3xl mx-auto">
