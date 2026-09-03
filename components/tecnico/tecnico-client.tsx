@@ -37,6 +37,7 @@ import { PhotoField, formatQtyInput, parseQty } from "@/components/almoxarifado/
 import { FUEL_TYPES } from "@/lib/types";
 import type {
   MachineTrackingType,
+  SupplyLocal,
   SupplyObraSector,
   SupplyRequestRow,
 } from "@/lib/types";
@@ -52,6 +53,8 @@ export interface TecnicoObra {
   id: string;
   name: string;
   client: string | null;
+  /** O SETOR onde a obra fica (Fazenda 01, Fazenda 02, Sítio). */
+  local_id: string | null;
 }
 
 /** Máquina da frota, do jeito enxuto que o técnico precisa ver. */
@@ -66,7 +69,12 @@ export interface TecnicoMachine {
 interface Props {
   items: TecnicoItem[];
   obras: TecnicoObra[];
-  /** Setores cadastrados pelo chefe — o subcadastro de cada obra. */
+  /**
+   * OS SETORES: Fazenda 01, Fazenda 02, Sítio. É o lugar grande, e é assim que
+   * o pessoal fala — a obra (aprisco, cerca, baia) acontece dentro de um deles.
+   */
+  locais: SupplyLocal[];
+  /** Subcadastro antigo da obra — hoje só serve para ler o histórico. */
   sectors: SupplyObraSector[];
   /** Frota ativa: o técnico só escolhe, não cadastra máquina. */
   machines: TecnicoMachine[];
@@ -103,7 +111,14 @@ function novaLinha(): Linha {
  * momento — o envio é um recado que o chefe confere e transforma em saída na
  * aba "Pendentes" do Estoque.
  */
-export function TecnicoClient({ items, obras, sectors, machines, pending }: Props) {
+export function TecnicoClient({
+  items,
+  obras,
+  locais,
+  sectors,
+  machines,
+  pending,
+}: Props) {
   // o cadastro (obra, setor, material) vem de novo quando ele volta para a tela
   useAtualizarAoVoltar();
   const router = useRouter();
@@ -117,10 +132,9 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
   // "Adicionar material" e escolhe da lista do estoque.
   const [linhas, setLinhas] = useState<Linha[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** O SETOR (Fazenda 01, Fazenda 02, Sítio) — escolhido antes da obra. */
+  const [localId, setLocalId] = useState("");
   const [obraId, setObraId] = useState("");
-  const [sectorId, setSectorId] = useState("");
-  /** O setor não estava na lista: o técnico escreve o lugar na mão. */
-  const [sectorFreeText, setSectorFreeText] = useState(false);
   const [destination, setDestination] = useState("");
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
@@ -140,13 +154,21 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const sectorById = useMemo(() => new Map(sectors.map((s) => [s.id, s])), [sectors]);
 
-  /** Os setores da obra escolhida — o setor é subcadastro dela. */
-  const obraSectors = useMemo(
-    () => sectors.filter((s) => s.obra_id === obraId),
-    [sectors, obraId]
+  /** As obras daquele setor — é o que aparece depois de escolher a fazenda. */
+  const obrasDoLocal = useMemo(
+    () => obras.filter((o) => o.local_id === localId),
+    [obras, localId]
   );
-  /** Sem obra escolhida (ou obra ainda sem setor) só resta escrever o lugar. */
-  const useSectorList = !!obraId && obraSectors.length > 0 && !sectorFreeText;
+
+  /** Quantas obras cada setor tem, para a lista já mostrar. */
+  const obrasPorLocal = useMemo(() => {
+    const conta = new Map<string, number>();
+    for (const o of obras) {
+      if (!o.local_id) continue;
+      conta.set(o.local_id, (conta.get(o.local_id) ?? 0) + 1);
+    }
+    return conta;
+  }, [obras]);
 
   const machine = useMemo(
     () => machines.find((m) => m.id === machineId) ?? null,
@@ -163,11 +185,10 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
     return Math.round((fim - ini) * 10) / 10;
   }, [readingStart, readingEnd]);
 
-  /** Trocar de obra zera o setor: ele é de uma obra só. */
-  function chooseObra(id: string) {
-    setObraId(id);
-    setSectorId("");
-    setSectorFreeText(false);
+  /** Trocar de setor zera a obra: cada obra fica num setor só. */
+  function chooseLocal(id: string) {
+    setLocalId(id);
+    setObraId("");
   }
 
   function patchLinha(key: string, patch: Partial<Linha>) {
@@ -221,7 +242,7 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
       );
     }
     if (!obraId && !destination.trim())
-      return setError("Diga o local da obra ou onde você aplicou o material");
+      return setError("Diga a obra ou onde você aplicou o material");
     if (usedMachine && !machineId) return setError("Diga qual máquina você usou");
     if (usedMachine && !noReading) {
       const temIni = !!readingStart.trim();
@@ -252,9 +273,10 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
       )
     );
     fd.append("obra_id", obraId);
-    // o setor manda quando veio da lista; senão vale o lugar escrito na mão
-    fd.append("sector_id", useSectorList ? sectorId : "");
-    fd.append("destination", useSectorList ? "" : destination);
+    // o subcadastro antigo de setor não é mais preenchido aqui: quem diz o
+    // lugar é a obra (que já sabe o setor dela) mais o "onde foi exatamente"
+    fd.append("sector_id", "");
+    fd.append("destination", destination);
     fd.append("notes", notes);
     if (usedMachine && machineId) {
       fd.append("machine_id", machineId);
@@ -376,12 +398,38 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
               </button>
             </div>
 
+            {/* O SETOR: Fazenda 01, Fazenda 02, Sítio — o lugar grande, do
+                jeito que o pessoal fala. A obra acontece dentro de um deles. */}
             <div className="space-y-1.5">
-              <Label>Local da obra</Label>
+              <Label>Setor</Label>
               <SearchableSelect
-                items={obras}
+                items={locais}
+                value={localId}
+                onChange={chooseLocal}
+                getId={(l) => l.id}
+                getLabel={(l) => l.name}
+                renderItem={(l) => (
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <span className="truncate">{l.name}</span>
+                    <span className="text-[10px] text-slate-400 flex-shrink-0">
+                      {obrasPorLocal.get(l.id) ?? 0}{" "}
+                      {(obrasPorLocal.get(l.id) ?? 0) === 1 ? "obra" : "obras"}
+                    </span>
+                  </div>
+                )}
+                placeholder="Toque para escolher o setor..."
+                searchPlaceholder="Buscar setor..."
+                emptyMessage="Nenhum setor cadastrado"
+              />
+            </div>
+
+            {/* A OBRA: o serviço que está sendo feito naquele setor */}
+            <div className="space-y-1.5">
+              <Label>Obra</Label>
+              <SearchableSelect
+                items={obrasDoLocal}
                 value={obraId}
-                onChange={chooseObra}
+                onChange={setObraId}
                 getId={(o) => o.id}
                 getLabel={(o) => o.name}
                 renderItem={(o) => (
@@ -394,74 +442,23 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
                     )}
                   </div>
                 )}
-                placeholder="Toque para escolher o local..."
-                searchPlaceholder="Buscar local da obra..."
-                emptyMessage="Nenhum local cadastrado"
+                placeholder={
+                  localId ? "Toque para escolher a obra..." : "Escolha o setor primeiro"
+                }
+                searchPlaceholder="Buscar obra..."
+                emptyMessage="Nenhuma obra neste setor"
               />
-            </div>
-
-            {/* Setor: subcadastro do local da obra, cadastrado pelo chefe. O
-                texto livre continua existindo para o técnico não travar na rua. */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="tc_dest">Setor aplicado</Label>
-                {!!obraId && obraSectors.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSectorFreeText((v) => !v);
-                      setSectorId("");
-                      setDestination("");
-                    }}
-                    className="flex items-center gap-1 min-h-[36px] px-2 text-[11px] font-medium text-produmar-600 dark:text-produmar-400 hover:underline"
-                  >
-                    {sectorFreeText ? (
-                      <>
-                        <List className="w-3 h-3" />
-                        Escolher da lista
-                      </>
-                    ) : (
-                      <>
-                        <Pencil className="w-3 h-3" />
-                        Não achei na lista
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-
-              {useSectorList ? (
-                <SearchableSelect
-                  items={obraSectors}
-                  value={sectorId}
-                  onChange={setSectorId}
-                  getId={(x) => x.id}
-                  getLabel={(x) => x.name}
-                  placeholder="Toque para escolher o setor..."
-                  searchPlaceholder="Buscar setor..."
-                  emptyMessage="Nenhum setor cadastrado nesta obra"
-                />
-              ) : (
-                <Input
-                  id="tc_dest"
-                  value={destination}
-                  onChange={(e) => setDestination(upperKeepingCaret(e))}
-                  placeholder="ex: poste da esquina, casa do cliente"
-                  className="h-12 uppercase placeholder:normal-case placeholder:lowercase"
-                  autoComplete="off"
-                />
-              )}
 
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                {useSectorList
-                  ? "Vale para todos os materiais deste envio."
-                  : obraId
-                    ? "Esta obra ainda não tem setor cadastrado (o chefe cadastra em Almoxarifado → Obras → Setores) — por enquanto, escreva o lugar."
-                    : "Escolha o local da obra acima para aparecerem os setores dele."}
+                {!localId
+                  ? "Escolha o setor acima para aparecerem as obras dele."
+                  : obrasDoLocal.length === 0
+                    ? "Este setor ainda não tem obra cadastrada — o chefe cadastra em Obras."
+                    : "A obra vale para todos os materiais deste envio."}
               </p>
 
               {/* O chefe acabou de cadastrar? Busca a lista de novo, sem sair. */}
-              {!!obraId && !useSectorList && !sectorFreeText && (
+              {!!localId && obrasDoLocal.length === 0 && (
                 <button
                   type="button"
                   onClick={() => router.refresh()}
@@ -471,6 +468,20 @@ export function TecnicoClient({ items, obras, sectors, machines, pending }: Prop
                 </button>
               )}
             </div>
+
+            {/* O lugar exato, quando ajuda a achar depois */}
+            <div className="space-y-1.5">
+              <Label htmlFor="tc_dest">Onde foi exatamente</Label>
+              <Input
+                id="tc_dest"
+                value={destination}
+                onChange={(e) => setDestination(upperKeepingCaret(e))}
+                placeholder="opcional — ex: piquete de cima, poste da esquina"
+                className="h-12 uppercase placeholder:normal-case placeholder:lowercase"
+                autoComplete="off"
+              />
+            </div>
+
 
             {/* Máquina — o serviço nem sempre é só material */}
             <div className="space-y-2">

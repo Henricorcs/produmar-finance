@@ -117,7 +117,7 @@ export function ObrasEstoqueTab({
     if (porLocal.has(SEM_LOCAL)) {
       lista.push({
         id: SEM_LOCAL,
-        nome: "Sem local",
+        nome: "Sem setor",
         count: porLocal.get(SEM_LOCAL) ?? 0,
       });
     }
@@ -153,7 +153,7 @@ export function ObrasEstoqueTab({
       const key = o.local_id ?? SEM_LOCAL;
       const g = map.get(key) ?? {
         id: key,
-        nome: o.local_name ?? "Sem local",
+        nome: o.local_name ?? "Sem setor",
         obras: [],
         total: 0,
       };
@@ -199,7 +199,7 @@ export function ObrasEstoqueTab({
       <div className="flex items-center justify-end gap-2 flex-wrap">
         <Button variant="outline" size="sm" onClick={() => setLocaisOpen(true)}>
           <MapPinned className="w-3.5 h-3.5" />
-          Locais
+          Setores
           {locais.length > 0 && (
             <span className="opacity-60 tabular-nums">{locais.length}</span>
           )}

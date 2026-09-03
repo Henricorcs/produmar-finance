@@ -125,7 +125,7 @@ export function SupplyObraDialog({ open, onClose, obra, locais = [], onCreated }
           </div>
 
           <div className="space-y-1.5">
-            <Label>Local</Label>
+            <Label>Setor</Label>
             {novoLocal === null ? (
               <SearchableSelect
                 items={locais}

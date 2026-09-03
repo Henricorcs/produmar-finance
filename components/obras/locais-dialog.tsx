@@ -74,13 +74,13 @@ export function LocaisDialog({ open, onClose, locais, obras }: Props) {
     e.preventDefault();
     setError(null);
     if (!name.trim()) {
-      setError("Informe o nome do local");
+      setError("Informe o nome do setor");
       return;
     }
     startTransition(async () => {
       const r = await createSupplyLocal(name);
       if (r && "error" in r) {
-        setError(r.error ?? "Erro ao cadastrar o local");
+        setError(r.error ?? "Erro ao cadastrar o setor");
         return;
       }
       setName("");
@@ -126,13 +126,13 @@ export function LocaisDialog({ open, onClose, locais, obras }: Props) {
             <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
               <MapPinned className="w-4 h-4" />
             </span>
-            Locais
+            Setores
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="loc_name">Novo local</Label>
+            <Label htmlFor="loc_name">Novo setor</Label>
             <form onSubmit={handleAdd} className="flex gap-2">
               <Input
                 id="loc_name"

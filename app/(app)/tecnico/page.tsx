@@ -4,7 +4,7 @@ import { getProfile } from "@/lib/auth";
 import { TecnicoClient } from "@/components/tecnico/tecnico-client";
 import { PreviewBanner } from "@/components/layout/preview-banner";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { SupplyObraSector, SupplyRequestRow } from "@/lib/types";
+import type { SupplyLocal, SupplyObraSector, SupplyRequestRow } from "@/lib/types";
 import type {
   TecnicoItem,
   TecnicoMachine,
@@ -51,10 +51,20 @@ export default async function TecnicoPage({
     }
   }
 
-  const [itemsRes, obrasRes, sectorsRes, machinesRes, mineRes] = await Promise.all([
+  const [itemsRes, obrasRes, locaisRes, sectorsRes, machinesRes, mineRes] = await Promise.all([
     // só o catálogo: nome e unidade. O técnico não precisa (nem deve) ver saldo.
     supabase.from("supply_items").select("id, name, unit").order("name", { ascending: true }),
-    supabase.from("supply_obras").select("id, name, client").order("name", { ascending: true }),
+    // a obra já diz em que SETOR ela fica (o local, migration 066)
+    supabase
+      .from("supply_obras")
+      .select("id, name, client, local_id")
+      .order("name", { ascending: true }),
+    // OS SETORES: Fazenda 01, Fazenda 02, Sítio — é assim que o pessoal fala
+    supabase
+      .from("supply_locais")
+      .select("*")
+      .eq("active", true)
+      .order("name", { ascending: true }),
     // setores de cada obra, cadastrados pelo chefe (migration 057 — sem ela a
     // lista volta vazia e o técnico continua escrevendo o lugar na mão)
     supabase
@@ -81,6 +91,7 @@ export default async function TecnicoPage({
     <TecnicoClient
       items={(itemsRes.data as TecnicoItem[]) ?? []}
       obras={(obrasRes.data as TecnicoObra[]) ?? []}
+      locais={(locaisRes.data as SupplyLocal[]) ?? []}
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
       machines={(machinesRes.data as TecnicoMachine[]) ?? []}
       pending={(mineRes.data as SupplyRequestRow[]) ?? []}

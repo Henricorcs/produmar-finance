@@ -113,7 +113,7 @@ export function SupplyRequestDetailDialog({
           )}
 
           <dl className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <Linha rotulo="Local da obra" valor={request.supply_obras?.name ?? "sem obra"} />
+            <Linha rotulo="Obra" valor={request.supply_obras?.name ?? "sem obra"} />
             <Linha rotulo="Setor" valor={setor ?? request.destination ?? "—"} />
             {maquina && <Linha rotulo="Máquina" valor={maquina} />}
             {leitura && <Linha rotulo={leituraRotulo} valor={leitura} />}
