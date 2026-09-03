@@ -1,9 +1,8 @@
 -- ============================================================================
 -- PRODUMAR — Perfil ENCARREGADO (recebe OS e manda no módulo liberado)
 -- ============================================================================
--- Execute no SQL Editor do Supabase (Dashboard → SQL Editor → New Query → Run)
--- IMPORTANTE: rode a PARTE 1 sozinha primeiro e depois a PARTE 2 em uma NOVA
--- execução — valor novo de enum precisa ser commitado antes de ser usado.
+-- Execute no SQL Editor do Supabase (Painel → Editor SQL → Nova consulta →
+-- cole tudo → Executar). PODE RODAR DE UMA VEZ SÓ.
 -- ============================================================================
 -- Por que:
 --
@@ -33,19 +32,24 @@
 -- ============================================================================
 
 -- ============================================================================
--- PARTE 1: o papel novo no enum
+-- 1) O PAPEL NOVO NO ENUM
 -- ============================================================================
 ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'encarregado';
 
 -- ============================================================================
--- PARTE 2 (rodar em uma SEGUNDA execução)
+-- 2) O HELPER DE ESCRITA PASSA A CONHECER O ENCARREGADO
 -- ============================================================================
--- O helper que TODAS as policias de módulo usam (migration 039). O encarregado
--- entra com a mesma regra do operador: grava no módulo que está liberado para
--- ele, e em mais nenhum.
+-- É o helper que TODAS as policies de módulo usam (migration 039). O
+-- encarregado entra com a mesma regra do operador: grava no módulo que está
+-- liberado para ele, e em mais nenhum. Admin e financeiro continuam gravando em
+-- qualquer módulo.
 --
--- Continua valendo: admin e financeiro gravam em qualquer módulo; quem não tem
--- o módulo na lista não grava em nada.
+-- O `p.role::text` é de propósito, e é o que deixa este arquivo rodar de uma vez
+-- só: o Postgres recusa USAR um valor de enum recém-criado na mesma execução em
+-- que ele nasceu ("unsafe use of new value of enum type"). Comparando o papel
+-- como TEXTO não existe valor de enum nenhum na consulta — o problema some, e o
+-- resultado é o mesmo. Mesmo truque da migration 060, quando o 'tecnico' era o
+-- valor novo.
 -- ============================================================================
 create or replace function public.user_can_write_module(module_slug text)
 returns boolean
@@ -58,9 +62,9 @@ as $$
     from public.profiles p
     where p.id = auth.uid()
       and (
-        p.role in ('admin', 'financeiro')
+        p.role::text in ('admin', 'financeiro')
         or (
-          p.role in ('operador', 'encarregado')
+          p.role::text in ('operador', 'encarregado')
           and module_slug = any(coalesce(p.allowed_modules, '{}'))
         )
       )
