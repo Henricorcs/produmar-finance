@@ -92,21 +92,50 @@ export async function updateSession(request: NextRequest) {
       return redirectTo("/tecnico");
     }
 
+    /**
+     * Os módulos liberados, conferidos no BANCO.
+     *
+     * O caminho normal lê do metadata do login, que não custa consulta. Só que
+     * o metadata é atualizado pela tela de Configurações — quem liberar um
+     * módulo direto no banco (um UPDATE em profiles) ficava com o card
+     * aparecendo no hub e a rota barrando a entrada, sem explicação.
+     *
+     * Então, ANTES de barrar, o middleware confere na tabela. A consulta só
+     * acontece no caminho que ia dar em bloqueio — quem já tem acesso não paga
+     * nada por isso.
+     */
+    const modulosDoBanco = async (): Promise<string[]> => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from("profiles")
+        .select("allowed_modules")
+        .eq("id", user.id)
+        .maybeSingle<{ allowed_modules: string[] | null }>();
+      return data?.allowed_modules ?? [];
+    };
+
     // Operador: sempre acessa /operador e /imprimir (comprovantes). Se tiver
     // módulos liberados, também acessa o hub, as configurações e esses módulos.
     if (role === "operador" && !isPublicRoute) {
-      const allowedModules = (user.user_metadata?.allowed_modules as string[] | undefined) ?? [];
-      const hasModules = allowedModules.length > 0;
       const slug = moduleSlugForPath(path);
-      const canAccess =
+      const podeVer = (mods: string[]) =>
         path.startsWith("/operador") ||
         path.startsWith("/imprimir") ||
-        (hasModules &&
+        (mods.length > 0 &&
           (path.startsWith("/inicio") ||
             path.startsWith("/configuracoes") ||
-            (slug !== null && allowedModules.includes(slug))));
+            (slug !== null && mods.includes(slug))));
 
-      if (!canAccess) return redirectTo(hasModules ? "/inicio" : "/operador");
+      let allowedModules = (user.user_metadata?.allowed_modules as string[] | undefined) ?? [];
+      let canAccess = podeVer(allowedModules);
+
+      if (!canAccess) {
+        // pode ser metadata velho: confere na tabela antes de mandar embora
+        allowedModules = await modulosDoBanco();
+        canAccess = podeVer(allowedModules);
+      }
+
+      if (!canAccess) return redirectTo(allowedModules.length > 0 ? "/inicio" : "/operador");
     }
 
     // Módulos liberados por usuário — admin/operador/visualizador/vaqueiro/tecnico
@@ -121,7 +150,10 @@ export async function updateSession(request: NextRequest) {
       !isPublicRoute
     ) {
       const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;
-      if (isModuleBlocked(path, allowedModules)) return redirectTo("/inicio");
+      if (isModuleBlocked(path, allowedModules)) {
+        // idem: metadata velho não pode barrar quem o banco já liberou
+        if (isModuleBlocked(path, await modulosDoBanco())) return redirectTo("/inicio");
+      }
     }
   }
 
