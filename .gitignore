@@ -27,3 +27,6 @@ backup.config.json
 
 # Registro do backup
 scripts/backup.log
+
+# lixo da CLI do Supabase (npx supabase) — não faz parte do app
+supabase/.temp/
