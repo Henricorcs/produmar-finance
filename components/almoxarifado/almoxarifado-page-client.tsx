@@ -687,6 +687,7 @@ export function AlmoxarifadoPageClient({
         items={items}
         obras={obras}
         sectors={sectors}
+        categories={categories}
         photoUrl={
           approveRequest?.photo_path ? requestThumbs[approveRequest.photo_path] ?? null : null
         }

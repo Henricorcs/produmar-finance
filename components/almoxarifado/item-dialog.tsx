@@ -31,6 +31,19 @@ interface Props {
   categories: SupplyCategory[];
   /** Categoria que a tela está filtrando — já vem escolhida no cadastro. */
   defaultCategoryId?: string | null;
+  /**
+   * Nome já preenchido no cadastro novo. Quem chama de dentro de outra tela
+   * costuma JÁ saber o nome — o que o técnico escreveu na mão, por exemplo.
+   * Redigitar não é só trabalho: é a chance de escrever diferente e acabar com
+   * dois cadastros do mesmo material.
+   */
+  defaultName?: string;
+  /**
+   * Saldo de partida já preenchido. Vem de quem chama sabendo QUANTO saiu: um
+   * item que nasce zerado não aguenta a baixa que motivou o cadastro, e o
+   * chefe ficaria preso num "saldo insuficiente" logo depois de cadastrar.
+   */
+  defaultInitialQty?: number;
   /** Sem isto o atalho de categorias some — quem abre de fora do Estoque. */
   onManageCategories?: () => void;
   /**
@@ -50,6 +63,8 @@ export function ItemDialog({
   item,
   categories,
   defaultCategoryId,
+  defaultName,
+  defaultInitialQty,
   onManageCategories,
   onCreated,
 }: Props) {
@@ -69,17 +84,20 @@ export function ItemDialog({
 
   useEffect(() => {
     if (!open) return;
-    setName(item?.name ?? "");
+    setName(item?.name ?? defaultName ?? "");
     setCode(item?.code ?? "");
     setCategoryId(item?.category_id ?? defaultCategoryId ?? "");
     setUnit(item?.unit ?? "un");
     setMinQuantity(item && item.min_quantity ? String(item.min_quantity).replace(".", ",") : "");
     setLocation(item?.location ?? "");
-    setInitialQty("");
+    // o saldo de partida só faz sentido no cadastro novo
+    setInitialQty(
+      !item && defaultInitialQty ? String(defaultInitialQty).replace(".", ",") : ""
+    );
     setInitialCost("");
     setPhoto(null);
     setError(null);
-  }, [open, item, defaultCategoryId]);
+  }, [open, item, defaultCategoryId, defaultName, defaultInitialQty]);
 
   // foto já salva do item em edição (URL assinada)
   useEffect(() => {
