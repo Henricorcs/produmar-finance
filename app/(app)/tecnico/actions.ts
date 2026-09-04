@@ -59,10 +59,13 @@ function requestError(
     if (role === "tecnico" || role === "admin")
       return "Rode a migration 052 no Supabase — a policy de envio não está no banco";
 
-    // operador/encarregado com a marca no cadastro: a tela só abre para quem
-    // tem, então a marca existe e quem não a conhece é o banco
+    // Operador/encarregado com a marca no cadastro: a tela só abre para quem
+    // tem, então a marca existe e quem não a conhece é o banco. São DUAS
+    // migrations, e faltar qualquer uma dá exatamente este mesmo erro: a 080 é
+    // a policy que aceita a permissão, e a 079 é o helper que sabe conferir a
+    // marca do ENCARREGADO — a versão antiga dele (039) só conhecia o operador.
     if (canAvisarMaterial(role, quemEnviou?.allowed_modules ?? undefined))
-      return "Rode a migration 080 no Supabase: a permissão está marcada no seu cadastro, mas o banco ainda não conhece ela (pode rodar de novo sem problema)";
+      return "Rode as migrations 079 e 080 no Supabase: a permissão está marcada no seu cadastro, mas o banco ainda não conhece ela (as duas podem rodar de novo sem problema)";
 
     return "Sem permissão para avisar material — o admin marca em Configurações → Usuários";
   }
