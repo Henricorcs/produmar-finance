@@ -66,7 +66,7 @@ interface Props {
   locais?: SupplyLocal[];
   /** Frota: o envio do técnico pode ter vindo com máquina (migration 057). */
   machines?: Machine[];
-  /** O que os técnicos avisaram que usaram, esperando baixa (migration 052). */
+  /** O que avisaram da rua que usaram/levaram, esperando baixa (052 e 080). */
   requests?: SupplyRequestRow[];
   /** Metros de cerca feitos, com o preço já resolvido (migration 063). */
   fenceRuns?: SupplyFenceRunView[];
@@ -195,7 +195,7 @@ export function AlmoxarifadoPageClient({
     const nome = r.supply_items?.name ?? r.item_text ?? "material";
     if (
       !confirm(
-        `Descartar o aviso de ${nome}? Nada sai do estoque e o técnico deixa de ver o envio.`
+        `Descartar o aviso de ${nome}? Nada sai do estoque e quem mandou deixa de ver o envio.`
       )
     )
       return;
@@ -352,7 +352,7 @@ export function AlmoxarifadoPageClient({
                 : `${requests.length} materiais esperando baixa`}
             </span>
             <span className="block text-[11px] text-amber-700/80 dark:text-amber-400/70 truncate">
-              Os técnicos avisaram o que usaram — confira e dê baixa.
+              Avisaram da rua o que usaram e levaram — confira e dê baixa.
             </span>
           </span>
           <ChevronRight className="w-4 h-4 text-amber-500 flex-shrink-0" />
@@ -818,7 +818,7 @@ function ItemCard({
   );
 }
 
-// ── Aba: Pendentes (o que os técnicos avisaram que usaram) ───────────────────
+// ── Aba: Pendentes (o que avisaram da rua que usaram ou levaram) ─────────────
 function PendentesTab({
   requests,
   thumbs,
@@ -839,7 +839,7 @@ function PendentesTab({
       <EmptyState
         icon={ClipboardCheck}
         text="Nada esperando baixa."
-        hint="O material que os técnicos avisarem pelo celular aparece aqui — mais antigo primeiro."
+        hint="O material que o técnico e o operador avisarem pelo celular aparece aqui — mais antigo primeiro."
       />
     );
   }

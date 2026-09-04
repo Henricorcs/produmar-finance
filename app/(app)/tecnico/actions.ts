@@ -43,6 +43,9 @@ function requestError(error: { code?: string; message: string }): string {
     error.message.includes("fuel_type")
   )
     return "Rode a migration 057 no Supabase para usar setor e máquina";
+  // a policy da 052 só deixava o técnico mandar; a 080 abriu para o operador
+  if (error.code === "42501" || error.message.includes("row-level security"))
+    return "Rode a migration 080 no Supabase para o operador avisar material";
   if (error.code === "42P01" || error.message.includes("supply_requests"))
     return "Rode a migration 052 no Supabase para habilitar o envio";
   if (error.message.includes("supply_requests_tem_material"))
@@ -97,6 +100,10 @@ function parseLines(raw: unknown): UsageLine[] {
  * Cada material vira uma linha própria — é assim que o chefe consegue dar baixa
  * de um e segurar outro. O que é do envio inteiro (obra, lugar, foto,
  * observação) se repete em todas elas.
+ *
+ * Serve às DUAS telas: a do técnico, que avisa o que gastou no serviço de hoje,
+ * e a do operador (migration 080), que avisa o que descarregou na obra — essa
+ * manda o DIA junto, porque ele costuma lançar o que levou ontem.
  */
 export async function requestSupplyUsage(formData: FormData) {
   const supabase = createClient();
@@ -111,6 +118,8 @@ export async function requestSupplyUsage(formData: FormData) {
   const destination = clean(formData.get("destination"));
   const notes = clean(formData.get("notes"));
   const photo = formData.get("photo");
+  // o dia do fato. Em branco (a tela do técnico não pergunta) o banco põe hoje
+  const usedDate = cleanDate(formData.get("used_date"));
 
   // Máquina do serviço: tudo opcional. As leituras vão só quando o técnico
   // anotou — quase sempre ninguém anota, e obrigar era o que fazia ele
@@ -172,6 +181,7 @@ export async function requestSupplyUsage(formData: FormData) {
       photo_path: photoPath,
       sent_by_name: sentBy,
       created_by: user.id,
+      ...(usedDate ? { used_date: usedDate } : {}),
       ...extra,
     }))
   );
@@ -182,6 +192,7 @@ export async function requestSupplyUsage(formData: FormData) {
   }
 
   revalidatePath("/tecnico");
+  revalidatePath("/operador/material");
   revalidatePath("/almoxarifado");
   return { ok: true, count: lines.length };
 }
@@ -212,6 +223,7 @@ export async function cancelSupplyUsageRequest(id: string) {
   await removeSupplyPhotoIfUnused(supabase, req.photo_path as string | null);
 
   revalidatePath("/tecnico");
+  revalidatePath("/operador/material");
   revalidatePath("/almoxarifado");
   return { ok: true };
 }

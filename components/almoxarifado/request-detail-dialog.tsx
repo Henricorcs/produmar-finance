@@ -83,7 +83,7 @@ export function SupplyRequestDetailDialog({
             <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-50 text-amber-500 dark:bg-amber-900/30 dark:text-amber-400">
               <HardHat className="w-4 h-4" />
             </span>
-            Material que o técnico usou
+            Material avisado da rua
           </DialogTitle>
         </DialogHeader>
 
@@ -126,7 +126,7 @@ export function SupplyRequestDetailDialog({
           {request.notes && (
             <div className="space-y-1">
               <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                Observação do técnico
+                Observação de quem enviou
               </p>
               <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2">
                 {request.notes}

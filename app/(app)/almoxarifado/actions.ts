@@ -898,6 +898,8 @@ export async function approveSupplyRequest(
 
   revalidate();
   revalidatePath("/tecnico");
+  // o operador também manda recado desta fila (migration 080)
+  revalidatePath("/operador/material");
   return { ok: true };
 }
 
@@ -919,6 +921,7 @@ export async function rejectSupplyRequest(requestId: string) {
 
   revalidate();
   revalidatePath("/tecnico");
+  revalidatePath("/operador/material");
   return { ok: true };
 }
 
