@@ -55,6 +55,15 @@ export async function requestCalfBirth(formData: FormData) {
   const calfSex = String(formData.get("calf_sex") ?? "") as AnimalSex;
   const photo = formData.get("photo");
 
+  // O carimbo que o CELULAR deu a este nascimento antes de tentar enviar. É ele
+  // que impede o mesmo bezerro de entrar duas vezes quando a rede cai depois de
+  // o banco já ter gravado (migration 081). Carimbo torto é ignorado, não
+  // recusado: o nascimento é mais importante que a proteção contra repetido.
+  const carimbo = String(formData.get("client_id") ?? "").trim();
+  const clientId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(carimbo)
+    ? carimbo
+    : null;
+
   if (!motherTag) return { error: "Informe o número da mãe" };
   if (!birthDate) return { error: "Informe a data do nascimento" };
   if (calfSex !== "macho" && calfSex !== "femea") return { error: "Informe o sexo do bezerro" };
@@ -68,7 +77,15 @@ export async function requestCalfBirth(formData: FormData) {
   const { error: upErr } = await uploadArquivo(photoPath, photo);
   if (upErr) return { error: upErr.message };
 
-  const { error } = await supabase.from("animal_birth_requests").insert({
+  const solicitacao: {
+    mother_tag: string;
+    calf_tag: null;
+    calf_sex: AnimalSex;
+    birth_date: string;
+    photo_path: string;
+    created_by: string;
+    client_id?: string;
+  } = {
     mother_tag: motherTag,
     // o número do bezerro nasce na conferência do patrão (migration 053)
     calf_tag: null,
@@ -76,7 +93,29 @@ export async function requestCalfBirth(formData: FormData) {
     birth_date: birthDate,
     photo_path: photoPath,
     created_by: user.id,
-  });
+  };
+  if (clientId) solicitacao.client_id = clientId;
+
+  let { error } = await supabase.from("animal_birth_requests").insert(solicitacao);
+
+  // Banco ainda sem a coluna (a 081 não rodou): manda sem o carimbo. Perde só a
+  // proteção contra o repetido — e isso é bem melhor que o vaqueiro travado no
+  // curral porque a publicação chegou antes da migration.
+  if (error && clientId && (error.code === "42703" || error.code === "PGRST204")) {
+    delete solicitacao.client_id;
+    ({ error } = await supabase.from("animal_birth_requests").insert(solicitacao));
+  }
+
+  // Este carimbo já está gravado: é o MESMO envio batendo na porta de novo,
+  // porque a resposta da primeira vez se perdeu na volta. Não é erro — está
+  // feito, e o celular pode tirar da fila. Só a foto que acabou de subir vira
+  // lixo, já que a boa está lá desde a primeira vez.
+  if (clientId && error?.code === "23505") {
+    await removerArquivos([photoPath]);
+    revalidatePath("/vaqueiro");
+    revalidatePath("/animais");
+    return { ok: true };
+  }
 
   if (error) {
     await removerArquivos([photoPath]);

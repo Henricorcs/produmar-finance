@@ -13,5 +13,9 @@ export default async function VaqueiroPage() {
   // Tela fechada: só o vaqueiro (e o admin, para conferir/testar).
   if (profile?.role !== "vaqueiro" && profile?.role !== "admin") redirect("/inicio");
 
-  return <VaqueiroClient />;
+  // A cópia da tela para abrir sem rede vai SÓ para o celular do vaqueiro. O
+  // admin abre esta tela de vez em quando para conferir e anda pelo resto do
+  // sistema no mesmo aparelho — guardar tela no dele é tela velha reaparecendo
+  // onde ninguém pediu.
+  return <VaqueiroClient podeOffline={profile.role === "vaqueiro"} />;
 }
