@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { removeSupplyPhotoIfUnused } from "@/lib/supply-photos";
 import { removerArquivos, uploadArquivo } from "@/lib/storage";
-import { canAvisarMaterial } from "@/lib/module-access";
+import { AVISO_MATERIAL_SLUG, canAvisarMaterial } from "@/lib/module-access";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -76,6 +76,54 @@ function requestError(
   if (error.message.includes("supply_requests_tem_lugar"))
     return "Diga a obra ou onde você aplicou";
   return error.message;
+}
+
+/**
+ * O BANCO RECUSOU E A MARCA ESTÁ NO CADASTRO — QUAL DAS DUAS PEÇAS FALTA?
+ *
+ * O envio do material passa por duas peças que moram no Supabase e são rodadas
+ * à mão: o CONFERIDOR (a função user_can_write_module, das migrations 039/079)
+ * e a POLICY de envio (a 080), que pergunta a ele. Faltando qualquer uma, o
+ * banco recusa exatamente do mesmo jeito — e de fora as duas são idênticas.
+ *
+ * Chutar qual delas é custou uma tarde: o recado mandava rodar uma migration,
+ * a pessoa rodava, o erro continuava igual e não havia por onde seguir. Então
+ * aqui a gente para de adivinhar e PERGUNTA. É uma chamada só, no caminho do
+ * erro (que é raro), feita com o login de quem está enviando — então o
+ * conferidor responde sobre ELE, não sobre um usuário qualquer.
+ *
+ * As três respostas possíveis não se confundem:
+ *   • o conferidor nem existe  → o banco está atrás da 039, que o criou
+ *   • ele diz SIM, e mesmo assim barrou → quem está velha é a policy (080)
+ *   • ele diz NÃO, com a marca no cadastro → ele é o antigo, que só conhece
+ *     'operador' e não conhece 'encarregado' (quem ensina isso é a 079)
+ */
+async function diagnosticoRls(
+  supabase: ReturnType<typeof createClient>,
+  quemEnviou?: { role?: string | null; allowed_modules?: string[] | null } | null
+): Promise<string> {
+  const role = quemEnviou?.role ?? undefined;
+
+  // técnico e admin entram na policy pelo PAPEL desde a 052: se foram
+  // barrados, quem não está no banco é a policy
+  if (role === "tecnico" || role === "admin")
+    return "Rode a migration 052 no Supabase — a policy de envio não está no banco";
+
+  if (!canAvisarMaterial(role, quemEnviou?.allowed_modules ?? undefined))
+    return "Sem permissão para avisar material — o admin marca em Configurações → Usuários";
+
+  const { data: conferidorDiz, error: semConferidor } = await supabase.rpc(
+    "user_can_write_module",
+    { module_slug: AVISO_MATERIAL_SLUG }
+  );
+
+  if (semConferidor)
+    return `Rode as migrations 039, 079 e 080 no Supabase — o banco não tem o conferidor de permissão (${semConferidor.message})`;
+
+  if (conferidorDiz === true)
+    return "Rode a migration 080 no Supabase — sua permissão está certa; o que falta é a policy de envio perguntar por ela";
+
+  return "Rode a migration 079 no Supabase — o conferidor de permissão do banco ainda é o antigo e não conhece o seu perfil";
 }
 
 /** Um material do envio: da lista (item_id) ou escrito na mão (item_text). */
@@ -213,6 +261,9 @@ export async function requestSupplyUsage(formData: FormData) {
 
   if (error) {
     if (photoPath) await removerArquivos([photoPath]);
+    // Recusa por RLS não se resolve no chute: o banco é quem sabe (ver acima).
+    if (error.code === "42501" || error.message.includes("row-level security"))
+      return { error: await diagnosticoRls(supabase, profile) };
     return { error: requestError(error, profile) };
   }
 
