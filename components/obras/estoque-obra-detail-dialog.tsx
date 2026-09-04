@@ -59,6 +59,10 @@ interface Props {
    * pelo mesmo motivo da despesa: aqui os dois se atropelariam.
    */
   onMaterial: (obra: SupplyObraUsage, linha: SupplyObraExtrato | null) => void;
+  /** Quantas diárias ficaram sem obra no sistema inteiro. 0 esconde o aviso. */
+  diasSemObra?: number;
+  /** Abre a atribuição já com esta obra escolhida. */
+  onDiariasSoltas: (obra: SupplyObraUsage) => void;
 }
 
 /** Os recortes de tempo do extrato — o que o dono pergunta no dia a dia. */
@@ -96,6 +100,8 @@ export function SupplyObraDetailDialog({
   onManageSectors,
   onDespesa,
   onMaterial,
+  diasSemObra = 0,
+  onDiariasSoltas,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [extrato, setExtrato] = useState<SupplyObraExtrato[]>([]);
@@ -457,6 +463,25 @@ export function SupplyObraDetailDialog({
                 Despesa
               </Button>
             </div>
+
+            {/* Diária lançada sem obra não chega em obra nenhuma. Enquanto
+                sobrar alguma, o aviso fica aqui — é onde se olha o custo */}
+            {diasSemObra > 0 && (
+              <button
+                type="button"
+                onClick={() => onDiariasSoltas(obra!)}
+                className="mt-2 w-full rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 px-3 py-2 text-left"
+              >
+                <p className="text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                  {diasSemObra === 1
+                    ? "1 diária foi lançada sem obra"
+                    : diasSemObra + " diárias foram lançadas sem obra"}
+                </p>
+                <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80">
+                  Toque para marcar as que são desta obra — elas entram no custo dela.
+                </p>
+              </button>
+            )}
 
             <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
               O material usado e a despesa — compra direta, combustível, frete — são

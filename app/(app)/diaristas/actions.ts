@@ -220,6 +220,10 @@ export interface DiaristaDiaCreateInput {
  * O valor da diária NÃO vem da tela: é lido aqui do cadastro e congelado no
  * dia. Quem marca o dia (o técnico) não decide quanto ele vale — ele só diz se
  * foi dia inteiro ou meio expediente, e a metade é feita AQUI.
+ *
+ * A OBRA é obrigatória: toda diária é de uma obra, e é ela que leva o dia para
+ * o custo da obra (o card "Diárias" em Obras sai daqui). Dia lançado sem obra
+ * ficava solto — ninguém via, e o custo da obra saía menor do que foi.
  */
 export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
   const supabase = createClient();
@@ -232,6 +236,7 @@ export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
 
   const workDate = cleanDate(input.date);
   if (!workDate) return { error: "Escolha o dia no calendário" };
+  if (!input.obra_id) return { error: "Diga em qual obra ele trabalhou" };
 
   const { data: diarista, error: dErr } = await supabase
     .from("diaristas")
@@ -285,6 +290,9 @@ export interface DiaristaDiaInput {
 export async function updateDiaristaDia(id: string, input: DiaristaDiaInput) {
   const supabase = createClient();
 
+  // mesma regra do lançamento: corrigir um dia não pode deixá-lo sem obra
+  if (!input.obra_id) return { error: "Diga em qual obra ele trabalhou" };
+
   const patch: Record<string, unknown> = {
     description: clean(input.description),
     obra_id: input.obra_id || null,
@@ -297,6 +305,35 @@ export async function updateDiaristaDia(id: string, input: DiaristaDiaInput) {
   if (error) return { error: diaristaError(error) };
   revalidate();
   return { ok: true };
+}
+
+/**
+ * Põe na obra as diárias que já foram lançadas soltas, de uma vez.
+ *
+ * A obra só passou a ser obrigatória agora: o que foi lançado antes ficou sem
+ * obra e nunca chegou ao custo dela. Em vez de abrir dia por dia, o chefe marca
+ * na tela da obra quais daqueles dias são dela.
+ *
+ * Só mexe no que AINDA está sem obra: se alguém atribuiu no meio do caminho,
+ * aquele dia fica onde já foi posto em vez de ser puxado por cima.
+ */
+export async function assignDiariasToObra(obraId: string, ids: string[]) {
+  const supabase = createClient();
+
+  if (!obraId) return { error: "Escolha a obra" };
+  const alvos = (ids ?? []).filter(Boolean);
+  if (alvos.length === 0) return { error: "Marque as diárias que são desta obra" };
+
+  const { data, error } = await supabase
+    .from("diarista_dias")
+    .update({ obra_id: obraId })
+    .in("id", alvos)
+    .is("obra_id", null)
+    .select("id");
+
+  if (error) return { error: diaristaError(error) };
+  revalidate();
+  return { ok: true, count: (data ?? []).length };
 }
 
 /**

@@ -11,6 +11,7 @@ import { ObrasEstoqueTab } from "./obras-estoque-tab";
 import { EmptyState, OBRA_STATUS_META } from "./obra-shared";
 import type {
   Contact,
+  DiaristaDia,
   ObraItem,
   ObraStatus,
   ObraSummary,
@@ -77,6 +78,8 @@ interface Props {
   supplyItems?: SupplyItemWithStock[];
   /** Categorias do Estoque — só para cadastrar o material que faltava. */
   supplyCategories?: SupplyCategory[];
+  /** Diárias lançadas sem obra — a tela deixa pôr cada uma na obra dela. */
+  diasSemObra?: DiaristaDia[];
 }
 
 type StatusFilter = "todas" | ObraStatus;
@@ -98,6 +101,7 @@ export function ObrasPageClient({
   colaboradores = [],
   supplyItems = [],
   supplyCategories = [],
+  diasSemObra = [],
 }: Props) {
   // Só existe uma lista de obra na tela: a que veio do Estoque.
   const [tab] = useState<Tab>("estoque");
@@ -301,6 +305,7 @@ export function ObrasPageClient({
         colaboradores={colaboradores}
         supplyItems={supplyItems}
         supplyCategories={supplyCategories}
+        diasSemObra={diasSemObra}
       />
 
       {/* Dialogs */}

@@ -1,7 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HardHat, MapPin, MapPinned, Plus, Receipt, Search, Users, Wallet } from "lucide-react";
+import {
+  CalendarDays,
+  HardHat,
+  MapPin,
+  MapPinned,
+  Plus,
+  Receipt,
+  Search,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBRL } from "@/lib/utils";
@@ -12,9 +22,11 @@ import { SupplyObraSectorsDialog } from "./estoque-obra-sectors-dialog";
 import { LocaisDialog } from "./locais-dialog";
 import { DespesaDialog } from "./despesa-dialog";
 import { CorrigirMaterialDialog, MaterialObraDialog } from "./material-obra-dialog";
+import { DiariasSemObraDialog } from "./diarias-sem-obra-dialog";
 import { EmptyState } from "./obra-shared";
 import type {
   Diarista,
+  DiaristaDia,
   SupplyCategory,
   SupplyFenceRunView,
   SupplyItemWithStock,
@@ -42,6 +54,8 @@ interface Props {
   supplyItems?: SupplyItemWithStock[];
   /** Categorias do Estoque — só para cadastrar o material que faltava. */
   supplyCategories?: SupplyCategory[];
+  /** Diárias lançadas sem obra — sobraram de antes de a obra virar regra. */
+  diasSemObra?: DiaristaDia[];
 }
 
 /** A chave de agrupamento das obras sem local — vale como um grupo à parte. */
@@ -67,6 +81,7 @@ export function ObrasEstoqueTab({
   colaboradores = [],
   supplyItems = [],
   supplyCategories = [],
+  diasSemObra = [],
 }: Props) {
   const [obraDialogOpen, setObraDialogOpen] = useState(false);
   const [editObra, setEditObra] = useState<SupplyObraUsage | null>(null);
@@ -89,6 +104,9 @@ export function ObrasEstoqueTab({
   const [materialObra, setMaterialObra] = useState<SupplyObraUsage | null>(null);
   /** A baixa que já existe e está sendo corrigida — null lança uma nova. */
   const [materialLinha, setMaterialLinha] = useState<SupplyObraExtrato | null>(null);
+  /** Pôr na obra as diárias que ficaram soltas (a obra é obrigatória só agora). */
+  const [soltasOpen, setSoltasOpen] = useState(false);
+  const [soltasObraId, setSoltasObraId] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   /** Local escolhido no filtro — "" = todos. */
@@ -225,6 +243,22 @@ export function ObrasEstoqueTab({
     if (materialObra) setDetailObraId(materialObra.id);
   }
 
+  /**
+   * Abre as diárias soltas. Vindo de uma obra, ela já entra escolhida; vindo do
+   * atalho do topo, o chefe escolhe qual recebe.
+   */
+  function abrirSoltas(obra: SupplyObraUsage | null) {
+    if (obra) setDetailObraId(null);
+    setSoltasObraId(obra?.id ?? null);
+    setSoltasOpen(true);
+  }
+
+  /** Fechou: volta para o detalhe, se foi de lá que veio. */
+  function fecharSoltas() {
+    setSoltasOpen(false);
+    if (soltasObraId) setDetailObraId(soltasObraId);
+  }
+
   return (
     <div className="space-y-4">
       {/* Ações */}
@@ -243,6 +277,20 @@ export function ObrasEstoqueTab({
             {sectors.length > 0 && (
               <span className="opacity-60 tabular-nums">{sectors.length}</span>
             )}
+          </Button>
+        )}
+        {/* Sobrou diária de antes de a obra virar obrigatória: enquanto houver,
+            o atalho fica à vista — some sozinho quando tudo estiver na sua obra */}
+        {diasSemObra.length > 0 && obras.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => abrirSoltas(null)}
+            className="border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400"
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            Diárias sem obra
+            <span className="opacity-60 tabular-nums">{diasSemObra.length}</span>
           </Button>
         )}
         <Button size="sm" onClick={openNew}>
@@ -408,6 +456,8 @@ export function ObrasEstoqueTab({
         }}
         onDespesa={abrirDespesa}
         onMaterial={abrirMaterial}
+        diasSemObra={diasSemObra.length}
+        onDiariasSoltas={abrirSoltas}
       />
       {despesaObra && (
         <DespesaDialog
@@ -436,6 +486,14 @@ export function ObrasEstoqueTab({
             categories={supplyCategories}
           />
         ))}
+      <DiariasSemObraDialog
+        open={soltasOpen}
+        onClose={fecharSoltas}
+        dias={diasSemObra}
+        colaboradores={colaboradores}
+        obras={obras}
+        presetObraId={soltasObraId}
+      />
     </div>
   );
 }

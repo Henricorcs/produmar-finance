@@ -3,6 +3,7 @@ import { ObrasPageClient } from "@/components/obras/obras-page-client";
 import type {
   Contact,
   Diarista,
+  DiaristaDia,
   ObraItem,
   ObraSummary,
   SupplyCategory,
@@ -39,6 +40,7 @@ export default async function ObrasPage() {
     colaboradoresRes,
     supplyItemsRes,
     supplyCategoriesRes,
+    diasSemObraRes,
   ] = await Promise.all([
     supabase
       .from("v_obra_summary")
@@ -99,6 +101,14 @@ export default async function ObrasPage() {
     supabase.from("v_supply_stock").select("*").order("name", { ascending: true }),
     // as categorias do Estoque, para cadastrar o material que faltava sem sair
     supabase.from("supply_categories").select("*").order("name", { ascending: true }),
+    // as diárias que ficaram sem obra: a obra só virou obrigatória agora, e o
+    // que foi lançado antes precisa ser posto na obra dele para entrar no custo
+    supabase
+      .from("diarista_dias")
+      .select("*")
+      .is("obra_id", null)
+      .order("work_date", { ascending: false })
+      .limit(1000),
   ]);
 
   return (
@@ -117,6 +127,7 @@ export default async function ObrasPage() {
       colaboradores={(colaboradoresRes.data as Diarista[]) ?? []}
       supplyItems={(supplyItemsRes.data as SupplyItemWithStock[]) ?? []}
       supplyCategories={(supplyCategoriesRes.data as SupplyCategory[]) ?? []}
+      diasSemObra={(diasSemObraRes.data as DiaristaDia[]) ?? []}
     />
   );
 }

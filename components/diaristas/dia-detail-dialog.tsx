@@ -101,6 +101,8 @@ export function DiaDetailDialog({
     e.preventDefault();
     if (!dia) return;
     setError(null);
+    // a diária é de uma obra: corrigir o dia não pode deixá-lo solto de novo
+    if (!obraId) return setError("Diga em qual obra ele trabalhou");
     startTransition(async () => {
       const r = await updateDiaristaDia(dia.id, {
         description,
@@ -287,7 +289,7 @@ export function DiaDetailDialog({
             </div>
 
             <div className="space-y-1.5">
-              <Label>Obra</Label>
+              <Label>Obra *</Label>
               <SearchableSelect
                 items={obras}
                 value={obraId}

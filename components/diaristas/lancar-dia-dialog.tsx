@@ -92,6 +92,9 @@ export function LancarDiaDialog({
     // a descrição é a razão desta tela existir: sem ela, daqui a dois meses o
     // "veio dia 12" não explica nada a ninguém
     if (!description.trim()) return setError("Escreva o que ele fez nesse dia");
+    // sem obra o dia fica solto: não entra no custo de obra nenhuma, e depois
+    // ninguém lembra de qual era
+    if (!obraId) return setError("Diga em qual obra ele trabalhou");
 
     startTransition(async () => {
       const r = await createDiaristaDia({
@@ -185,7 +188,7 @@ export function LancarDiaDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Obra</Label>
+            <Label>Obra *</Label>
             <SearchableSelect
               items={obras}
               value={obraId}
@@ -206,6 +209,9 @@ export function LancarDiaDialog({
               searchPlaceholder="Buscar obra..."
               emptyMessage="Nenhuma obra cadastrada"
             />
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              É a obra que leva esta diária para o custo dela.
+            </p>
           </div>
 
           {obraSectors.length > 0 && (
