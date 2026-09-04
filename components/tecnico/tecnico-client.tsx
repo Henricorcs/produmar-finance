@@ -23,6 +23,7 @@ import { MaterialPickerDialog } from "./material-picker-dialog";
 import { useAtualizarAoVoltar } from "./use-atualizar-ao-voltar";
 import {
   cn,
+  formatBRLInput,
   formatDate,
   formatHourmeter,
   formatQty,
@@ -94,6 +95,8 @@ interface Linha {
   freeText: boolean;
   itemText: string;
   quantity: string;
+  /** Preço de UMA unidade, do jeito que ele digita ("1.250,00"). */
+  unitCost: string;
 }
 
 function novaLinha(): Linha {
@@ -103,6 +106,7 @@ function novaLinha(): Linha {
     freeText: false,
     itemText: "",
     quantity: "",
+    unitCost: "",
   };
 }
 
@@ -269,6 +273,7 @@ export function TecnicoClient({
           item_id: l.itemId,
           item_text: l.itemText,
           quantity: l.quantity,
+          unit_cost: l.unitCost,
         }))
       )
     );
@@ -847,6 +852,25 @@ function MaterialLinha({
           className="h-12 text-lg font-semibold tabular-nums"
           autoComplete="off"
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor={`tc_cost_${linha.key}`}>
+          Preço de {unit ? `1 ${unit}` : "cada um"} (R$)
+        </Label>
+        <Input
+          id={`tc_cost_${linha.key}`}
+          value={linha.unitCost}
+          onChange={(e) => onChange({ unitCost: formatBRLInput(e.target.value) })}
+          placeholder="0,00"
+          inputMode="decimal"
+          className="h-12 text-lg tabular-nums"
+          autoComplete="off"
+        />
+        {/* opcional de propósito: obrigar preço faz o pessoal parar de avisar */}
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          Só se você comprou. Material que já era da casa deixa em branco.
+        </p>
       </div>
     </div>
   );

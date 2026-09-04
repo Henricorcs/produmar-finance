@@ -14,7 +14,13 @@ import {
   cancelSupplyUsageRequest,
   requestSupplyUsage,
 } from "@/app/(app)/tecnico/actions";
-import { formatDate, formatQty, localDateISO, upperKeepingCaret } from "@/lib/utils";
+import {
+  formatBRLInput,
+  formatDate,
+  formatQty,
+  localDateISO,
+  upperKeepingCaret,
+} from "@/lib/utils";
 import type {
   SupplyLocal,
   SupplyObraSector,
@@ -56,6 +62,8 @@ interface Linha {
   freeText: boolean;
   itemText: string;
   quantity: string;
+  /** Preço de UMA unidade, do jeito que ele digita ("1.250,00"). */
+  unitCost: string;
 }
 
 function novaLinha(): Linha {
@@ -65,6 +73,7 @@ function novaLinha(): Linha {
     freeText: false,
     itemText: "",
     quantity: "",
+    unitCost: "",
   };
 }
 
@@ -196,6 +205,7 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
           item_id: l.itemId,
           item_text: l.itemText,
           quantity: l.quantity,
+          unit_cost: l.unitCost,
         }))
       )
     );
@@ -587,6 +597,25 @@ function MaterialLinha({
         {/* meia carrada, meio saco: a fração se escreve com vírgula */}
         <p className="text-[11px] text-slate-400 dark:text-slate-500">
           Metade se escreve 0,5 — meia carrada é 0,5 carrada.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor={`om_cost_${linha.key}`}>
+          Preço de {unit ? `1 ${unit}` : "cada um"} (R$)
+        </Label>
+        <Input
+          id={`om_cost_${linha.key}`}
+          value={linha.unitCost}
+          onChange={(e) => onChange({ unitCost: formatBRLInput(e.target.value) })}
+          placeholder="0,00"
+          inputMode="decimal"
+          className="h-12 text-lg tabular-nums"
+          autoComplete="off"
+        />
+        {/* opcional de propósito: obrigar preço faz o pessoal parar de avisar */}
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          Só se você comprou. Material que já era da casa deixa em branco.
         </p>
       </div>
     </div>

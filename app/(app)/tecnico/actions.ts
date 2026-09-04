@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { removeSupplyPhotoIfUnused } from "@/lib/supply-photos";
 import { removerArquivos, uploadArquivo } from "@/lib/storage";
 import { AVISO_MATERIAL_SLUG, canAvisarMaterial } from "@/lib/module-access";
+import { parseMoney } from "@/lib/utils";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -47,6 +48,9 @@ function requestError(
     error.message.includes("fuel_type")
   )
     return "Rode a migration 057 no Supabase para usar setor e máquina";
+  // o preço vem da 082 — sem ela, quem não informou preço continua enviando
+  if (error.message.includes("unit_cost"))
+    return "Rode a migration 082 no Supabase para mandar o preço do material";
   // O banco recusou por RLS. São DUAS causas opostas — falta a marca no
   // cadastro da pessoa, ou falta a migration no banco — e mandar a errada custa
   // a tarde de alguém procurando no lugar em que não está. Por isso o recado
@@ -131,6 +135,8 @@ interface UsageLine {
   item_id: string | null;
   item_text: string | null;
   quantity: number;
+  /** Preço de uma unidade, quando ele informou (migration 082). */
+  unit_cost: number | null;
 }
 
 /**
@@ -154,10 +160,14 @@ function parseLines(raw: unknown): UsageLine[] {
     const itemId = String(row.item_id ?? "").trim();
     const itemText = clean(row.item_text);
     if (!itemId && !itemText) continue; // linha em branco: o técnico só não usou
+    // preço zerado é o mesmo que não informado: material da casa não custou
+    // nada pra quem levou, e gravar 0,00 faria o estoque acreditar nisso
+    const custo = parseMoney(String(row.unit_cost ?? ""));
     lines.push({
       item_id: itemId || null,
       item_text: itemId ? null : itemText,
       quantity: parseQty(row.quantity),
+      unit_cost: custo > 0 ? custo : null,
     });
   }
   return lines;
@@ -255,6 +265,9 @@ export async function requestSupplyUsage(formData: FormData) {
       sent_by_name: sentBy,
       created_by: user.id,
       ...(usedDate ? { used_date: usedDate } : {}),
+      // só entra quando ele informou: assim quem não rodou a 082 continua
+      // avisando material normalmente, do jeito que sempre avisou
+      ...(l.unit_cost ? { unit_cost: l.unit_cost } : {}),
       ...extra,
     }))
   );

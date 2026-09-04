@@ -44,6 +44,12 @@ interface Props {
    * chefe ficaria preso num "saldo insuficiente" logo depois de cadastrar.
    */
   defaultInitialQty?: number;
+  /**
+   * Custo de partida já preenchido. Vem de quem levou o material e pagou por
+   * ele: sem isso o item nasce valendo zero e todo relatório de valor de
+   * estoque sai torto por causa de um campo que ninguém lembrou de preencher.
+   */
+  defaultInitialCost?: number;
   /** Sem isto o atalho de categorias some — quem abre de fora do Estoque. */
   onManageCategories?: () => void;
   /**
@@ -65,6 +71,7 @@ export function ItemDialog({
   defaultCategoryId,
   defaultName,
   defaultInitialQty,
+  defaultInitialCost,
   onManageCategories,
   onCreated,
 }: Props) {
@@ -94,10 +101,17 @@ export function ItemDialog({
     setInitialQty(
       !item && defaultInitialQty ? String(defaultInitialQty).replace(".", ",") : ""
     );
-    setInitialCost("");
+    setInitialCost(!item && defaultInitialCost ? formatBRLInput(defaultInitialCost) : "");
     setPhoto(null);
     setError(null);
-  }, [open, item, defaultCategoryId, defaultName, defaultInitialQty]);
+  }, [
+    open,
+    item,
+    defaultCategoryId,
+    defaultName,
+    defaultInitialQty,
+    defaultInitialCost,
+  ]);
 
   // foto já salva do item em edição (URL assinada)
   useEffect(() => {

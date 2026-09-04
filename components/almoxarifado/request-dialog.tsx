@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { formatQty, localDateISO, upperKeepingCaret } from "@/lib/utils";
+import { formatBRL, formatQty, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { approveSupplyRequest } from "@/app/(app)/almoxarifado/actions";
 import { ItemDialog } from "./item-dialog";
 import { formatQtyInput, num, parseQty } from "./supply-shared";
@@ -160,6 +160,8 @@ export function SupplyRequestDialog({
 
   const available = selected?.current_quantity ?? 0;
   const qty = parseQty(quantity);
+  /** O preço de uma unidade que veio junto com o aviso (0 = não informou). */
+  const custoInformado = num(request.unit_cost);
   const falta = selected ? qty - available : 0;
 
   function handleSubmit(e: React.FormEvent) {
@@ -258,8 +260,9 @@ export function SupplyRequestDialog({
                     {typed ? `Cadastrar "${typed}" no estoque` : "Cadastrar material novo"}
                   </button>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Nasce com a quantidade deste aviso como saldo inicial — ajuste lá se você
-                    souber quanto tem no depósito.
+                    Nasce com a quantidade deste aviso como saldo inicial
+                    {custoInformado > 0 && " e com o preço informado como custo"} — ajuste lá
+                    se você souber quanto tem no depósito.
                   </p>
                 </div>
               )}
@@ -285,6 +288,18 @@ export function SupplyRequestDialog({
                   {falta > 0
                     ? `Em estoque só tem ${formatQty(available)} ${selected.unit} — faltam ${formatQty(falta)}.`
                     : `Em estoque: ${formatQty(available)} ${selected.unit}`}
+                </p>
+              )}
+
+              {/* O preço que veio da rua (082). Quem comprou é quem sabe: sem
+                  isso o escritório perguntava depois e ouvia "uns cento e
+                  pouco". Aparece mesmo com o material já cadastrado, porque é
+                  a conferência da nota que o chefe faz de qualquer jeito. */}
+              {custoInformado > 0 && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                  Quem levou informou {formatBRL(custoInformado)} por{" "}
+                  {selected?.unit ?? "unidade"}
+                  {qty > 0 && ` · ${formatBRL(custoInformado * qty)} no total`}
                 </p>
               )}
             </div>
@@ -380,6 +395,7 @@ export function SupplyRequestDialog({
         categories={categories}
         defaultName={typed ?? ""}
         defaultInitialQty={parseQty(quantity) || num(request.quantity)}
+        defaultInitialCost={custoInformado}
         onCreated={materialCadastrado}
       />
     </>

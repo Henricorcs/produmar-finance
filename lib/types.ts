@@ -1307,6 +1307,11 @@ export interface SupplyRequest {
   /** Material escrito na mão, quando não estava na lista. */
   item_text: string | null;
   quantity: number;
+  /**
+   * Preço de UMA unidade, quando quem levou informou (migration 082). Nulo é o
+   * normal: material da casa não tem preço de compra pra contar.
+   */
+  unit_cost?: number | null;
   /** Obra escolhida da lista (null quando só disse onde aplicou). */
   obra_id: string | null;
   /** Setor da obra onde aplicou, do cadastro do chefe (migration 057). */
