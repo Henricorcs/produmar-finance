@@ -69,6 +69,8 @@ interface Props {
   obras?: Obra[];
   /** Catálogo do Estoque, para a OS de serviço listar o material a buscar. */
   supplyItems?: MaterialPickerItem[];
+  /** Obras do Estoque — para onde a OS manda o material. */
+  supplyObras?: ObraDoEstoque[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -111,6 +113,18 @@ interface ItemDraft {
   quantity: string;
   unit: string;
   unit_price: string;
+}
+
+/**
+ * Obra do ESTOQUE (supply_obras). São duas listas de obra neste sistema, de
+ * propósito (migrations 051/065): a do módulo Obras (public.obras) e esta, que
+ * é a que o material usa — o aviso do técnico, o setor, a baixa. É nela que
+ * estão as obras de verdade, então é para ela que a OS manda o material.
+ */
+export interface ObraDoEstoque {
+  id: string;
+  name: string;
+  client: string | null;
 }
 
 /**
@@ -167,6 +181,7 @@ export function ServiceOrderDialog({
   stockBalances = [],
   obras = [],
   supplyItems = [],
+  supplyObras = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -210,6 +225,8 @@ export function ServiceOrderDialog({
   /** O material que esta OS manda buscar (serviço rápido). */
   const [materiais, setMateriais] = useState<MaterialPedido[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** Obra do Estoque para onde o material vai (migration 084). */
+  const [supplyObraId, setSupplyObraId] = useState("");
 
   // entrega_material — cobrança do frete
   const [billingMode, setBillingMode]   = useState<ServiceBillingMode | "">("");
@@ -272,6 +289,7 @@ export function ServiceOrderDialog({
       setAssignedTo(order.assigned_to ?? "");
       setPickupLocationId(order.pickup_location_id ?? "");
       setObraId(order.obra_id ?? "");
+      setSupplyObraId(order.supply_obra_id ?? "");
       setDeliveryAddress(order.delivery_address ?? "");
       setServiceDescription(order.service_description ?? "");
       setDeliveryDate(order.delivery_date ?? "");
@@ -344,6 +362,7 @@ export function ServiceOrderDialog({
       setBillingMode(""); setFreightValue(""); setTripsCount("");
       setItems([emptyItem()]);
       setMateriais([]);
+      setSupplyObraId("");
     }
     setError(null);
   }, [open, order]);
@@ -753,6 +772,7 @@ export function ServiceOrderDialog({
       assigned_to: assignedTo || null,
       pickup_location_id: pickupLocationId || null,
       obra_id: obraId || null,
+      supply_obra_id: supplyObraId || null,
       delivery_address: deliveryAddress,
       service_description: serviceDescription,
       // Frete não tem previsão de entrega — a data real entra no fechamento.
@@ -1173,6 +1193,39 @@ export function ServiceOrderDialog({
                     É a lista do que buscar — o saldo do estoque não se mexe aqui. A entrada e a
                     baixa você faz quando a pendência chegar, com o preço que ele informar.
                   </p>
+                </div>
+
+                {/* Para qual obra levar. É a obra do ESTOQUE — a mesma lista do
+                    aviso do técnico e da baixa, para a conta da obra fechar com
+                    ela mesma quando o material chegar. */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-1.5">
+                      <HardHat className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
+                      Obra
+                    </Label>
+                    <span className="text-[10px] text-slate-400">opcional</span>
+                  </div>
+                  <SearchableSelect
+                    items={supplyObras}
+                    value={supplyObraId}
+                    onChange={setSupplyObraId}
+                    getId={(o) => o.id}
+                    getLabel={(o) => o.name}
+                    renderItem={(o) => (
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <span className="truncate">{o.name}</span>
+                        {o.client && (
+                          <span className="text-[10px] text-slate-400 flex-shrink-0 truncate max-w-[7rem]">
+                            {o.client}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    placeholder="Para qual obra levar (opcional)..."
+                    searchPlaceholder="Buscar obra..."
+                    emptyMessage="Nenhuma obra cadastrada no Estoque"
+                  />
                 </div>
 
                 <div className="space-y-1.5">

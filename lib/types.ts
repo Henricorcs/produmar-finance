@@ -296,6 +296,12 @@ export interface ServiceOrder {
   pickup_location_id: string | null;
   /** Obra vinculada (opcional) — soma no custo total da obra. */
   obra_id: string | null;
+  /**
+   * Obra do ESTOQUE (supply_obras) para onde a OS manda o material — migration
+   * 084. É outra lista, de propósito: o obra_id acima é do módulo Obras, e quem
+   * trabalha com material vive nesta aqui, a mesma do aviso e da baixa.
+   */
+  supply_obra_id?: string | null;
   /** Operador (técnico) para quem a OS foi enviada — aparece só no painel dele. */
   assigned_to: string | null;
   /** Operador que FINALIZOU a OS (clicou FINALIZAR no painel) — usado para o

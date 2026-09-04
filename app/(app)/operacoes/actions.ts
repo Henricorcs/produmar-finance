@@ -288,6 +288,16 @@ function itemErro(mensagem: string): string {
   return mensagem;
 }
 
+/**
+ * A obra do Estoque na OS depende da 084. Sem ela o banco devolve o nome da
+ * coluna, que não diz nada a quem está lançando a OS.
+ */
+function ordemErro(mensagem: string): string {
+  if (mensagem.includes("supply_obra_id"))
+    return "Rode a migration 084 no Supabase para a OS apontar para a obra do Estoque";
+  return mensagem;
+}
+
 export interface ServiceOrderInput {
   type: ServiceOrderType;
   freight_type: ServiceFreightType;
@@ -300,6 +310,8 @@ export interface ServiceOrderInput {
   pickup_location_id?: string | null;
   /** Obra vinculada (opcional) — o custo desta OS soma no total da obra. */
   obra_id?: string | null;
+  /** Obra do Estoque para onde vai o material da OS (migration 084). */
+  supply_obra_id?: string | null;
   delivery_address?: string | null;
   service_description?: string | null;
   delivery_date?: string | null;
@@ -332,6 +344,7 @@ function sanitizeOrder(input: ServiceOrderInput) {
     assigned_to: input.assigned_to || null,
     pickup_location_id: input.pickup_location_id || null,
     obra_id: input.obra_id || null,
+    supply_obra_id: input.supply_obra_id || null,
     delivery_address: input.delivery_address?.trim() ? input.delivery_address.trim().toUpperCase() : null,
     service_description: input.service_description?.trim()
       ? input.service_description.trim().toUpperCase()
@@ -515,7 +528,8 @@ export async function createServiceOrder(input: ServiceOrderInput) {
     .insert({ ...sanitizeOrder(input), created_by: user.id })
     .select()
     .single();
-  if (insertErr || !created) return { error: insertErr?.message ?? "Erro ao criar OS" };
+  if (insertErr || !created)
+    return { error: insertErr ? ordemErro(insertErr.message) : "Erro ao criar OS" };
 
   const itemRows = input.items.map((it) => ({
     service_order_id: created.id,
@@ -564,7 +578,7 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
     .from("service_orders")
     .update(sanitizeOrder(input))
     .eq("id", id);
-  if (updateErr) return { error: updateErr.message };
+  if (updateErr) return { error: ordemErro(updateErr.message) };
 
   // Substitui itens (simples e seguro): apaga e recria
   const { error: delErr } = await supabase
