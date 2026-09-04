@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Bell, BellOff, BellRing, Share } from "lucide-react";
 import {
   apagarInscricaoDeAviso,
+  chavePublicaDeAviso,
   salvarInscricaoDeAviso,
 } from "@/app/(app)/operador/actions";
 
@@ -58,6 +59,12 @@ export function AlertaCelular() {
   const [estado, setEstado] = useState<Estado>("carregando");
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  /**
+   * A chave vem do SERVIDOR, não embutida no código. O build roda dentro do
+   * EasyPanel antes de as variáveis existirem, então NEXT_PUBLIC_ chegava aqui
+   * como texto vazio e o botão dizia "não configurado" com a chave salva lá.
+   */
+  const [chave, setChave] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -81,7 +88,11 @@ export function AlertaCelular() {
       }
 
       try {
-        const registro = await navigator.serviceWorker.getRegistration();
+        const [registro, k] = await Promise.all([
+          navigator.serviceWorker.getRegistration(),
+          chavePublicaDeAviso(),
+        ]);
+        setChave(k?.chave ?? null);
         const inscricao = await registro?.pushManager.getSubscription();
         setEstado(inscricao && Notification.permission === "granted" ? "ligado" : "desligado");
       } catch {
@@ -94,9 +105,12 @@ export function AlertaCelular() {
     setErro(null);
     setOcupado(true);
     try {
-      const chave = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!chave) {
-        setErro("Os alertas ainda não foram configurados no servidor.");
+      // Uma segunda tentativa: na primeira carga a resposta pode não ter vindo.
+      const publica = chave ?? (await chavePublicaDeAviso())?.chave ?? null;
+      if (!publica) {
+        setErro(
+          "Os alertas ainda não foram configurados no servidor (falta a chave VAPID)."
+        );
         return;
       }
 
@@ -115,7 +129,7 @@ export function AlertaCelular() {
         // Todo aviso vai aparecer na tela. É exigência do navegador, e é a
         // regra certa: nada de mensagem invisível.
         userVisibleOnly: true,
-        applicationServerKey: chaveEmBytes(chave),
+        applicationServerKey: chaveEmBytes(publica),
       });
 
       const r = await salvarInscricaoDeAviso({

@@ -11,6 +11,23 @@ import { createClient } from "@/lib/supabase/server";
  * nenhum dado de OS passa por aqui.
  */
 
+/**
+ * A CHAVE PÚBLICA DOS AVISOS, LIDA NO SERVIDOR.
+ *
+ * Ela é pública de verdade — vai para o navegador de todo mundo que ativa os
+ * alertas. Mesmo assim NÃO dá para embutir no código pelo NEXT_PUBLIC_, e a
+ * primeira tentativa morreu exatamente aí: o build acontece dentro do EasyPanel
+ * antes das variáveis de ambiente existirem, então a chave saía do forno como
+ * texto vazio. O botão dizia "não configurado" com a chave salva ali do lado,
+ * e nada no app apontava para a causa.
+ *
+ * Lida aqui, vale na hora em que a tela pergunta. Trocar a chave passa a ser
+ * salvar e reiniciar — sem precisar construir o app de novo.
+ */
+export async function chavePublicaDeAviso(): Promise<{ chave: string | null }> {
+  return { chave: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null };
+}
+
 interface Inscricao {
   endpoint: string;
   p256dh: string;
