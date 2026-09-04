@@ -1,6 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { isModuleBlocked, moduleSlugForPath } from "@/lib/module-access";
+import {
+  canAvisarMaterial,
+  hasHubModules,
+  isAvisoMaterialPath,
+  isModuleBlocked,
+  moduleSlugForPath,
+} from "@/lib/module-access";
 import { USER_ID_HEADER } from "@/lib/auth-header";
 
 export async function updateSession(request: NextRequest) {
@@ -120,10 +126,15 @@ export async function updateSession(request: NextRequest) {
     // costuma ter módulo liberado, e por isso trabalha nas duas telas.
     if ((role === "operador" || role === "encarregado") && !isPublicRoute) {
       const slug = moduleSlugForPath(path);
+      // A aba de avisar material é o único pedaço do painel que pede permissão
+      // marcada no cadastro: nem todo operador descarrega material na obra.
+      const ehAvisoMaterial = isAvisoMaterialPath(path);
       const podeVer = (mods: string[]) =>
-        path.startsWith("/operador") ||
+        (ehAvisoMaterial
+          ? canAvisarMaterial(role, mods)
+          : path.startsWith("/operador")) ||
         path.startsWith("/imprimir") ||
-        (mods.length > 0 &&
+        (hasHubModules(mods) &&
           (path.startsWith("/inicio") ||
             path.startsWith("/configuracoes") ||
             (slug !== null && mods.includes(slug))));
@@ -137,7 +148,8 @@ export async function updateSession(request: NextRequest) {
         canAccess = podeVer(allowedModules);
       }
 
-      if (!canAccess) return redirectTo(allowedModules.length > 0 ? "/inicio" : "/operador");
+      if (!canAccess)
+        return redirectTo(hasHubModules(allowedModules) ? "/inicio" : "/operador");
     }
 
     // Módulos liberados por usuário — admin/operador/visualizador/vaqueiro/tecnico

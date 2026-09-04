@@ -2,7 +2,7 @@
 -- PRODUMAR — O OPERADOR AVISA O MATERIAL QUE LEVOU PARA A OBRA
 -- ============================================================================
 -- Execute no SQL Editor do Supabase (Painel → Editor SQL → Nova consulta →
--- cole tudo → Executar). PODE RODAR DE UMA VEZ SÓ.
+-- cole tudo → Executar). PODE RODAR DE UMA VEZ SÓ, e pode rodar de novo.
 --
 -- Rodar depois da 052 (a fila de material do técnico) e da 079 (o encarregado).
 -- ============================================================================
@@ -18,36 +18,51 @@
 --   o chefe, na aba "Pendentes" do Estoque, do jeito que já faz hoje com o
 --   recado do técnico.
 --
---   O operador continua SEM user_can_write_module('estoque'): ele não chega
---   perto de supply_items nem de supply_movements. A escrita dele fica presa a
+--   O operador continua SEM acesso ao Estoque: ele não chega perto de
+--   supply_items nem de supply_movements. A escrita dele fica presa a
 --   supply_requests, que é só o recado — a mesma jaula do técnico.
 --
--- Nada é apagado e nada muda de forma: só a policy de INSERT passa a aceitar
--- mais dois papéis. Rodar de novo não quebra.
+-- ============================================================================
+-- PESSOA POR PESSOA, não o perfil inteiro
+-- ============================================================================
+--   Nem todo operador descarrega material: a maioria só dirige e recebe OS. Por
+--   isso o aviso NÃO é liberado para o perfil "operador" inteiro — é uma
+--   permissão marcada no cadastro de cada um, em Configurações → Usuários, com
+--   o nome "Avisar material da obra".
+--
+--   Ela viaja no profiles.allowed_modules, junto com os módulos, e o helper
+--   user_can_write_module (migrations 039/079) já sabe conferir: para operador
+--   e encarregado ele só devolve verdadeiro quando o slug está liberado para
+--   aquela pessoa. O slug aqui é 'aviso-material'.
+--
+--   É de propósito que a permissão não vira MÓDULO: módulo dá card no hub e nav
+--   própria, e o painel do operador não deve ter nada disso. Ela libera só uma
+--   aba dentro da tela que ele já abre todo dia.
+--
+-- Nada é apagado e nada muda de forma: só a policy de INSERT é reescrita.
 -- ============================================================================
 
--- ============================================================================
--- ENVIO: técnico, operador, encarregado e admin
--- ============================================================================
--- O ::text é de propósito, e é o mesmo cuidado das migrations 052 e 079: se um
--- dia um papel novo for criado e usado no mesmo arquivo, comparar como TEXTO
--- evita o "unsafe use of new value of enum type" do Postgres. O resultado é o
--- mesmo, e o arquivo continua rodando de uma vez só.
--- ============================================================================
 drop policy if exists "supply_requests_insert" on public.supply_requests;
 
 create policy "supply_requests_insert" on public.supply_requests
   for insert with check (
-    public.current_user_role()::text in ('tecnico', 'admin', 'operador', 'encarregado')
+    -- o técnico, que é o dono original desta fila, e o admin
+    public.current_user_role()::text in ('tecnico', 'admin')
+    -- e quem recebeu "Avisar material da obra" no cadastro (operador /
+    -- encarregado): o helper confere o slug no allowed_modules da pessoa
+    or public.user_can_write_module('aviso-material')
   );
 
 comment on table public.supply_requests is
-  'Fila de aviso de material usado/levado. Técnico, operador e encarregado mandam; o chefe confere na aba Pendentes do Estoque e transforma em saída. Não mexe no saldo.';
+  'Fila de aviso de material usado/levado. Mandam: o técnico, o admin e quem tem a permissão aviso-material (operador/encarregado). O chefe confere na aba Pendentes do Estoque e transforma em saída. Não mexe no saldo.';
 
 -- ============================================================================
--- PRONTO
+-- DEPOIS DE RODAR
 -- ============================================================================
--- Nada mais muda: apagar o próprio recado (supply_requests_delete) já valia
--- para qualquer um que criou a linha, então o operador cancela o que ele mesmo
--- mandou sem precisar de policy nova.
+--   Vá em Configurações → Usuários → o operador → Módulos, e marque
+--   "Avisar material da obra". Só quem tiver essa marca vê a aba Material no
+--   painel — e só ela deixa o recado entrar no banco.
+--
+--   Apagar o próprio recado (supply_requests_delete) já valia para quem criou a
+--   linha, então o operador cancela o que ele mesmo mandou sem policy nova.
 -- ============================================================================

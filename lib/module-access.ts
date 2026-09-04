@@ -55,6 +55,62 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
  */
 export const MODULE_EXEMPT_PREFIXES = ["/inicio", "/configuracoes"];
 
+// ============================================================================
+// PERMISSÕES AVULSAS
+// ============================================================================
+// Um módulo é uma tela inteira, com card no hub e nav própria. Isto aqui é
+// outra coisa: libera UM PEDAÇO de uma tela que a pessoa já alcança.
+//
+// O caso que a criou: o operador já entra no painel dele todo dia para receber
+// a OS. Nem todo operador precisa avisar material levado à obra — só quem
+// descarrega. Dar um MÓDULO a ele o jogaria para o hub e a nav dos módulos, que
+// é justamente o que o perfil de operador não deve ver.
+//
+// Por isso a permissão avulsa entra na mesma lista de allowed_modules (o
+// admin marca no cadastro do usuário), mas NÃO vira card no hub e NÃO muda o
+// layout de quem a recebe.
+// ============================================================================
+
+/** Avisar o material levado para a obra, na aba do painel do operador. */
+export const AVISO_MATERIAL_SLUG = "aviso-material";
+
+export const EXTRA_PERMISSIONS = [
+  {
+    slug: AVISO_MATERIAL_SLUG,
+    name: "Avisar material da obra",
+    description: "Aba no painel do operador para informar o material que ele levou",
+  },
+] as const;
+
+const EXTRA_SLUGS: readonly string[] = EXTRA_PERMISSIONS.map((p) => p.slug);
+
+/**
+ * Tem MÓDULO de verdade (dos que viram card no hub)? Uma permissão avulsa
+ * sozinha não conta: quem só a recebeu continua com a tela simples de sempre.
+ */
+export function hasHubModules(allowedModules: string[] | undefined): boolean {
+  return (allowedModules ?? []).some((m) => !EXTRA_SLUGS.includes(m));
+}
+
+/**
+ * Pode avisar o material que levou para a obra? O admin sempre (é ele quem
+ * confere); operador e encarregado, só com a permissão marcada no cadastro.
+ * Qualquer outro perfil, não — o técnico tem a tela dele.
+ */
+export function canAvisarMaterial(
+  role: string | undefined,
+  allowedModules: string[] | undefined
+): boolean {
+  if (role === "admin") return true;
+  if (role !== "operador" && role !== "encarregado") return false;
+  return (allowedModules ?? []).includes(AVISO_MATERIAL_SLUG);
+}
+
+/** A rota da aba — o middleware confere a permissão antes de deixar entrar. */
+export function isAvisoMaterialPath(path: string): boolean {
+  return matchesPrefix(path, "/operador/material");
+}
+
 function matchesPrefix(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(prefix + "/");
 }

@@ -16,10 +16,18 @@ import { machineCategoryLabel } from "@/lib/utils";
 import { actionError } from "@/lib/action-result";
 import Link from "next/link";
 import { APP_MODULES } from "@/lib/modules";
+import { EXTRA_PERMISSIONS } from "@/lib/module-access";
 import { MACHINE_CATEGORIES, type Profile, type UserRole } from "@/lib/types";
 
-/** Módulos que podem ser liberados por usuário (nome curto p/ os botões). */
-const MODULE_OPTIONS = APP_MODULES.map((m) => ({ slug: m.slug, name: m.name }));
+/**
+ * O que dá para liberar no cadastro do usuário: os módulos (tela inteira, com
+ * card no hub) e, no fim, as permissões avulsas — que liberam só um pedaço de
+ * uma tela que a pessoa já alcança, sem mudar o resto do acesso dela.
+ */
+const MODULE_OPTIONS = [
+  ...APP_MODULES.map((m) => ({ slug: m.slug, name: m.name })),
+  ...EXTRA_PERMISSIONS.map((p) => ({ slug: p.slug, name: p.name })),
+];
 
 function moduleLabel(slug: string): string {
   return MODULE_OPTIONS.find((m) => m.slug === slug)?.name ?? slug;

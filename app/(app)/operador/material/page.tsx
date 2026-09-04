@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
+import { canAvisarMaterial } from "@/lib/module-access";
 import { OperadorMaterialClient } from "@/components/operador/material-obra-client";
 import type {
   SupplyLocal,
@@ -19,7 +20,11 @@ export const dynamic = "force-dynamic";
  *
  * É a mesma fila do técnico (supply_requests, migration 052): nada sai do
  * estoque aqui, o que nasce é um recado que o escritório confere e formaliza na
- * aba "Pendentes" do Estoque. A migration 080 é que deixa o operador mandar.
+ * aba "Pendentes" do Estoque.
+ *
+ * A aba é LIBERADA POR PESSOA: só entra quem tem "Avisar material da obra"
+ * marcado no cadastro (o admin marca em Configurações). Nem todo operador
+ * descarrega material, e a migration 080 guarda a mesma regra no banco.
  */
 export default async function OperadorMaterialPage() {
   const supabase = createClient();
@@ -28,14 +33,10 @@ export default async function OperadorMaterialPage() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
 
-  // Quem descarrega material na obra: operador e encarregado. O admin entra
-  // para conferir a tela; o resto do mundo tem o Estoque de verdade.
-  if (
-    profile.role !== "operador" &&
-    profile.role !== "encarregado" &&
-    profile.role !== "admin"
-  )
-    redirect("/inicio");
+  // Operador/encarregado COM a permissão marcada, mais o admin (que entra
+  // para conferir a tela). Quem não tem volta para o painel de sempre.
+  if (!canAvisarMaterial(profile.role, profile.allowed_modules))
+    redirect(profile.role === "operador" || profile.role === "encarregado" ? "/operador" : "/inicio");
 
   const [itemsRes, obrasRes, locaisRes, sectorsRes, mineRes] = await Promise.all([
     // só o catálogo: nome e unidade. Ele não precisa (nem deve) ver saldo.

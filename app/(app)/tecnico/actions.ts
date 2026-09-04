@@ -43,9 +43,10 @@ function requestError(error: { code?: string; message: string }): string {
     error.message.includes("fuel_type")
   )
     return "Rode a migration 057 no Supabase para usar setor e máquina";
-  // a policy da 052 só deixava o técnico mandar; a 080 abriu para o operador
+  // a policy da 052 só deixava o técnico mandar; a 080 abriu para quem tem a
+  // permissão "Avisar material da obra" marcada no cadastro
   if (error.code === "42501" || error.message.includes("row-level security"))
-    return "Rode a migration 080 no Supabase para o operador avisar material";
+    return "Sem permissão para avisar material — o admin marca em Configurações → Usuários (e a migration 080 precisa ter rodado)";
   if (error.code === "42P01" || error.message.includes("supply_requests"))
     return "Rode a migration 052 no Supabase para habilitar o envio";
   if (error.message.includes("supply_requests_tem_material"))

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { Topbar } from "@/components/layout/topbar";
 import { TabsNav } from "@/components/layout/tabs-nav";
+import { hasHubModules } from "@/lib/module-access";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -63,7 +64,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Operador sem módulos → layout simplificado (painel de OS apenas).
   // Operador com módulos liberados → layout completo, com hub e nav dos módulos.
   if (isOperador) {
-    const hasModules = (profile?.allowed_modules?.length ?? 0) > 0;
+    // permissão avulsa (a aba de avisar material) não conta: quem só a tem
+    // continua com o painel simples, sem hub e sem nav de módulos
+    const hasModules = hasHubModules(profile?.allowed_modules);
     if (!hasModules) {
       return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
