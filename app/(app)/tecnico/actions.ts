@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { removeSupplyPhotoIfUnused } from "@/lib/supply-photos";
 import { removerArquivos, uploadArquivo } from "@/lib/storage";
+import { canAvisarMaterial } from "@/lib/module-access";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -27,7 +28,10 @@ function parseReading(raw: unknown): number {
   return Math.round(Math.abs(n) * 10) / 10;
 }
 
-function requestError(error: { code?: string; message: string }): string {
+function requestError(
+  error: { code?: string; message: string },
+  quemEnviou?: { role?: string | null; allowed_modules?: string[] | null } | null
+): string {
   // colunas do setor/máquina vêm da 057 — sem ela o envio simples continua
   // funcionando, só o que usa os campos novos é que para aqui
   if (
@@ -43,10 +47,25 @@ function requestError(error: { code?: string; message: string }): string {
     error.message.includes("fuel_type")
   )
     return "Rode a migration 057 no Supabase para usar setor e máquina";
-  // a policy da 052 só deixava o técnico mandar; a 080 abriu para quem tem a
-  // permissão "Avisar material da obra" marcada no cadastro
-  if (error.code === "42501" || error.message.includes("row-level security"))
-    return "Sem permissão para avisar material — o admin marca em Configurações → Usuários (e a migration 080 precisa ter rodado)";
+  // O banco recusou por RLS. São DUAS causas opostas — falta a marca no
+  // cadastro da pessoa, ou falta a migration no banco — e mandar a errada custa
+  // a tarde de alguém procurando no lugar em que não está. Por isso o recado
+  // sai do papel de quem enviou, não de chute.
+  if (error.code === "42501" || error.message.includes("row-level security")) {
+    const role = quemEnviou?.role ?? undefined;
+
+    // técnico e admin entram na policy pelo PAPEL desde a 052: se foram
+    // barrados, quem não está no banco é a policy
+    if (role === "tecnico" || role === "admin")
+      return "Rode a migration 052 no Supabase — a policy de envio não está no banco";
+
+    // operador/encarregado com a marca no cadastro: a tela só abre para quem
+    // tem, então a marca existe e quem não a conhece é o banco
+    if (canAvisarMaterial(role, quemEnviou?.allowed_modules ?? undefined))
+      return "Rode a migration 080 no Supabase: a permissão está marcada no seu cadastro, mas o banco ainda não conhece ela (pode rodar de novo sem problema)";
+
+    return "Sem permissão para avisar material — o admin marca em Configurações → Usuários";
+  }
   if (error.code === "42P01" || error.message.includes("supply_requests"))
     return "Rode a migration 052 no Supabase para habilitar o envio";
   if (error.message.includes("supply_requests_tem_material"))
@@ -153,10 +172,12 @@ export async function requestSupplyUsage(formData: FormData) {
     if (fuelType) extra.fuel_type = fuelType;
   }
 
-  // o nome de quem enviou vai gravado: o chefe precisa saber quem pegou
+  // O nome de quem enviou vai gravado: o chefe precisa saber quem pegou. O
+  // papel e as permissões vêm na mesma consulta porque, se o banco recusar, são
+  // eles que dizem se falta a marca no cadastro ou a migration no Supabase.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name")
+    .select("full_name, role, allowed_modules")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -189,7 +210,7 @@ export async function requestSupplyUsage(formData: FormData) {
 
   if (error) {
     if (photoPath) await removerArquivos([photoPath]);
-    return { error: requestError(error) };
+    return { error: requestError(error, profile) };
   }
 
   revalidatePath("/tecnico");
