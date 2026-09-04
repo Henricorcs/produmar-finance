@@ -372,6 +372,13 @@ export interface ServiceOrderItem {
   total: number;
   /** Linha de frete (viagem/km/diária) — não é material, não mexe no estoque. */
   is_freight: boolean;
+  /**
+   * Linha de MATERIAL PEDIDO numa OS de serviço rápido (migration 083). A
+   * linha do serviço em si não tem a marca — é ela que carrega o valor.
+   * Nas OS antigas de entrega de material fica falsa: lá toda linha que não é
+   * frete já é material por definição.
+   */
+  is_material?: boolean;
   created_at: string;
 }
 

@@ -274,6 +274,18 @@ export interface ServiceOrderItemInput {
   unit?: string | null;
   unit_price: number;
   is_freight?: boolean;
+  /** Material que a OS manda comprar/buscar (migration 083). */
+  is_material?: boolean;
+}
+
+/**
+ * A linha de material da OS depende da 083. Sem ela o insert falha com o nome
+ * da coluna na mensagem — que não diz nada a quem está lançando a OS.
+ */
+function itemErro(mensagem: string): string {
+  if (mensagem.includes("is_material"))
+    return "Rode a migration 083 no Supabase para a OS levar a lista de material";
+  return mensagem;
 }
 
 export interface ServiceOrderInput {
@@ -513,13 +525,16 @@ export async function createServiceOrder(input: ServiceOrderInput) {
     unit: it.unit?.trim() || null,
     unit_price: it.unit_price,
     is_freight: it.is_freight ?? false,
+    // só vai quando é material: assim quem não rodou a 083 continua lançando
+    // OS normalmente, do jeito que sempre lançou
+    ...(it.is_material ? { is_material: true } : {}),
   }));
 
   if (itemRows.length > 0) {
     const { error: itemsErr } = await supabase
       .from("service_order_items")
       .insert(itemRows);
-    if (itemsErr) return { error: itemsErr.message };
+    if (itemsErr) return { error: itemErro(itemsErr.message) };
   }
 
   revalidate();
@@ -566,13 +581,16 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
     unit: it.unit?.trim() || null,
     unit_price: it.unit_price,
     is_freight: it.is_freight ?? false,
+    // só vai quando é material: assim quem não rodou a 083 continua lançando
+    // OS normalmente, do jeito que sempre lançou
+    ...(it.is_material ? { is_material: true } : {}),
   }));
 
   if (itemRows.length > 0) {
     const { error: itemsErr } = await supabase
       .from("service_order_items")
       .insert(itemRows);
-    if (itemsErr) return { error: itemsErr.message };
+    if (itemsErr) return { error: itemErro(itemsErr.message) };
   }
 
   await syncServiceOrderFinance(supabase, id);

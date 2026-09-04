@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OperacoesPageClient } from "@/components/operacoes/operacoes-page-client";
+import type { MaterialPickerItem } from "@/components/tecnico/material-picker-dialog";
 import type {
   Category,
   CostCenter,
@@ -47,7 +48,7 @@ export default async function OperacoesPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [ordersRes, machinesRes, productsRes, locationsRes, categoriesRes, costCentersRes, stockBalanceRes, obrasRes] =
+  const [ordersRes, machinesRes, productsRes, locationsRes, categoriesRes, costCentersRes, stockBalanceRes, obrasRes, supplyItemsRes] =
     await Promise.all([
       supabase
         .from("service_orders")
@@ -66,6 +67,8 @@ export default async function OperacoesPage({
       supabase.from("cost_centers").select("*").eq("active", true).order("name"),
       supabase.from("product_stock_balance").select("*"),
       supabase.from("obras").select("*").eq("active", true).order("name"),
+      // o catálogo do Estoque: a OS de serviço manda buscar material daqui
+      supabase.from("supply_items").select("id, name, unit").order("name"),
     ]);
 
   // Inclui máquinas inativas que estão em uso por alguma OS do período — senão
@@ -113,6 +116,7 @@ export default async function OperacoesPage({
       costCenters={(costCentersRes.data as CostCenter[]) ?? []}
       stockBalances={(stockBalanceRes.data as ProductStockBalance[]) ?? []}
       obras={(obrasRes.data as Obra[]) ?? []}
+      supplyItems={(supplyItemsRes.data as MaterialPickerItem[]) ?? []}
       month={month}
       initialFilter={searchParams.filter ?? ""}
     />

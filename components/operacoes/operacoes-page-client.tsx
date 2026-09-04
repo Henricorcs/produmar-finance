@@ -29,6 +29,7 @@ import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { MonthNav } from "@/components/ui/month-nav";
 import { FilterTabs } from "@/components/ui/filter-tabs";
 import { ServiceOrderDialog } from "./service-order-dialog";
+import type { MaterialPickerItem } from "@/components/tecnico/material-picker-dialog";
 import {
   deleteServiceOrder,
   updateServiceOrderStatus,
@@ -68,6 +69,8 @@ interface Props {
   costCenters: CostCenter[];
   stockBalances: ProductStockBalance[];
   obras: Obra[];
+  /** Catálogo do Estoque, para a OS de serviço listar o material a buscar. */
+  supplyItems: MaterialPickerItem[];
   month: string;
   initialFilter?: string;
 }
@@ -156,6 +159,7 @@ export function OperacoesPageClient({
   costCenters,
   stockBalances,
   obras,
+  supplyItems,
   month,
   initialFilter = "",
 }: Props) {
@@ -362,6 +366,7 @@ export function OperacoesPageClient({
         pickupLocations={pickupLocations}
         stockBalances={stockBalances}
         obras={obras}
+        supplyItems={supplyItems}
       />
     </div>
   );

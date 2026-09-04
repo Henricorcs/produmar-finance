@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect, useMemo } from "react";
 import {
   Plus, X, Truck, Wrench, User, Building2,
   Clock, Gauge, DollarSign, Fuel, Boxes,
-  Route, CalendarDays, HardHat, AlertTriangle, Zap,
+  Route, CalendarDays, HardHat, AlertTriangle, Zap, Package,
 } from "lucide-react";
 import {
   Dialog,
@@ -28,6 +28,10 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { QuickCreateMachineDialog } from "./quick-create-machine-dialog";
 import { QuickCreateProductDialog } from "./quick-create-product-dialog";
 import { QuickCreateLocationDialog } from "./quick-create-location-dialog";
+import {
+  MaterialPickerDialog,
+  type MaterialPickerItem,
+} from "@/components/tecnico/material-picker-dialog";
 import { ServiceOrderComprovantes } from "@/components/operador/service-order-comprovantes";
 import {
   createServiceOrder,
@@ -63,6 +67,8 @@ interface Props {
   pickupLocations: PickupLocation[];
   stockBalances?: ProductStockBalance[];
   obras?: Obra[];
+  /** Catálogo do Estoque, para a OS de serviço listar o material a buscar. */
+  supplyItems?: MaterialPickerItem[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,6 +113,31 @@ interface ItemDraft {
   unit_price: string;
 }
 
+/**
+ * Um material que a OS manda BUSCAR — não é baixa de estoque.
+ *
+ * A OS de serviço é ordem de compra: "compra estes canos e leva pra obra". Quem
+ * vai à loja é quem está na rua, e o estoque só sabe o que aconteceu quando ele
+ * avisa o que comprou e por quanto (o aviso da 082) e o chefe dá entrada e
+ * baixa na aba Pendentes. Por isso aqui não há preço nem movimento: é lista.
+ */
+interface MaterialPedido {
+  key: string;
+  /** Id do catálogo quando veio da lista; vazio quando foi escrito na mão. */
+  supplyItemId: string;
+  name: string;
+  unit: string;
+  quantity: string;
+  /** Escrito na mão: o nome continua editável. */
+  freeText: boolean;
+}
+
+function novaChave(): string {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : String(Math.random());
+}
+
 function emptyItem(): ItemDraft {
   return { product_id: "", description: "", quantity: "1", unit: "carrada", unit_price: "" };
 }
@@ -135,6 +166,7 @@ export function ServiceOrderDialog({
   pickupLocations,
   stockBalances = [],
   obras = [],
+  supplyItems = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -175,6 +207,9 @@ export function ServiceOrderDialog({
 
   // entrega_material
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
+  /** O material que esta OS manda buscar (serviço rápido). */
+  const [materiais, setMateriais] = useState<MaterialPedido[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // entrega_material — cobrança do frete
   const [billingMode, setBillingMode]   = useState<ServiceBillingMode | "">("");
@@ -254,7 +289,22 @@ export function ServiceOrderDialog({
       setTripsCount(order.trips_count?.toString() ?? "");
       // A linha de frete (is_freight) é gerenciada pelos campos de cobrança —
       // só os materiais entram na lista de itens editáveis.
-      const materialItems = (order.service_order_items ?? []).filter((it) => !it.is_freight);
+      const linhas = order.service_order_items ?? [];
+      const materialItems = linhas.filter((it) => !it.is_freight && !it.is_material);
+      // O material pedido volta editável. O id do catálogo não é guardado
+      // porque, na volta, só interessa o nome, a unidade e quanto buscar.
+      setMateriais(
+        linhas
+          .filter((it) => it.is_material)
+          .map((it) => ({
+            key: novaChave(),
+            supplyItemId: "",
+            name: it.description ?? "",
+            unit: it.unit ?? "un",
+            quantity: formatQty(it.quantity),
+            freeText: true,
+          }))
+      );
       setItems(
         materialItems.length > 0
           ? materialItems.map((it) => ({
@@ -279,8 +329,8 @@ export function ServiceOrderDialog({
         setFlatServiceAmount("");
       }
     } else {
-      setType("entrega_material");
-      setFreightType("cliente");
+      setType("servico_rapido");
+      setFreightType("interno");
       setStatus("pendente");
       setClientName(""); setClientDocument(""); setClientPhone("");
       setMachineId(""); setAssignedTo(""); setPickupLocationId(""); setObraId("");
@@ -293,6 +343,7 @@ export function ServiceOrderDialog({
       setReceivedBy(""); setNotes("");
       setBillingMode(""); setFreightValue(""); setTripsCount("");
       setItems([emptyItem()]);
+      setMateriais([]);
     }
     setError(null);
   }, [open, order]);
@@ -346,17 +397,14 @@ export function ServiceOrderDialog({
   const isQuick = type === "servico_rapido";
 
   // ── OS de máquina saiu daqui ─────────────────────────────────────────────
-  // Frete e prestação de serviço são trabalho de veículo e agora nascem na
-  // FICHA dele (módulo Máquinas e Veículos). Nesta tela ficam a entrega de
-  // material (que baixa o estoque da jazida) e o serviço rápido (tarefa de
-  // funcionário, sem máquina).
+  // Frete e prestação de serviço são trabalho de veículo e nascem na FICHA
+  // dele (módulo Máquinas e Veículos). A entrega de material saiu daqui também:
+  // o que o escritório manda hoje é COMPRAR e levar, e isso é o serviço rápido
+  // com a lista de material — o estoque só se mexe depois, na pendência.
   //
-  // As OS antigas desses dois tipos continuam abrindo, editando, imprimindo e
-  // finalizando por aqui — o tipo delas aparece, mas travado: o que acabou foi
-  // a criação, e converter uma OS em frete também.
-  const osDaFrota =
-    !!order && (order.type === "frete" || order.type === "prestacao_servico");
-
+  // As OS antigas de todos esses tipos continuam abrindo, editando, imprimindo
+  // e finalizando por aqui — o tipo aparece travado. O que acabou foi a
+  // criação, e converter uma OS em outro tipo também.
   const TIPOS_DE_OS = [
     { v: "entrega_material",  label: "Entrega de material",  icon: Truck },
     { v: "frete",             label: "Frete",                icon: Route },
@@ -364,10 +412,17 @@ export function ServiceOrderDialog({
     { v: "servico_rapido",    label: "Serviço rápido",       icon: Zap },
   ] as const;
 
-  const tiposDaTela = osDaFrota
-    ? // OS de máquina antiga: só o tipo dela, travado
-      TIPOS_DE_OS.filter((t) => t.v === order?.type)
-    : TIPOS_DE_OS.filter((t) => t.v !== "frete" && t.v !== "prestacao_servico");
+  /**
+   * OS que não nasce mais aqui. Frete e prestação de serviço saíram para a
+   * ficha do veículo; a entrega de material saiu porque virou ISTO: um serviço
+   * rápido com a lista do que comprar. As antigas continuam abrindo para
+   * editar e finalizar, com o tipo travado — o que acabou foi a criação.
+   */
+  const osAntiga = !!order && order.type !== "servico_rapido";
+
+  const tiposDaTela = osAntiga
+    ? TIPOS_DE_OS.filter((t) => t.v === order?.type)
+    : TIPOS_DE_OS.filter((t) => t.v === "servico_rapido");
 
   // ── Computed values ──────────────────────────────────────────────────────
   const hoursWorked = useMemo(() => {
@@ -448,6 +503,42 @@ export function ServiceOrderDialog({
     setLocalLocations((prev) => [...prev.filter((x) => x.id !== loc.id), loc].sort((a, b) => a.name.localeCompare(b.name)));
     setPickupLocationId(loc.id);
   }
+  /** Escolheu (ou desmarcou) um material do catálogo do Estoque. */
+  function alternarMaterial(item: MaterialPickerItem) {
+    setMateriais((prev) =>
+      prev.some((m) => m.supplyItemId === item.id)
+        ? prev.filter((m) => m.supplyItemId !== item.id)
+        : [
+            ...prev,
+            {
+              key: novaChave(),
+              supplyItemId: item.id,
+              name: item.name,
+              unit: item.unit,
+              quantity: "1",
+              freeText: false,
+            },
+          ]
+    );
+  }
+
+  /**
+   * "Não achei na lista": abre uma linha em branco. Aqui isso é permitido de
+   * propósito — a OS manda COMPRAR, e o que ainda não existe no estoque é
+   * justamente o que mais se manda comprar.
+   */
+  function materialNaMao() {
+    setMateriais((prev) => [
+      ...prev,
+      { key: novaChave(), supplyItemId: "", name: "", unit: "un", quantity: "1", freeText: true },
+    ]);
+    setPickerOpen(false);
+  }
+
+  function patchMaterial(key: string, patch: Partial<MaterialPedido>) {
+    setMateriais((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
+  }
+
   function handleProductCreated(p: Product) {
     setLocalProducts((prev) => [...prev.filter((x) => x.id !== p.id), p].sort((a, b) => a.name.localeCompare(b.name)));
     if (prdDialogIdx !== null) pickProduct(prdDialogIdx, p.id);
@@ -594,13 +685,28 @@ export function ServiceOrderDialog({
       // Serviço rápido: 1 item carrega a tarefa e o valor (0 se não informado).
       // O total = valor (custo interno). O comprovante é anexado pelo operador.
       const amount = parseBRLToNumber(flatServiceAmount);
-      itemsPayload = [{
-        product_id: null,
-        description: serviceDescription.trim() || "SERVIÇO RÁPIDO",
-        quantity: 1,
-        unit: "ud",
-        unit_price: amount,
-      }];
+      itemsPayload = [
+        {
+          product_id: null,
+          description: serviceDescription.trim() || "SERVIÇO RÁPIDO",
+          quantity: 1,
+          unit: "ud",
+          unit_price: amount,
+        },
+        // O material vai com preço ZERO de propósito: a OS manda comprar, não
+        // diz quanto custa. O preço nasce lá na rua, com quem pagou, e chega
+        // pelo aviso que vira pendência de estoque.
+        ...materiais
+          .filter((m) => m.name.trim())
+          .map((m) => ({
+            product_id: null,
+            description: m.name.trim(),
+            quantity: parseQty(m.quantity) || 1,
+            unit: m.unit || "un",
+            unit_price: 0,
+            is_material: true,
+          })),
+      ];
     } else {
       // Entrega de material: só materiais (a cobrança de frete é o tipo "Frete").
       itemsPayload = items
@@ -736,7 +842,7 @@ export function ServiceOrderDialog({
                   <button
                     key={v}
                     type="button"
-                    disabled={osDaFrota}
+                    disabled={osAntiga}
                     onClick={() => {
                       setType(v);
                       // Serviço rápido é sempre uma tarefa interna.
@@ -754,9 +860,9 @@ export function ServiceOrderDialog({
                 ))}
               </div>
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                {osDaFrota
-                  ? "Esta é uma OS de máquina, das antigas: dá para editar e finalizar aqui, mas as novas se lançam na ficha do veículo, em Máquinas e Veículos."
-                  : "Frete, diária e hora de máquina se lançam na ficha do veículo, em Máquinas e Veículos."}
+                {osAntiga
+                  ? "Esta OS é das antigas: dá para editar e finalizar aqui, mas as novas nascem como serviço rápido."
+                  : "Toda OS nova é serviço rápido. Frete, diária e hora de máquina se lançam na ficha do veículo; o material a comprar entra na lista aqui embaixo."}
               </p>
             </div>
 
@@ -1004,6 +1110,71 @@ export function ServiceOrderDialog({
                     className="uppercase placeholder:normal-case placeholder:lowercase"
                   />
                 </div>
+
+                {/* MATERIAL A BUSCAR — a OS é ordem de compra, não é baixa */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
+                      Material
+                    </Label>
+                    <span className="text-[10px] text-slate-400">opcional</span>
+                  </div>
+
+                  {materiais.map((m) => (
+                    <div key={m.key} className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        {m.freeText ? (
+                          <Input
+                            value={m.name}
+                            onChange={(e) => patchMaterial(m.key, { name: upperKeepingCaret(e) })}
+                            placeholder="ex: cano 50mm"
+                            className="uppercase placeholder:normal-case placeholder:lowercase"
+                            autoComplete="off"
+                          />
+                        ) : (
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                            {m.name}
+                          </p>
+                        )}
+                      </div>
+                      <Input
+                        value={m.quantity}
+                        onChange={(e) => patchMaterial(m.key, { quantity: formatQty(e.target.value) })}
+                        inputMode="decimal"
+                        aria-label={`Quantidade de ${m.name || "material"}`}
+                        className="w-20 tabular-nums text-center flex-shrink-0"
+                        autoComplete="off"
+                      />
+                      <span className="text-[11px] text-slate-400 w-9 truncate flex-shrink-0">
+                        {m.unit}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setMateriais((prev) => prev.filter((x) => x.key !== m.key))}
+                        aria-label={`Tirar ${m.name || "o material"} da lista`}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 flex-shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(true)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 text-[13px] font-medium rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Escolher material do estoque
+                  </button>
+
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    É a lista do que buscar — o saldo do estoque não se mexe aqui. A entrada e a
+                    baixa você faz quando a pendência chegar, com o preço que ele informar.
+                  </p>
+                </div>
+
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label className="flex items-center gap-1.5">
@@ -1694,6 +1865,15 @@ export function ServiceOrderDialog({
         open={prdDialogOpen}
         onClose={() => { setPrdDialogOpen(false); setPrdDialogIdx(null); }}
         onCreated={handleProductCreated}
+      />
+      <MaterialPickerDialog
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        items={supplyItems}
+        escolhidos={materiais.map((m) => m.supplyItemId).filter(Boolean)}
+        onToggle={alternarMaterial}
+        onEscrever={materialNaMao}
+        titulo="Que material buscar?"
       />
       <QuickCreateLocationDialog
         open={locDialogOpen}
