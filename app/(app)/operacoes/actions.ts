@@ -3,6 +3,7 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { avisarNoCelular } from "@/lib/push";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isFreightCategory } from "@/lib/utils";
 import { PRODUCT_UNITS } from "@/lib/types";
@@ -282,6 +283,26 @@ export interface ServiceOrderItemInput {
  * A linha de material da OS depende da 083. Sem ela o insert falha com o nome
  * da coluna na mensagem — que não diz nada a quem está lançando a OS.
  */
+/**
+ * O RECADO QUE APARECE NA TELA BLOQUEADA DO CELULAR DELE.
+ *
+ * Tem que caber num aviso e dizer o que interessa antes de ele abrir o app: o
+ * que fazer e se tem material pra buscar. Aviso que só diz "você tem novidade"
+ * obriga a abrir para descobrir se era urgente — e aí não adiantou avisar.
+ */
+function recadoDaOs(input: ServiceOrderInput): string {
+  const partes: string[] = [];
+
+  const tarefa = input.service_description?.trim();
+  if (tarefa) partes.push(tarefa.length > 90 ? tarefa.slice(0, 90) + "..." : tarefa);
+
+  const materiais = input.items.filter((it) => it.is_material).length;
+  if (materiais > 0)
+    partes.push(materiais === 1 ? "1 material para buscar" : materiais + " materiais para buscar");
+
+  return partes.join(" · ") || "Abra o app para ver os detalhes.";
+}
+
 function itemErro(mensagem: string): string {
   if (mensagem.includes("is_material"))
     return "Rode a migration 083 no Supabase para a OS levar a lista de material";
@@ -551,6 +572,19 @@ export async function createServiceOrder(input: ServiceOrderInput) {
     if (itemsErr) return { error: itemErro(itemsErr.message) };
   }
 
+  // O celular dele apita agora (migration 085). É acessório de propósito: se o
+  // aviso falhar — sem inscrição, sem chave, sem internet no servidor —, a OS
+  // já está lançada e ninguém fica sabendo do problema por um erro na tela de
+  // quem lançou. O funcionário continua vendo a OS ao abrir o app.
+  if (input.assigned_to) {
+    await avisarNoCelular(input.assigned_to, {
+      titulo: created.order_number ? "OS " + created.order_number + " pra você" : "OS nova pra você",
+      corpo: recadoDaOs(input),
+      url: "/operador",
+      assunto: "os-" + created.id,
+    });
+  }
+
   revalidate();
   return { ok: true, id: created.id };
 }
@@ -560,6 +594,15 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
   if (err) return { error: err };
 
   const supabase = createClient();
+
+  // Quem era o dono antes de salvar? Serve para avisar SÓ quando a OS troca de
+  // mão. Reeditar uma OS que já era dele não é novidade nenhuma, e celular que
+  // apita à toa é celular que ele silencia.
+  const { data: donoAntes } = await supabase
+    .from("service_orders")
+    .select("assigned_to, order_number")
+    .eq("id", id)
+    .maybeSingle<{ assigned_to: string | null; order_number: number | null }>();
 
   // Editar uma OS de máquina ANTIGA continua liberado; o que não se faz mais é
   // TRANSFORMAR uma OS em frete/prestação de serviço por esta tela.
@@ -608,6 +651,18 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
   }
 
   await syncServiceOrderFinance(supabase, id);
+
+  if (input.assigned_to && input.assigned_to !== donoAntes?.assigned_to) {
+    await avisarNoCelular(input.assigned_to, {
+      titulo: donoAntes?.order_number
+        ? "OS " + donoAntes.order_number + " pra você"
+        : "OS nova pra você",
+      corpo: recadoDaOs(input),
+      url: "/operador",
+      assunto: "os-" + id,
+    });
+  }
+
   revalidate();
   return { ok: true };
 }

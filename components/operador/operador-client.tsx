@@ -57,6 +57,7 @@ import type {
   ServiceOrderTrip,
   ServiceOrderPause,
 } from "@/lib/types";
+import { AlertaCelular } from "./alerta-celular";
 
 type OrderWithDetails = ServiceOrder & {
   machines: { name: string; plate: string | null; tracking_type?: string | null } | null;
@@ -329,6 +330,10 @@ export function OperadorClient({
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* "Me avise quando chegar OS" — some sozinho depois de ligado num
+          aparelho que já está inscrito, para não virar paisagem. */}
+      <AlertaCelular />
+
       {/* Header + abas (Tarefas / Finalizadas) */}
       <div className="space-y-3">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">

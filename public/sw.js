@@ -7,10 +7,15 @@
  * página vem do servidor a cada abertura. Este arquivo guarda uma cópia da tela
  * no aparelho e a serve quando o sinal some.
  *
- * Ele é instalado SÓ no celular do vaqueiro (veja components/vaqueiro/
- * vaqueiro-client.tsx): no aparelho de quem anda pelo sistema inteiro, uma
- * cópia velha de tela seria dor de cabeça — lá tudo continua vindo do servidor
- * como sempre veio.
+ * A CÓPIA DA TELA é instalada só no celular do vaqueiro (veja components/
+ * vaqueiro/vaqueiro-client.tsx): no aparelho de quem anda pelo sistema inteiro,
+ * uma cópia velha de tela seria dor de cabeça — lá tudo continua vindo do
+ * servidor como sempre veio. Quem não é vaqueiro não guarda nada: a busca da
+ * tela na instalação cai num redirecionamento e o guardar é abortado, e o
+ * atendimento offline lá embaixo só serve o que estiver realmente guardado.
+ *
+ * O AVISO NO CELULAR (o "push", lá no fim do arquivo) é para todo mundo que
+ * ativar: é ele que faz o aparelho apitar quando chega OS nova.
  *
  * O que ele NÃO faz, de propósito:
  *   • não mexe em envio (POST): a fila do celular já cuida disso;
@@ -130,16 +135,10 @@ async function abrirTela(requisicao) {
   } catch (semRede) {
     const guardado = await cache.match(TELA);
     if (guardado) return guardado;
-    // Nunca abriu a tela com sinal: não há o que servir. Pelo menos explica.
-    return new Response(
-      "<!doctype html><meta charset='utf-8'>" +
-        "<meta name='viewport' content='width=device-width,initial-scale=1'>" +
-        "<div style=\"font-family:system-ui;padding:2rem;text-align:center\">" +
-        "<h1 style='font-size:1.1rem'>Sem rede</h1>" +
-        "<p style='color:#555'>Abra esta tela uma vez com sinal — depois disso ela funciona no mato.</p>" +
-        "</div>",
-      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } }
-    );
+    // Nada guardado: este aparelho não é o do vaqueiro (ou ele nunca abriu a
+    // tela com sinal). Devolver a página dele aqui seria pior que o erro —
+    // então o navegador mostra o offline dele mesmo, como sempre mostrou.
+    throw semRede;
   }
 }
 
@@ -164,4 +163,66 @@ self.addEventListener("fetch", (evento) => {
   if (ehArquivoFixo(url)) {
     evento.respondWith(arquivoFixo(requisicao));
   }
+});
+
+
+/* ==========================================================================
+ * O AVISO QUE FAZ O CELULAR APITAR
+ * ==========================================================================
+ * A OS chegava calada: o escritório lançava e o funcionário só descobria ao
+ * abrir o app, ou quando alguém ligava pra avisar. Era o telefonema fazendo
+ * papel de alerta.
+ *
+ * Daqui pra frente o servidor manda o recado (lib/push.ts) e o aparelho toca
+ * sozinho — com o app fechado, na tela bloqueada. No iPhone isso só vale se o
+ * app estiver instalado na tela de início; no Android vale de qualquer jeito.
+ * ========================================================================== */
+
+self.addEventListener("push", (evento) => {
+  // Aviso sem conteúdo legível não pode sumir calado: melhor tocar com um
+  // texto genérico do que o funcionário não ser avisado de nada.
+  let dados = { titulo: "PRODUMAR", corpo: "Você tem novidade no app.", url: "/operador" };
+  try {
+    if (evento.data) dados = { ...dados, ...evento.data.json() };
+  } catch (e) {}
+
+  evento.waitUntil(
+    self.registration.showNotification(dados.titulo, {
+      body: dados.corpo,
+      icon: "/icon-192",
+      badge: "/icon-192",
+      // Junta os avisos do mesmo assunto em vez de empilhar uma pilha deles.
+      tag: dados.assunto || "produmar",
+      renotify: true,
+      // No pasto o celular fica no bolso: o aviso espera ser tocado em vez de
+      // sumir sozinho depois de alguns segundos.
+      requireInteraction: true,
+      vibrate: [200, 100, 200],
+      data: { url: dados.url || "/operador" },
+    })
+  );
+});
+
+/**
+ * Tocou no aviso: abre a tela certa. Se o app já estiver aberto numa aba, ela
+ * é trazida para a frente em vez de abrir outra — dois apps abertos do mesmo
+ * sistema é o tipo de coisa que faz o funcionário lançar no lugar errado.
+ */
+self.addEventListener("notificationclick", (evento) => {
+  evento.notification.close();
+  const destino = (evento.notification.data && evento.notification.data.url) || "/operador";
+
+  evento.waitUntil(
+    (async () => {
+      const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const aba of abas) {
+        if (new URL(aba.url).origin === self.location.origin) {
+          await aba.focus();
+          if ("navigate" in aba) await aba.navigate(destino).catch(() => {});
+          return;
+        }
+      }
+      await self.clients.openWindow(destino);
+    })()
+  );
 });
