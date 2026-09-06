@@ -711,8 +711,22 @@ export interface ToolWithStatus extends Tool {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type AnimalSex = "macho" | "femea";
-/** Tipo do animal (espécie). Tudo que foi cadastrado antes é bovino. */
-export type AnimalSpecies = "bovino" | "equino" | "caprino" | "ovino" | "suino";
+/**
+ * Tipo do animal (espécie). Tudo que foi cadastrado antes é bovino.
+ *
+ * PISCICULTURA e AVES (migration 086) entram pelo GASTO: quem cria peixe e
+ * galinha não registra bicho por bicho, mas compra ração e alevino todo mês e
+ * precisa saber quanto cada criação custou. Cadastrar o bicho um a um continua
+ * possível (a matriz, o reprodutor), só não é o caminho normal deles.
+ */
+export type AnimalSpecies =
+  | "bovino"
+  | "equino"
+  | "caprino"
+  | "ovino"
+  | "suino"
+  | "piscicultura"
+  | "aves";
 /**
  * Categoria derivada na view v_animals (idade < 12 meses = bezerro). As chaves
  * são o PAPEL do animal, não o nome dele: `bezerro` = filhote, `boi` = macho

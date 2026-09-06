@@ -43,6 +43,8 @@ const SPECIES_LABEL: Record<AnimalSpecies, string> = {
   caprino: "caprino",
   ovino: "ovino",
   suino: "suíno",
+  piscicultura: "peixe",
+  aves: "ave",
 };
 
 /**
@@ -1259,10 +1261,28 @@ export async function undoAnimalExit(animalId: string) {
 // Isto NÃO cria lançamento no módulo Contas — é registro e relatório dentro de
 // Animais, como a despesa da obra (migration 067).
 
+/**
+ * A dica de "rode a migration" só vale quando a tabela realmente não existe.
+ * O nome da tabela aparece em QUALQUER erro dela — inclusive na trava da
+ * espécie e no RLS —, e mandar rodar uma migration já rodada faz procurar o
+ * problema no lugar errado.
+ */
 function despesaError(error: { code?: string; message: string }): string {
-  if (error.code === "42P01" || error.message.includes("animal_despesas"))
+  if (error.code === "42P01" || error.code === "42703")
     return "Rode a migration 072 no Supabase para lançar despesas com animais";
-  return error.message;
+
+  // A trava lista as espécies que a despesa aceita. Piscicultura e aves só
+  // entram nela na 087 — quem rodou só a 086 esbarra exatamente aqui.
+  if (
+    error.code === "23514" ||
+    error.message.includes("animal_despesas_species_check")
+  )
+    return "Este tipo de animal ainda não é aceito na despesa. Rode a migration 087 no Supabase para liberar piscicultura e aves.";
+
+  if (error.code === "42501" || /row.level security/i.test(error.message))
+    return "Seu usuário não tem permissão para lançar despesa de animais.";
+
+  return error.code ? `${error.message} (código ${error.code})` : error.message;
 }
 
 export interface AnimalDespesaInput {

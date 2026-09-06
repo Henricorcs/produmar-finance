@@ -42,6 +42,8 @@ const VACCINE_PLACEHOLDER: Record<AnimalSpecies, string> = {
   caprino: "ex: clostridiose, raiva",
   ovino: "ex: clostridiose, raiva",
   suino: "ex: peste suína, erisipela",
+  piscicultura: "ex: vacina para estreptococose",
+  aves: "ex: newcastle, gumboro",
 };
 
 /** Periodicidades que cobrem quase tudo — o resto entra em "Outro". */

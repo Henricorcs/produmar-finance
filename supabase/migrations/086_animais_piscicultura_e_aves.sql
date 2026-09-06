@@ -1,0 +1,31 @@
+-- ============================================================================
+-- PRODUMAR — ANIMAIS: piscicultura e aves (1 de 2 — os valores no enum)
+-- ============================================================================
+-- Execute no SQL Editor do Supabase (Dashboard → SQL Editor → New Query → Run)
+-- Rodar DEPOIS da migration 047 (tipo do animal).
+-- DEPOIS desta, rode a 087_animais_despesa_piscicultura_e_aves.sql
+-- — são DUAS execuções, e a ordem importa.
+-- ============================================================================
+-- Por que este arquivo é só duas linhas:
+--   ALTER TYPE ... ADD VALUE só vale depois de COMMIT. Enquanto a transação
+--   que criou o valor não fecha, qualquer uso de 'aves' na mesma execução morre
+--   com "unsafe use of new value" e DERRUBA O ARQUIVO INTEIRO — inclusive o
+--   próprio ALTER TYPE, que volta atrás junto. Rodar de novo dá o mesmo erro,
+--   para sempre: o arquivo nunca chega ao fim sozinho.
+--
+--   Foi exatamente o que aconteceu quando o suíno entrou (migrations 054 e
+--   055). Por isso o resto — a lista de espécies que a despesa aceita — está
+--   na 087. Aviso em comentário não resolve (Ctrl+A e Run ignora comentário);
+--   arquivo separado resolve.
+--
+-- O que estes dois tipos mudam no resto do sistema: nada.
+--   A CATEGORIA (macho adulto / fêmea adulta / filhote) continua saindo sozinha
+--   da idade + sexo na view v_animals, e continua com as mesmas três chaves —
+--   elas são o PAPEL do animal, não o nome dele. Quem dá nome é a tela: galo,
+--   galinha e frango nas aves; peixe e alevino na piscicultura.
+--
+-- Nada é apagado. Rodar de novo não quebra nada.
+-- ============================================================================
+
+ALTER TYPE animal_species ADD VALUE IF NOT EXISTS 'piscicultura';
+ALTER TYPE animal_species ADD VALUE IF NOT EXISTS 'aves';

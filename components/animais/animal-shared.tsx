@@ -136,6 +136,33 @@ export const SPECIES_META: Record<AnimalSpecies, SpeciesNames> = {
     females: "Porcas",
     young: "Leitões",
   },
+  // Piscicultura e aves entram pelo GASTO (ração, alevino, pintinho): o normal
+  // é não haver bicho cadastrado um a um. Os nomes abaixo só aparecem se
+  // alguém registrar um individualmente — a matriz, o reprodutor.
+  piscicultura: {
+    label: "Piscicultura",
+    plural: "Piscicultura",
+    chip: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
+    male: "Peixe",
+    female: "Peixe",
+    youngMale: "Alevino",
+    youngFemale: "Alevino",
+    males: "Peixes",
+    females: "Peixes",
+    young: "Alevinos",
+  },
+  aves: {
+    label: "Aves",
+    plural: "Aves",
+    chip: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+    male: "Galo",
+    female: "Galinha",
+    youngMale: "Frango",
+    youngFemale: "Franga",
+    males: "Galos",
+    females: "Galinhas",
+    young: "Frangos",
+  },
 };
 
 export const SPECIES_OPTIONS: { value: AnimalSpecies; label: string }[] = (
