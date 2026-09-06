@@ -42,39 +42,55 @@ function cleanDate(s?: string | null): string | null {
   return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
 }
 
-/** O erro cru do Postgres não diz a ninguém que falta rodar a migration. */
+/**
+ * O erro cru do Postgres não diz a ninguém o que fazer.
+ *
+ * A dica de "rode a migration" só vale quando a tabela ou a coluna REALMENTE
+ * não existe (42P01 / 42703). Antes bastava o nome da tabela aparecer no texto
+ * do erro para o app mandar rodar a migration — e o nome da tabela aparece em
+ * QUALQUER erro dela, inclusive quando o RLS barra a gravação. Quem levava um
+ * "não" por falta de permissão era mandado rodar uma migration que já estava
+ * rodada, e ia caçar o problema no lugar errado.
+ */
 function diaristaError(error: { code?: string; message: string }): string {
   if (error.code === "23505" && error.message.includes("uq_diarista_dia"))
     return "Esse dia já estava lançado para este diarista";
-  if (error.message.includes("half_day"))
-    return "Rode a migration 064 no Supabase para usar a meia diária";
-  if (
-    error.message.includes("payment_mode") ||
-    error.message.includes("meter_rate") ||
-    error.message.includes("job_rate")
-  )
-    return "Rode a migration 070 no Supabase para usar a forma de pagamento do colaborador";
-  if (
-    error.message.includes("worker_type") ||
-    error.message.includes("profession") ||
-    error.message.includes("supply_obra_servicos")
-  )
-    return "Rode a migration 069 no Supabase para usar empreiteiro e serviço de obra";
-  if (
-    error.message.includes("diarista_adiantamentos") ||
-    error.message.includes("diarista_acertos") ||
-    error.message.includes("acerto_id")
-  )
-    return "Rode a migration 068 no Supabase para usar adiantamento e acerto";
   if (error.code === "23505") return "Já existe um colaborador com esse nome";
-  if (
-    error.code === "42P01" ||
-    error.message.includes("diarista_dias") ||
-    error.message.includes("diaristas") ||
-    error.message.includes("v_diaristas")
-  )
+
+  // O banco recusou por permissão: o RLS de adiantamento e acerto só deixa
+  // gravar quem manda no dinheiro (admin, financeiro, ou operador com o
+  // módulo liberado). Não tem nada a ver com migration.
+  if (error.code === "42501" || /row.level security/i.test(error.message))
+    return "Seu usuário não tem permissão para lançar isso. Adiantamento e acerto são liberados para admin e financeiro.";
+
+  // Falta rodar migration — só quando a tabela/coluna não existe mesmo.
+  if (error.code === "42P01" || error.code === "42703") {
+    if (error.message.includes("half_day"))
+      return "Rode a migration 064 no Supabase para usar a meia diária";
+    if (
+      error.message.includes("payment_mode") ||
+      error.message.includes("meter_rate") ||
+      error.message.includes("job_rate")
+    )
+      return "Rode a migration 070 no Supabase para usar a forma de pagamento do colaborador";
+    if (
+      error.message.includes("worker_type") ||
+      error.message.includes("profession") ||
+      error.message.includes("supply_obra_servicos")
+    )
+      return "Rode a migration 069 no Supabase para usar empreiteiro e serviço de obra";
+    if (
+      error.message.includes("diarista_adiantamentos") ||
+      error.message.includes("diarista_acertos") ||
+      error.message.includes("acerto_id")
+    )
+      return "Rode a migration 068 no Supabase para usar adiantamento e acerto";
     return "Rode a migration 059 no Supabase para usar os diaristas";
-  return error.message;
+  }
+
+  // Qualquer outra coisa vai crua, com o código do Postgres junto: é o que
+  // permite descobrir o que houve de verdade em vez de chutar.
+  return error.code ? `${error.message} (código ${error.code})` : error.message;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -73,7 +73,17 @@ export function AcertoDialog({
   servicos = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * O erro guarda DE ONDE ele veio.
+   *
+   * A mensagem morava só no fim do diálogo. Quem lançava um adiantamento pelo
+   * celular tocava no "+", o erro aparecia lá embaixo — fora da tela, atrás do
+   * teclado — e a impressão era de que o botão simplesmente não fazia nada.
+   * Agora cada aviso aparece colado no que falhou.
+   */
+  const [erro, setErro] = useState<{ onde: "vale" | "acerto"; msg: string } | null>(
+    null
+  );
 
   // novo adiantamento
   const [valeData, setValeData] = useState(localDateISO());
@@ -89,7 +99,7 @@ export function AcertoDialog({
     setValeValor("");
     setValeObs("");
     setAcertoData(localDateISO());
-    setError(null);
+    setErro(null);
   }, [open, diarista?.id]);
 
   const meusVales = useMemo(
@@ -162,10 +172,10 @@ export function AcertoDialog({
 
   function handleAddVale(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
+    setErro(null);
     const valor = parseMoney(valeValor);
     if (valor <= 0) {
-      setError("Informe o valor do adiantamento");
+      setErro({ onde: "vale", msg: "Informe o valor do adiantamento" });
       return;
     }
     startTransition(async () => {
@@ -176,7 +186,7 @@ export function AcertoDialog({
         notes: valeObs,
       });
       if (r && "error" in r) {
-        setError(r.error ?? "Erro ao lançar o adiantamento");
+        setErro({ onde: "vale", msg: r.error ?? "Erro ao lançar o adiantamento" });
         return;
       }
       setValeValor("");
@@ -187,15 +197,15 @@ export function AcertoDialog({
 
   function handleDeleteVale(v: DiaristaAdiantamento) {
     if (!confirm(`Apagar o adiantamento de ${formatBRL(Number(v.amount))}?`)) return;
-    setError(null);
+    setErro(null);
     startTransition(async () => {
       const r = await deleteDiaristaAdiantamento(v.id);
-      if (r && "error" in r) setError(r.error ?? "Erro ao apagar");
+      if (r && "error" in r) setErro({ onde: "vale", msg: r.error ?? "Erro ao apagar" });
     });
   }
 
   function handleAcerto() {
-    setError(null);
+    setErro(null);
     const msg =
       `Fechar o acerto de ${diarista!.name} até ${formatDate(acertoData)}?\n\n` +
       (doAcerto.totalDiarias > 0
@@ -215,7 +225,7 @@ export function AcertoDialog({
         settled_on: acertoData,
       });
       if (r && "error" in r) {
-        setError(r.error ?? "Erro ao registrar o acerto");
+        setErro({ onde: "acerto", msg: r.error ?? "Erro ao registrar o acerto" });
         return;
       }
       onClose();
@@ -229,10 +239,10 @@ export function AcertoDialog({
       )
     )
       return;
-    setError(null);
+    setErro(null);
     startTransition(async () => {
       const r = await deleteDiaristaAcerto(a.id);
-      if (r && "error" in r) setError(r.error ?? "Erro ao desfazer");
+      if (r && "error" in r) setErro({ onde: "acerto", msg: r.error ?? "Erro ao desfazer" });
     });
   }
 
@@ -354,6 +364,7 @@ export function AcertoDialog({
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
+              {erro?.onde === "vale" && <AvisoErro>{erro.msg}</AvisoErro>}
             </form>
           </div>
 
@@ -489,11 +500,7 @@ export function AcertoDialog({
             </div>
           )}
 
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
-              {error}
-            </p>
-          )}
+          {erro?.onde === "acerto" && <AvisoErro>{erro.msg}</AvisoErro>}
 
           <Button type="button" variant="outline" className="w-full" onClick={onClose}>
             Voltar para a ficha
@@ -529,5 +536,14 @@ function Linha({
         {valor}
       </span>
     </div>
+  );
+}
+
+/** Aviso vermelho, mostrado colado no que falhou. */
+function AvisoErro({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+      {children}
+    </p>
   );
 }
