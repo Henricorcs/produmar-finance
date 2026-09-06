@@ -9,6 +9,7 @@ import type {
   AnimalTreatment,
   AnimalVaccine,
   AnimalVaccinePending,
+  AnimalVenda,
   AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
@@ -31,6 +32,7 @@ export default async function AnimaisPage() {
     birthRequestsRes,
     financeiroRes,
     despesasRes,
+    vendasRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -78,6 +80,13 @@ export default async function AnimaisPage() {
       .select("*")
       .order("expense_date", { ascending: false })
       .limit(2000),
+    // as vendas de lote cruas — peixe e ave, que não têm brinco (migration 088
+    // — sem ela a ficha segue igual, só sem essas linhas)
+    supabase
+      .from("animal_vendas")
+      .select("*")
+      .order("sale_date", { ascending: false })
+      .limit(2000),
   ]);
 
   return (
@@ -93,6 +102,7 @@ export default async function AnimaisPage() {
       birthRequests={(birthRequestsRes.data as AnimalBirthRequest[]) ?? []}
       financeiro={(financeiroRes.data as AnimalFinanceiroLinha[]) ?? []}
       despesas={(despesasRes.data as AnimalDespesa[]) ?? []}
+      vendas={(vendasRes.data as AnimalVenda[]) ?? []}
     />
   );
 }

@@ -1,15 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HandCoins, Plus, Receipt, Scale, Stethoscope, Wallet } from "lucide-react";
+import { HandCoins, Hash, Plus, Receipt, Scale, Stethoscope, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatBRL, formatDate, formatQty } from "@/lib/utils";
 import { SPECIES_META, SPECIES_OPTIONS, speciesOf } from "./animal-shared";
 import { AnimalDespesaDialog } from "./animal-despesa-dialog";
+import { AnimalVendaDialog } from "./animal-venda-dialog";
 import type {
   AnimalDespesa,
   AnimalFinanceiroLinha,
   AnimalSpecies,
+  AnimalVenda,
   AnimalWithInfo,
 } from "@/lib/types";
 
@@ -18,6 +20,8 @@ interface Props {
   linhas: AnimalFinanceiroLinha[];
   /** As despesas cruas, para abrir uma na correção a partir da ficha. */
   despesas: AnimalDespesa[];
+  /** As vendas de lote cruas (peixe, ave) — idem, para corrigir pela ficha. */
+  vendas?: AnimalVenda[];
   /** Rebanho inteiro (inclusive quem já saiu), para amarrar a despesa. */
   animals: AnimalWithInfo[];
 }
@@ -46,10 +50,12 @@ interface ResumoEspecie {
  * paga? O bovino está dando o que devia? Somar tudo junto esconde justamente
  * isso.
  */
-export function AnimalFinanceiroTab({ linhas, despesas, animals }: Props) {
+export function AnimalFinanceiroTab({ linhas, despesas, vendas = [], animals }: Props) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [editDespesa, setEditDespesa] = useState<AnimalDespesa | null>(null);
+  const [vendaOpen, setVendaOpen] = useState(false);
+  const [editVenda, setEditVenda] = useState<AnimalVenda | null>(null);
 
   /** Quantos animais de cada espécie ainda estão no curral. */
   const noRebanho = useMemo(() => {
@@ -119,9 +125,20 @@ export function AnimalFinanceiroTab({ linhas, despesas, animals }: Props) {
     [despesas]
   );
 
+  /**
+   * A venda de lote por trás da linha. A venda de um ANIMAL não entra aqui: ela
+   * se corrige desfazendo a baixa dele, na ficha do animal.
+   */
+  const vendaPorId = useMemo(() => new Map(vendas.map((v) => [v.id, v])), [vendas]);
+
   function abrirDespesa(d: AnimalDespesa | null) {
     setEditDespesa(d);
     setDespesaOpen(true);
+  }
+
+  function abrirVenda(v: AnimalVenda | null) {
+    setEditVenda(v);
+    setVendaOpen(true);
   }
 
   return (
@@ -151,10 +168,19 @@ export function AnimalFinanceiroTab({ linhas, despesas, animals }: Props) {
         </div>
       </div>
 
-      <Button className="w-full h-11" onClick={() => abrirDespesa(null)}>
-        <Plus className="w-4 h-4" />
-        Lançar despesa
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          className="h-11 bg-emerald-600 hover:bg-emerald-700"
+          onClick={() => abrirVenda(null)}
+        >
+          <Plus className="w-4 h-4" />
+          Lançar venda
+        </Button>
+        <Button className="h-11" onClick={() => abrirDespesa(null)}>
+          <Plus className="w-4 h-4" />
+          Lançar despesa
+        </Button>
+      </div>
 
       {/* Filtro por espécie — é o recorte que a ficha existe para dar */}
       <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -253,20 +279,25 @@ export function AnimalFinanceiroTab({ linhas, despesas, animals }: Props) {
 
         {doFiltro.length === 0 ? (
           <p className="text-xs text-slate-400 dark:text-slate-500 py-6 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
-            A venda entra sozinha quando você dá baixa no animal. A despesa é lançada
-            no botão acima.
+            A venda do animal com brinco entra sozinha quando você dá baixa nele. A
+            venda de lote (peixe, ave) e a despesa são lançadas nos botões acima.
           </p>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
             {doFiltro.map((l) => {
               const venda = l.kind === "venda";
               const despesa = despesaPorId.get(l.id) ?? null;
-              const editavel = l.kind === "despesa" && !!despesa;
+              const vendaLote = venda ? (vendaPorId.get(l.id) ?? null) : null;
+              const editavel = (l.kind === "despesa" && !!despesa) || !!vendaLote;
               const Icone = venda ? HandCoins : l.kind === "tratamento" ? Stethoscope : Receipt;
               return (
                 <div
                   key={`${l.kind}-${l.id}`}
-                  onClick={editavel ? () => abrirDespesa(despesa) : undefined}
+                  onClick={
+                    editavel
+                      ? () => (vendaLote ? abrirVenda(vendaLote) : abrirDespesa(despesa))
+                      : undefined
+                  }
                   role={editavel ? "button" : undefined}
                   tabIndex={editavel ? 0 : undefined}
                   onKeyDown={
@@ -274,7 +305,8 @@ export function AnimalFinanceiroTab({ linhas, despesas, animals }: Props) {
                       ? (e) => {
                           if (e.key !== "Enter" && e.key !== " ") return;
                           e.preventDefault();
-                          abrirDespesa(despesa);
+                          if (vendaLote) abrirVenda(vendaLote);
+                          else abrirDespesa(despesa);
                         }
                       : undefined
                   }
@@ -299,11 +331,19 @@ export function AnimalFinanceiroTab({ linhas, despesas, animals }: Props) {
                       {l.description}
                     </p>
                     {/* No peso, a conta por extenso: 400 kg × R$ 12,00 = R$ 4.800,00 */}
-                    {venda && l.sale_mode === "peso" && (
+                    {venda && l.sale_mode === "peso" && Number(l.weight_kg) > 0 && (
                       <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums truncate flex items-center gap-1">
                         <Scale className="w-3 h-3 flex-shrink-0" />
                         {formatQty(Number(l.weight_kg))} kg ×{" "}
                         {formatBRL(Number(l.price_per_kg))} = {formatBRL(Number(l.value))}
+                      </p>
+                    )}
+                    {/* Na unidade, a mesma conta por extenso: 200 un × R$ 22,00 */}
+                    {venda && l.sale_mode === "unidade" && Number(l.quantity) > 0 && (
+                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums truncate flex items-center gap-1">
+                        <Hash className="w-3 h-3 flex-shrink-0" />
+                        {formatQty(Number(l.quantity))} un ×{" "}
+                        {formatBRL(Number(l.price_per_unit))} = {formatBRL(Number(l.value))}
                       </p>
                     )}
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
@@ -334,9 +374,10 @@ export function AnimalFinanceiroTab({ linhas, despesas, animals }: Props) {
         <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-start gap-1.5">
           <Wallet className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
           <span>
-            A venda entra sozinha na baixa do animal e também vai para o módulo Contas.
-            A despesa e o tratamento ficam só aqui, na ficha. Toque numa despesa para
-            corrigir; o tratamento se corrige na ficha do animal.
+            A venda vai para o módulo Contas — tanto a do animal com brinco, na baixa
+            dele, quanto a de lote lançada aqui. A despesa e o tratamento ficam só na
+            ficha. Toque numa despesa ou numa venda de lote para corrigir; o tratamento
+            se corrige na ficha do animal, e a venda do animal, desfazendo a baixa.
           </span>
         </p>
       </div>
@@ -347,6 +388,13 @@ export function AnimalFinanceiroTab({ linhas, despesas, animals }: Props) {
         despesa={editDespesa}
         presetSpecies={filtro === "todos" ? null : filtro}
         animals={animals}
+      />
+
+      <AnimalVendaDialog
+        open={vendaOpen}
+        onClose={() => setVendaOpen(false)}
+        venda={editVenda}
+        presetSpecies={filtro === "todos" ? null : filtro}
       />
     </div>
   );

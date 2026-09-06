@@ -951,6 +951,44 @@ export interface AnimalDespesa {
 }
 
 /**
+ * VENDA DE LOTE (migration 088) — o peixe e a ave, que não têm brinco.
+ *
+ * A venda do módulo só sabia nascer de um bicho cadastrado, na baixa dele. Isso
+ * serve boi e cavalo; não serve quem vende "320 kg de tilápia a R$ 18,00" ou
+ * "200 frangos a R$ 22,00" sem nunca ter cadastrado bicho nenhum.
+ *
+ * O `sale_mode` decide quais campos valem: em `unidade`, quantity x
+ * price_per_unit; em `peso`, weight_kg x price_per_kg. O total fica gravado em
+ * `amount` — é o número que o dono conferiu no dia.
+ *
+ * Como a venda do animal, ela TAMBÉM vira lançamento no módulo Contas.
+ */
+export interface AnimalVenda {
+  id: string;
+  species: AnimalSpecies;
+  sale_date: string;
+  sale_mode: AnimalSaleMode;
+  /** Quantas cabeças — só vale em `unidade`. */
+  quantity: number;
+  /** Preço de cada uma — só vale em `unidade`. */
+  price_per_unit: number;
+  /** Quantos quilos — só vale em `peso`. */
+  weight_kg: number;
+  /** Preço do quilo — só vale em `peso`. */
+  price_per_kg: number;
+  /** O total da venda, sempre gravado. */
+  amount: number;
+  /** O que saiu: "TILÁPIA", "FRANGO CAIPIRA". */
+  description: string;
+  buyer: string | null;
+  notes: string | null;
+  /** Lançamento gerado no módulo Contas — some junto se a venda for apagada. */
+  transaction_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
  * Uma linha da ficha (view v_animal_financeiro): a venda de um animal, uma
  * despesa lançada ou um tratamento que teve custo. `value` é sempre positivo —
  * quem diz se entra ou sai é o `kind`.
@@ -971,6 +1009,9 @@ export interface AnimalFinanceiroLinha {
   sale_mode: AnimalSaleMode | null;
   weight_kg: number;
   price_per_kg: number;
+  /** Venda de lote por cabeça (migration 088): quantas e por quanto cada uma. */
+  quantity: number;
+  price_per_unit: number;
   notes: string | null;
   created_at: string;
 }

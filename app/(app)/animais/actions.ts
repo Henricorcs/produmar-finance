@@ -10,6 +10,7 @@ import type {
   AnimalSpecies,
 } from "@/lib/types";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
+import { localDateISO } from "@/lib/utils";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -1356,6 +1357,225 @@ export async function deleteAnimalDespesa(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("animal_despesas").delete().eq("id", id);
   if (error) return { error: despesaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VENDA DE LOTE (migration 088) — o peixe e a ave, que não têm brinco
+// ─────────────────────────────────────────────────────────────────────────────
+// A venda do módulo só sabia nascer da baixa de um bicho cadastrado. Quem cria
+// peixe vende "320 kg de tilápia a R$ 18,00" sem nunca ter cadastrado tilápia
+// nenhuma — e esse dinheiro não tinha por onde entrar.
+//
+// Como a venda do animal, esta TAMBÉM vira lançamento no módulo Contas: é
+// dinheiro que entrou de verdade. O id do lançamento fica guardado na linha,
+// para corrigir e apagar os dois juntos.
+
+function vendaError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.code === "42703")
+    return "Rode a migration 088 no Supabase para lançar venda de lote";
+  if (
+    error.code === "23514" ||
+    error.message.includes("animal_vendas_species_check") ||
+    error.message.includes("animal_vendas_mode_check")
+  )
+    return "Este tipo de animal ou esta forma de venda ainda não é aceita. Confira se as migrations 086, 087 e 088 rodaram.";
+  if (error.code === "42501" || /row.level security/i.test(error.message))
+    return "Seu usuário não tem permissão para lançar venda de animais.";
+  return error.code ? `${error.message} (código ${error.code})` : error.message;
+}
+
+export interface AnimalVendaInput {
+  species: AnimalSpecies;
+  sale_date?: string | null;
+  sale_mode: AnimalSaleMode;
+  /** Só em "unidade". */
+  quantity?: number | null;
+  price_per_unit?: number | null;
+  /** Só em "peso". */
+  weight_kg?: number | null;
+  price_per_kg?: number | null;
+  description: string;
+  buyer?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * A conta da venda, feita SEMPRE no servidor.
+ *
+ * O total que a tela mostra é conferência para quem digita; o que vale é este,
+ * refeito aqui — senão bastaria mexer no que sobe do navegador para gravar uma
+ * receita que não bate com a quantidade nem com o preço.
+ */
+function contaDaVenda(input: AnimalVendaInput) {
+  const noPeso = input.sale_mode === "peso";
+  const quantity = noPeso ? 0 : normWeight(input.quantity);
+  const pricePerUnit = noPeso ? 0 : money(input.price_per_unit);
+  const weight = noPeso ? normWeight(input.weight_kg) : 0;
+  const pricePerKg = noPeso ? money(input.price_per_kg) : 0;
+  const total = money(noPeso ? weight * pricePerKg : quantity * pricePerUnit);
+  return { noPeso, quantity, pricePerUnit, weight, pricePerKg, total };
+}
+
+function vendaInvalida(input: AnimalVendaInput): string | null {
+  if (!clean(input.description)) return "Escreva o que foi vendido";
+  const c = contaDaVenda(input);
+  if (c.noPeso) {
+    if (c.weight <= 0) return "Informe quantos quilos foram vendidos";
+    if (c.pricePerKg <= 0) return "Informe o valor do quilo";
+  } else {
+    if (c.quantity <= 0) return "Informe quantas unidades foram vendidas";
+    if (c.pricePerUnit <= 0) return "Informe o valor da unidade";
+  }
+  if (c.total <= 0) return "O total da venda ficou zerado — confira a conta";
+  return null;
+}
+
+function vendaRow(input: AnimalVendaInput) {
+  const c = contaDaVenda(input);
+  return {
+    species: SPECIES_LABEL[input.species] ? input.species : "bovino",
+    sale_date: input.sale_date?.trim() || undefined,
+    sale_mode: c.noPeso ? "peso" : "unidade",
+    quantity: c.quantity,
+    price_per_unit: c.pricePerUnit,
+    weight_kg: c.weight,
+    price_per_kg: c.pricePerKg,
+    amount: c.total,
+    description: clean(input.description),
+    buyer: clean(input.buyer),
+    notes: clean(input.notes),
+  };
+}
+
+/** A conta por extenso, para quem abrir Contas daqui a seis meses entender. */
+function vendaTextoDaConta(input: AnimalVendaInput): string {
+  const c = contaDaVenda(input);
+  const preco = (v: number) => v.toFixed(2).replace(".", ",");
+  return c.noPeso
+    ? ` (${c.weight} KG X ${preco(c.pricePerKg)}/KG)`
+    : ` (${c.quantity} UN X ${preco(c.pricePerUnit)})`;
+}
+
+/** O lançamento que a venda gera no módulo Contas. */
+async function lancamentoDaVenda(
+  supabase: ReturnType<typeof createClient>,
+  input: AnimalVendaInput,
+  userId: string
+) {
+  const { data: cat } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("name", "Venda de animais")
+    .eq("type", "entrada")
+    .maybeSingle<{ id: string }>();
+
+  const row = vendaRow(input);
+  const buyer = clean(input.buyer);
+  return {
+    type: "entrada" as const,
+    status: "recebido" as const,
+    amount: row.amount,
+    description: `VENDA ${row.description}${vendaTextoDaConta(input)}${buyer ? ` - ${buyer}` : ""}`,
+    due_date: row.sale_date ?? localDateISO(),
+    paid_date: row.sale_date ?? localDateISO(),
+    category_id: cat?.id ?? null,
+    notes: clean(input.notes),
+    created_by: userId,
+  };
+}
+
+export async function createAnimalVenda(input: AnimalVendaInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const falta = vendaInvalida(input);
+  if (falta) return { error: falta };
+
+  const { data: tx, error: txErr } = await supabase
+    .from("transactions")
+    .insert(await lancamentoDaVenda(supabase, input, user.id))
+    .select("id")
+    .single();
+  if (txErr || !tx) return { error: txErr?.message ?? "Erro ao lançar a venda no financeiro" };
+
+  const { error } = await supabase
+    .from("animal_vendas")
+    .insert({ ...vendaRow(input), transaction_id: tx.id, created_by: user.id });
+
+  if (error) {
+    // o lançamento não pode ficar órfão em Contas se a venda não entrou
+    await supabase.from("transactions").delete().eq("id", tx.id);
+    return { error: vendaError(error) };
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+export async function updateAnimalVenda(id: string, input: AnimalVendaInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const falta = vendaInvalida(input);
+  if (falta) return { error: falta };
+
+  const { data: atual } = await supabase
+    .from("animal_vendas")
+    .select("transaction_id")
+    .eq("id", id)
+    .maybeSingle<{ transaction_id: string | null }>();
+
+  const { error } = await supabase
+    .from("animal_vendas")
+    .update(vendaRow(input))
+    .eq("id", id);
+  if (error) return { error: vendaError(error) };
+
+  // Contas anda junto: corrigir o quilo aqui e deixar o valor velho lá seria
+  // pior do que não ter o lançamento nenhum.
+  const lancamento = await lancamentoDaVenda(supabase, input, user.id);
+  if (atual?.transaction_id) {
+    await supabase
+      .from("transactions")
+      .update(lancamento)
+      .eq("id", atual.transaction_id);
+  } else {
+    const { data: tx } = await supabase
+      .from("transactions")
+      .insert(lancamento)
+      .select("id")
+      .single();
+    if (tx) await supabase.from("animal_vendas").update({ transaction_id: tx.id }).eq("id", id);
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+export async function deleteAnimalVenda(id: string) {
+  const supabase = createClient();
+
+  const { data: atual } = await supabase
+    .from("animal_vendas")
+    .select("transaction_id")
+    .eq("id", id)
+    .maybeSingle<{ transaction_id: string | null }>();
+
+  const { error } = await supabase.from("animal_vendas").delete().eq("id", id);
+  if (error) return { error: vendaError(error) };
+
+  if (atual?.transaction_id) {
+    await supabase.from("transactions").delete().eq("id", atual.transaction_id);
+  }
+
   revalidate();
   return { ok: true };
 }

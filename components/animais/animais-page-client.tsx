@@ -74,6 +74,7 @@ import type {
   AnimalVaccination,
   AnimalVaccine,
   AnimalVaccinePending,
+  AnimalVenda,
   AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
@@ -102,6 +103,8 @@ interface Props {
   financeiro?: AnimalFinanceiroLinha[];
   /** As despesas cruas, para corrigir uma a partir da ficha. */
   despesas?: AnimalDespesa[];
+  /** As vendas de lote cruas (peixe, ave), para corrigir uma pela ficha. */
+  vendas?: AnimalVenda[];
 }
 
 type Tab = "rebanho" | "vacinacao" | "nascimentos" | "saidas" | "financeiro";
@@ -157,6 +160,7 @@ export function AnimaisPageClient({
   birthRequests,
   financeiro = [],
   despesas = [],
+  vendas = [],
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -1266,6 +1270,7 @@ export function AnimaisPageClient({
         <AnimalFinanceiroTab
           linhas={financeiro}
           despesas={despesas}
+          vendas={vendas}
           animals={allAnimals}
         />
       )}
