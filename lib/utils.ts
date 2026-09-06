@@ -16,143 +16,112 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// ── Digitar sem o sistema atrapalhar o teclado do celular ────────────────────
+// ── Digitar sem o sistema atrapalhar o teclado ───────────────────────────────
 //
-// Os campos são controlados pelo React: o que o estado devolve é o que fica
-// escrito. Se devolvermos um texto diferente do que está no campo (e "abc" →
-// "ABC" é diferente), o React reescreve o texto e o navegador manda o cursor
-// para o fim.
+// Quase todo campo de texto do app grava em CAIXA ALTA. O jeito óbvio de fazer
+// isso — devolver o texto já convertido no onChange — não funciona no celular.
+// O campo é controlado pelo React: se o estado volta diferente do que está
+// escrito ("abc" → "ABC" é diferente), o React reescreve o texto do campo. E
+// reescrever o texto por baixo do teclado quebra duas coisas:
 //
-// No celular tem uma segunda armadilha, pior: enquanto o corretor sugere a
-// palavra, o teclado mantém o trecho "em composição" — é dele que sai a dica
-// em cima do teclado. Qualquer mexida no texto ou no cursor nessa hora CANCELA
-// a composição. Era isso que fazia (1) tocar na dica não preencher nada e
-// (2) inserir/apagar letra no começo ou no meio de uma palavra já escrita não
-// colar, com a letra indo parar no fim.
+//   1. A DICA DO CORRETOR. Enquanto o corretor sugere, o teclado mantém a
+//      palavra "em composição" e é dela que sai a dica. Trocar o texto (ou o
+//      cursor) nessa hora cancela a composição: a dica aparece, mas tocar
+//      nela não preenche nada.
+//   2. MEXER NO MEIO DO TEXTO. Inserir ou apagar uma letra no começo/meio de
+//      uma palavra já escrita: o texto é reescrito, o cursor vai para o fim e
+//      a letra sai no lugar errado — ou nem entra.
 //
-// A regra passa a ser:
-//   1. Corretor montando a palavra → não se toca em nada.
-//   2. Terminou a composição → o texto sobe de uma vez, avisando o React.
-//   3. Fora da composição → a caixa alta é escrita direto no campo, na hora,
-//      já com o cursor no lugar. O React encontra o texto do jeito que espera
-//      e não precisa reescrever nada.
+// A regra agora é simples: ENQUANTO O CAMPO ESTÁ EM USO, o sistema não toca
+// nele. Nada de reescrever texto, nada de mexer no cursor. O campo se comporta
+// como um campo comum de navegador, e o teclado faz o que sabe fazer.
+//
+// A caixa alta continua garantida, só que na hora certa:
+//   • na tela, quem mostra em caixa alta enquanto se digita é o CSS
+//     (text-transform) — quem digita não vê diferença nenhuma;
+//   • no dado, a conversão de verdade acontece ao SAIR do campo (ou ao apertar
+//     Enter, que envia o formulário sem sair) — ninguém está digitando nesse
+//     momento, então reescrever ali não atrapalha ninguém.
 
 type CampoTexto = HTMLInputElement | HTMLTextAreaElement;
 
-/** Troca o texto do campo mantendo o cursor onde estava. */
-function escreverMantendoCursor(el: CampoTexto, texto: string): void {
-  if (el.value === texto) return;
-  let start: number | null = null;
-  let end: number | null = null;
-  try {
-    start = el.selectionStart;
-    end = el.selectionEnd;
-  } catch {
-    /* campos number/date não expõem seleção */
-  }
-  el.value = texto;
-  if (start === null) return;
-  try {
-    el.setSelectionRange(start, end ?? start);
-  } catch {
-    /* idem */
-  }
-}
-
 /**
- * Escreve no campo de um jeito que o React ENXERGUE a mudança.
+ * Converte o texto do campo de verdade e avisa o React.
  *
- * O React guarda por conta própria o último valor de cada campo; um
+ * O React guarda por conta própria o último texto de cada campo; um
  * `el.value = ...` normal atualiza esse registro junto e o onChange nem
  * dispara. Passando pelo setter original do elemento, o registro fica para
  * trás e o `input` que disparamos chega ao onChange como digitação de verdade.
  */
-function escreverAvisandoReact(el: CampoTexto, texto: string): void {
+function converterDeVez(el: CampoTexto, converter: (texto: string) => string): void {
+  const alvo = converter(el.value);
+  if (alvo === el.value) return;
+
   const proto =
     typeof HTMLTextAreaElement !== "undefined" && el instanceof HTMLTextAreaElement
       ? HTMLTextAreaElement.prototype
       : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-  let start: number | null = null;
-  let end: number | null = null;
-  try {
-    start = el.selectionStart;
-    end = el.selectionEnd;
-  } catch {
-    /* campos number/date não expõem seleção */
-  }
-  if (setter) setter.call(el, texto);
-  else el.value = texto;
-  if (start !== null) {
-    try {
-      el.setSelectionRange(start, end ?? start);
-    } catch {
-      /* idem */
-    }
-  }
+  if (setter) setter.call(el, alvo);
+  else el.value = alvo;
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-// Campos que estão esperando o corretor terminar (um aviso por composição).
-const esperandoCorretor = new WeakSet<CampoTexto>();
+// Campos que já estão com a conversão agendada (uma vez por passagem no campo).
+const campoAgendado = new WeakSet<CampoTexto>();
 
-function converterQuandoOCorretorTerminar(
-  el: CampoTexto,
-  converter: (texto: string) => string,
-  caixaCss: "uppercase" | "lowercase"
-): void {
-  if (esperandoCorretor.has(el)) return;
-  esperandoCorretor.add(el);
-  // Enquanto a palavra está sendo montada, o texto fica exatamente como o
-  // teclado escreveu — senão a dica do corretor morre. Para o campo não
-  // parecer que desobedeceu, quem mostra a caixa certa nesse intervalo é o
-  // CSS; ele sai assim que o texto é convertido de verdade, logo abaixo.
-  el.style.textTransform = caixaCss;
+function agendarConversao(el: CampoTexto, converter: (texto: string) => string): void {
+  if (campoAgendado.has(el)) return;
+  campoAgendado.add(el);
+
+  // Enter envia o formulário sem tirar o foco do campo — converte antes que o
+  // envio leia o texto.
+  const aoTeclar = (ev: Event) => {
+    if ((ev as KeyboardEvent).key === "Enter") converterDeVez(el, converter);
+  };
+  el.addEventListener("keydown", aoTeclar);
   el.addEventListener(
-    "compositionend",
+    "blur",
     () => {
-      esperandoCorretor.delete(el);
-      el.style.textTransform = "";
-      const alvo = converter(el.value);
-      if (alvo !== el.value) escreverAvisandoReact(el, alvo);
+      el.removeEventListener("keydown", aoTeclar);
+      // Converte ANTES de desagendar: a conversão dispara um onChange, e o
+      // campo precisa continuar marcado como agendado para esse onChange não
+      // pendurar um novo par de listeners num campo que já perdeu o foco.
+      converterDeVez(el, converter);
+      campoAgendado.delete(el);
     },
     { once: true }
   );
 }
 
-function converterSemAtrapalhar(
+function digitarSemAtrapalhar(
   e: ChangeEvent<CampoTexto>,
   converter: (texto: string) => string,
   caixaCss: "uppercase" | "lowercase"
 ): string {
   const el = e.target;
-
-  // Corretor do celular (e acento morto do teclado ABNT) montando a palavra:
-  // devolve o texto como está e deixa para converter quando ele terminar.
-  if ((e.nativeEvent as InputEvent | undefined)?.isComposing) {
-    converterQuandoOCorretorTerminar(el, converter, caixaCss);
-    return el.value;
-  }
-
-  const alvo = converter(el.value);
-  escreverMantendoCursor(el, alvo);
-  return alvo;
+  // Só a aparência muda enquanto se digita — o texto continua exatamente como
+  // o teclado escreveu. Quem pinta a caixa é o CSS de globals.css, pelo
+  // data-caixa (que também sai do caminho quando o campo está vazio, para não
+  // virar o placeholder junto).
+  if (el.dataset.caixa !== caixaCss) el.dataset.caixa = caixaCss;
+  agendarConversao(el, converter);
+  return el.value;
 }
 
 /**
- * CAIXA ALTA no que foi digitado, sem jogar o cursor para o fim e sem brigar
- * com o corretor do celular.
+ * CAIXA ALTA no que foi digitado, sem atrapalhar quem está digitando.
  *
  * Use em todo `onChange` que sobe texto para caixa alta:
  *   onChange={(e) => setNome(upperKeepingCaret(e))}
  */
 export function upperKeepingCaret(e: ChangeEvent<CampoTexto>): string {
-  return converterSemAtrapalhar(e, (texto) => texto.toUpperCase(), "uppercase");
+  return digitarSemAtrapalhar(e, (texto) => texto.toUpperCase(), "uppercase");
 }
 
 /** Igual ao [upperKeepingCaret], mas para os campos que gravam em minúsculas. */
 export function lowerKeepingCaret(e: ChangeEvent<CampoTexto>): string {
-  return converterSemAtrapalhar(e, (texto) => texto.toLowerCase(), "lowercase");
+  return digitarSemAtrapalhar(e, (texto) => texto.toLowerCase(), "lowercase");
 }
 
 export function formatBRL(value: number): string {

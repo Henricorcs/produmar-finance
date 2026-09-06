@@ -63,6 +63,22 @@
   }
 }
 
+/* Campos que gravam em caixa alta (ou baixa) — ver upperKeepingCaret em
+   lib/utils.ts. Enquanto se digita, o texto fica exatamente como o teclado
+   escreveu: mexer nele por baixo do teclado mata a dica do corretor e joga o
+   cursor para o fim. Quem mostra a caixa certa nesse intervalo é esta regra; a
+   conversão de verdade acontece ao sair do campo. Com o campo vazio ela sai do
+   caminho, para não virar o texto do placeholder junto. */
+[data-caixa="uppercase"] {
+  text-transform: uppercase;
+}
+[data-caixa="lowercase"] {
+  text-transform: lowercase;
+}
+[data-caixa]:placeholder-shown {
+  text-transform: none;
+}
+
 /* Scrollbar refinada */
 ::-webkit-scrollbar {
   width: 10px;
