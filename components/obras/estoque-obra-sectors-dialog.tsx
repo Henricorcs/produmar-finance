@@ -233,7 +233,7 @@ export function SupplyObraSectorsDialog({
                     value={name}
                     onChange={(e) => setName(upperKeepingCaret(e))}
                     placeholder="ex: entrada, galpão 2, área externa"
-                    className="uppercase placeholder:normal-case placeholder:lowercase"
+                    autoCapitalize="characters"
                     autoComplete="off"
                   />
                   <Button type="submit" disabled={isPending || !name.trim()}>

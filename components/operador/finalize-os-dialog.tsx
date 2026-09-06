@@ -731,7 +731,8 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
                       value={destination}
                       onChange={(e) => setDestination(e.target.value)}
                       placeholder="ex: OBRA CENTRO"
-                      className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
+                      autoCapitalize="characters"
+                      className="h-14 text-lg"
                       autoComplete="off"
                     />
                   </div>
@@ -747,7 +748,8 @@ export function FinalizeOSDialog({ order, open, onClose, onFinalized, onPauseIns
                     value={receivedBy}
                     onChange={(e) => setReceivedBy(e.target.value)}
                     placeholder="ex: JOÃO DA SILVA"
-                    className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
+                    autoCapitalize="characters"
+                    className="h-14 text-lg"
                     autoComplete="off"
                   />
                 </div>

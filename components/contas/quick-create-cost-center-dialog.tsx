@@ -77,8 +77,8 @@ export function QuickCreateCostCenterDialog({ open, onClose, onCreated }: Props)
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="ex: provedor de internet"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
+              data-caixa="uppercase"
               required
             />
           </div>
@@ -92,8 +92,8 @@ export function QuickCreateCostCenterDialog({ open, onClose, onCreated }: Props)
               onChange={(e) => setDescription(e.target.value)}
               placeholder="opcional"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
+              data-caixa="uppercase"
             />
           </div>
 

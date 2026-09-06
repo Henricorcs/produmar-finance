@@ -165,7 +165,7 @@ export function AdjustmentDialog({ open, onClose, products }: Props) {
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="ex: saldo inicial, perda, contagem"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>

@@ -150,7 +150,7 @@ export function ObraItemDialog({ open, onClose, obraId, item }: Props) {
               value={product}
               onChange={(e) => setProduct(upperKeepingCaret(e))}
               placeholder="ex: tijolo, cimento, diária - gilvan"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>

@@ -181,7 +181,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: casa da frente, sala 02"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -194,7 +195,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
                 value={street}
                 onChange={(e) => setStreet(upperKeepingCaret(e))}
                 placeholder="ex: avenida antonio pereira aragão"
-                className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -218,7 +220,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
               value={complement}
               onChange={(e) => setComplement(upperKeepingCaret(e))}
               placeholder="opcional — apto, bloco, fundos"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -230,7 +233,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
               value={district}
               onChange={(e) => setDistrict(upperKeepingCaret(e))}
               placeholder="ex: centro"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -242,7 +246,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
                 id="im_cidade"
                 value={city}
                 onChange={(e) => setCity(upperKeepingCaret(e))}
-                className="h-11 uppercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -253,7 +258,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
                 value={state}
                 onChange={(e) => setState(upperKeepingCaret(e))}
                 maxLength={2}
-                className="h-11 uppercase text-center sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 text-center sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -281,7 +287,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
                 value={registration}
                 onChange={(e) => setRegistration(upperKeepingCaret(e))}
                 placeholder="opcional"
-                className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -292,7 +299,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
                 value={iptu}
                 onChange={(e) => setIptu(upperKeepingCaret(e))}
                 placeholder="opcional"
-                className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -303,7 +311,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
                 value={water}
                 onChange={(e) => setWater(upperKeepingCaret(e))}
                 placeholder="opcional"
-                className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -314,7 +323,8 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
                 value={power}
                 onChange={(e) => setPower(upperKeepingCaret(e))}
                 placeholder="opcional"
-                className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -328,7 +338,7 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

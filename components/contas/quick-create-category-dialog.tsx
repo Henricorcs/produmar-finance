@@ -90,8 +90,8 @@ export function QuickCreateCategoryDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="ex: aluguel"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
+              data-caixa="uppercase"
               required
             />
           </div>

@@ -337,7 +337,8 @@ export function ServicoDialog({
               value={contratante}
               onChange={(e) => setContratante(upperKeepingCaret(e))}
               placeholder="ex: prefeitura, seu josé, obra da fazenda"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -393,7 +394,8 @@ export function ServicoDialog({
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: 3 viagens de areia"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -407,7 +409,8 @@ export function ServicoDialog({
                 value={origin}
                 onChange={(e) => setOrigin(upperKeepingCaret(e))}
                 placeholder="opcional"
-                className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -418,7 +421,8 @@ export function ServicoDialog({
                 value={destination}
                 onChange={(e) => setDestination(upperKeepingCaret(e))}
                 placeholder="opcional"
-                className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -431,7 +435,8 @@ export function ServicoDialog({
               value={operator}
               onChange={(e) => setOperator(upperKeepingCaret(e))}
               placeholder="opcional, quem estava na máquina"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -502,7 +507,7 @@ export function ServicoDialog({
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

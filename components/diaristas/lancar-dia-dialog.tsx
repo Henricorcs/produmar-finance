@@ -182,7 +182,8 @@ export function LancarDiaDialog({
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: ajudou a abrir a vala e carregou o cano"
-              className="uppercase placeholder:normal-case placeholder:lowercase min-h-[92px]"
+              autoCapitalize="characters"
+              className="min-h-[92px]"
               rows={3}
             />
           </div>

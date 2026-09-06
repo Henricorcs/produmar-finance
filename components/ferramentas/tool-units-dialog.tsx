@@ -137,6 +137,7 @@ export function ToolUnitsDialog({ open, onClose, units }: Props) {
               <Input
                 value={name}
                 onChange={(e) => setName(lowerKeepingCaret(e))}
+                autoCapitalize="none"
                 placeholder="nome (ex: rolo, saco)"
                 className="h-9 text-sm"
                 autoFocus

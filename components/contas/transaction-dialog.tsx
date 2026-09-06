@@ -208,8 +208,8 @@ export function TransactionDialog({
                 name="description"
                 defaultValue={transaction?.description ?? ""}
                 placeholder="ex: conta de energia"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
                 autoCapitalize="characters"
+                data-caixa="uppercase"
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}
@@ -356,8 +356,8 @@ export function TransactionDialog({
                 defaultValue={transaction?.notes ?? ""}
                 placeholder="observações opcionais..."
                 rows={2}
-                className="uppercase placeholder:normal-case placeholder:lowercase"
                 autoCapitalize="characters"
+                data-caixa="uppercase"
               />
             </div>
 

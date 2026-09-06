@@ -154,7 +154,8 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
               value={calfTag}
               onChange={(e) => setCalfTag(upperKeepingCaret(e))}
               placeholder="ex: 1046"
-              className="h-11 sm:h-10 uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
             <p className="text-[11px] text-slate-400 dark:text-slate-500">

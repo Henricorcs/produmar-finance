@@ -190,7 +190,9 @@ export function StartOSDialog({ order, open, onClose, onStarted, lastKm }: Props
                 value={origin}
                 onChange={(e) => setOrigin(e.target.value)}
                 placeholder="ex: PEDREIRA NORTE"
-                className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
+                data-caixa="uppercase"
+                className="h-14 text-lg"
                 autoComplete="off"
               />
             </div>

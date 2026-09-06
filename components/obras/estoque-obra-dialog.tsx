@@ -119,7 +119,7 @@ export function SupplyObraDialog({ open, onClose, obra, locais = [], onCreated }
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: rede rua das flores"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -146,7 +146,7 @@ export function SupplyObraDialog({ open, onClose, obra, locais = [], onCreated }
                   value={novoLocal}
                   onChange={(e) => setNovoLocal(upperKeepingCaret(e))}
                   placeholder="ex: fazenda 03"
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                   autoComplete="off"
                   autoFocus
                   onKeyDown={(e) => {
@@ -186,7 +186,7 @@ export function SupplyObraDialog({ open, onClose, obra, locais = [], onCreated }
               value={client}
               onChange={(e) => setClient(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -198,7 +198,7 @@ export function SupplyObraDialog({ open, onClose, obra, locais = [], onCreated }
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               rows={2}
             />
           </div>

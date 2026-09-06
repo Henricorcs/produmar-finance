@@ -208,7 +208,7 @@ export function ItemDialog({
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: cano 50mm, emenda ótica, cola pvc"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -281,7 +281,7 @@ export function ItemDialog({
                 value={code}
                 onChange={(e) => setCode(upperKeepingCaret(e))}
                 placeholder="opcional"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 autoComplete="off"
               />
             </div>
@@ -292,7 +292,7 @@ export function ItemDialog({
                 value={location}
                 onChange={(e) => setLocation(upperKeepingCaret(e))}
                 placeholder="prateleira 3"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 autoComplete="off"
               />
             </div>

@@ -139,7 +139,7 @@ export function LocaisDialog({ open, onClose, locais, obras }: Props) {
                 value={name}
                 onChange={(e) => setName(upperKeepingCaret(e))}
                 placeholder="ex: fazenda 01, sítio, chácara"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 autoComplete="off"
               />
               <Button type="submit" disabled={isPending || !name.trim()}>

@@ -114,7 +114,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: reforma galpão, obra sítio boa vista"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -142,7 +142,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
               value={location}
               onChange={(e) => setLocation(upperKeepingCaret(e))}
               placeholder="endereço / referência (opcional)"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -207,7 +207,7 @@ export function ObraDialog({ open, onClose, obra, contacts }: Props) {
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="detalhes da obra..."
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               rows={2}
             />
           </div>

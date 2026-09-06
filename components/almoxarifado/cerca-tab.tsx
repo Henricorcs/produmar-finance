@@ -677,7 +677,8 @@ export function FenceRunDialog({
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="h-12 uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
+              className="h-12"
               autoComplete="off"
             />
           </div>

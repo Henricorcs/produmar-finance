@@ -482,7 +482,8 @@ export function TecnicoClient({
                 value={destination}
                 onChange={(e) => setDestination(upperKeepingCaret(e))}
                 placeholder="opcional — ex: piquete de cima, poste da esquina"
-                className="h-12 uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-12"
                 autoComplete="off"
               />
             </div>
@@ -664,7 +665,8 @@ export function TecnicoClient({
                 value={notes}
                 onChange={(e) => setNotes(upperKeepingCaret(e))}
                 placeholder="opcional"
-                className="h-12 uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-12"
                 autoComplete="off"
               />
             </div>
@@ -815,7 +817,8 @@ function MaterialLinha({
                 value={linha.itemText}
                 onChange={(e) => onChange({ itemText: upperKeepingCaret(e) })}
                 placeholder="ex: cano 50mm"
-                className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-12 text-lg placeholder:text-base"
                 autoComplete="off"
               />
               <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">

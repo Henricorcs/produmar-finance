@@ -64,19 +64,28 @@
 }
 
 /* Campos que gravam em caixa alta (ou baixa) — ver upperKeepingCaret em
-   lib/utils.ts. Enquanto se digita, o texto fica exatamente como o teclado
-   escreveu: mexer nele por baixo do teclado mata a dica do corretor e joga o
-   cursor para o fim. Quem mostra a caixa certa nesse intervalo é esta regra; a
-   conversão de verdade acontece ao sair do campo. Com o campo vazio ela sai do
-   caminho, para não virar o texto do placeholder junto. */
-[data-caixa="uppercase"] {
-  text-transform: uppercase;
-}
-[data-caixa="lowercase"] {
-  text-transform: lowercase;
-}
-[data-caixa]:placeholder-shown {
-  text-transform: none;
+   lib/utils.ts. Enquanto se digita, o texto fica como o teclado escreveu; a
+   conversão de verdade acontece ao sair do campo. Quem mostra a caixa certa
+   nesse intervalo é esta regra.
+                                                                              
+   SÓ NO COMPUTADOR (pointer: fine), e isso é o ponto: text-transform num campo
+   de texto quebra o teclado do celular. No iPhone, o corretor guarda a palavra
+   como ela foi digitada e o campo mostra outra coisa — tocar na dica não
+   substitui a palavra (entra só um espaço), e o cursor erra o lugar ao tentar
+   apagar/inserir letra no meio do texto. No celular quem deixa a letra maiúscula
+   é o próprio teclado, pelo autoCapitalize="characters" dos campos.
+
+   Com o campo vazio a regra sai do caminho, para não virar o placeholder. */
+@media (pointer: fine) {
+  [data-caixa="uppercase"] {
+    text-transform: uppercase;
+  }
+  [data-caixa="lowercase"] {
+    text-transform: lowercase;
+  }
+  [data-caixa]:placeholder-shown {
+    text-transform: none;
+  }
 }
 
 /* Scrollbar refinada */

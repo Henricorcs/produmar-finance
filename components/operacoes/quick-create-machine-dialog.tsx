@@ -55,7 +55,6 @@ export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: caminhão 01"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
               required
             />
@@ -68,7 +67,7 @@ export function QuickCreateMachineDialog({ open, onClose, onCreated }: Props) {
                 value={plate}
                 onChange={(e) => setPlate(upperKeepingCaret(e))}
                 placeholder="ABC-1234"
-                className="uppercase placeholder:normal-case"
+                autoCapitalize="characters"
               />
             </div>
             <div className="space-y-1.5">

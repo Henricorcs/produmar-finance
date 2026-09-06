@@ -114,7 +114,7 @@ export function WriteoffDialog({ open, onClose, tool }: Props) {
               value={reason}
               onChange={(e) => setReason(upperKeepingCaret(e))}
               placeholder="ou descreva o motivo (opcional)"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>

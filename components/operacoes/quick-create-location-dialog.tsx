@@ -50,7 +50,6 @@ export function QuickCreateLocationDialog({ open, onClose, onCreated }: Props) {
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: pedreira norte"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
               required
             />
@@ -62,7 +61,6 @@ export function QuickCreateLocationDialog({ open, onClose, onCreated }: Props) {
               value={address}
               onChange={(e) => setAddress(upperKeepingCaret(e))}
               placeholder="rua / km / referência"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
             />
           </div>

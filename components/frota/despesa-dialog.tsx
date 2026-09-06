@@ -219,7 +219,8 @@ export function DespesaDialog({
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: 100 litros de diesel"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -272,7 +273,8 @@ export function DespesaDialog({
               value={category}
               onChange={(e) => setCategory(upperKeepingCaret(e))}
               placeholder="opcional — é o que agrupa o relatório"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -320,7 +322,8 @@ export function DespesaDialog({
               value={supplier}
               onChange={(e) => setSupplier(upperKeepingCaret(e))}
               placeholder="opcional, o posto, a oficina, a loja"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -333,7 +336,7 @@ export function DespesaDialog({
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

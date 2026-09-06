@@ -258,7 +258,8 @@ export function TecnicoCercaClient({ obras, sectors, runs, meId }: Props) {
                 value={description}
                 onChange={(e) => setDescription(upperKeepingCaret(e))}
                 placeholder="opcional — ex: esticou 5 fios"
-                className="h-12 uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-12"
                 autoComplete="off"
               />
             </div>

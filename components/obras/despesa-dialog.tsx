@@ -197,7 +197,7 @@ export function DespesaDialog({
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: 10 sacos de cimento"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -251,7 +251,7 @@ export function DespesaDialog({
               value={category}
               onChange={(e) => setCategory(upperKeepingCaret(e))}
               placeholder="ou escreva a sua"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -263,7 +263,7 @@ export function DespesaDialog({
               value={person}
               onChange={(e) => setPerson(upperKeepingCaret(e))}
               placeholder="loja, fornecedor ou pessoa"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -284,7 +284,7 @@ export function DespesaDialog({
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               rows={2}
             />
           </div>

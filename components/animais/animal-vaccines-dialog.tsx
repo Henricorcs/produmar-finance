@@ -292,6 +292,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines, species = "bovin
                   id="vac_name"
                   value={name}
                   onChange={(e) => setName(lowerKeepingCaret(e))}
+                  autoCapitalize="none"
                   placeholder={VACCINE_PLACEHOLDER[formSpecies]}
                   className="h-11 sm:h-10"
                   autoFocus
@@ -405,7 +406,8 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines, species = "bovin
                   value={brand}
                   onChange={(e) => setBrand(upperKeepingCaret(e))}
                   placeholder="ex: zoetis, ourofino"
-                  className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                  autoCapitalize="characters"
+                  className="h-11 sm:h-10"
                 />
               </div>
 

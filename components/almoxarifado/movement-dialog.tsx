@@ -273,7 +273,7 @@ export function MovementDialog({
               value={person}
               onChange={(e) => setPerson(upperKeepingCaret(e))}
               placeholder={isSaida ? "nome de quem retirou" : "opcional"}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -326,7 +326,7 @@ export function MovementDialog({
                   value={destination}
                   onChange={(e) => setDestination(upperKeepingCaret(e))}
                   placeholder="onde ou em que foi aplicado (opcional)"
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                   autoComplete="off"
                 />
               </div>

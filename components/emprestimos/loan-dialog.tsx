@@ -202,8 +202,8 @@ export function LoanDialog({ open, onClose, loan }: Props) {
               name="borrower_name"
               defaultValue={loan?.borrower_name ?? ""}
               placeholder="nome de quem pegou emprestado"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
+              data-caixa="uppercase"
               required
             />
           </div>
@@ -416,8 +416,8 @@ export function LoanDialog({ open, onClose, loan }: Props) {
               defaultValue={loan?.notes ?? ""}
               placeholder="observações opcionais..."
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
+              data-caixa="uppercase"
             />
           </div>
 

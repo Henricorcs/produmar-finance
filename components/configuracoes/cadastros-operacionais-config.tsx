@@ -186,7 +186,9 @@ function MachinesList({ machines }: { machines: Machine[] }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="nome (ex: caminhão 01)"
-            className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+            autoCapitalize="characters"
+            data-caixa="uppercase"
+            className="h-9 text-sm"
             required
           />
           <div className="grid grid-cols-2 gap-2">
@@ -194,7 +196,9 @@ function MachinesList({ machines }: { machines: Machine[] }) {
               value={plate}
               onChange={(e) => setPlate(e.target.value)}
               placeholder="placa"
-              className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
+              data-caixa="uppercase"
+              className="h-9 text-sm"
             />
             <select
               value={category}
@@ -341,7 +345,9 @@ function ProductsList({ products }: { products: Product[] }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="nome (ex: areia, brita 1)"
-            className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+            autoCapitalize="characters"
+            data-caixa="uppercase"
+            className="h-9 text-sm"
             required
           />
           <div className="grid grid-cols-2 gap-2">
@@ -475,14 +481,18 @@ function LocationsList({ locations }: { locations: PickupLocation[] }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="nome (ex: pedreira norte)"
-            className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+            autoCapitalize="characters"
+            data-caixa="uppercase"
+            className="h-9 text-sm"
             required
           />
           <Input
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             placeholder="endereço (opcional)"
-            className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+            autoCapitalize="characters"
+            data-caixa="uppercase"
+            className="h-9 text-sm"
           />
           <div className="grid grid-cols-2 gap-2">
             <Input
@@ -594,7 +604,9 @@ function ContactsList({ contacts }: { contacts: Contact[] }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="nome ou razão social"
-            className="h-9 text-sm uppercase placeholder:normal-case placeholder:lowercase"
+            autoCapitalize="characters"
+            data-caixa="uppercase"
+            className="h-9 text-sm"
             required
           />
           <div className="grid grid-cols-2 gap-2">

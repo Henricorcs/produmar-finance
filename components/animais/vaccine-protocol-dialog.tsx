@@ -598,7 +598,8 @@ export function VaccineProtocolDialog({
                                 patchItem(v.id, { brand: upperKeepingCaret(e) })
                               }
                               placeholder="ex: zoetis"
-                              className="h-11 text-base uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
+                              autoCapitalize="characters"
+                              className="h-11 text-base sm:h-9 sm:text-sm"
                               autoComplete="off"
                             />
                           </div>
@@ -618,7 +619,7 @@ export function VaccineProtocolDialog({
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="lote, quem aplicou..."
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               rows={2}
             />
           </div>

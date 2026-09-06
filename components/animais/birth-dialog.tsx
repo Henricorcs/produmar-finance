@@ -240,7 +240,8 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
                 value={calfTag}
                 onChange={(e) => setCalfTag(upperKeepingCaret(e))}
                 placeholder="ex: 1046"
-                className="h-11 sm:h-10 uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>

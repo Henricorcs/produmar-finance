@@ -1051,7 +1051,6 @@ export function ServiceOrderDialog({
                     value={clientName}
                     onChange={(e) => setClientName(upperKeepingCaret(e))}
                     placeholder="ex: construtora silva"
-                    className="uppercase placeholder:normal-case placeholder:lowercase"
                     autoCapitalize="characters"
                     required={isClient}
                   />
@@ -1127,7 +1126,7 @@ export function ServiceOrderDialog({
                     onChange={(e) => setServiceDescription(upperKeepingCaret(e))}
                     placeholder="ex: comprar 1l de diesel no posto e levar para a oficina"
                     rows={2}
-                    className="uppercase placeholder:normal-case placeholder:lowercase"
+                    autoCapitalize="characters"
                   />
                 </div>
 
@@ -1149,7 +1148,7 @@ export function ServiceOrderDialog({
                             value={m.name}
                             onChange={(e) => patchMaterial(m.key, { name: upperKeepingCaret(e) })}
                             placeholder="ex: cano 50mm"
-                            className="uppercase placeholder:normal-case placeholder:lowercase"
+                            autoCapitalize="characters"
                             autoComplete="off"
                           />
                         ) : (
@@ -1365,7 +1364,6 @@ export function ServiceOrderDialog({
                     value={deliveryAddress}
                     onChange={(e) => setDeliveryAddress(upperKeepingCaret(e))}
                     placeholder="endereço de entrega"
-                    className="uppercase placeholder:normal-case placeholder:lowercase"
                     autoCapitalize="characters"
                   />
                 </div>
@@ -1378,7 +1376,6 @@ export function ServiceOrderDialog({
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(upperKeepingCaret(e))}
                   placeholder="onde o serviço foi feito"
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
                   autoCapitalize="characters"
                 />
               </div>
@@ -1394,7 +1391,7 @@ export function ServiceOrderDialog({
                   onChange={(e) => setServiceDescription(upperKeepingCaret(e))}
                   placeholder="ex: terraplanagem do terreno"
                   rows={2}
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                 />
               </div>
             )}
@@ -1855,7 +1852,7 @@ export function ServiceOrderDialog({
                   value={receivedBy}
                   onChange={(e) => setReceivedBy(upperKeepingCaret(e))}
                   placeholder="nome de quem recebeu"
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                   autoComplete="off"
                 />
               </div>
@@ -1874,7 +1871,7 @@ export function ServiceOrderDialog({
                   onChange={(e) => setNotes(upperKeepingCaret(e))}
                   placeholder={type === "frete" ? "ex: FRETE DE AREIA PARA OBRA..." : "ex: FRETE, ENTREGA..."}
                   rows={2}
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                 />
               </div>
             )}

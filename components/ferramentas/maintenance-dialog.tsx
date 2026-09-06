@@ -121,7 +121,7 @@ export function OpenMaintenanceDialog({ open, onClose, availableTools, presetToo
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: troca de rolamento, afiação"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -133,7 +133,7 @@ export function OpenMaintenanceDialog({ open, onClose, availableTools, presetToo
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="ex: oficina do João (opcional)"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -246,7 +246,7 @@ export function FinishMaintenanceDialog({ open, onClose, target }: FinishProps) 
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>

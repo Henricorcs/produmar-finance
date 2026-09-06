@@ -301,7 +301,7 @@ export function AnimalExitDialog({ open, onClose, animal }: Props) {
                   value={buyer}
                   onChange={(e) => setBuyer(upperKeepingCaret(e))}
                   placeholder="opcional, quem levou o animal"
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                   autoComplete="off"
                 />
               </div>
@@ -316,7 +316,7 @@ export function AnimalExitDialog({ open, onClose, animal }: Props) {
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder={isSale ? "opcional" : "ex: picada de cobra"}
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

@@ -274,7 +274,8 @@ export function ContratoDialog({
               value={tenantName}
               onChange={(e) => setTenantName(upperKeepingCaret(e))}
               placeholder="nome completo"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -299,7 +300,8 @@ export function ContratoDialog({
                 value={tenantRg}
                 onChange={(e) => setTenantRg(upperKeepingCaret(e))}
                 placeholder="com o órgão"
-                className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+                autoCapitalize="characters"
+                className="h-11 sm:h-10"
                 autoComplete="off"
               />
             </div>
@@ -312,7 +314,8 @@ export function ContratoDialog({
               value={tenantBirthplace}
               onChange={(e) => setTenantBirthplace(upperKeepingCaret(e))}
               placeholder="ex: vargem grande/ma"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -345,7 +348,8 @@ export function ContratoDialog({
               value={tenantProfession}
               onChange={(e) => setTenantProfession(upperKeepingCaret(e))}
               placeholder="ex: mecânico"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -358,7 +362,7 @@ export function ContratoDialog({
               onChange={(e) => setTenantAddress(upperKeepingCaret(e))}
               placeholder="rua, nº, bairro, cidade/uf, cep"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               É o endereço que entra na qualificação do locatário, no contrato.
@@ -521,7 +525,8 @@ export function ContratoDialog({
               value={guarantorName}
               onChange={(e) => setGuarantorName(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -559,7 +564,7 @@ export function ContratoDialog({
                   value={guarantorAddress}
                   onChange={(e) => setGuarantorAddress(upperKeepingCaret(e))}
                   rows={2}
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                 />
               </div>
             </>
@@ -573,7 +578,7 @@ export function ContratoDialog({
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

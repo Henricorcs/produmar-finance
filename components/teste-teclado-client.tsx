@@ -8,15 +8,15 @@ import { upperKeepingCaret } from "@/lib/utils";
 /**
  * TELA TEMPORÁRIA DE DIAGNÓSTICO — pode apagar depois.
  *
- * Cada campo abaixo é uma variação do que o app faz. Testando os cinco dá para
- * saber exatamente onde a digitação trava, sem chutar:
+ * A suspeita agora tem nome: o `text-transform: uppercase` que os campos de
+ * cadastro tinham. O texto ficava guardado de um jeito ("Cimen") e desenhado
+ * de outro ("CIMEN"); o corretor do iPhone trabalha em cima do texto guardado
+ * e erra o alvo ao substituir a palavra — entra só um espaço — e o cursor erra
+ * o lugar ao mexer no meio do texto.
  *
- *   A trava  → é o navegador/teclado do aparelho, não o sistema.
- *   A ok, B trava → é o React controlando o campo.
- *   B ok, C trava → é a nossa conversão para caixa alta.
- *   C ok, D trava → é o diálogo (a caixa que abre por cima).
- *
- * O registro no fim mostra o que o teclado manda de verdade em cada tecla.
+ * O campo D abaixo é o único que ainda tem esse text-transform: é o teste.
+ *   D trava e C funciona → confirmado, era isso.
+ *   C também trava       → não era (só isso), e o registro embaixo mostra o quê.
  */
 
 type Evento = { n: number; campo: string; tipo: string; detalhe: string; valor: string };
@@ -30,9 +30,9 @@ export function TesteTecladoClient() {
   const contador = useRef(0);
 
   const [bruto, setBruto] = useState("");
-  const [caixaAlta, setCaixaAlta] = useState("");
-  const [brutoDialogo, setBrutoDialogo] = useState("");
-  const [caixaAltaDialogo, setCaixaAltaDialogo] = useState("");
+  const [comoFicou, setComoFicou] = useState("");
+  const [comoEra, setComoEra] = useState("");
+  const [noDialogo, setNoDialogo] = useState("");
   const [aberto, setAberto] = useState(false);
 
   const anotar = useCallback((campo: string, ev: Event) => {
@@ -44,15 +44,18 @@ export function TesteTecladoClient() {
       entrada.data ? `dado=${JSON.stringify(entrada.data)}` : "",
     ].filter(Boolean);
     contador.current += 1;
-    const registro: Evento = {
-      n: contador.current,
-      campo,
-      tipo: ev.type,
-      detalhe: detalhes.join(" "),
-      valor: alvo?.value ?? "",
-    };
-    // Só os últimos 80 — o resto não cabe na tela e não ajuda.
-    setEventos((antes) => [...antes, registro].slice(-80));
+    setEventos((antes) =>
+      [
+        ...antes,
+        {
+          n: contador.current,
+          campo,
+          tipo: ev.type,
+          detalhe: detalhes.join(" "),
+          valor: alvo?.value ?? "",
+        },
+      ].slice(-80)
+    );
   }, []);
 
   /** Pendura os ouvintes de registro num campo (sem interferir em nada). */
@@ -60,14 +63,9 @@ export function TesteTecladoClient() {
     (campo: string) => (el: HTMLInputElement | null) => {
       if (!el || el.dataset.escutando === "sim") return;
       el.dataset.escutando = "sim";
-      const tipos = [
-        "beforeinput",
-        "input",
-        "compositionstart",
-        "compositionupdate",
-        "compositionend",
-      ];
-      tipos.forEach((t) => el.addEventListener(t, (ev) => anotar(campo, ev)));
+      ["beforeinput", "input", "compositionstart", "compositionupdate", "compositionend"].forEach(
+        (t) => el.addEventListener(t, (ev) => anotar(campo, ev))
+      );
     },
     [anotar]
   );
@@ -81,27 +79,22 @@ export function TesteTecladoClient() {
       <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 p-4 text-sm text-amber-900 dark:text-amber-100">
         <p className="font-semibold mb-1">Tela de teste — some depois que resolvermos</p>
         <p>
-          Em CADA campo abaixo, faça as duas coisas: (1) escreva uma palavra e toque na
-          dica do corretor; (2) toque no meio de uma palavra já escrita e tente apagar
-          e inserir uma letra. Depois me diga em quais campos funcionou.
+          Em CADA campo: escreva <b>cime</b> e toque na dica <b>Cimentos</b>. Depois toque no
+          meio de uma palavra já escrita e tente apagar e inserir uma letra. Me diga em quais
+          funcionou.
         </p>
       </div>
 
       <Campo
         titulo="A — campo comum, sem nada do sistema"
-        explicacao="HTML puro. Se travar AQUI, o problema é do navegador/teclado do aparelho."
+        explicacao="HTML puro. Se travar AQUI, o problema é do navegador do aparelho."
       >
-        <input
-          ref={escutar("A")}
-          defaultValue=""
-          placeholder="escreva aqui"
-          className={CLASSE_CAMPO}
-        />
+        <input ref={escutar("A")} defaultValue="" placeholder="escreva aqui" className={CLASSE_CAMPO} />
       </Campo>
 
       <Campo
         titulo="B — campo do React, sem conversão"
-        explicacao="O React guarda o texto, mas nada é convertido. Se A funciona e B trava, o problema é o React controlar o campo."
+        explicacao="O React guarda o texto, mas nada é convertido nem transformado."
       >
         <input
           ref={escutar("B")}
@@ -114,23 +107,39 @@ export function TesteTecladoClient() {
       </Campo>
 
       <Campo
-        titulo="C — campo do sistema (caixa alta)"
-        explicacao="Igual aos campos de cadastro do app. Se B funciona e C trava, o problema é a nossa conversão."
+        titulo="C — como os campos do app ficaram agora"
+        explicacao="Sem text-transform; quem deixa maiúsculo é o teclado (autoCapitalize). ESTE precisa funcionar."
       >
         <input
           ref={escutar("C")}
-          value={caixaAlta}
-          onChange={(e) => setCaixaAlta(upperKeepingCaret(e))}
+          value={comoFicou}
+          onChange={(e) => setComoFicou(upperKeepingCaret(e))}
+          autoCapitalize="characters"
           placeholder="escreva aqui"
           className={CLASSE_CAMPO}
         />
-        <Espelho valor={caixaAlta} />
+        <Espelho valor={comoFicou} />
+      </Campo>
+
+      <Campo
+        titulo="D — como os campos do app ERAM (com text-transform)"
+        explicacao="É a suspeita. Se D travar e C funcionar, achamos a causa."
+      >
+        <input
+          ref={escutar("D")}
+          value={comoEra}
+          onChange={(e) => setComoEra(upperKeepingCaret(e))}
+          placeholder="escreva aqui"
+          className={CLASSE_CAMPO}
+          style={{ textTransform: "uppercase" }}
+        />
+        <Espelho valor={comoEra} />
       </Campo>
 
       <div className="rounded-xl border border-produmar-200 dark:border-slate-700 p-4 space-y-2">
-        <p className="font-semibold text-sm">D e E — dentro da caixa que abre por cima</p>
+        <p className="font-semibold text-sm">E — dentro da caixa que abre por cima</p>
         <p className="text-xs text-slate-600 dark:text-slate-400">
-          Se C funciona e os de dentro da caixa travam, o problema é o diálogo.
+          Igual ao C. Se C funciona e E trava, o problema é o diálogo.
         </p>
         <Button type="button" onClick={() => setAberto(true)}>
           Abrir a caixa
@@ -140,28 +149,19 @@ export function TesteTecladoClient() {
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Campos dentro do diálogo</DialogTitle>
+            <DialogTitle>Campo dentro do diálogo</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <Campo titulo="D — sem conversão" explicacao="">
-              <input
-                ref={escutar("D")}
-                value={brutoDialogo}
-                onChange={(e) => setBrutoDialogo(e.target.value)}
-                placeholder="escreva aqui"
-                className={CLASSE_CAMPO}
-              />
-              <Espelho valor={brutoDialogo} />
-            </Campo>
-            <Campo titulo="E — com caixa alta" explicacao="">
+            <Campo titulo="E — igual ao C, mas aqui dentro" explicacao="">
               <input
                 ref={escutar("E")}
-                value={caixaAltaDialogo}
-                onChange={(e) => setCaixaAltaDialogo(upperKeepingCaret(e))}
+                value={noDialogo}
+                onChange={(e) => setNoDialogo(upperKeepingCaret(e))}
+                autoCapitalize="characters"
                 placeholder="escreva aqui"
                 className={CLASSE_CAMPO}
               />
-              <Espelho valor={caixaAltaDialogo} />
+              <Espelho valor={noDialogo} />
             </Campo>
             <Button type="button" onClick={() => setAberto(false)}>
               Fechar
@@ -214,9 +214,7 @@ function Campo({
   return (
     <div className="space-y-1.5">
       <p className="font-semibold text-sm">{titulo}</p>
-      {explicacao && (
-        <p className="text-xs text-slate-600 dark:text-slate-400">{explicacao}</p>
-      )}
+      {explicacao && <p className="text-xs text-slate-600 dark:text-slate-400">{explicacao}</p>}
       {children}
     </div>
   );

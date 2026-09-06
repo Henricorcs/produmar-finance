@@ -765,7 +765,7 @@ export function AnimaisPageClient({
           `uppercase` no bloco todo: o patrão pediu tudo em caixa alta aqui.
           Botões, inputs e selects não herdam text-transform — daí as variantes. */}
       {tab === "rebanho" && (
-        <div className="space-y-3 uppercase [&_button]:uppercase [&_input]:uppercase [&_select]:uppercase [&_input::placeholder]:uppercase">
+        <div className="space-y-3 uppercase [&_button]:uppercase [&_select]:uppercase">
           {/* ── Painel do rebanho ─────────────────────────────────────────
               Tipo, contagem, busca, ordem e impressão numa caixa só. Antes
               eram quatro blocos soltos, cada um com a sua fileira de números

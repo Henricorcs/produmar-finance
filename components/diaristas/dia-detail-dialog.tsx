@@ -242,7 +242,7 @@ export function DiaDetailDialog({
                 id="dde_desc"
                 value={description}
                 onChange={(e) => setDescription(upperKeepingCaret(e))}
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 rows={3}
               />
             </div>

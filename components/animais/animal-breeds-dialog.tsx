@@ -171,6 +171,7 @@ export function AnimalBreedsDialog({ open, onClose, breeds, species = "bovino" }
               <Input
                 value={name}
                 onChange={(e) => setName(lowerKeepingCaret(e))}
+                autoCapitalize="none"
                 placeholder={BREED_PLACEHOLDER[formSpecies]}
                 className="h-11 sm:h-9 sm:text-sm"
                 autoFocus

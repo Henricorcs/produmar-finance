@@ -122,7 +122,7 @@ export function AdjustDialog({ open, onClose, item }: Props) {
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="quebra, perda, contagem (opcional)"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>

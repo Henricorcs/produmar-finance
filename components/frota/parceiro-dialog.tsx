@@ -107,7 +107,8 @@ export function ParceiroDialog({ open, onClose, parceiro }: Props) {
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: josé da terraplanagem"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -133,7 +134,7 @@ export function ParceiroDialog({ open, onClose, parceiro }: Props) {
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional — o combinado da parceria"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

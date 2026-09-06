@@ -136,7 +136,7 @@ export function TreatmentDialog({
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: verminose, casco, bicheira"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -148,7 +148,7 @@ export function TreatmentDialog({
               value={medicine}
               onChange={(e) => setMedicine(upperKeepingCaret(e))}
               placeholder="ex: ivermectina 1%"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               list="tr_medicine_options"
               autoComplete="off"
             />
@@ -169,7 +169,7 @@ export function TreatmentDialog({
                 value={dose}
                 onChange={(e) => setDose(upperKeepingCaret(e))}
                 placeholder="ex: 10 ml"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 autoComplete="off"
               />
             </div>

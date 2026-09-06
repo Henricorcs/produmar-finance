@@ -70,7 +70,6 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="nome ou razão social"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
             />
           </div>

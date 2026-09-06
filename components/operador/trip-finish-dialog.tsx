@@ -161,7 +161,9 @@ export function TripFinishDialog({ order, openTrip, open, onClose, onFinish }: P
               value={destination}
               onChange={(e) => setDestination(e.target.value)}
               placeholder="ex: OBRA CENTRO"
-              className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
+              data-caixa="uppercase"
+              className="h-14 text-lg"
               autoComplete="off"
             />
           </div>
@@ -176,7 +178,9 @@ export function TripFinishDialog({ order, openTrip, open, onClose, onFinish }: P
               value={receivedBy}
               onChange={(e) => setReceivedBy(e.target.value)}
               placeholder="ex: JOÃO DA SILVA"
-              className="h-14 text-lg uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
+              data-caixa="uppercase"
+              className="h-14 text-lg"
               autoComplete="off"
             />
           </div>

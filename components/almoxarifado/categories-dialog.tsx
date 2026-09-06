@@ -160,7 +160,8 @@ export function CategoriesDialog({ open, onClose, categories, countByCategory }:
                   value={name}
                   onChange={(e) => setName(upperKeepingCaret(e))}
                   placeholder="ex: hidráulica, elétrica, colas"
-                  className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
+                  autoCapitalize="characters"
+                  className="h-11 sm:h-9 sm:text-sm"
                   autoFocus
                   autoComplete="off"
                 />

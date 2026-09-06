@@ -112,7 +112,9 @@ export function ForwardDialog({ order, operators, open, onClose, onForwarded }: 
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="ex: ESTOU LONGE, NÃO CONSIGO HOJE"
-              className="min-h-[72px] text-base uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
+              data-caixa="uppercase"
+              className="min-h-[72px] text-base"
             />
           </div>
 

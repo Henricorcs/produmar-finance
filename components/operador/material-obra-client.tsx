@@ -433,7 +433,8 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
                 value={destination}
                 onChange={(e) => setDestination(upperKeepingCaret(e))}
                 placeholder="ex: ponto 01"
-                className="h-12 text-base uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-12 text-base placeholder:text-base"
                 autoComplete="off"
               />
             </div>
@@ -445,7 +446,8 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
                 value={notes}
                 onChange={(e) => setNotes(upperKeepingCaret(e))}
                 placeholder="alguma coisa que o escritório precisa saber (opcional)"
-                className="h-12 text-base uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-12 text-base placeholder:text-base"
                 autoComplete="off"
               />
             </div>
@@ -557,7 +559,8 @@ function MaterialLinha({
                 value={linha.itemText}
                 onChange={(e) => onChange({ itemText: upperKeepingCaret(e) })}
                 placeholder="ex: carrada de areia"
-                className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-12 text-lg placeholder:text-base"
                 autoComplete="off"
               />
               <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">

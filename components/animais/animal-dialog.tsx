@@ -141,7 +141,7 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
               value={tag}
               onChange={(e) => setTag(upperKeepingCaret(e))}
               placeholder="ex: 1042, brinco a-15"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -273,7 +273,7 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="marcas, procedência, pasto..."
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               rows={2}
             />
           </div>

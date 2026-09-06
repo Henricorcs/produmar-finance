@@ -149,7 +149,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: joão da silva"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -290,7 +290,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
               value={profession}
               onChange={(e) => setProfession(upperKeepingCaret(e))}
               placeholder="ex: pedreiro, pintor, carpinteiro"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -355,7 +355,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               rows={2}
             />
           </div>

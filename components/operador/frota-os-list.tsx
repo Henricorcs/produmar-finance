@@ -363,7 +363,7 @@ function FinalizarFrotaOSDialog({
               onChange={(e) => setOQueFoiFeito(upperKeepingCaret(e))}
               placeholder="opcional"
               rows={3}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

@@ -451,7 +451,8 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
                 value={motherTag}
                 onChange={(e) => setMotherTag(upperKeepingCaret(e))}
                 placeholder="ex: 1046"
-                className="h-12 text-lg uppercase placeholder:normal-case placeholder:text-base placeholder:lowercase"
+                autoCapitalize="characters"
+                className="h-12 text-lg placeholder:text-base"
                 autoComplete="off"
               />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">

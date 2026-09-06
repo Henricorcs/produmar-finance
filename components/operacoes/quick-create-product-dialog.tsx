@@ -56,7 +56,6 @@ export function QuickCreateProductDialog({ open, onClose, onCreated }: Props) {
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: areia média"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
               autoCapitalize="characters"
               required
             />

@@ -278,7 +278,7 @@ export function ServicoDialog({
               value={serviceType}
               onChange={(e) => setServiceType(upperKeepingCaret(e))}
               placeholder="ex: cerca, alvenaria, pintura"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
               disabled={travado}
             />
@@ -499,7 +499,7 @@ export function ServicoDialog({
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
               disabled={travado}
             />
@@ -512,7 +512,7 @@ export function ServicoDialog({
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               rows={2}
               disabled={travado}
             />

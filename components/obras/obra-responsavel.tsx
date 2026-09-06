@@ -262,7 +262,7 @@ export function ObraResponsavel({ obra, colaboradores, fechamento }: Props) {
                   value={serviceType}
                   onChange={(e) => setServiceType(upperKeepingCaret(e))}
                   placeholder="ex: cerca (em branco vira OBRA)"
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                   autoComplete="off"
                   disabled={travado}
                 />

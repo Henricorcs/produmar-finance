@@ -321,7 +321,7 @@ export function MaterialObraDialog({
                 value={person}
                 onChange={(e) => setPerson(upperKeepingCaret(e))}
                 placeholder="nome de quem retirou"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 autoComplete="off"
               />
             </div>
@@ -355,7 +355,7 @@ export function MaterialObraDialog({
                 value={destination}
                 onChange={(e) => setDestination(upperKeepingCaret(e))}
                 placeholder="em que pedaço da obra foi (opcional)"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 autoComplete="off"
               />
             </div>
@@ -609,7 +609,7 @@ export function CorrigirMaterialDialog({
               value={person}
               onChange={(e) => setPerson(upperKeepingCaret(e))}
               placeholder="nome de quem retirou"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -621,7 +621,7 @@ export function CorrigirMaterialDialog({
               value={destination}
               onChange={(e) => setDestination(upperKeepingCaret(e))}
               placeholder="em que pedaço da obra foi (opcional)"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>

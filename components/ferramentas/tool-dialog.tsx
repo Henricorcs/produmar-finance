@@ -139,7 +139,7 @@ export function ToolDialog({
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: furadeira, marreta, nível a laser"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -151,7 +151,7 @@ export function ToolDialog({
               value={code}
               onChange={(e) => setCode(upperKeepingCaret(e))}
               placeholder="ex: FER-012 (opcional)"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -323,7 +323,7 @@ export function ToolDialog({
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="detalhes, marca, acessórios..."
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               rows={2}
             />
           </div>

@@ -140,7 +140,8 @@ export function ParceiroVeiculoDialog({
               value={name}
               onChange={(e) => setName(upperKeepingCaret(e))}
               placeholder="ex: caçamba vermelha"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
             <p className="text-[11px] text-slate-400 dark:text-slate-500">

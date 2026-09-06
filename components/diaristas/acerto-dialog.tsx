@@ -347,7 +347,7 @@ export function AcertoDialog({
                   value={valeObs}
                   onChange={(e) => setValeObs(upperKeepingCaret(e))}
                   placeholder="observação (opcional)"
-                  className="uppercase placeholder:normal-case placeholder:lowercase"
+                  autoCapitalize="characters"
                   autoComplete="off"
                 />
                 <Button type="submit" disabled={isPending || !valeValor.trim()}>

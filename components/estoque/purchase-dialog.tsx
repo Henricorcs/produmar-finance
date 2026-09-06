@@ -498,7 +498,7 @@ export function PurchaseDialog({ open, onClose, products, jazidas }: Props) {
                 onChange={(e) => setNotes(upperKeepingCaret(e))}
                 placeholder="observações opcionais..."
                 rows={2}
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
               />
             </div>
 

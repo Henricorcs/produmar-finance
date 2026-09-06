@@ -184,7 +184,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
               value={borrower}
               onChange={(e) => setBorrower(upperKeepingCaret(e))}
               placeholder="nome de quem pegou emprestado"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -196,7 +196,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
               value={destination}
               onChange={(e) => setDestination(upperKeepingCaret(e))}
               placeholder="obra / local (opcional)"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>
@@ -306,7 +306,7 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>

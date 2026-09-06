@@ -187,7 +187,8 @@ export function AnimalDespesaDialog({
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
               placeholder="ex: 20 sacos de ração"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -243,7 +244,8 @@ export function AnimalDespesaDialog({
               value={category}
               onChange={(e) => setCategory(upperKeepingCaret(e))}
               placeholder="opcional — é o que agrupa o relatório"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -287,7 +289,8 @@ export function AnimalDespesaDialog({
               value={supplier}
               onChange={(e) => setSupplier(upperKeepingCaret(e))}
               placeholder="opcional, de quem se comprou"
-              className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-10"
+              autoCapitalize="characters"
+              className="h-11 sm:h-10"
               autoComplete="off"
             />
           </div>
@@ -300,7 +303,7 @@ export function AnimalDespesaDialog({
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

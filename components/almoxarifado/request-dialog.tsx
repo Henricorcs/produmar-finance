@@ -311,7 +311,7 @@ export function SupplyRequestDialog({
                 value={person}
                 onChange={(e) => setPerson(upperKeepingCaret(e))}
                 placeholder="quem usou o material"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 autoComplete="off"
               />
             </div>
@@ -347,7 +347,7 @@ export function SupplyRequestDialog({
                 value={destination}
                 onChange={(e) => setDestination(upperKeepingCaret(e))}
                 placeholder="onde foi aplicado (opcional)"
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
                 autoComplete="off"
               />
             </div>

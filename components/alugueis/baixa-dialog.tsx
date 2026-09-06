@@ -200,7 +200,7 @@ export function BaixaDialog({ cobranca, onClose, mesLabel }: Props) {
                 onChange={(e) => setNotes(upperKeepingCaret(e))}
                 placeholder="opcional"
                 rows={2}
-                className="uppercase placeholder:normal-case placeholder:lowercase"
+                autoCapitalize="characters"
               />
             </div>
 

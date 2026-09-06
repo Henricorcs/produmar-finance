@@ -323,7 +323,7 @@ export function TrocaDiaDialog({
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="opcional — onde foi o serviço, quem operou"
               rows={2}
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
             />
           </div>
 

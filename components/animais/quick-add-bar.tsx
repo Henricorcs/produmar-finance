@@ -67,7 +67,8 @@ export function QuickAddBar({ species: filterSpecies }: Props) {
           aria-label="Número do novo animal"
           autoComplete="off"
           disabled={isPending}
-          className="h-11 min-w-0 flex-1 rounded-lg border border-produmar-200 bg-white px-3 text-[17px] font-bold uppercase text-slate-800 placeholder:font-normal placeholder:normal-case placeholder:text-produmar-500/70 focus:outline-none focus:ring-2 focus:ring-produmar-400 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+          autoCapitalize="characters"
+          className="h-11 min-w-0 flex-1 rounded-lg border border-produmar-200 bg-white px-3 text-[17px] font-bold text-slate-800 placeholder:font-normal placeholder:text-produmar-500/70 focus:outline-none focus:ring-2 focus:ring-produmar-400 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
         />
 
         {/* Fêmea ou macho — é daí que sai a categoria (vaca, boi, bezerro) */}

@@ -180,9 +180,10 @@ export function QuickAddRow({ breeds, species: filterSpecies, vaccinesCount }: P
             onKeyDown={onEnter}
             placeholder="+ nº novo"
             aria-label="Número do novo animal"
+            autoCapitalize="characters"
             className={cn(
               inputCls,
-              "font-bold uppercase placeholder:normal-case placeholder:font-normal placeholder:text-produmar-500/70"
+              "font-bold placeholder:font-normal placeholder:text-produmar-500/70"
             )}
             autoComplete="off"
             disabled={isPending}
@@ -274,9 +275,10 @@ export function QuickAddRow({ breeds, species: filterSpecies, vaccinesCount }: P
                     onKeyDown={onEnter}
                     placeholder={`nº do ${calf}`}
                     aria-label={`Número do ${calf}`}
+                    autoCapitalize="characters"
                     className={cn(
                       inputCls,
-                      "uppercase placeholder:normal-case placeholder:font-normal placeholder:text-produmar-500/70"
+                      "placeholder:font-normal placeholder:text-produmar-500/70"
                     )}
                     autoComplete="off"
                     disabled={isPending}

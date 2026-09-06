@@ -88,7 +88,7 @@ export function ReturnDialog({ open, onClose, target }: Props) {
               value={notes}
               onChange={(e) => setNotes(upperKeepingCaret(e))}
               placeholder="ex: faltando broca, cabo danificado"
-              className="uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
               autoComplete="off"
             />
           </div>

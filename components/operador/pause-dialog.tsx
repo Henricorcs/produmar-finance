@@ -195,7 +195,9 @@ export function PauseDialog({ order, open, onClose, onPaused }: Props) {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="ex: FALTOU MATERIAL, CONTINUA AMANHÃ"
-              className="min-h-[88px] text-lg uppercase placeholder:normal-case placeholder:lowercase"
+              autoCapitalize="characters"
+              data-caixa="uppercase"
+              className="min-h-[88px] text-lg"
             />
           </div>
 

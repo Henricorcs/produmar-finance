@@ -171,7 +171,8 @@ export function WarehousesDialog({ open, onClose, warehouses, countByWarehouse }
                   value={name}
                   onChange={(e) => setName(upperKeepingCaret(e))}
                   placeholder="ex: garagem, depósito, barracão"
-                  className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
+                  autoCapitalize="characters"
+                  className="h-11 sm:h-9 sm:text-sm"
                   autoFocus
                   autoComplete="off"
                 />
@@ -185,7 +186,8 @@ export function WarehousesDialog({ open, onClose, warehouses, countByWarehouse }
                   value={location}
                   onChange={(e) => setLocation(upperKeepingCaret(e))}
                   placeholder="ex: fazenda, sede"
-                  className="h-11 uppercase placeholder:normal-case placeholder:lowercase sm:h-9 sm:text-sm"
+                  autoCapitalize="characters"
+                  className="h-11 sm:h-9 sm:text-sm"
                   autoComplete="off"
                 />
               </div>
