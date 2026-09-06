@@ -16,6 +16,7 @@ import {
   deleteToolUnit,
 } from "@/app/(app)/ferramentas/actions";
 import type { ToolUnit } from "@/lib/types";
+import { lowerKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -135,7 +136,7 @@ export function ToolUnitsDialog({ open, onClose, units }: Props) {
             >
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value.toLowerCase())}
+                onChange={(e) => setName(lowerKeepingCaret(e))}
                 placeholder="nome (ex: rolo, saco)"
                 className="h-9 text-sm"
                 autoFocus

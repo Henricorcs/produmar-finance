@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn, upperKeepingCaret } from "@/lib/utils";
+import { cn, lowerKeepingCaret, upperKeepingCaret } from "@/lib/utils";
 import { createVaccine, updateVaccine, deleteVaccine } from "@/app/(app)/animais/actions";
 import {
   ICON_BUTTON,
@@ -291,7 +291,7 @@ export function AnimalVaccinesDialog({ open, onClose, vaccines, species = "bovin
                 <Input
                   id="vac_name"
                   value={name}
-                  onChange={(e) => setName(e.target.value.toLowerCase())}
+                  onChange={(e) => setName(lowerKeepingCaret(e))}
                   placeholder={VACCINE_PLACEHOLDER[formSpecies]}
                   className="h-11 sm:h-10"
                   autoFocus

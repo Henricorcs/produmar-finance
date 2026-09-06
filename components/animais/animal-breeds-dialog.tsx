@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { cn, lowerKeepingCaret } from "@/lib/utils";
 import { createBreed, renameBreed, deleteBreed } from "@/app/(app)/animais/actions";
 import { ICON_BUTTON, SPECIES_META, SpeciesPicker, speciesOf } from "./animal-shared";
 import type { AnimalBreed, AnimalSpecies } from "@/lib/types";
@@ -170,7 +170,7 @@ export function AnimalBreedsDialog({ open, onClose, breeds, species = "bovino" }
             >
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value.toLowerCase())}
+                onChange={(e) => setName(lowerKeepingCaret(e))}
                 placeholder={BREED_PLACEHOLDER[formSpecies]}
                 className="h-11 sm:h-9 sm:text-sm"
                 autoFocus
