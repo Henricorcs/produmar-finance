@@ -18,8 +18,10 @@ import { createAnimalLote, updateAnimalLote } from "@/app/(app)/animais/actions"
 import {
   FOOTER_CANCEL,
   FOOTER_SUBMIT,
-  SpeciesPicker,
+  LOTE_SPECIES_OPTIONS,
+  SPECIES_META,
   STICKY_FOOTER,
+  criacaoPorLote,
   formatDecimalInput,
   localLabel,
   parseDecimal,
@@ -56,8 +58,8 @@ export function LoteDialog({ open, onClose, lote, tanques, presetSpecies }: Prop
 
   useEffect(() => {
     if (!open) return;
-    const sp = speciesOf(lote?.species ?? presetSpecies ?? "piscicultura");
-    setSpecies(sp);
+    const bruta = speciesOf(lote?.species ?? presetSpecies ?? "piscicultura");
+    setSpecies(criacaoPorLote(bruta) ? bruta : "piscicultura");
     setTanqueId(lote?.tanque_id ?? "");
     setName(lote?.name ?? "");
     setStartDate(lote?.start_date ?? localDateISO());
@@ -119,16 +121,32 @@ export function LoteDialog({ open, onClose, lote, tanques, presetSpecies }: Prop
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Tipo de animal *</Label>
-            <SpeciesPicker
-              value={species}
-              onChange={(v) => {
-                setSpecies(v);
-                setTanqueId("");
-              }}
-            />
-          </div>
+          {/* Só peixe e ave têm tanque — a escolha some quando só há uma */}
+          {LOTE_SPECIES_OPTIONS.length > 1 && (
+            <div className="space-y-1.5">
+              <Label>Tipo de animal *</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {LOTE_SPECIES_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => {
+                      setSpecies(o.value);
+                      setTanqueId("");
+                    }}
+                    className={cn(
+                      "min-h-[44px] rounded-lg border text-sm font-semibold transition-colors",
+                      species === o.value
+                        ? "bg-produmar-600 border-produmar-600 text-white"
+                        : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                    )}
+                  >
+                    {SPECIES_META[o.value].plural}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>{palavra} *</Label>

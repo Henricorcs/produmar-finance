@@ -193,6 +193,18 @@ export function criacaoPorLote(species?: AnimalSpecies | null): boolean {
   return s === "piscicultura" || s === "aves";
 }
 
+/**
+ * As criações que se controlam por tanque — as únicas que aparecem nas telas de
+ * tanque e ciclo.
+ *
+ * Boi não mora em tanque. Oferecer Bovino, Equino, Caprino, Ovino e Suíno na
+ * hora de cadastrar um tanque é oferecer sete caminhos para uma escolha que só
+ * tem dois, e cinco deles levam a lugar nenhum.
+ */
+export const LOTE_SPECIES_OPTIONS = SPECIES_OPTIONS.filter((o) =>
+  criacaoPorLote(o.value)
+);
+
 export function localLabel(species?: AnimalSpecies | null): string {
   const s = speciesOf(species);
   if (s === "piscicultura") return "Tanque";

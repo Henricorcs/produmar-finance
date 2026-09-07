@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HandCoins, Hash, Plus, Receipt, Scale, Stethoscope, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatBRL, formatDate, formatQty } from "@/lib/utils";
-import { SPECIES_META, SPECIES_OPTIONS, speciesOf } from "./animal-shared";
+import {
+  SPECIES_META,
+  SPECIES_OPTIONS,
+  criacaoPorLote,
+  localLabel,
+  speciesOf,
+} from "./animal-shared";
 import { AnimalDespesaDialog } from "./animal-despesa-dialog";
 import { AnimalVendaDialog } from "./animal-venda-dialog";
 import type {
@@ -61,6 +67,21 @@ export function AnimalFinanceiroTab({
   animals,
 }: Props) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  /** Recorte por tanque, dentro da criação escolhida. "" = todos. */
+  const [tanqueFiltro, setTanqueFiltro] = useState("");
+
+  /**
+   * De qual ciclo é cada linha da ficha.
+   *
+   * A view não carrega o ciclo: quem sabe disso é a despesa/venda crua. Sem
+   * esta ponte, filtrar a ficha por tanque seria impossível.
+   */
+  const loteIdPorLinha = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const v of vendas) m.set(v.id, v.lote_id ?? null);
+    for (const d of despesas) m.set(d.id, d.lote_id ?? null);
+    return m;
+  }, [vendas, despesas]);
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [editDespesa, setEditDespesa] = useState<AnimalDespesa | null>(null);
   const [vendaOpen, setVendaOpen] = useState(false);
@@ -114,8 +135,9 @@ export function AnimalFinanceiroTab({
     () =>
       linhas
         .filter((l) => (filtro === "todos" ? true : speciesOf(l.species) === filtro))
+        .filter((l) => (tanqueFiltro ? loteIdPorLinha.get(l.id) === tanqueFiltro : true))
         .sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
-    [linhas, filtro]
+    [linhas, filtro, tanqueFiltro, loteIdPorLinha]
   );
 
   const totais = useMemo(() => {
@@ -145,6 +167,20 @@ export function AnimalFinanceiroTab({
     () => new Map(lotes.map((l) => [l.id, l.tanque_name])),
     [lotes]
   );
+
+  /** Os ciclos da criação escolhida — viram os botões de tanque. */
+  const ciclosDoFiltro = useMemo(
+    () =>
+      filtro === "todos"
+        ? []
+        : lotes.filter((l) => speciesOf(l.species) === filtro),
+    [lotes, filtro]
+  );
+
+  // Trocou de criação: o tanque escolhido não vale mais.
+  useEffect(() => {
+    setTanqueFiltro("");
+  }, [filtro]);
 
   function abrirDespesa(d: AnimalDespesa | null) {
     setEditDespesa(d);
@@ -213,6 +249,27 @@ export function AnimalFinanceiroTab({
           />
         ))}
       </div>
+
+      {/* Peixe e ave: dá para descer até o tanque. Os três números do topo e
+          o extrato acompanham a escolha — é assim que se responde "quanto o
+          Tanque 01 gastou de ração e quanto ele já rendeu". */}
+      {criacaoPorLote(filtro === "todos" ? null : filtro) && ciclosDoFiltro.length > 0 && (
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+          <Chip
+            label={`Todos os ${localLabel(filtro === "todos" ? null : filtro).toLowerCase()}s`}
+            ativo={tanqueFiltro === ""}
+            onClick={() => setTanqueFiltro("")}
+          />
+          {ciclosDoFiltro.map((l) => (
+            <Chip
+              key={l.id}
+              label={l.tanque_name}
+              ativo={tanqueFiltro === l.id}
+              onClick={() => setTanqueFiltro(tanqueFiltro === l.id ? "" : l.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* A conta de cada espécie — o custo separado por bicho */}
       <div className="space-y-2">

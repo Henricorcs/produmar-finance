@@ -16,7 +16,14 @@ import {
   deleteAnimalTanque,
   updateAnimalTanque,
 } from "@/app/(app)/animais/actions";
-import { ICON_BUTTON, SpeciesPicker, localLabel, speciesOf } from "./animal-shared";
+import {
+  ICON_BUTTON,
+  LOTE_SPECIES_OPTIONS,
+  SPECIES_META,
+  criacaoPorLote,
+  localLabel,
+  speciesOf,
+} from "./animal-shared";
 import type { AnimalSpecies, AnimalTanque } from "@/lib/types";
 
 interface Props {
@@ -40,14 +47,16 @@ export function TanquesDialog({ open, onClose, tanques, species = "piscicultura"
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [formSpecies, setFormSpecies] = useState<AnimalSpecies>(species);
+  const [formSpecies, setFormSpecies] = useState<AnimalSpecies>(
+    criacaoPorLote(species) ? species : "piscicultura"
+  );
 
   const daEspecie = tanques.filter((t) => speciesOf(t.species) === formSpecies);
   const palavra = localLabel(formSpecies);
 
   useEffect(() => {
     if (!open) return;
-    setFormSpecies(species);
+    setFormSpecies(criacaoPorLote(species) ? species : "piscicultura");
     reset();
   }, [open, species]);
 
@@ -115,13 +124,29 @@ export function TanquesDialog({ open, onClose, tanques, species = "piscicultura"
         </DialogHeader>
 
         <div className="space-y-3">
-          <SpeciesPicker
-            value={formSpecies}
-            onChange={(v) => {
-              setFormSpecies(v);
-              reset();
-            }}
-          />
+          {/* Só peixe e ave têm tanque — e a escolha some quando só há uma */}
+          {LOTE_SPECIES_OPTIONS.length > 1 && (
+            <div className="grid grid-cols-2 gap-1.5">
+              {LOTE_SPECIES_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => {
+                    setFormSpecies(o.value);
+                    reset();
+                  }}
+                  className={cn(
+                    "min-h-[40px] rounded-lg border text-xs font-semibold transition-colors",
+                    formSpecies === o.value
+                      ? "bg-produmar-600 border-produmar-600 text-white"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  )}
+                >
+                  {SPECIES_META[o.value].plural}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {daEspecie.length === 0 && (

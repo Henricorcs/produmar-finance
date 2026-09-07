@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Layers, Plus, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatBRL, formatDate, formatQty } from "@/lib/utils";
-import { SPECIES_META, SPECIES_OPTIONS, localLabel, speciesOf } from "./animal-shared";
+import {
+  LOTE_SPECIES_OPTIONS,
+  SPECIES_META,
+  localLabel,
+  speciesOf,
+} from "./animal-shared";
 import { TanquesDialog } from "./tanques-dialog";
 import { LoteDialog } from "./lote-dialog";
 import { LoteDetailDialog } from "./lote-detail-dialog";
@@ -155,10 +160,10 @@ export function LotesTab({
       </div>
 
       {/* Filtro por tipo — some quando o tipo já veio escolhido de fora */}
-      {!speciesFixa && (
+      {!speciesFixa && LOTE_SPECIES_OPTIONS.length > 1 && (
         <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
           <Chip label="Todos" ativo={filtro === "todos"} onClick={() => setFiltro("todos")} />
-          {SPECIES_OPTIONS.map((s) => (
+          {LOTE_SPECIES_OPTIONS.map((s) => (
             <Chip
               key={s.value}
               label={SPECIES_META[s.value].plural}
