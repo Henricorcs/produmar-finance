@@ -1405,6 +1405,11 @@ export interface AnimalVendaInput {
   description: string;
   buyer?: string | null;
   notes?: string | null;
+  /**
+   * O dinheiro já entrou? Falso lança em Contas como PENDENTE, sem data de
+   * pagamento — é a venda fiada, que existe e precisa ser cobrada.
+   */
+  received?: boolean;
 }
 
 /**
@@ -1481,13 +1486,15 @@ async function lancamentoDaVenda(
 
   const row = vendaRow(input);
   const buyer = clean(input.buyer);
+  const recebido = input.received !== false;
+  const quando = row.sale_date ?? localDateISO();
   return {
     type: "entrada" as const,
-    status: "recebido" as const,
+    status: recebido ? ("recebido" as const) : ("pendente" as const),
     amount: row.amount,
     description: `VENDA ${row.description}${vendaTextoDaConta(input)}${buyer ? ` - ${buyer}` : ""}`,
-    due_date: row.sale_date ?? localDateISO(),
-    paid_date: row.sale_date ?? localDateISO(),
+    due_date: quando,
+    paid_date: recebido ? quando : null,
     category_id: cat?.id ?? null,
     notes: clean(input.notes),
     created_by: userId,

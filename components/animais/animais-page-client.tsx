@@ -15,6 +15,7 @@ import {
   Settings2,
   Syringe,
   Table2,
+  Layers,
   Wallet,
   X,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import { QuickAddBar } from "./quick-add-bar";
 import { RebanhoGrid } from "./rebanho-grid";
 import { WeightDialog } from "./weight-dialog";
 import { AnimalFinanceiroTab } from "./animal-financeiro-tab";
+import { LotesTab } from "./lotes-tab";
 import {
   SPECIES_META,
   SPECIES_OPTIONS,
@@ -69,10 +71,13 @@ import type {
   AnimalCategory,
   AnimalDespesa,
   AnimalFinanceiroLinha,
+  AnimalLoteMovimento,
+  AnimalLoteResumo,
   AnimalSpecies,
   AnimalTreatment,
   AnimalVaccination,
   AnimalVaccine,
+  AnimalTanque,
   AnimalVaccinePending,
   AnimalVenda,
   AnimalWeight,
@@ -105,9 +110,21 @@ interface Props {
   despesas?: AnimalDespesa[];
   /** As vendas de lote cruas (peixe, ave), para corrigir uma pela ficha. */
   vendas?: AnimalVenda[];
+  /** Tanques e galpões cadastrados (089). */
+  tanques?: AnimalTanque[];
+  /** Os ciclos com a conta pronta (view v_animal_lotes). */
+  lotes?: AnimalLoteResumo[];
+  /** Entradas, mortes e correções de contagem de todos os ciclos. */
+  movimentos?: AnimalLoteMovimento[];
 }
 
-type Tab = "rebanho" | "vacinacao" | "nascimentos" | "saidas" | "financeiro";
+type Tab =
+  | "rebanho"
+  | "vacinacao"
+  | "nascimentos"
+  | "saidas"
+  | "tanques"
+  | "financeiro";
 type CategoryFilter = "todos" | AnimalCategory;
 /** Filtro pelo tipo do animal — só aparece quando o rebanho tem mais de um. */
 type SpeciesFilter = "todos" | AnimalSpecies;
@@ -161,6 +178,9 @@ export function AnimaisPageClient({
   financeiro = [],
   despesas = [],
   vendas = [],
+  tanques = [],
+  lotes = [],
+  movimentos = [],
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -681,6 +701,7 @@ export function AnimaisPageClient({
       alert: pendingCount > 0,
     },
     { value: "saidas", label: "Saídas", icon: HandCoins },
+    { value: "tanques", label: "Tanques", icon: Layers },
     { value: "financeiro", label: "Ficha", icon: Wallet },
   ];
 
@@ -1265,12 +1286,23 @@ export function AnimaisPageClient({
         </>
       )}
 
+      {/* ── Aba: Tanques — o ciclo de cada tanque, do alevino ao resultado ── */}
+      {tab === "tanques" && (
+        <LotesTab
+          tanques={tanques}
+          lotes={lotes}
+          movimentos={movimentos}
+          animals={allAnimals}
+        />
+      )}
+
       {/* ── Aba: Ficha — receitas e despesas, separadas por espécie ────── */}
       {tab === "financeiro" && (
         <AnimalFinanceiroTab
           linhas={financeiro}
           despesas={despesas}
           vendas={vendas}
+          lotes={lotes}
           animals={allAnimals}
         />
       )}

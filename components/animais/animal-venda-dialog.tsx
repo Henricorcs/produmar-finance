@@ -34,10 +34,16 @@ import {
   SPECIES_OPTIONS,
   STICKY_FOOTER,
   formatDecimalInput,
+  localLabel,
   parseDecimal,
   speciesOf,
 } from "./animal-shared";
-import type { AnimalSaleMode, AnimalSpecies, AnimalVenda } from "@/lib/types";
+import type {
+  AnimalLoteResumo,
+  AnimalSaleMode,
+  AnimalSpecies,
+  AnimalVenda,
+} from "@/lib/types";
 
 /** Número do banco no formato que a máscara de digitação usa (vírgula, sem milhar). */
 function numeroNoCampo(v?: number | null): string {
@@ -52,6 +58,10 @@ interface Props {
   venda: AnimalVenda | null;
   /** Espécie já escolhida (veio do filtro da ficha). */
   presetSpecies?: AnimalSpecies | null;
+  /** Ciclo já escolhido (a venda foi aberta de dentro do tanque). */
+  presetLoteId?: string | null;
+  /** Ciclos abertos, para amarrar a venda a um tanque. */
+  lotes?: AnimalLoteResumo[];
 }
 
 /**
@@ -72,7 +82,14 @@ interface Props {
  *
  * Como a venda do animal, esta TAMBÉM vira lançamento no módulo Contas.
  */
-export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props) {
+export function AnimalVendaDialog({
+  open,
+  onClose,
+  venda,
+  presetSpecies,
+  presetLoteId,
+  lotes = [],
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -86,6 +103,8 @@ export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props
   const [description, setDescription] = useState("");
   const [buyer, setBuyer] = useState("");
   const [notes, setNotes] = useState("");
+  const [loteId, setLoteId] = useState("");
+  const [received, setReceived] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -99,10 +118,17 @@ export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props
     setDescription(venda?.description ?? "");
     setBuyer(venda?.buyer ?? "");
     setNotes(venda?.notes ?? "");
+    setLoteId(venda?.lote_id ?? presetLoteId ?? "");
+    setReceived(true);
     setError(null);
-  }, [open, venda, presetSpecies]);
+  }, [open, venda, presetSpecies, presetLoteId]);
 
   const noPeso = saleMode === "peso";
+  const palavraLocal = localLabel(species);
+  /** Só os ciclos abertos daquele tipo — ciclo fechado não recebe venda nova. */
+  const doTipo = lotes.filter(
+    (l) => speciesOf(l.species) === species && (l.status === "aberto" || l.id === loteId)
+  );
 
   /** A conta, do jeito que se fala. O servidor refaz a mesma ao gravar. */
   const conta = useMemo(() => {
@@ -150,9 +176,13 @@ export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props
     startTransition(async () => {
       const input = {
         species,
+        lote_id: loteId || null,
+        received,
         sale_date: date,
         sale_mode: saleMode,
-        quantity: noPeso ? 0 : conta.qtd,
+        // No peso a quantidade não entra na conta do dinheiro — ela existe
+        // para baixar o saldo do tanque.
+        quantity: conta.qtd,
         price_per_unit: noPeso ? 0 : conta.precoUn,
         weight_kg: noPeso ? conta.kg : 0,
         price_per_kg: noPeso ? conta.precoKg : 0,
@@ -225,6 +255,42 @@ export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props
             </div>
           </div>
 
+          {/* De qual tanque saiu — é o que baixa o saldo daquele ciclo */}
+          {doTipo.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>{palavraLocal}</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setLoteId("")}
+                  className={cn(
+                    "min-h-[40px] rounded-lg border text-xs font-semibold transition-colors px-2",
+                    loteId === ""
+                      ? "bg-slate-600 border-slate-600 text-white"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  )}
+                >
+                  Sem {palavraLocal.toLowerCase()}
+                </button>
+                {doTipo.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setLoteId(l.id)}
+                    className={cn(
+                      "min-h-[40px] rounded-lg border text-xs font-semibold transition-colors px-2",
+                      loteId === l.id
+                        ? "bg-cyan-600 border-cyan-600 text-white"
+                        : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                    )}
+                  >
+                    {l.tanque_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label htmlFor="av_desc">O que foi vendido *</Label>
             <Input
@@ -265,9 +331,30 @@ export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props
             </div>
           </div>
 
+          {/* No peso, a quantidade é a do TANQUE, não a do dinheiro: o total
+              sai do peso, e é ela que baixa o saldo do ciclo. */}
+          {noPeso && (
+            <div className="space-y-1.5">
+              <Label htmlFor="av_cabecas">Quantidade vendida</Label>
+              <Input
+                id="av_cabecas"
+                value={quantity}
+                onChange={(e) => setQuantity(formatDecimalInput(e.target.value))}
+                placeholder="0"
+                className="h-11 text-base tabular-nums font-semibold sm:h-10"
+                inputMode="decimal"
+                autoComplete="off"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Quantos peixes saíram. Não entra na conta do dinheiro — é o que baixa
+                o saldo do tanque. Em branco, o saldo não muda.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <Label htmlFor="av_qtd">{noPeso ? "Quilos (kg) *" : "Quantidade *"}</Label>
+              <Label htmlFor="av_qtd">{noPeso ? "Pesagem (kg) *" : "Quantidade *"}</Label>
               <Input
                 id="av_qtd"
                 value={noPeso ? weight : quantity}
@@ -306,7 +393,7 @@ export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props
           <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2.5 space-y-1">
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                Total da venda
+                {received ? "Valor da venda" : "Valor a receber"}
               </span>
               <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">
                 {formatBRL(conta.total)}
@@ -314,9 +401,36 @@ export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props
             </div>
             <p className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80 tabular-nums">
               {noPeso
-                ? `${formatQty(conta.kg)} kg × ${formatBRL(conta.precoKg)} = ${formatBRL(conta.total)}`
+                ? `${conta.qtd > 0 ? `${formatQty(conta.qtd)} un · ` : ""}${formatQty(conta.kg)} kg × ${formatBRL(conta.precoKg)} = ${formatBRL(conta.total)}`
                 : `${formatQty(conta.qtd)} un × ${formatBRL(conta.precoUn)} = ${formatBRL(conta.total)}`}
             </p>
+          </div>
+
+          {/* Venda fiada existe: lançar tudo como recebido faz o caixa mentir */}
+          <div className="space-y-1.5">
+            <Label>O dinheiro já entrou?</Label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(
+                [
+                  { value: true, label: "Já recebi" },
+                  { value: false, label: "A receber" },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={String(o.value)}
+                  type="button"
+                  onClick={() => setReceived(o.value)}
+                  className={cn(
+                    "min-h-[44px] rounded-lg border text-sm font-semibold transition-colors",
+                    received === o.value
+                      ? "bg-emerald-600 border-emerald-600 text-white"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -359,9 +473,9 @@ export function AnimalVendaDialog({ open, onClose, venda, presetSpecies }: Props
           </div>
 
           <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-            O total entra no módulo Contas na hora, como entrada já recebida na
-            categoria &quot;Venda de animais&quot;. Corrigir ou apagar aqui mexe no
-            lançamento de lá junto.
+            O valor entra no módulo Contas na hora, na categoria &quot;Venda de
+            animais&quot; — como recebido, ou como pendente se ainda for a receber.
+            Corrigir ou apagar aqui mexe no lançamento de lá junto.
           </p>
 
           {error && (

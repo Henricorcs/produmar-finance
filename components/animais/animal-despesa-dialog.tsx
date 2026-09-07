@@ -26,11 +26,13 @@ import {
   SPECIES_META,
   SPECIES_OPTIONS,
   STICKY_FOOTER,
+  localLabel,
   speciesOf,
 } from "./animal-shared";
 import {
   DESPESAS_ANIMAIS_SUGERIDAS,
   type AnimalDespesa,
+  type AnimalLoteResumo,
   type AnimalSpecies,
   type AnimalWithInfo,
 } from "@/lib/types";
@@ -44,6 +46,10 @@ interface Props {
   presetSpecies?: AnimalSpecies | null;
   /** Rebanho, para amarrar o gasto a um animal quando for de um só. */
   animals: AnimalWithInfo[];
+  /** Ciclo já escolhido (a despesa foi aberta de dentro do tanque). */
+  presetLoteId?: string | null;
+  /** Ciclos abertos, para amarrar o gasto a um tanque. */
+  lotes?: AnimalLoteResumo[];
 }
 
 /**
@@ -62,6 +68,8 @@ export function AnimalDespesaDialog({
   despesa,
   presetSpecies,
   animals,
+  presetLoteId,
+  lotes = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +82,7 @@ export function AnimalDespesaDialog({
   const [amount, setAmount] = useState("");
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
+  const [loteId, setLoteId] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -85,11 +94,17 @@ export function AnimalDespesaDialog({
     setAmount(despesa ? formatBRLInput(Number(despesa.amount)) : "");
     setSupplier(despesa?.supplier ?? "");
     setNotes(despesa?.notes ?? "");
+    setLoteId(despesa?.lote_id ?? presetLoteId ?? "");
     setError(null);
-  }, [open, despesa, presetSpecies]);
+  }, [open, despesa, presetSpecies, presetLoteId]);
 
   /** Só os animais da espécie escolhida — o resto é ruído na hora de achar. */
   const doTipo = animals.filter((a) => speciesOf(a.species) === species);
+  const palavraLocal = localLabel(species);
+  /** Só os ciclos abertos daquele tipo — ciclo fechado não recebe gasto novo. */
+  const lotesDoTipo = lotes.filter(
+    (l) => speciesOf(l.species) === species && (l.status === "aberto" || l.id === loteId)
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -109,6 +124,7 @@ export function AnimalDespesaDialog({
       const input = {
         species,
         animal_id: animalId || null,
+        lote_id: loteId || null,
         expense_date: date,
         category,
         description,
@@ -179,6 +195,46 @@ export function AnimalDespesaDialog({
               ))}
             </div>
           </div>
+
+          {/* De qual tanque é o gasto — é o que dá o custo daquele ciclo */}
+          {lotesDoTipo.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>{palavraLocal}</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setLoteId("")}
+                  className={cn(
+                    "min-h-[40px] rounded-lg border text-xs font-semibold transition-colors px-2",
+                    loteId === ""
+                      ? "bg-slate-600 border-slate-600 text-white"
+                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  )}
+                >
+                  Sem {palavraLocal.toLowerCase()}
+                </button>
+                {lotesDoTipo.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setLoteId(l.id)}
+                    className={cn(
+                      "min-h-[40px] rounded-lg border text-xs font-semibold transition-colors px-2",
+                      loteId === l.id
+                        ? "bg-cyan-600 border-cyan-600 text-white"
+                        : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                    )}
+                  >
+                    {l.tanque_name}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Sem {palavraLocal.toLowerCase()}, o gasto vale para a criação inteira e
+                não entra no custo de nenhum ciclo.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="ad_desc">O que foi *</Label>

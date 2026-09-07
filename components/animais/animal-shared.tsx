@@ -173,6 +173,20 @@ export const SPECIES_OPTIONS: { value: AnimalSpecies; label: string }[] = (
  * O tipo do animal, com bovino de rede de segurança: enquanto a migration 047
  * não roda no Supabase a coluna não vem, e tudo que existe hoje é bovino.
  */
+/**
+ * Como se chama o LUGAR da criação em cada tipo (migration 089).
+ *
+ * O peixe mora em tanque, a ave em galpão. É a mesma tabela e a mesma tela —
+ * só a palavra muda, e chamar o galpão de "tanque" na tela do aviário faria o
+ * cadastro parecer de outro sistema.
+ */
+export function localLabel(species?: AnimalSpecies | null): string {
+  const s = speciesOf(species);
+  if (s === "piscicultura") return "Tanque";
+  if (s === "aves") return "Galpão";
+  return "Local";
+}
+
 export function speciesOf(species?: AnimalSpecies | null): AnimalSpecies {
   return species && species in SPECIES_META ? species : "bovino";
 }

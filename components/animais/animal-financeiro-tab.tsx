@@ -10,6 +10,7 @@ import { AnimalVendaDialog } from "./animal-venda-dialog";
 import type {
   AnimalDespesa,
   AnimalFinanceiroLinha,
+  AnimalLoteResumo,
   AnimalSpecies,
   AnimalVenda,
   AnimalWithInfo,
@@ -22,6 +23,8 @@ interface Props {
   despesas: AnimalDespesa[];
   /** As vendas de lote cruas (peixe, ave) — idem, para corrigir pela ficha. */
   vendas?: AnimalVenda[];
+  /** Os ciclos (089) — para dizer de qual tanque é cada linha. */
+  lotes?: AnimalLoteResumo[];
   /** Rebanho inteiro (inclusive quem já saiu), para amarrar a despesa. */
   animals: AnimalWithInfo[];
 }
@@ -50,7 +53,13 @@ interface ResumoEspecie {
  * paga? O bovino está dando o que devia? Somar tudo junto esconde justamente
  * isso.
  */
-export function AnimalFinanceiroTab({ linhas, despesas, vendas = [], animals }: Props) {
+export function AnimalFinanceiroTab({
+  linhas,
+  despesas,
+  vendas = [],
+  lotes = [],
+  animals,
+}: Props) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [editDespesa, setEditDespesa] = useState<AnimalDespesa | null>(null);
@@ -130,6 +139,12 @@ export function AnimalFinanceiroTab({ linhas, despesas, vendas = [], animals }: 
    * se corrige desfazendo a baixa dele, na ficha do animal.
    */
   const vendaPorId = useMemo(() => new Map(vendas.map((v) => [v.id, v])), [vendas]);
+
+  /** De qual tanque é o lançamento — o ciclo guarda o nome, a linha não. */
+  const tanquePorLote = useMemo(
+    () => new Map(lotes.map((l) => [l.id, l.tanque_name])),
+    [lotes]
+  );
 
   function abrirDespesa(d: AnimalDespesa | null) {
     setEditDespesa(d);
@@ -289,6 +304,8 @@ export function AnimalFinanceiroTab({ linhas, despesas, vendas = [], animals }: 
               const despesa = despesaPorId.get(l.id) ?? null;
               const vendaLote = venda ? (vendaPorId.get(l.id) ?? null) : null;
               const editavel = (l.kind === "despesa" && !!despesa) || !!vendaLote;
+              const tanque =
+                tanquePorLote.get(vendaLote?.lote_id ?? despesa?.lote_id ?? "") ?? null;
               const Icone = venda ? HandCoins : l.kind === "tratamento" ? Stethoscope : Receipt;
               return (
                 <div
@@ -349,6 +366,7 @@ export function AnimalFinanceiroTab({ linhas, despesas, vendas = [], animals }: 
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
                       {formatDate(l.entry_date)}
                       {` · ${SPECIES_META[speciesOf(l.species)].label}`}
+                      {tanque ? ` · ${tanque}` : ""}
                       {l.animal_tag ? ` · nº ${l.animal_tag}` : ""}
                       {l.category ? ` · ${l.category}` : ""}
                       {l.person ? ` · ${l.person}` : ""}
@@ -387,6 +405,7 @@ export function AnimalFinanceiroTab({ linhas, despesas, vendas = [], animals }: 
         onClose={() => setDespesaOpen(false)}
         despesa={editDespesa}
         presetSpecies={filtro === "todos" ? null : filtro}
+        lotes={lotes}
         animals={animals}
       />
 
@@ -395,6 +414,7 @@ export function AnimalFinanceiroTab({ linhas, despesas, vendas = [], animals }: 
         onClose={() => setVendaOpen(false)}
         venda={editVenda}
         presetSpecies={filtro === "todos" ? null : filtro}
+        lotes={lotes}
       />
     </div>
   );

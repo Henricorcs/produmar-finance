@@ -6,6 +6,9 @@ import type {
   AnimalBreed,
   AnimalDespesa,
   AnimalFinanceiroLinha,
+  AnimalLoteMovimento,
+  AnimalLoteResumo,
+  AnimalTanque,
   AnimalTreatment,
   AnimalVaccine,
   AnimalVaccinePending,
@@ -33,6 +36,9 @@ export default async function AnimaisPage() {
     financeiroRes,
     despesasRes,
     vendasRes,
+    tanquesRes,
+    lotesRes,
+    movimentosRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -87,6 +93,19 @@ export default async function AnimaisPage() {
       .select("*")
       .order("sale_date", { ascending: false })
       .limit(2000),
+    // tanque, ciclo e movimento (migration 089 — sem ela a aba abre vazia e o
+    // resto da tela segue igual)
+    supabase.from("animal_tanques").select("*").order("name", { ascending: true }),
+    supabase
+      .from("v_animal_lotes")
+      .select("*")
+      .order("start_date", { ascending: false })
+      .limit(500),
+    supabase
+      .from("animal_lote_movimentos")
+      .select("*")
+      .order("moved_on", { ascending: false })
+      .limit(5000),
   ]);
 
   return (
@@ -103,6 +122,9 @@ export default async function AnimaisPage() {
       financeiro={(financeiroRes.data as AnimalFinanceiroLinha[]) ?? []}
       despesas={(despesasRes.data as AnimalDespesa[]) ?? []}
       vendas={(vendasRes.data as AnimalVenda[]) ?? []}
+      tanques={(tanquesRes.data as AnimalTanque[]) ?? []}
+      lotes={(lotesRes.data as AnimalLoteResumo[]) ?? []}
+      movimentos={(movimentosRes.data as AnimalLoteMovimento[]) ?? []}
     />
   );
 }
