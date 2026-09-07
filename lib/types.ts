@@ -919,6 +919,8 @@ export const DESPESAS_ANIMAIS_SUGERIDAS = [
   "VACINA",
   "VETERINÁRIO",
   "COMPRA DE ANIMAL",
+  "ALEVINO",
+  "PINTINHO",
   "FRETE",
   "PASTAGEM",
   "MÃO DE OBRA",
@@ -946,6 +948,8 @@ export interface AnimalDespesa {
   /** De quem se comprou, quem prestou o serviço. */
   supplier: string | null;
   notes: string | null;
+  /** De qual ciclo é o gasto (089). Em branco, vale para a espécie e só entra no geral. */
+  lote_id?: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -984,8 +988,108 @@ export interface AnimalVenda {
   notes: string | null;
   /** Lançamento gerado no módulo Contas — some junto se a venda for apagada. */
   transaction_id: string | null;
+  /** De qual ciclo saiu (089). Em branco, vale para a espécie e só entra no geral. */
+  lote_id?: string | null;
   created_by: string | null;
   created_at: string;
+}
+
+// ── Tanque, ciclo e movimento (migration 089) ────────────────────────────────
+// Três peças, e só três: o TANQUE é o cadastro fixo (Tanque 01, 02, 03, 04); o
+// CICLO é o povoamento daquele tanque, que fecha na despesca; o MOVIMENTO é o
+// que mexe na quantidade. Serve galpão de aves pelo mesmo caminho — quem troca
+// a palavra na tela é a espécie.
+
+/** Tanque (piscicultura) ou galpão (aves): o lugar, que existe para sempre. */
+export interface AnimalTanque {
+  id: string;
+  species: AnimalSpecies;
+  name: string;
+  /** Desativado some da hora de abrir ciclo, mas o histórico dele fica. */
+  active: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type AnimalLoteStatus = "aberto" | "fechado";
+
+/** O povoamento de um tanque: começo, meio e fim. Um aberto por tanque. */
+export interface AnimalLote {
+  id: string;
+  tanque_id: string;
+  species: AnimalSpecies;
+  /** Opcional, para nomear a safra: "TILÁPIA 2026/1". */
+  name: string | null;
+  start_date: string;
+  status: AnimalLoteStatus;
+  closed_at: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * O que mexe na quantidade do ciclo:
+ *   entrada → povoou (+)
+ *   morte   → morreu (−)
+ *   ajuste  → recontagem; é o único que aceita negativo, e é ele que o
+ *             fechamento usa para zerar a sobra
+ */
+export type AnimalLoteMovimentoKind = "entrada" | "morte" | "ajuste";
+
+export const LOTE_MOVIMENTO_LABEL: Record<AnimalLoteMovimentoKind, string> = {
+  entrada: "Entrada",
+  morte: "Morte",
+  ajuste: "Correção de contagem",
+};
+
+export interface AnimalLoteMovimento {
+  id: string;
+  lote_id: string;
+  kind: AnimalLoteMovimentoKind;
+  moved_on: string;
+  quantity: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * A conta do ciclo, pronta (view v_animal_lotes): quanto está vivo, quanto
+ * morreu, e o bruto e o líquido daquele tanque.
+ */
+export interface AnimalLoteResumo {
+  id: string;
+  tanque_id: string;
+  tanque_name: string;
+  tanque_active: boolean;
+  species: AnimalSpecies;
+  name: string | null;
+  start_date: string;
+  status: AnimalLoteStatus;
+  closed_at: string | null;
+  notes: string | null;
+  created_at: string;
+  /** Quantidade */
+  entradas: number;
+  mortes: number;
+  ajustes: number;
+  /** Cabeças vendidas (a coluna quantity da venda). */
+  vendidos: number;
+  /** entradas − mortes ± ajustes − vendidos. */
+  saldo: number;
+  mortalidade_pct: number;
+  /** Dinheiro */
+  kg_vendidos: number;
+  /** O que entrou de venda. */
+  bruto: number;
+  /** O que saiu de despesa amarrada ao ciclo. */
+  custo: number;
+  /** bruto − custo. */
+  liquido: number;
+  custo_por_cabeca: number;
+  custo_por_kg: number;
 }
 
 /**

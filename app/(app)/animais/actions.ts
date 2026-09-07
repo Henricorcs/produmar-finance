@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type {
   AnimalExitReason,
+  AnimalLoteMovimentoKind,
   AnimalSaleMode,
   AnimalSex,
   AnimalSpecies,
@@ -1288,6 +1289,8 @@ function despesaError(error: { code?: string; message: string }): string {
 
 export interface AnimalDespesaInput {
   species: AnimalSpecies;
+  /** De qual ciclo é o gasto (089) — em branco, vale para a espécie. */
+  lote_id?: string | null;
   /** Só quando o gasto foi de UM animal — em branco vale para a espécie toda. */
   animal_id?: string | null;
   expense_date?: string | null;
@@ -1303,6 +1306,7 @@ function despesaRow(input: AnimalDespesaInput) {
   return {
     species: SPECIES_LABEL[input.species] ? input.species : "bovino",
     animal_id: input.animal_id || null,
+    lote_id: input.lote_id || null,
     expense_date: input.expense_date?.trim() || undefined,
     category: clean(input.category),
     description: clean(input.description),
@@ -1388,6 +1392,8 @@ function vendaError(error: { code?: string; message: string }): string {
 
 export interface AnimalVendaInput {
   species: AnimalSpecies;
+  /** De qual ciclo saiu (089) — em branco, vale para a espécie. */
+  lote_id?: string | null;
   sale_date?: string | null;
   sale_mode: AnimalSaleMode;
   /** Só em "unidade". */
@@ -1410,7 +1416,7 @@ export interface AnimalVendaInput {
  */
 function contaDaVenda(input: AnimalVendaInput) {
   const noPeso = input.sale_mode === "peso";
-  const quantity = noPeso ? 0 : normWeight(input.quantity);
+  const quantity = normWeight(input.quantity);
   const pricePerUnit = noPeso ? 0 : money(input.price_per_unit);
   const weight = noPeso ? normWeight(input.weight_kg) : 0;
   const pricePerKg = noPeso ? money(input.price_per_kg) : 0;
@@ -1428,6 +1434,7 @@ function vendaInvalida(input: AnimalVendaInput): string | null {
     if (c.quantity <= 0) return "Informe quantas unidades foram vendidas";
     if (c.pricePerUnit <= 0) return "Informe o valor da unidade";
   }
+  // No peso a quantidade é opcional — nem sempre se conta peixe na despesca.
   if (c.total <= 0) return "O total da venda ficou zerado — confira a conta";
   return null;
 }
@@ -1436,6 +1443,7 @@ function vendaRow(input: AnimalVendaInput) {
   const c = contaDaVenda(input);
   return {
     species: SPECIES_LABEL[input.species] ? input.species : "bovino",
+    lote_id: input.lote_id || null,
     sale_date: input.sale_date?.trim() || undefined,
     sale_mode: c.noPeso ? "peso" : "unidade",
     quantity: c.quantity,
@@ -1453,9 +1461,9 @@ function vendaRow(input: AnimalVendaInput) {
 function vendaTextoDaConta(input: AnimalVendaInput): string {
   const c = contaDaVenda(input);
   const preco = (v: number) => v.toFixed(2).replace(".", ",");
-  return c.noPeso
-    ? ` (${c.weight} KG X ${preco(c.pricePerKg)}/KG)`
-    : ` (${c.quantity} UN X ${preco(c.pricePerUnit)})`;
+  if (!c.noPeso) return ` (${c.quantity} UN X ${preco(c.pricePerUnit)})`;
+  const cabecas = c.quantity > 0 ? `${c.quantity} UN, ` : "";
+  return ` (${cabecas}${c.weight} KG X ${preco(c.pricePerKg)}/KG)`;
 }
 
 /** O lançamento que a venda gera no módulo Contas. */
@@ -1576,6 +1584,308 @@ export async function deleteAnimalVenda(id: string) {
     await supabase.from("transactions").delete().eq("id", atual.transaction_id);
   }
 
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TANQUE, CICLO E MOVIMENTO (migration 089)
+// ─────────────────────────────────────────────────────────────────────────────
+// O TANQUE é o lugar e existe para sempre. O CICLO é o povoamento dele, que
+// fecha na despesca. O MOVIMENTO é o que mexe na quantidade. Despesa e venda
+// apontam para o ciclo — é daí que sai o bruto e o líquido de cada tanque.
+
+function loteError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.code === "42703")
+    return "Rode a migration 089 no Supabase para controlar tanque e ciclo";
+  if (error.message.includes("uq_animal_lote_aberto"))
+    return "Este tanque já tem um ciclo aberto. Feche o ciclo atual antes de abrir outro.";
+  if (error.message.includes("uq_animal_tanques_nome"))
+    return "Já existe um tanque com esse nome nesta criação";
+  if (error.code === "23503")
+    return "Não dá para apagar: ainda há lançamento amarrado a isto.";
+  if (error.code === "42501" || /row.level security/i.test(error.message))
+    return "Seu usuário não tem permissão para mexer em tanque e ciclo.";
+  return error.code ? `${error.message} (código ${error.code})` : error.message;
+}
+
+// ── Tanque ───────────────────────────────────────────────────────────────────
+
+export interface AnimalTanqueInput {
+  species: AnimalSpecies;
+  name: string;
+  active?: boolean;
+  notes?: string | null;
+}
+
+export async function createAnimalTanque(input: AnimalTanqueInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!clean(input.name)) return { error: "Dê um nome ao tanque" };
+
+  const { error } = await supabase.from("animal_tanques").insert({
+    species: SPECIES_LABEL[input.species] ? input.species : "piscicultura",
+    name: clean(input.name),
+    active: input.active ?? true,
+    notes: clean(input.notes),
+    created_by: user.id,
+  });
+
+  if (error) return { error: loteError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function updateAnimalTanque(id: string, input: AnimalTanqueInput) {
+  const supabase = createClient();
+  if (!clean(input.name)) return { error: "Dê um nome ao tanque" };
+
+  const { error } = await supabase
+    .from("animal_tanques")
+    .update({
+      species: SPECIES_LABEL[input.species] ? input.species : "piscicultura",
+      name: clean(input.name),
+      active: input.active ?? true,
+      notes: clean(input.notes),
+    })
+    .eq("id", id);
+
+  if (error) return { error: loteError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Só apaga tanque vazio: com ciclo, o histórico dele iria junto. */
+export async function deleteAnimalTanque(id: string) {
+  const supabase = createClient();
+
+  const { count } = await supabase
+    .from("animal_lotes")
+    .select("id", { count: "exact", head: true })
+    .eq("tanque_id", id);
+
+  if ((count ?? 0) > 0)
+    return {
+      error:
+        "Este tanque já teve ciclo. Em vez de apagar, desative — assim o histórico dele fica.",
+    };
+
+  const { error } = await supabase.from("animal_tanques").delete().eq("id", id);
+  if (error) return { error: loteError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ── Ciclo ────────────────────────────────────────────────────────────────────
+
+export interface AnimalLoteInput {
+  tanque_id: string;
+  species: AnimalSpecies;
+  name?: string | null;
+  start_date?: string | null;
+  notes?: string | null;
+  /** Só ao ABRIR: vira o primeiro movimento de entrada. */
+  quantity?: number | null;
+}
+
+export async function createAnimalLote(input: AnimalLoteInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!input.tanque_id) return { error: "Escolha o tanque" };
+
+  const entrada = normWeight(input.quantity);
+  if (entrada <= 0) return { error: "Informe quantos entraram no tanque" };
+
+  const { data: lote, error } = await supabase
+    .from("animal_lotes")
+    .insert({
+      tanque_id: input.tanque_id,
+      species: SPECIES_LABEL[input.species] ? input.species : "piscicultura",
+      name: clean(input.name),
+      start_date: input.start_date?.trim() || undefined,
+      notes: clean(input.notes),
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !lote) return { error: loteError(error ?? { message: "Erro ao abrir o ciclo" }) };
+
+  // A quantidade inicial É o primeiro movimento. Se ele não entrar, o ciclo
+  // volta atrás: ciclo aberto com zero dentro é pior do que nenhum ciclo.
+  const { error: movErr } = await supabase.from("animal_lote_movimentos").insert({
+    lote_id: lote.id,
+    kind: "entrada",
+    moved_on: input.start_date?.trim() || undefined,
+    quantity: entrada,
+    notes: "ABERTURA DO CICLO",
+    created_by: user.id,
+  });
+
+  if (movErr) {
+    await supabase.from("animal_lotes").delete().eq("id", lote.id);
+    return { error: loteError(movErr) };
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/** Corrige o cabeçalho do ciclo. A quantidade se corrige por movimento. */
+export async function updateAnimalLote(id: string, input: AnimalLoteInput) {
+  const supabase = createClient();
+  if (!input.tanque_id) return { error: "Escolha o tanque" };
+
+  const { error } = await supabase
+    .from("animal_lotes")
+    .update({
+      tanque_id: input.tanque_id,
+      species: SPECIES_LABEL[input.species] ? input.species : "piscicultura",
+      name: clean(input.name),
+      start_date: input.start_date?.trim() || undefined,
+      notes: clean(input.notes),
+    })
+    .eq("id", id);
+
+  if (error) return { error: loteError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Só apaga ciclo sem dinheiro amarrado — venda e despesa ficariam órfãs. */
+export async function deleteAnimalLote(id: string) {
+  const supabase = createClient();
+
+  const [{ count: vendas }, { count: despesas }] = await Promise.all([
+    supabase.from("animal_vendas").select("id", { count: "exact", head: true }).eq("lote_id", id),
+    supabase.from("animal_despesas").select("id", { count: "exact", head: true }).eq("lote_id", id),
+  ]);
+
+  if ((vendas ?? 0) > 0 || (despesas ?? 0) > 0)
+    return {
+      error:
+        "Este ciclo já tem venda ou despesa lançada. Desamarre esses lançamentos antes de apagar — ou feche o ciclo, em vez de apagar.",
+    };
+
+  const { error } = await supabase.from("animal_lotes").delete().eq("id", id);
+  if (error) return { error: loteError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Fecha o ciclo — e ZERA a sobra no mesmo ato.
+ *
+ * O saldo de quem cria peixe é estimativa: ninguém conta tilápia na despesca.
+ * Fechar deixando 400 peixes pendurados faz o relatório mentir seis meses
+ * depois, então o que sobra vira uma correção de contagem visível na lista de
+ * movimentos, com o motivo escrito.
+ */
+export async function fecharAnimalLote(id: string, closed_at?: string | null) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: resumo, error: readErr } = await supabase
+    .from("v_animal_lotes")
+    .select("saldo, status")
+    .eq("id", id)
+    .maybeSingle<{ saldo: number; status: string }>();
+
+  if (readErr) return { error: loteError(readErr) };
+  if (!resumo) return { error: "Ciclo não encontrado" };
+  if (resumo.status === "fechado") return { error: "Este ciclo já está fechado" };
+
+  const sobra = Number(resumo.saldo ?? 0);
+  if (sobra !== 0) {
+    const { error: movErr } = await supabase.from("animal_lote_movimentos").insert({
+      lote_id: id,
+      kind: "ajuste",
+      moved_on: closed_at?.trim() || undefined,
+      quantity: -sobra,
+      notes: "FECHAMENTO DO CICLO",
+      created_by: user.id,
+    });
+    if (movErr) return { error: loteError(movErr) };
+  }
+
+  const { error } = await supabase
+    .from("animal_lotes")
+    .update({ status: "fechado", closed_at: closed_at?.trim() || localDateISO() })
+    .eq("id", id);
+
+  if (error) return { error: loteError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Reabre o ciclo. O ajuste do fechamento fica — some pela lista de movimentos. */
+export async function reabrirAnimalLote(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("animal_lotes")
+    .update({ status: "aberto", closed_at: null })
+    .eq("id", id);
+
+  if (error) return { error: loteError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ── Movimento ────────────────────────────────────────────────────────────────
+
+export interface AnimalLoteMovimentoInput {
+  lote_id: string;
+  kind: AnimalLoteMovimentoKind;
+  moved_on?: string | null;
+  /** Sempre positivo, menos no ajuste, que aceita negativo. */
+  quantity: number;
+  notes?: string | null;
+}
+
+export async function createAnimalLoteMovimento(input: AnimalLoteMovimentoInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!input.lote_id) return { error: "Ciclo não informado" };
+
+  const qtd =
+    input.kind === "ajuste"
+      ? Math.round(Number(input.quantity ?? 0) * 1000) / 1000
+      : normWeight(input.quantity);
+
+  if (input.kind === "ajuste" && qtd === 0)
+    return { error: "A correção não pode ser zero" };
+  if (input.kind !== "ajuste" && qtd <= 0) return { error: "Informe a quantidade" };
+
+  const { error } = await supabase.from("animal_lote_movimentos").insert({
+    lote_id: input.lote_id,
+    kind: input.kind,
+    moved_on: input.moved_on?.trim() || undefined,
+    quantity: qtd,
+    notes: clean(input.notes),
+    created_by: user.id,
+  });
+
+  if (error) return { error: loteError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export async function deleteAnimalLoteMovimento(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_lote_movimentos").delete().eq("id", id);
+  if (error) return { error: loteError(error) };
   revalidate();
   return { ok: true };
 }
