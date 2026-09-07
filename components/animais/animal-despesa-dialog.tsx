@@ -170,31 +170,42 @@ export function AnimalDespesaDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* A espécie é o que a ficha separa: sem ela não há custo por bicho */}
-          <div className="space-y-1.5">
-            <Label>De qual tipo de animal *</Label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {SPECIES_OPTIONS.map((s) => (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() => {
-                    setSpecies(s.value);
-                    // o animal escolhido era de outro tipo: não faz mais sentido
-                    setAnimalId("");
-                  }}
-                  className={cn(
-                    "min-h-[40px] rounded-lg border text-xs font-semibold transition-colors",
-                    species === s.value
-                      ? "bg-produmar-600 border-produmar-600 text-white"
-                      : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-                  )}
-                >
-                  {SPECIES_META[s.value].plural}
-                </button>
-              ))}
+          {/* A espécie é o que a ficha separa: sem ela não há custo por bicho.
+              Some quando o tipo já veio decidido de fora — o tanque, ou o recorte
+              da ficha: escolher de novo o que já está escolhido só atrapalha. */}
+          {!presetSpecies && (
+            <div className="space-y-1.5">
+              <Label>De qual tipo de animal *</Label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {SPECIES_OPTIONS.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => {
+                      setSpecies(s.value);
+                      // o animal escolhido era de outro tipo: não faz mais sentido
+                      setAnimalId("");
+                    }}
+                    className={cn(
+                      "min-h-[40px] rounded-lg border text-xs font-semibold transition-colors",
+                      species === s.value
+                        ? "bg-produmar-600 border-produmar-600 text-white"
+                        : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                    )}
+                  >
+                    {SPECIES_META[s.value].plural}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Sem o seletor, a criação ficaria em segredo: fica dita aqui. */}
+          {presetSpecies && (
+            <p className="-mb-1 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+              {SPECIES_META[species].plural}
+            </p>
+          )}
 
           {/* De qual tanque é o gasto — é o que dá o custo daquele ciclo */}
           {lotesDoTipo.length > 0 && (
