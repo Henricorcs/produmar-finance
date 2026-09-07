@@ -57,6 +57,7 @@ import {
   formatWeight,
   pariuLabel,
   recurrenceLabel,
+  criacaoPorLote,
   speciesOf,
   suggestedDoseMl,
   vaccineStatusFor,
@@ -730,6 +731,41 @@ export function AnimaisPageClient({
     })),
   ];
 
+  /**
+   * Peixe e ave se controlam por TANQUE, não bicho a bicho: não há brinco para
+   * numerar, não há macho e fêmea, não há bezerro. Com o tipo desses escolhido,
+   * a aba Rebanho troca o cadastro individual pela lista de tanques — o que
+   * estava lá prometia um cadastro que não existe.
+   */
+  const porLote = species !== "todos" && criacaoPorLote(species);
+
+  /** O seletor de criação, usado pelas duas versões do Rebanho. */
+  const seletorDeTipo = (
+    <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 dark:bg-slate-800/60">
+      {speciesFilters.map((f) => {
+        const active = species === f.value;
+        /* tipo que ninguém tem ainda: fica apagado, mas dá pra escolher */
+        const empty = f.count === 0 && !active;
+        return (
+          <button
+            key={f.value}
+            onClick={() => setSpecies(f.value)}
+            className={cn(
+              "h-9 px-3 rounded-lg text-xs font-semibold tracking-wide transition-colors active:scale-[0.97]",
+              active
+                ? "bg-produmar-600 text-white shadow-sm"
+                : empty
+                ? "text-slate-400 dark:text-slate-600"
+                : "text-slate-600 dark:text-slate-300"
+            )}
+          >
+            {f.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
@@ -803,30 +839,13 @@ export function AnimaisPageClient({
                 que se escolhe o rebanho, e é ele que manda na linha de
                 cadastro); os vazios ficam apagados. Sem número aqui — a
                 contagem é uma só, a da faixa logo abaixo. */}
-            <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 dark:bg-slate-800/60">
-              {speciesFilters.map((f) => {
-                const active = species === f.value;
-                /* tipo que ninguém tem ainda: fica apagado, mas dá pra escolher */
-                const empty = f.count === 0 && !active;
-                return (
-                  <button
-                    key={f.value}
-                    onClick={() => setSpecies(f.value)}
-                    className={cn(
-                      "h-9 px-3 rounded-lg text-xs font-semibold tracking-wide transition-colors active:scale-[0.97]",
-                      active
-                        ? "bg-produmar-600 text-white shadow-sm"
-                        : empty
-                        ? "text-slate-400 dark:text-slate-600"
-                        : "text-slate-600 dark:text-slate-300"
-                    )}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
+            {seletorDeTipo}
 
+            {/* Contagem por categoria, busca por número, ordem e guia impressa:
+                tudo isso pressupõe bicho cadastrado um a um. No tanque não há
+                nada disso para contar nem para procurar. */}
+            {!porLote && (
+              <>
             {/* Contagem do rebanho — e o filtro por categoria no mesmo toque.
                 Uma faixa dividida em quatro, não quatro caixas soltas. */}
             <div className="grid grid-cols-4 divide-x divide-slate-100 border-y border-slate-100 dark:divide-slate-800 dark:border-slate-800">
@@ -954,7 +973,22 @@ export function AnimaisPageClient({
                 </button>
               )}
             </div>
+              </>
+            )}
           </div>
+
+          {/* Peixe e ave: o "rebanho" é o tanque com a quantidade dentro.
+              Tocando num tanque abre a entrada, a saída, a despesa e a venda
+              daquele ciclo. */}
+          {porLote && (
+            <LotesTab
+              tanques={tanques}
+              lotes={lotes}
+              movimentos={movimentos}
+              animals={allAnimals}
+              speciesFixa={species}
+            />
+          )}
 
           {/* Quadro de NÚMEROS (o padrão) ou a planilha larga.
 
@@ -963,7 +997,7 @@ export function AnimaisPageClient({
               ficha abre; é lá que entram vacina, peso, parto, foto e
               tratamento. A planilha, com uma coluna por vacina, continua para
               o dia de vacinar o lote inteiro no curral. */}
-          {view === "numeros" ? (
+          {porLote ? null : view === "numeros" ? (
             <>
               {/* Cadastro rápido: nº + F/M e Enter — o resto é na ficha */}
               <QuickAddBar species={species === "todos" ? null : species} />

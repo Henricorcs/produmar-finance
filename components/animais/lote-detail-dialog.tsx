@@ -45,7 +45,7 @@ interface Props {
 const TIPOS: { value: AnimalLoteMovimentoKind; label: string }[] = [
   { value: "morte", label: "Morte" },
   { value: "entrada", label: "Entrada" },
-  { value: "ajuste", label: "Correção" },
+  { value: "ajuste", label: "Outra saída" },
 ];
 
 /**
@@ -312,8 +312,9 @@ export function LoteDetailDialog({
 
               {kind === "ajuste" && (
                 <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                  A correção tira do saldo o que você digitar — é a recontagem, para
-                  quando o número do sistema não bate com o do {palavra.toLowerCase()}.
+                  Tira do saldo o que você digitar. É a saída que não é morte nem
+                  venda: peixe passado para outro {palavra.toLowerCase()}, consumo da
+                  casa, ou a recontagem quando o número do sistema não bate com o real.
                 </p>
               )}
 

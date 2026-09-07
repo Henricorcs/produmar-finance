@@ -180,6 +180,19 @@ export const SPECIES_OPTIONS: { value: AnimalSpecies; label: string }[] = (
  * só a palavra muda, e chamar o galpão de "tanque" na tela do aviário faria o
  * cadastro parecer de outro sistema.
  */
+/**
+ * Esta criação se controla por LOTE, e não bicho a bicho?
+ *
+ * Peixe e ave não têm brinco, não têm sexo e não têm categoria por idade — o
+ * rebanho deles é o TANQUE (ou o galpão) com uma quantidade dentro. Toda a
+ * maquinaria do cadastro individual (número, F/M, busca por brinco, planilha de
+ * vacina) não só sobra: atrapalha, porque promete um cadastro que não existe.
+ */
+export function criacaoPorLote(species?: AnimalSpecies | null): boolean {
+  const s = speciesOf(species);
+  return s === "piscicultura" || s === "aves";
+}
+
 export function localLabel(species?: AnimalSpecies | null): string {
   const s = speciesOf(species);
   if (s === "piscicultura") return "Tanque";

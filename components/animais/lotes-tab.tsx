@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Layers, Plus, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatBRL, formatDate, formatQty } from "@/lib/utils";
@@ -24,6 +24,12 @@ interface Props {
   movimentos: AnimalLoteMovimento[];
   /** Rebanho inteiro — a despesa lançada daqui pode amarrar num animal. */
   animals: AnimalWithInfo[];
+  /**
+   * Tipo fixo — quando a aba Rebanho abre esta tela já dentro de uma criação.
+   * Nesse caso os chips de tipo somem: quem escolhe o tipo é o seletor de cima,
+   * e dois seletores da mesma coisa na mesma tela é convite para erro.
+   */
+  speciesFixa?: AnimalSpecies | null;
 }
 
 type Filtro = "todos" | AnimalSpecies;
@@ -36,8 +42,19 @@ type Filtro = "todos" | AnimalSpecies;
  * foi lançado sem tanque (a bomba do viveiro) não aparece aqui; aparece na
  * ficha, que é onde mora a conta da espécie inteira.
  */
-export function LotesTab({ tanques, lotes, movimentos, animals }: Props) {
-  const [filtro, setFiltro] = useState<Filtro>("todos");
+export function LotesTab({
+  tanques,
+  lotes,
+  movimentos,
+  animals,
+  speciesFixa,
+}: Props) {
+  const [filtro, setFiltro] = useState<Filtro>(speciesFixa ?? "todos");
+
+  // Trocou de criação lá em cima: esta tela acompanha.
+  useEffect(() => {
+    if (speciesFixa) setFiltro(speciesFixa);
+  }, [speciesFixa]);
   const [tanquesOpen, setTanquesOpen] = useState(false);
   const [loteOpen, setLoteOpen] = useState(false);
   const [editLote, setEditLote] = useState<AnimalLoteResumo | null>(null);
@@ -137,18 +154,20 @@ export function LotesTab({ tanques, lotes, movimentos, animals }: Props) {
         </Button>
       </div>
 
-      {/* Filtro por tipo */}
-      <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
-        <Chip label="Todos" ativo={filtro === "todos"} onClick={() => setFiltro("todos")} />
-        {SPECIES_OPTIONS.map((s) => (
-          <Chip
-            key={s.value}
-            label={SPECIES_META[s.value].plural}
-            ativo={filtro === s.value}
-            onClick={() => setFiltro(filtro === s.value ? "todos" : s.value)}
-          />
-        ))}
-      </div>
+      {/* Filtro por tipo — some quando o tipo já veio escolhido de fora */}
+      {!speciesFixa && (
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+          <Chip label="Todos" ativo={filtro === "todos"} onClick={() => setFiltro("todos")} />
+          {SPECIES_OPTIONS.map((s) => (
+            <Chip
+              key={s.value}
+              label={SPECIES_META[s.value].plural}
+              ativo={filtro === s.value}
+              onClick={() => setFiltro(filtro === s.value ? "todos" : s.value)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Um cartão por ciclo */}
       {doFiltro.length === 0 ? (

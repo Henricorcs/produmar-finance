@@ -1041,7 +1041,7 @@ export type AnimalLoteMovimentoKind = "entrada" | "morte" | "ajuste";
 export const LOTE_MOVIMENTO_LABEL: Record<AnimalLoteMovimentoKind, string> = {
   entrada: "Entrada",
   morte: "Morte",
-  ajuste: "Correção de contagem",
+  ajuste: "Saída / correção",
 };
 
 export interface AnimalLoteMovimento {
