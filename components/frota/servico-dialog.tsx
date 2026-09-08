@@ -42,6 +42,7 @@ import {
   type MachineServicoKind,
   type MachineServicoStatus,
 } from "@/lib/types";
+import { AvisoDoCelular } from "@/components/operador/aviso-do-celular";
 
 interface Props {
   open: boolean;
@@ -496,6 +497,11 @@ export function ServicoDialog({
                 Ele recebe esta OS no painel dele e fecha pelo celular: toca em
                 INICIAR ao começar e em FINALIZAR ao terminar, contando o que fez.
               </p>
+              {/* ...e o celular só apita se ele tiver ligado os alertas */}
+              <AvisoDoCelular
+                userId={assignedTo}
+                nome={operators.find((o) => o.id === assignedTo)?.name}
+              />
             </div>
           )}
 

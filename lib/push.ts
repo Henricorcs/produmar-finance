@@ -31,6 +31,43 @@ function chavesProntas(): boolean {
   return true;
 }
 
+/**
+ * Por que ninguém foi avisado. Existe para a TELA poder explicar: antes o aviso
+ * falhava calado, e quem lançou a OS ficava achando que o celular tinha tocado.
+ */
+export type MotivoSemAviso = "sem-chaves" | "sem-aparelho" | "falhou";
+
+export interface ResultadoDoAviso {
+  entregues: number;
+  motivo?: MotivoSemAviso;
+}
+
+/** As chaves de aviso estão configuradas no servidor? */
+export function avisosConfigurados(): boolean {
+  return chavesProntas();
+}
+
+/**
+ * Este funcionário tem ALGUM aparelho ligado para receber aviso?
+ *
+ * Vai pelo cliente de serviço porque a RLS da migration 085 prende cada um às
+ * próprias inscrições — nem o admin enxerga a do vizinho. Aqui só sai o
+ * sim/não: nenhum endereço e nenhuma chave de aparelho saem desta função.
+ */
+export async function temAparelhoAvisavel(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const supabase = createAdminClient();
+    const { count } = await supabase
+      .from("push_subscriptions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId);
+    return (count ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 export interface AvisoDoCelular {
   titulo: string;
   corpo: string;
@@ -52,8 +89,9 @@ export interface AvisoDoCelular {
 export async function avisarNoCelular(
   userId: string,
   aviso: AvisoDoCelular
-): Promise<number> {
-  if (!userId || !chavesProntas()) return 0;
+): Promise<ResultadoDoAviso> {
+  if (!userId) return { entregues: 0, motivo: "sem-aparelho" };
+  if (!chavesProntas()) return { entregues: 0, motivo: "sem-chaves" };
 
   try {
     const supabase = createAdminClient();
@@ -62,7 +100,8 @@ export async function avisarNoCelular(
       .select("id, endpoint, p256dh, auth")
       .eq("user_id", userId);
 
-    if (!inscricoes || inscricoes.length === 0) return 0;
+    if (!inscricoes || inscricoes.length === 0)
+      return { entregues: 0, motivo: "sem-aparelho" };
 
     const carga = JSON.stringify({
       titulo: aviso.titulo,
@@ -99,9 +138,9 @@ export async function avisarNoCelular(
       await supabase.from("push_subscriptions").delete().in("id", mortas);
     }
 
-    return entregues;
+    return entregues > 0 ? { entregues } : { entregues: 0, motivo: "falhou" };
   } catch {
     // Avisar é acessório: o que importava (a OS) já está gravado.
-    return 0;
+    return { entregues: 0, motivo: "falhou" };
   }
 }

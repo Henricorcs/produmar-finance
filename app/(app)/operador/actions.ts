@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
+import { avisosConfigurados, temAparelhoAvisavel } from "@/lib/push";
 
 /**
  * A INSCRIÇÃO DO APARELHO PARA RECEBER AVISO DE OS.
@@ -85,4 +87,33 @@ export async function apagarInscricaoDeAviso(endpoint: string) {
 
   if (error) return { error: error.message };
   return { ok: true };
+}
+
+/**
+ * O CELULAR DESTE FUNCIONÁRIO VAI TOCAR?
+ *
+ * Serve para a tela de quem LANÇA a OS: antes, mandar OS para quem nunca ligou
+ * os alertas dava exatamente a mesma tela de quem recebe o aviso na hora — o
+ * chefe achava que o celular tinha tocado e o funcionário só via a OS quando
+ * abria o app por conta própria. Foi o que aconteceu com a OS do Jeferson.
+ *
+ * Devolve só sim/não: nenhum endereço de aparelho sai daqui. E responde apenas
+ * a quem manda OS; para os outros devolve "está tudo certo", que é o jeito de
+ * não alarmar quem não pode resolver.
+ */
+export async function situacaoDoAlerta(
+  userId: string
+): Promise<{ configurado: boolean; ligado: boolean }> {
+  const tudoCerto = { configurado: true, ligado: true };
+  if (!userId) return tudoCerto;
+
+  const perfil = await getProfile();
+  const podePerguntar =
+    perfil?.role === "admin" || perfil?.role === "financeiro" || perfil?.role === "encarregado";
+  if (!podePerguntar) return tudoCerto;
+
+  return {
+    configurado: avisosConfigurados(),
+    ligado: await temAparelhoAvisavel(userId),
+  };
 }

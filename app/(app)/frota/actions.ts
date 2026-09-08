@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { avisarNoCelular } from "@/lib/push";
 import { createClient } from "@/lib/supabase/server";
 import {
   MACHINE_SERVICO_KINDS,
@@ -127,6 +128,21 @@ function servicoInvalido(input: MachineServicoInput): string | null {
   return null;
 }
 
+/** O que o celular dele mostra na tela de bloqueio. */
+function recadoDoServico(input: MachineServicoInput): string {
+  const partes: string[] = [];
+
+  const tarefa = clean(input.description);
+  if (tarefa) partes.push(tarefa.length > 90 ? tarefa.slice(0, 90) + "..." : tarefa);
+
+  const de = clean(input.origin);
+  const para = clean(input.destination);
+  if (de && para) partes.push(`${de} → ${para}`);
+  else if (para) partes.push("Para " + para);
+
+  return partes.join(" · ") || "Abra o app para ver os detalhes.";
+}
+
 export async function createMachineServico(input: MachineServicoInput) {
   const supabase = createClient();
   const {
@@ -137,13 +153,29 @@ export async function createMachineServico(input: MachineServicoInput) {
   const falta = servicoInvalido(input);
   if (falta) return { error: falta };
 
-  const { error } = await supabase
+  const { data: criado, error } = await supabase
     .from("machine_servicos")
-    .insert({ ...servicoRow(input), created_by: user.id });
+    .insert({ ...servicoRow(input), created_by: user.id })
+    .select("id")
+    .single();
 
-  if (error) return { error: frotaError(error) };
+  if (error || !criado) return { error: error ? frotaError(error) : "Erro ao criar a OS" };
+
+  // O celular dele apita agora. A OS da máquina cai no MESMO painel da OS de
+  // Operações (migration 075) e a tela aqui promete que "a OS cai no celular
+  // dele" — mas o aviso só existia do lado de Operações, e por isso o celular
+  // ficava mudo. Como lá, avisar é acessório: falhou, a OS continua lançada.
+  const aviso = input.assigned_to
+    ? await avisarNoCelular(input.assigned_to, {
+        titulo: "OS nova pra você",
+        corpo: recadoDoServico(input),
+        url: "/operador",
+        assunto: "servico-" + criado.id,
+      })
+    : null;
+
   revalidate();
-  return { ok: true };
+  return { ok: true, avisoNaoEntregue: aviso?.motivo ?? null };
 }
 
 export async function updateMachineServico(id: string, input: MachineServicoInput) {
@@ -152,14 +184,34 @@ export async function updateMachineServico(id: string, input: MachineServicoInpu
   const falta = servicoInvalido(input);
   if (falta) return { error: falta };
 
+  // Quem era o dono antes: avisa SÓ quando a OS troca de mão. Reeditar uma OS
+  // que já era dele não é novidade, e celular que apita à toa é celular que ele
+  // silencia.
+  const { data: antes } = await supabase
+    .from("machine_servicos")
+    .select("assigned_to")
+    .eq("id", id)
+    .maybeSingle<{ assigned_to: string | null }>();
+
   const { error } = await supabase
     .from("machine_servicos")
     .update(servicoRow(input))
     .eq("id", id);
 
   if (error) return { error: frotaError(error) };
+
+  const trocouDeMao = !!input.assigned_to && input.assigned_to !== antes?.assigned_to;
+  const aviso = trocouDeMao
+    ? await avisarNoCelular(input.assigned_to as string, {
+        titulo: "OS nova pra você",
+        corpo: recadoDoServico(input),
+        url: "/operador",
+        assunto: "servico-" + id,
+      })
+    : null;
+
   revalidate();
-  return { ok: true };
+  return { ok: true, avisoNaoEntregue: aviso?.motivo ?? null };
 }
 
 export async function deleteMachineServico(id: string) {

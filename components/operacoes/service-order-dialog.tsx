@@ -40,6 +40,7 @@ import {
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
 import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel, formatBRLInput, upperKeepingCaret } from "@/lib/utils";
+import { AvisoDoCelular } from "@/components/operador/aviso-do-celular";
 import { PRODUCT_UNITS } from "@/lib/types";
 import type {
   Machine,
@@ -1110,6 +1111,12 @@ export function ServiceOrderDialog({
                   {selectedOperator.allowed_categories.map(machineCategoryLabel).join(", ")}
                 </p>
               )}
+              {/* Mandar a OS é uma coisa; o celular apitar é outra — este aviso
+                  só aparece quando ele não vai tocar. */}
+              <AvisoDoCelular
+                userId={assignedTo}
+                nome={selectedOperator?.full_name || selectedOperator?.email}
+              />
             </div>
 
             {/* ── SERVIÇO RÁPIDO: o que fazer + valor (opcional) ──────── */}
