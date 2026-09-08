@@ -118,6 +118,14 @@ interface Props {
   /** O que entra entre o texto de antes e o falado: espaço, ou quebra de linha
    *  para cada fala virar uma linha nova (é o caso do bloco de notas). */
   separador?: string;
+  /**
+   * Converte o que foi falado no que o campo espera (valor, data, hora). Com
+   * ela, o resultado SUBSTITUI o que estava no campo — ninguém emenda 1.500,00
+   * no fim de um valor que já estava lá. Devolvendo null, nada é escrito.
+   */
+  transformar?: (falado: string) => string | null;
+  /** O que dizer quando a fala não virou valor/data nenhum. */
+  recadoNaoEntendi?: string;
   /** Ex.: "Ditar a descrição" — é o que o leitor de tela fala. */
   rotulo?: string;
   className?: string;
@@ -129,6 +137,8 @@ export function BotaoDitado({
   lerAtual,
   separador = " ",
   onTexto,
+  transformar,
+  recadoNaoEntendi = "Não entendi. Toque e fale de novo.",
   rotulo = "Ditar",
   className,
   disabled,
@@ -147,6 +157,10 @@ export function BotaoDitado({
   const lerAtualRef = useRef(lerAtual);
   const separadorRef = useRef(separador);
   const onTextoRef = useRef(onTexto);
+  const transformarRef = useRef(transformar);
+  const recadoRef = useRef(recadoNaoEntendi);
+  const ouviuRef = useRef(false);    // chegou alguma fala nesta sessão
+  const entendeuRef = useRef(false); // e ela virou valor/data
 
   useEffect(() => {
     atualRef.current = atual;
@@ -160,6 +174,12 @@ export function BotaoDitado({
   useEffect(() => {
     onTextoRef.current = onTexto;
   }, [onTexto]);
+  useEffect(() => {
+    transformarRef.current = transformar;
+  }, [transformar]);
+  useEffect(() => {
+    recadoRef.current = recadoNaoEntendi;
+  }, [recadoNaoEntendi]);
 
   const limparEspera = useCallback(() => {
     if (timerVazioRef.current) clearTimeout(timerVazioRef.current);
@@ -252,6 +272,8 @@ export function BotaoDitado({
 
     baseRef.current = lerAtualRef.current ? lerAtualRef.current() : atualRef.current;
     finaisRef.current = "";
+    ouviuRef.current = false;
+    entendeuRef.current = false;
 
     rec.onresult = (e) => {
       // Veio texto: cai a espera do "não ouvi nada", mas o teto continua de pé.
@@ -267,9 +289,22 @@ export function BotaoDitado({
         if (r.isFinal) finaisRef.current = juntar(finaisRef.current, texto);
         else parcial = juntar(parcial, texto);
       }
-      onTextoRef.current(
-        juntar(baseRef.current, juntar(finaisRef.current, parcial), separadorRef.current)
-      );
+
+      const falado = juntar(finaisRef.current, parcial);
+      if (falado) ouviuRef.current = true;
+
+      const converter = transformarRef.current;
+      if (converter) {
+        // Valor, data, hora: o falado vira o que o campo espera, e SUBSTITUI o
+        // que estava lá. Se não deu para entender, não escreve nada — o recado
+        // sai no fim, quando não há mais chance de a frase completar.
+        const convertido = converter(falado);
+        entendeuRef.current = convertido !== null;
+        if (convertido !== null) onTextoRef.current(convertido);
+        return;
+      }
+
+      onTextoRef.current(juntar(baseRef.current, falado, separadorRef.current));
     };
 
     rec.onerror = (e) => {
@@ -285,6 +320,11 @@ export function BotaoDitado({
       limparTimers();
       recRef.current = null;
       setOuvindo(false);
+      // Ouviu a pessoa falar, mas não virou valor/data: avisa, senão ela fica
+      // olhando para o campo vazio sem saber o que aconteceu.
+      if (transformarRef.current && ouviuRef.current && !entendeuRef.current) {
+        setAviso(recadoRef.current);
+      }
     };
 
     recRef.current = rec;

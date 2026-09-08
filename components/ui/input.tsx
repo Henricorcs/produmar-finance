@@ -3,25 +3,76 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { BotaoDitado, escreverNoCampo } from "@/components/ui/botao-ditado";
+import { dataPorFala, digitosPorFala, horaPorFala, valorPorFala } from "@/lib/ditado-pt";
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  /** Tira o microfone deste campo (código, placa, senha — coisa de digitar certinho). */
+  /** Tira o microfone deste campo. */
   semDitado?: boolean;
 }
 
+type Ditado = {
+  /** Converte o que foi falado no que o campo espera. Sem isso, entra o texto. */
+  transformar?: (falado: string) => string | null;
+  rotulo: string;
+  recado?: string;
+  /** Onde o botão fica dentro do campo. */
+  posicao?: string;
+};
+
 /**
- * Campo de ESCREVER (não é dinheiro, data, hora, número nem senha).
- *
- * Dinheiro e quantidade se reconhecem pelo inputMode="decimal"/"numeric" que o
- * sistema já usa em todos eles — ditar número dá mais trabalho que digitar.
+ * Em campo de data e hora o botão anda um pouco para a esquerda no computador:
+ * ali o Chrome desenha o calendarinho dele encostado na beirada, e os dois em
+ * cima do mesmo canto viram um borrão. No celular o calendarinho não existe —
+ * o iPhone mostra só a data —, então o botão fica no canto como nos demais
+ * campos, e a data continua cabendo inteira.
  */
-function ehDeTexto(type?: string, inputMode?: string, maxLength?: number): boolean {
-  if (inputMode && inputMode !== "text" && inputMode !== "search") return false;
-  // Campo de duas ou três letras (UF, sigla) não é lugar de falar — e o botão
-  // ainda tomaria metade dele.
-  if (maxLength !== undefined && maxLength <= 4) return false;
-  if (!type) return true;
-  return type === "text" || type === "search";
+const CANTO = "absolute right-1 top-1/2 -translate-y-1/2";
+const CANTO_DATA = "absolute right-1 sm:right-10 top-1/2 -translate-y-1/2";
+
+/**
+ * O que o microfone faz em cada tipo de campo.
+ *
+ * Em campo de escrever, o falado entra como texto. Em campo de valor, de data e
+ * de hora, ele passa antes pelo tradutor (lib/ditado-pt): "mil e quinhentos"
+ * vira 1.500,00 e "dezoito de setembro" vira a data que o campo entende.
+ *
+ * Fora da lista ficam senha, e-mail, arquivo e campo de duas letras (UF) — em
+ * senha e e-mail ditar é pedir erro, e no campo de sigla o botão tomaria metade
+ * do espaço.
+ */
+function ditadoDoCampo(type?: string, inputMode?: string, maxLength?: number): Ditado | null {
+  if (maxLength !== undefined && maxLength <= 4) return null;
+
+  if (type === "date")
+    return {
+      transformar: dataPorFala,
+      rotulo: "Ditar a data",
+      recado: "Não entendi a data. Diga assim: dezoito de setembro.",
+      posicao: CANTO_DATA,
+    };
+  if (type === "time")
+    return {
+      transformar: horaPorFala,
+      rotulo: "Ditar a hora",
+      recado: "Não entendi a hora. Diga assim: oito e meia.",
+      posicao: CANTO_DATA,
+    };
+  if (inputMode === "decimal")
+    return {
+      transformar: valorPorFala,
+      rotulo: "Ditar o valor",
+      recado: "Não entendi o valor. Diga assim: mil e quinhentos.",
+    };
+  if (inputMode === "numeric" || inputMode === "tel")
+    return {
+      transformar: digitosPorFala,
+      rotulo: "Ditar o número",
+      recado: "Não entendi o número.",
+    };
+  // e-mail, url e afins: teclado próprio, ditado só atrapalha
+  if (inputMode && inputMode !== "text" && inputMode !== "search") return null;
+  if (!type || type === "text" || type === "search") return { rotulo: "Ditar" };
+  return null;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
@@ -44,11 +95,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     // trocado por um campo dentro de uma caixa: o React desmontaria e montaria
     // o campo de novo, piscando e derrubando o foco de toda tela do sistema.
     // Quem some sozinho onde o aparelho não sabe ouvir é o botão.
-    const comMicrofone =
-      !semDitado &&
-      !props.disabled &&
-      !props.readOnly &&
-      ehDeTexto(type, props.inputMode, props.maxLength);
+    const ditado =
+      semDitado || props.disabled || props.readOnly
+        ? null
+        : ditadoDoCampo(type, props.inputMode, props.maxLength);
 
     const campo = (
       <input
@@ -59,8 +109,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           "placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2",
           "focus-visible:ring-produmar-500 focus-visible:border-produmar-500 transition-colors",
           "disabled:cursor-not-allowed disabled:opacity-50",
-          // espaço do microfone, para o texto não passar por baixo dele
-          comMicrofone && "pr-11",
+          // O espaço do microfone, para o texto não passar por baixo dele.
+          ditado && "pr-11",
           className
         )}
         ref={guardarRef}
@@ -69,8 +119,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     );
 
     // Sem microfone, o campo sai exatamente como sempre saiu — nada de div a
-    // mais em volta de campo de dinheiro, data ou número.
-    if (!comMicrofone) return campo;
+    // mais em volta de senha, e-mail ou arquivo.
+    if (!ditado) return campo;
 
     return (
       <div className="relative w-full flex-1 min-w-0">
@@ -78,7 +128,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         <BotaoDitado
           lerAtual={() => campoRef.current?.value ?? ""}
           onTexto={(texto) => campoRef.current && escreverNoCampo(campoRef.current, texto)}
-          className="absolute right-1 top-1/2 -translate-y-1/2"
+          transformar={ditado.transformar}
+          recadoNaoEntendi={ditado.recado}
+          rotulo={ditado.rotulo}
+          className={ditado.posicao ?? CANTO}
         />
       </div>
     );
