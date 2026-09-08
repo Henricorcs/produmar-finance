@@ -100,6 +100,7 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
   const [salvando, setSalvando] = useState(false);
   const [sujo, setSujo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [ouvindoTarefa, setOuvindoTarefa] = useState(false);
   const [salvoEm, setSalvoEm] = useState<number | null>(
     atualizadoEm ? Date.parse(atualizadoEm) : null
   );
@@ -328,15 +329,18 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
                 Bloco de notas
               </span>
               <div className="flex items-center gap-0.5">
-                {/* Falar em vez de escrever: cada fala entra como uma tarefa nova */}
+                {/* Falar a lista inteira: a pausa fecha a tarefa e a próxima
+                    fala já nasce na linha de baixo. */}
                 <BotaoDitado
                   lerAtual={() => textoRef.current}
                   separador={"\n"}
+                  continuo
+                  onOuvindo={setOuvindoTarefa}
                   onTexto={(falado) => {
                     const { texto: novo, cursor } = arrumar(falado, falado.length);
                     aplicar(novo, cursor);
                   }}
-                  rotulo="Ditar uma tarefa"
+                  rotulo="Ditar as tarefas"
                   className="w-7 h-7 text-amber-900 dark:text-amber-900 hover:bg-amber-300"
                 />
                 <button
@@ -366,7 +370,9 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
                 <p className="text-[11px] text-red-700 font-medium">{erro}</p>
               ) : (
                 <>
-                  <span className="text-[11px] text-amber-800">Só você vê este bloco.</span>
+                  <span className="text-[11px] text-amber-800">
+                    {ouvindoTarefa ? "Ouvindo — a pausa fecha a tarefa" : "Só você vê este bloco."}
+                  </span>
                   <span className="text-[11px] text-amber-800 shrink-0">{situacao}</span>
                 </>
               )}

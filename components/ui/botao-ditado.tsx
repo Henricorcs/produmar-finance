@@ -28,10 +28,18 @@ import { cn } from "@/lib/utils";
 // Daí as travas desta versão, todas com o mesmo fim (soltar o microfone):
 //   • escuta UMA fala por vez, que é o que o iPhone sabe fazer;
 //   • tocou em qualquer lugar fora do botão (no campo, por exemplo), desliga;
-//   • 8s sem ouvir nada, desliga e avisa;
-//   • 20s no total, desliga de qualquer jeito;
+//   • sem ouvir nada, desliga e avisa;
+//   • no total, desliga de qualquer jeito (20s numa fala, 3min no ditado
+//     seguido);
 //   • saiu da tela ou trocou de app, desliga.
 // Nenhum caminho deixa o microfone ligado sozinho.
+//
+// ── DITADO SEGUIDO (o bloco de notas) ───────────────────────────────────────
+// Lá cada fala é uma TAREFA: a pessoa fala, para, fala a próxima. Como o Safari
+// só entrega uma fala por vez, quem emenda uma na outra somos nós — o fim de
+// uma fala reabre o microfone para a seguinte, e a pausa vira a quebra de
+// linha. Duas falas caladas seguidas encerram: é o jeito de dizer "acabei" sem
+// precisar tocar em nada.
 
 /** O pouco da API de voz do navegador que usamos — o TypeScript não a conhece. */
 interface ResultadoFala {
@@ -107,6 +115,12 @@ export function escreverNoCampo(
 const TEMPO_SEM_RESPOSTA = 8000;
 /** Teto de uma fala, aconteça o que acontecer. */
 const TEMPO_MAXIMO = 20000;
+/** Teto de um ditado seguido (bloco de notas): dá para uma lista inteira. */
+const TEMPO_MAXIMO_CONTINUO = 3 * 60 * 1000;
+/** Respiro entre uma fala e a próxima, para o aparelho soltar e pegar o áudio. */
+const PAUSA_ENTRE_FALAS = 250;
+/** Falas seguidas sem nada ouvido que encerram o ditado — é o "acabei". */
+const SILENCIOS_PARA_PARAR = 2;
 
 interface Props {
   /** O que já está escrito no campo — o ditado entra depois disso. */
@@ -115,9 +129,17 @@ interface Props {
   lerAtual?: () => string;
   /** Devolve o campo inteiro (o que estava + o que foi falado). */
   onTexto: (texto: string) => void;
-  /** O que entra entre o texto de antes e o falado: espaço, ou quebra de linha
-   *  para cada fala virar uma linha nova (é o caso do bloco de notas). */
+  /** O que entra entre o texto de antes e o falado — e entre uma fala e a
+   *  seguinte: espaço, ou quebra de linha para cada fala virar uma linha nova
+   *  (é o caso do bloco de notas). */
   separador?: string;
+  /**
+   * Escuta seguida: a pausa fecha a fala e o microfone continua de pé para a
+   * próxima, até a pessoa parar ou ficar calada. É o bloco de notas — cada fala
+   * é uma tarefa. Nos outros campos fica desligado: lá uma fala é o campo
+   * inteiro, e microfone aberto à toa é microfone preso.
+   */
+  continuo?: boolean;
   /**
    * Converte o que foi falado no que o campo espera (valor, data, hora). Com
    * ela, o resultado SUBSTITUI o que estava no campo — ninguém emenda 1.500,00
@@ -126,6 +148,8 @@ interface Props {
   transformar?: (falado: string) => string | null;
   /** O que dizer quando a fala não virou valor/data nenhum. */
   recadoNaoEntendi?: string;
+  /** Avisa a tela quando o microfone liga e desliga (para ela mostrar o quê). */
+  onOuvindo?: (ouvindo: boolean) => void;
   /** Ex.: "Ditar a descrição" — é o que o leitor de tela fala. */
   rotulo?: string;
   className?: string;
@@ -136,9 +160,11 @@ export function BotaoDitado({
   atual = "",
   lerAtual,
   separador = " ",
+  continuo = false,
   onTexto,
   transformar,
   recadoNaoEntendi = "Não entendi. Toque e fale de novo.",
+  onOuvindo,
   rotulo = "Ditar",
   className,
   disabled,
@@ -149,8 +175,14 @@ export function BotaoDitado({
 
   const botaoRef = useRef<HTMLButtonElement>(null);
   const recRef = useRef<Reconhecedor | null>(null);
-  const baseRef = useRef("");   // o texto que já estava no campo quando começou
-  const finaisRef = useRef(""); // o que já foi reconhecido em definitivo
+  const baseRef = useRef("");            // o texto que já estava no campo quando começou
+  const falasRef = useRef<string[]>([]); // uma fala fechada por posição
+  const querendoRef = useRef(false);     // a pessoa ainda quer o microfone de pé
+  const silenciosRef = useRef(0);        // falas seguidas sem nada ouvido
+  const algoNaFalaRef = useRef(false);   // esta fala trouxe alguma coisa?
+  const reabrirRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abrirRef = useRef<() => void>(() => {});
+  const continuoRef = useRef(continuo);
   const timerVazioRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerTetoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const atualRef = useRef(atual);
@@ -180,6 +212,9 @@ export function BotaoDitado({
   useEffect(() => {
     recadoRef.current = recadoNaoEntendi;
   }, [recadoNaoEntendi]);
+  useEffect(() => {
+    continuoRef.current = continuo;
+  }, [continuo]);
 
   const limparEspera = useCallback(() => {
     if (timerVazioRef.current) clearTimeout(timerVazioRef.current);
@@ -190,11 +225,16 @@ export function BotaoDitado({
     limparEspera();
     if (timerTetoRef.current) clearTimeout(timerTetoRef.current);
     timerTetoRef.current = null;
+    if (reabrirRef.current) clearTimeout(reabrirRef.current);
+    reabrirRef.current = null;
   }, [limparEspera]);
 
   /** Desliga o microfone e devolve o teclado. Pode ser chamado à vontade. */
   const parar = useCallback(
     (recado?: string) => {
+      // Primeiro tira a vontade de continuar: sem isso, o fim desta fala
+      // reabriria o microfone no ditado seguido e ele nunca desligaria.
+      querendoRef.current = false;
       limparTimers();
       setOuvindo(false);
       if (recado) setAviso(recado);
@@ -250,6 +290,15 @@ export function BotaoDitado({
     };
   }, [ouvindo, parar]);
 
+  // Quem desenha em volta pode querer mudar o recado enquanto se fala.
+  const onOuvindoRef = useRef(onOuvindo);
+  useEffect(() => {
+    onOuvindoRef.current = onOuvindo;
+  }, [onOuvindo]);
+  useEffect(() => {
+    onOuvindoRef.current?.(ouvindo);
+  }, [ouvindo]);
+
   // O aviso some sozinho.
   useEffect(() => {
     if (!aviso) return;
@@ -257,23 +306,22 @@ export function BotaoDitado({
     return () => clearTimeout(t);
   }, [aviso]);
 
-  const ouvir = useCallback(() => {
+  /**
+   * Abre UMA fala. É sempre uma fala por vez, mesmo no ditado seguido: pedir
+   * escuta contínua ao Safari foi o que travou o microfone da primeira versão.
+   * O que emenda uma fala na outra é a reabertura aqui embaixo, no fim.
+   */
+  const abrirFala = useCallback(() => {
     const Reconhecimento = pegarReconhecedor();
     if (!Reconhecimento) return;
 
-    setAviso(null);
     const rec = new Reconhecimento();
     rec.lang = "pt-BR";
-    // UMA fala por vez: é o que o iPhone entrega, e é o que garante que o
-    // microfone se solte na primeira pausa.
     rec.continuous = false;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
 
-    baseRef.current = lerAtualRef.current ? lerAtualRef.current() : atualRef.current;
-    finaisRef.current = "";
-    ouviuRef.current = false;
-    entendeuRef.current = false;
+    algoNaFalaRef.current = false;
 
     rec.onresult = (e) => {
       // Veio texto: cai a espera do "não ouvi nada", mas o teto continua de pé.
@@ -286,11 +334,15 @@ export function BotaoDitado({
         // própria tela devolve para minúscula na hora — não há briga.
         const texto = r[0].transcript.trim().toUpperCase();
         if (!texto) continue;
-        if (r.isFinal) finaisRef.current = juntar(finaisRef.current, texto);
+        algoNaFalaRef.current = true;
+        // Fala fechada entra na lista; no bloco de notas o separador é a quebra
+        // de linha, então cada uma vira a sua tarefa.
+        if (r.isFinal) falasRef.current.push(texto);
         else parcial = juntar(parcial, texto);
       }
 
-      const falado = juntar(finaisRef.current, parcial);
+      const pedacos = parcial ? [...falasRef.current, parcial] : falasRef.current;
+      const falado = pedacos.join(separadorRef.current);
       if (falado) ouviuRef.current = true;
 
       const converter = transformarRef.current;
@@ -309,16 +361,38 @@ export function BotaoDitado({
 
     rec.onerror = (e) => {
       // Sem alert: recado que trava a tela, na tela que acabou de travar, não.
-      if (e.error === "no-speech") return parar("Não ouvi nada. Toque e fale de novo.");
       if (e.error === "aborted") return parar();
       if (e.error === "not-allowed" || e.error === "service-not-allowed")
         return parar("Libere o microfone para o PRODUMAR nos ajustes do aparelho.");
+      if (e.error === "no-speech") {
+        // No ditado seguido, calar a boca é rotina — quem decide se acabou é o
+        // fim da fala, logo abaixo. Numa fala só, é o "não ouvi nada".
+        if (continuoRef.current) return;
+        return parar("Não ouvi nada. Toque e fale de novo.");
+      }
       parar("Não consegui ouvir. Use o microfone do teclado.");
     };
 
     rec.onend = () => {
-      limparTimers();
       recRef.current = null;
+      silenciosRef.current = algoNaFalaRef.current ? 0 : silenciosRef.current + 1;
+
+      // A PAUSA FECHOU A TAREFA. No ditado seguido, reabre o microfone para a
+      // próxima — até a pessoa parar, ficar calada duas falas seguidas ou bater
+      // o teto de tempo. Sem uma dessas saídas, o microfone ficaria de pé para
+      // sempre, que é o pior defeito que este botão já teve.
+      const continua =
+        continuoRef.current &&
+        querendoRef.current &&
+        silenciosRef.current < SILENCIOS_PARA_PARAR;
+
+      if (continua) {
+        reabrirRef.current = setTimeout(() => abrirRef.current(), PAUSA_ENTRE_FALAS);
+        return;
+      }
+
+      querendoRef.current = false;
+      limparTimers();
       setOuvindo(false);
       // Ouviu a pessoa falar, mas não virou valor/data: avisa, senão ela fica
       // olhando para o campo vazio sem saber o que aconteceu.
@@ -328,23 +402,52 @@ export function BotaoDitado({
     };
 
     recRef.current = rec;
-    setOuvindo(true);
     try {
       rec.start();
     } catch {
       parar();
-      return;
     }
+  }, [limparEspera, limparTimers, parar]);
 
+  // O fim de uma fala precisa chamar a abertura da próxima; guardar a função
+  // num ref evita a mordida no próprio rabo entre as duas.
+  useEffect(() => {
+    abrirRef.current = abrirFala;
+  }, [abrirFala]);
+
+  const ouvir = useCallback(() => {
+    if (!pegarReconhecedor()) return;
+
+    setAviso(null);
+    baseRef.current = lerAtualRef.current ? lerAtualRef.current() : atualRef.current;
+    falasRef.current = [];
+    ouviuRef.current = false;
+    entendeuRef.current = false;
+    silenciosRef.current = 0;
+    querendoRef.current = true;
+
+    setOuvindo(true);
+
+    // Os prazos são armados ANTES de abrir a fala: se o abrir falhar, quem
+    // desliga já limpa os dois — senão sobraria um prazo velho para disparar um
+    // recado no meio de outra coisa.
     limparTimers();
     // Ficou de pé sem devolver nada: é o caso do aparelho que aceita ligar o
     // microfone mas não entrega texto. Solta e diz o que fazer.
+    // No ditado seguido a pessoa costuma pensar antes de começar a lista, então
+    // a espera é mais longa — quem encerra o silêncio ali é a contagem de falas
+    // caladas, que para sem drama nenhum.
     timerVazioRef.current = setTimeout(
       () => parar("Não consegui ouvir. Use o microfone do teclado."),
-      TEMPO_SEM_RESPOSTA
+      continuoRef.current ? TEMPO_SEM_RESPOSTA * 3 : TEMPO_SEM_RESPOSTA
     );
-    timerTetoRef.current = setTimeout(() => parar(), TEMPO_MAXIMO);
-  }, [limparEspera, limparTimers, parar]);
+    timerTetoRef.current = setTimeout(
+      () => parar(),
+      continuoRef.current ? TEMPO_MAXIMO_CONTINUO : TEMPO_MAXIMO
+    );
+
+    abrirFala();
+  }, [abrirFala, limparTimers, parar]);
 
   if (!suporta) return null;
 
