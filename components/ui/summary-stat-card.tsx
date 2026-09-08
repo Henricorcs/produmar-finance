@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { cn, formatBRL, formatBRLFull } from "@/lib/utils";
+import { cn, formatBRL } from "@/lib/utils";
 
 const TONES = {
   emerald: {
@@ -29,34 +29,44 @@ interface SummaryStatCardProps {
   tone: keyof typeof TONES;
   icon: LucideIcon;
   label: string;
-  /** Valor monetário: cheio sem centavos no mobile (formatBRLFull), com centavos no desktop. */
+  /** Valor monetário, sempre COM os centavos — inclusive no celular. */
   amount?: number;
   /** Valor não-monetário (ex.: contagem). Usado quando `amount` não é passado. */
   value?: ReactNode;
 }
 
 /**
- * Card de resumo colorido (3-up) usado em Contas e Operações. Mantém uma única
- * fonte de verdade para o visual; o split mobile/desktop do valor monetário
- * fica encapsulado aqui.
+ * Card de resumo colorido (3-up) usado em Contas e Operações.
+ *
+ * O valor vem COM os centavos, também no celular. Antes o mobile arredondava
+ * para caber ("R$ 13.767"), e um resumo de dinheiro que esconde o centavo
+ * levanta a dúvida de sempre: é 13.767 na conta ou é o número redondo? Para
+ * caber, quem encolhe agora é a letra e a folga do cartão — não o valor.
  */
 export function SummaryStatCard({ tone, icon: Icon, label, amount, value }: SummaryStatCardProps) {
   const t = TONES[tone];
+  const dinheiro = amount !== undefined ? formatBRL(amount) : null;
+
+  // No celular são três cartões numa tela de 375px: 87px de texto em cada um.
+  // "R$ 13.767,45" não cabe a 13px e sairia cortado — pior que arredondado.
+  // Então a letra cede conforme o número cresce; no computador sobra espaço e o
+  // tamanho é sempre o mesmo.
+  const tamanho = !dinheiro
+    ? "text-[13px]"
+    : dinheiro.length > 13
+      ? "text-[10px]"
+      : dinheiro.length > 11
+        ? "text-[11px]"
+        : "text-[13px]";
+
   return (
-    <div className={cn("rounded-xl p-3 sm:p-4 border min-w-0", t.box)}>
+    <div className={cn("rounded-xl p-2.5 sm:p-4 border min-w-0", t.box)}>
       <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
         <Icon className={cn("w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0", t.soft)} />
         <p className={cn("text-[10px] sm:text-xs font-medium truncate", t.soft)}>{label}</p>
       </div>
-      <p className={cn("text-sm sm:text-base font-semibold tabular-nums truncate", t.strong)}>
-        {amount !== undefined ? (
-          <>
-            <span className="sm:hidden">{formatBRLFull(amount)}</span>
-            <span className="hidden sm:inline">{formatBRL(amount)}</span>
-          </>
-        ) : (
-          value
-        )}
+      <p className={cn("font-semibold tabular-nums truncate sm:text-base", tamanho, t.strong)}>
+        {dinheiro ?? value}
       </p>
     </div>
   );
