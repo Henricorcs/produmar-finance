@@ -34,6 +34,7 @@ import type {
   TransactionStatus,
   TransactionType,
 } from "@/lib/types";
+import { BotaoDitado } from "@/components/ui/botao-ditado";
 import { formatBRLInput, parseMoney } from "@/lib/utils";
 
 interface Props {
@@ -96,6 +97,7 @@ export function TransactionDialog({
   const [costCenterId, setCostCenterId] = useState<string>(transaction?.cost_center_id ?? "");
   const [obraId, setObraId] = useState<string>(transaction?.obra_id ?? "");
   const [descricao, setDescricao] = useState<string>(transaction?.description ?? "");
+  const [notas, setNotas] = useState<string>(transaction?.notes ?? "");
   const [vencimento, setVencimento] = useState<string>(transaction?.due_date ?? "");
   const [amount, setAmount] = useState<string>(
     transaction?.amount ? formatBRLInput(transaction.amount) : ""
@@ -124,6 +126,7 @@ export function TransactionDialog({
       setCostCenterId(transaction?.cost_center_id ?? "");
       setObraId(transaction?.obra_id ?? "");
       setDescricao(transaction?.description ?? "");
+      setNotas(transaction?.notes ?? "");
       setVencimento(transaction?.due_date ?? "");
       setAmount(transaction?.amount ? formatBRLInput(transaction.amount) : "");
       setNewFiles([]);
@@ -164,6 +167,18 @@ export function TransactionDialog({
   const completo =
     !!type && descricao.trim() !== "" && parseMoney(amount) > 0 && vencimento !== "";
 
+  // Escrito no teclado ou falado no microfone, o caminho é o mesmo: guarda o
+  // texto e abre o próximo campo.
+  function escreverDescricao(valor: string) {
+    setDescricao(valor);
+    if (valor.trim()) avancar(P_VALOR);
+  }
+
+  function escreverNotas(valor: string) {
+    setNotas(valor);
+    if (valor.trim()) avancar(P_ANEXOS);
+  }
+
   function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
     const valor = formatBRLInput(e.target.value);
     setAmount(valor);
@@ -198,7 +213,7 @@ export function TransactionDialog({
     formData.set("description", descricao.trim().toUpperCase());
     formData.set(
       "notes",
-      String(formData.get("notes") ?? "").trim().toUpperCase()
+      notas.trim().toUpperCase()
     );
 
     formData.set("type", type);
@@ -270,22 +285,29 @@ export function TransactionDialog({
             {passo >= P_DESCRICAO && (
               <div className="space-y-1.5 animate-fade-in">
                 <Label htmlFor="description">Descrição *</Label>
-                <Input
-                  id="description"
-                  name="description"
-                  value={descricao}
-                  onChange={(e) => {
-                    setDescricao(e.target.value);
-                    if (e.target.value.trim()) avancar(P_VALOR);
-                  }}
-                  placeholder="ex: conta de energia"
-                  autoCapitalize="characters"
-                  data-caixa="uppercase"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  required
-                />
+                {/* Dá para falar em vez de digitar: o microfone escreve no campo */}
+                <div className="relative">
+                  <Input
+                    id="description"
+                    name="description"
+                    value={descricao}
+                    onChange={(e) => escreverDescricao(e.target.value)}
+                    placeholder="ex: conta de energia"
+                    className="pr-11"
+                    autoCapitalize="characters"
+                    data-caixa="uppercase"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    required
+                  />
+                  <BotaoDitado
+                    atual={descricao}
+                    onTexto={escreverDescricao}
+                    rotulo="Ditar a descrição"
+                    className="absolute right-1 top-1/2 -translate-y-1/2"
+                  />
+                </div>
               </div>
             )}
 
@@ -452,18 +474,25 @@ export function TransactionDialog({
             {passo >= P_NOTAS && (
               <div className="space-y-1.5 animate-fade-in">
                 <Label htmlFor="notes">Observações</Label>
-                <Textarea
-                  id="notes"
-                  name="notes"
-                  defaultValue={transaction?.notes ?? ""}
-                  onChange={(e) => {
-                    if (e.target.value.trim()) avancar(P_ANEXOS);
-                  }}
-                  placeholder="observações opcionais..."
-                  rows={2}
-                  autoCapitalize="characters"
-                  data-caixa="uppercase"
-                />
+                <div className="relative">
+                  <Textarea
+                    id="notes"
+                    name="notes"
+                    value={notas}
+                    onChange={(e) => escreverNotas(e.target.value)}
+                    placeholder="observações opcionais..."
+                    rows={2}
+                    className="pr-11"
+                    autoCapitalize="characters"
+                    data-caixa="uppercase"
+                  />
+                  <BotaoDitado
+                    atual={notas}
+                    onTexto={escreverNotas}
+                    rotulo="Ditar a observação"
+                    className="absolute right-1 bottom-1"
+                  />
+                </div>
               </div>
             )}
 
