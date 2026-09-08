@@ -52,7 +52,7 @@ export const APP_MODULES: AppModule[] = [
     tabs: [
       { href: "/dashboard",     label: "Dashboard",     short: "Início",   icon: LayoutDashboard },
       { href: "/para-onde-foi", label: "Para onde foi", short: "Despesas", icon: GitFork },
-      { href: "/contas",        label: "Contas",        short: "Contas",   icon: CalendarClock },
+      { href: "/contas",        label: "Lançamentos",   short: "Lanç.",    icon: CalendarClock },
       { href: "/emprestimos",   label: "Empréstimos",   short: "Empr.",    icon: HandCoins },
       { href: "/notas-fiscais", label: "Notas fiscais", short: "Notas",    icon: FileText },
       { href: "/relatorios",    label: "Relatórios",    short: "Relat.",   icon: BarChart3 },

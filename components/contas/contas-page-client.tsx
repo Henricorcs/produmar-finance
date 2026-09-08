@@ -127,12 +127,12 @@ export function ContasPageClient({
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Contas</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Lançamentos a pagar e a receber</p>
+          <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Lançamentos</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">A pagar e a receber</p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="w-4 h-4" />
-          Lançamento
+          Novo
         </Button>
       </div>
 
