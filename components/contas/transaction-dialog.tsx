@@ -34,7 +34,7 @@ import type {
   TransactionStatus,
   TransactionType,
 } from "@/lib/types";
-import { cn, formatBRL, formatBRLInput, formatDate, parseMoney } from "@/lib/utils";
+import { cn, formatBRL, formatBRLInput, formatDate, localDateISO, parseMoney } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -72,8 +72,17 @@ type Passo =
   | "anexos"
   | "revisao";
 
-/** O caminho do lançamento novo: só o que é obrigatório. O resto sai da conferência. */
-const CAMINHO: Passo[] = ["tipo", "descricao", "valor", "vencimento", "status"];
+/**
+ * O caminho do lançamento novo: tipo, destino/origem, valor e situação. Só.
+ *
+ * O VENCIMENTO saiu do caminho de propósito: quem lança está dando baixa no que
+ * já aconteceu ou anotando o que ainda vem, e nos dois casos parar para digitar
+ * data era um passo a mais que a ficha antiga nem tinha. Ele nasce no dia de
+ * hoje e, quando a situação é pago/recebido, acompanha sozinho a data da baixa
+ * — é ela que diz em que mês o lançamento entra. Quem precisar de outra data
+ * (a conta que vence no mês que vem) toca na linha do vencimento na conferência.
+ */
+const CAMINHO: Passo[] = ["tipo", "descricao", "valor", "status"];
 
 /**
  * Na despesa o dinheiro vai para algum lugar; na receita ele vem de algum. O
@@ -106,7 +115,9 @@ export function TransactionDialog({
   const [obraId, setObraId] = useState<string>(transaction?.obra_id ?? "");
   const [descricao, setDescricao] = useState<string>(transaction?.description ?? "");
   const [notas, setNotas] = useState<string>(transaction?.notes ?? "");
-  const [vencimento, setVencimento] = useState<string>(transaction?.due_date ?? "");
+  const [vencimento, setVencimento] = useState<string>(transaction?.due_date ?? localDateISO());
+  /** A pessoa mexeu na data? Se não, ela segue a data da baixa. */
+  const [vencimentoTocado, setVencimentoTocado] = useState(false);
   const [pagamento, setPagamento] = useState<string>(transaction?.paid_date ?? "");
   const [amount, setAmount] = useState<string>(
     transaction?.amount ? formatBRLInput(transaction.amount) : ""
@@ -139,7 +150,8 @@ export function TransactionDialog({
     setObraId(transaction?.obra_id ?? "");
     setDescricao(transaction?.description ?? "");
     setNotas(transaction?.notes ?? "");
-    setVencimento(transaction?.due_date ?? "");
+    setVencimento(transaction?.due_date ?? localDateISO());
+    setVencimentoTocado(!!transaction);
     setPagamento(transaction?.paid_date ?? "");
     setAmount(transaction?.amount ? formatBRLInput(transaction.amount) : "");
     setNewFiles([]);
@@ -205,6 +217,16 @@ export function TransactionDialog({
         : passo === "vencimento"
           ? vencimento !== ""
           : true;
+
+  /**
+   * A data da baixa manda no mês do lançamento: quem recebeu em 31/08 quer ver
+   * o lançamento em agosto, não no dia em que digitou. Então o vencimento vai
+   * junto — a não ser que a pessoa tenha escolhido uma data à mão.
+   */
+  function escolherPagamento(data: string) {
+    setPagamento(data);
+    if (data && !vencimentoTocado) setVencimento(data);
+  }
 
   function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
     setAmount(formatBRLInput(e.target.value));
@@ -384,7 +406,12 @@ export function TransactionDialog({
                 <Input
                   type="date"
                   value={vencimento}
-                  onChange={(e) => setVencimento(e.target.value)}
+                  onChange={(e) => {
+                    setVencimento(e.target.value);
+                    // Mexeu na data: daqui pra frente ela é dela, e não segue
+                    // mais a data da baixa.
+                    setVencimentoTocado(true);
+                  }}
                   className="h-12 text-base"
                 />
               </PassoDaVez>
@@ -396,7 +423,16 @@ export function TransactionDialog({
                 titulo="Status"
                 dica="Pendente é o normal de quem está lançando o que ainda vai vencer"
               >
-                <Select value={status} onValueChange={(v) => setStatus(v as TransactionStatus)}>
+                <Select
+                  value={status}
+                  onValueChange={(v) => {
+                    const novo = v as TransactionStatus;
+                    setStatus(novo);
+                    // Dando baixa: a data é hoje, salvo se ele mudar embaixo.
+                    if ((novo === "pago" || novo === "recebido") && !pagamento)
+                      escolherPagamento(localDateISO());
+                  }}
+                >
                   <SelectTrigger className="h-12 text-base">
                     <SelectValue />
                   </SelectTrigger>
@@ -421,7 +457,7 @@ export function TransactionDialog({
                       id="paid_date"
                       type="date"
                       value={pagamento}
-                      onChange={(e) => setPagamento(e.target.value)}
+                      onChange={(e) => escolherPagamento(e.target.value)}
                       className="h-12 text-base"
                     />
                   </div>
