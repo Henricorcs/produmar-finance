@@ -15,8 +15,20 @@ import { cn } from "@/lib/utils";
 // celular, em português). Nada de áudio sai daqui: não há gravação, não há
 // arquivo e não há servidor nenhum no meio — o navegador entrega o texto pronto.
 //
-// Aparelho que não sabe ouvir não ganha botão: some sem erro, e o microfone do
-// teclado continua ali para quem quiser.
+// ── O QUE NÃO PODE ACONTECER ────────────────────────────────────────────────
+// O microfone preso. Enquanto o reconhecimento está de pé ele segura o áudio do
+// aparelho, e no iPhone isso trava o teclado: a pessoa toca no campo e não
+// consegue escrever. Foi o que aconteceu na primeira versão, que pedia escuta
+// contínua — coisa que o Safari não faz: a fala nunca terminava, nada voltava
+// escrito e o campo ficava mudo.
+//
+// Daí as travas desta versão, todas com o mesmo fim (soltar o microfone):
+//   • escuta UMA fala por vez, que é o que o iPhone sabe fazer;
+//   • tocou em qualquer lugar fora do botão (no campo, por exemplo), desliga;
+//   • 8s sem ouvir nada, desliga e avisa;
+//   • 20s no total, desliga de qualquer jeito;
+//   • saiu da tela ou trocou de app, desliga.
+// Nenhum caminho deixa o microfone ligado sozinho.
 
 /** O pouco da API de voz do navegador que usamos — o TypeScript não a conhece. */
 interface ResultadoFala {
@@ -57,6 +69,11 @@ function juntar(base: string, dito: string): string {
   return `${antes} ${dito}`;
 }
 
+/** Sem nada ouvido nesse tempo, desliga e avisa. */
+const TEMPO_SEM_RESPOSTA = 8000;
+/** Teto de uma fala, aconteça o que acontecer. */
+const TEMPO_MAXIMO = 20000;
+
 interface Props {
   /** O que já está escrito no campo — o ditado entra depois disso. */
   atual?: string;
@@ -71,10 +88,14 @@ interface Props {
 export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, disabled }: Props) {
   const [suporta, setSuporta] = useState(false);
   const [ouvindo, setOuvindo] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
 
+  const botaoRef = useRef<HTMLButtonElement>(null);
   const recRef = useRef<Reconhecedor | null>(null);
   const baseRef = useRef("");   // o texto que já estava no campo quando começou
   const finaisRef = useRef(""); // o que já foi reconhecido em definitivo
+  const timerVazioRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerTetoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const atualRef = useRef(atual);
   const onTextoRef = useRef(onTexto);
 
@@ -90,28 +111,92 @@ export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, 
     setSuporta(!!pegarReconhecedor());
   }, []);
 
-  // Saiu da tela no meio da fala: desliga o microfone.
-  useEffect(() => {
-    return () => {
-      recRef.current?.abort();
-      recRef.current = null;
-    };
+  const limparEspera = useCallback(() => {
+    if (timerVazioRef.current) clearTimeout(timerVazioRef.current);
+    timerVazioRef.current = null;
   }, []);
 
-  const parar = useCallback(() => {
-    recRef.current?.stop();
-    setOuvindo(false);
-  }, []);
+  const limparTimers = useCallback(() => {
+    limparEspera();
+    if (timerTetoRef.current) clearTimeout(timerTetoRef.current);
+    timerTetoRef.current = null;
+  }, [limparEspera]);
+
+  /** Desliga o microfone e devolve o teclado. Pode ser chamado à vontade. */
+  const parar = useCallback(
+    (recado?: string) => {
+      limparTimers();
+      setOuvindo(false);
+      if (recado) setAviso(recado);
+      const rec = recRef.current;
+      recRef.current = null;
+      if (!rec) return;
+      try {
+        rec.stop(); // stop() ainda entrega o que ouviu
+      } catch {
+        /* já estava parado */
+      }
+      // Não encerrou sozinho? Corta na marra — microfone preso é o pior caso.
+      setTimeout(() => {
+        try {
+          rec.abort();
+        } catch {
+          /* nada a fazer */
+        }
+      }, 1500);
+    },
+    [limparTimers]
+  );
+
+  // Saiu da tela, trocou de app, bloqueou o celular: desliga.
+  useEffect(() => {
+    return () => {
+      limparTimers();
+      try {
+        recRef.current?.abort();
+      } catch {
+        /* nada a fazer */
+      }
+      recRef.current = null;
+    };
+  }, [limparTimers]);
+
+  useEffect(() => {
+    if (!ouvindo) return;
+    const aoSumir = () => {
+      if (document.visibilityState === "hidden") parar();
+    };
+    // Tocar em qualquer outro lugar — no próprio campo, por exemplo — desliga o
+    // microfone. É o que devolve o teclado para quem quer terminar digitando.
+    const aoTocarFora = (e: Event) => {
+      if (botaoRef.current?.contains(e.target as Node)) return;
+      parar();
+    };
+    document.addEventListener("visibilitychange", aoSumir);
+    document.addEventListener("pointerdown", aoTocarFora, true);
+    return () => {
+      document.removeEventListener("visibilitychange", aoSumir);
+      document.removeEventListener("pointerdown", aoTocarFora, true);
+    };
+  }, [ouvindo, parar]);
+
+  // O aviso some sozinho.
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(null), 5000);
+    return () => clearTimeout(t);
+  }, [aviso]);
 
   const ouvir = useCallback(() => {
     const Reconhecimento = pegarReconhecedor();
     if (!Reconhecimento) return;
 
+    setAviso(null);
     const rec = new Reconhecimento();
     rec.lang = "pt-BR";
-    // No iPhone o reconhecimento é de uma fala por vez: ele encerra sozinho na
-    // pausa. Onde dá para continuar (Android, computador), continua.
-    rec.continuous = true;
+    // UMA fala por vez: é o que o iPhone entrega, e é o que garante que o
+    // microfone se solte na primeira pausa.
+    rec.continuous = false;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
 
@@ -119,6 +204,8 @@ export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, 
     finaisRef.current = "";
 
     rec.onresult = (e) => {
+      // Veio texto: cai a espera do "não ouvi nada", mas o teto continua de pé.
+      limparEspera();
       let parcial = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -131,22 +218,18 @@ export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, 
     };
 
     rec.onerror = (e) => {
-      setOuvindo(false);
-      recRef.current = null;
-      // Silêncio não é erro: quem tocou sem falar só tenta de novo.
-      if (e.error === "no-speech" || e.error === "aborted") return;
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        alert(
-          "O aparelho não deixou usar o microfone. Libere o microfone (e o reconhecimento de voz) para o PRODUMAR nos ajustes e tente de novo."
-        );
-        return;
-      }
-      alert("Não consegui ouvir agora. Tente de novo ou escreva pelo teclado.");
+      // Sem alert: recado que trava a tela, na tela que acabou de travar, não.
+      if (e.error === "no-speech") return parar("Não ouvi nada. Toque e fale de novo.");
+      if (e.error === "aborted") return parar();
+      if (e.error === "not-allowed" || e.error === "service-not-allowed")
+        return parar("Libere o microfone para o PRODUMAR nos ajustes do aparelho.");
+      parar("Não consegui ouvir. Use o microfone do teclado.");
     };
 
     rec.onend = () => {
-      setOuvindo(false);
+      limparTimers();
       recRef.current = null;
+      setOuvindo(false);
     };
 
     recRef.current = rec;
@@ -154,23 +237,32 @@ export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, 
     try {
       rec.start();
     } catch {
-      // start() estoura se já estiver ouvindo — nada a fazer.
-      setOuvindo(false);
-      recRef.current = null;
+      parar();
+      return;
     }
-  }, []);
+
+    limparTimers();
+    // Ficou de pé sem devolver nada: é o caso do aparelho que aceita ligar o
+    // microfone mas não entrega texto. Solta e diz o que fazer.
+    timerVazioRef.current = setTimeout(
+      () => parar("Não consegui ouvir. Use o microfone do teclado."),
+      TEMPO_SEM_RESPOSTA
+    );
+    timerTetoRef.current = setTimeout(() => parar(), TEMPO_MAXIMO);
+  }, [limparEspera, limparTimers, parar]);
 
   if (!suporta) return null;
 
   return (
     <button
+      ref={botaoRef}
       type="button"
       onClick={() => (ouvindo ? parar() : ouvir())}
       disabled={disabled}
       aria-label={ouvindo ? "Parar de ditar" : rotulo}
       title={ouvindo ? "Parar de ditar" : rotulo}
       className={cn(
-        "flex items-center justify-center w-9 h-9 rounded-lg transition-colors shrink-0",
+        "relative flex items-center justify-center w-9 h-9 rounded-lg transition-colors shrink-0",
         ouvindo
           ? "bg-red-500 text-white animate-pulse"
           : "text-produmar-600 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-slate-700",
@@ -179,6 +271,11 @@ export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, 
       )}
     >
       <Mic className="w-5 h-5" />
+      {aviso && (
+        <span className="absolute bottom-full right-0 mb-1.5 z-10 w-max max-w-[220px] text-right rounded-md bg-slate-900 text-white text-[11px] leading-snug px-2 py-1 shadow-lg">
+          {aviso}
+        </span>
+      )}
     </button>
   );
 }
