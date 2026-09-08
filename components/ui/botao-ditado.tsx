@@ -15,6 +15,9 @@ import { cn } from "@/lib/utils";
 // celular, em português). Nada de áudio sai daqui: não há gravação, não há
 // arquivo e não há servidor nenhum no meio — o navegador entrega o texto pronto.
 //
+// O que entra escrito vem em CAIXA ALTA: é assim que o sistema guarda nome de
+// obra, de peão e de máquina, e é assim que o ditado tem que chegar.
+//
 // ── O QUE NÃO PODE ACONTECER ────────────────────────────────────────────────
 // O microfone preso. Enquanto o reconhecimento está de pé ele segura o áudio do
 // aparelho, e no iPhone isso trava o teclado: a pessoa toca no campo e não
@@ -256,7 +259,10 @@ export function BotaoDitado({
       let parcial = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        const texto = r[0].transcript.trim();
+        // O que é falado entra em CAIXA ALTA, como o resto do sistema grava.
+        // Nos poucos campos que guardam em minúscula (raça, vacina, unidade), a
+        // própria tela devolve para minúscula na hora — não há briga.
+        const texto = r[0].transcript.trim().toUpperCase();
         if (!texto) continue;
         if (r.isFinal) finaisRef.current = juntar(finaisRef.current, texto);
         else parcial = juntar(parcial, texto);
