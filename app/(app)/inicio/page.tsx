@@ -3,6 +3,7 @@ import { ClipboardList } from "lucide-react";
 import { getProfile } from "@/lib/auth";
 import { modulesForProfile } from "@/lib/modules";
 import { BotaoAtualizar } from "@/components/layout/botao-atualizar";
+import { BotaoFecharSistema } from "@/components/layout/botao-fechar-sistema";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,12 @@ export default async function InicioPage() {
             </Link>
           );
         })}
+      </div>
+
+      {/* A saída fica no pé da tela inicial, longe do dedo que abre módulo:
+          dentro do módulo a barra fecha o módulo; aqui se fecha o sistema. */}
+      <div className="mt-8 flex justify-center">
+        <BotaoFecharSistema />
       </div>
     </div>
   );

@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, MoreHorizontal, X } from "lucide-react";
+import { MoreHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { findModuleByPath, type ModuleTab } from "@/lib/modules";
 
-// Item fixo que leva de volta ao hub de módulos.
-const hubTab: ModuleTab = { href: "/inicio", label: "Módulos", short: "Módulos", icon: LayoutGrid };
+// Item fixo que FECHA o módulo: leva de volta ao hub, a tela inicial.
+const hubTab: ModuleTab = { href: "/inicio", label: "Fechar módulo", short: "Fechar", icon: X };
+const HubIcon = hubTab.icon;
 
 // No celular a barra tem 5 vagas: Módulos + abas do módulo (+ "Mais" se não couber).
 const MOBILE_SLOTS = 5;
@@ -70,7 +71,7 @@ export function TabsNav() {
               href={hubTab.href}
               className="flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-produmar-600 dark:hover:text-produmar-400 hover:border-produmar-200 dark:hover:border-slate-600 border-r border-r-produmar-100/60 dark:border-r-slate-800"
             >
-              <LayoutGrid className="w-4 h-4" />
+              <HubIcon className="w-4 h-4" />
               {hubTab.label}
             </Link>
             {tabs.map((tab) => {
@@ -103,7 +104,7 @@ export function TabsNav() {
             href={hubTab.href}
             className="relative flex-1 flex flex-col items-center justify-center gap-1 px-0.5 transition-colors text-slate-400 dark:text-slate-500 active:text-produmar-500"
           >
-            <LayoutGrid className="w-6 h-6" />
+            <HubIcon className="w-6 h-6" />
             <span className="text-[11px] font-medium leading-none">{hubTab.short}</span>
           </Link>
 
