@@ -6,18 +6,27 @@ import { salvarNota } from "@/app/(app)/bloco-notas/actions";
 import { actionError } from "@/lib/action-result";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BLOCO DE NOTAS — o papelzinho amarelo ao lado do teclado
+// BLOCO DE NOTAS — o papelzinho ao lado do teclado
 // ─────────────────────────────────────────────────────────────────────────────
 // Mora na Topbar, então aparece em TODOS os módulos. O bloco é da pessoa: quem
 // entra com outro login abre outro papel (a RLS da migration 090 não deixa
 // ninguém ver o do vizinho).
 //
-// Uma linha é uma tarefa: o ponto entra sozinho na frente, e o que se digita
-// sobe para caixa alta — do jeito que o resto do sistema já grava nome de obra,
-// de peão e de máquina.
+// Cada LINHA é uma tarefa: o marcador entra sozinho na frente, e o texto sobe
+// para caixa alta — do jeito que o resto do sistema já grava nome de obra, de
+// peão e de máquina.
 
-/** O ponto que abre cada tarefa. */
-const MARCA = "• ";
+/** O marcador que abre cada tarefa. */
+const MARCA = "▸ ";
+
+/**
+ * Marcadores que já podem estar escritos no papel — o ponto de antes, o
+ * quadradinho, o próprio triângulo. Todos são trocados pelo MARCA de hoje, e é
+ * por isso que bloco velho se ajeita sozinho ao abrir.
+ * Traço comum (-) fica de fora de propósito: "-200 DE DIESEL" é conta, não
+ * marcador.
+ */
+const MARCADORES = /^[\s•▪▸‣·]+/;
 
 /** Espera depois da última tecla antes de gravar (ms). */
 const ESPERA = 700;
@@ -28,9 +37,9 @@ const ESPERA = 700;
 const useEfeitoDePintura = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /**
- * Arruma o papel inteiro: caixa alta, um ponto por linha escrita, linha vazia
- * continua vazia (serve para separar assunto). Devolve junto onde o cursor tem
- * que ficar — sem isso ele pularia para o fim do texto a cada tecla.
+ * Arruma o papel inteiro: caixa alta, um marcador por linha escrita, linha
+ * vazia continua vazia (serve para separar assunto). Devolve junto onde o
+ * cursor tem que ficar — sem isso ele pularia para o fim do texto a cada tecla.
  */
 function arrumar(valor: string, cursor: number): { texto: string; cursor: number } {
   const linhas = valor.toUpperCase().split("\n");
@@ -39,13 +48,13 @@ function arrumar(valor: string, cursor: number): { texto: string; cursor: number
   let escritos = 0; // caracteres do texto NOVO já montados
 
   const prontas = linhas.map((linha) => {
-    const limpa = linha.replace(/^[\s•]+/, "");
+    const limpa = linha.replace(MARCADORES, "");
     const nova = limpa ? MARCA + limpa : "";
 
     // o cursor está nesta linha?
     if (cursor >= lidos && cursor <= lidos + linha.length) {
       const coluna = cursor - lidos;
-      const comidos = linha.length - limpa.length; // o que o ponto e os espaços ocupavam
+      const comidos = linha.length - limpa.length; // o que o marcador ocupava
       novoCursor = nova
         ? escritos + Math.min(Math.max(coluna - comidos, 0) + MARCA.length, nova.length)
         : escritos;
@@ -61,21 +70,44 @@ function arrumar(valor: string, cursor: number): { texto: string; cursor: number
 
 /** Quantas tarefas escritas o papel tem (linha vazia não conta). */
 function contar(texto: string): number {
-  return texto.split("\n").filter((l) => l.replace(/^[\s•]+/, "").trim()).length;
+  return texto.split("\n").filter((l) => l.replace(MARCADORES, "").trim()).length;
 }
 
-export function BlocoNotas({ inicial }: { inicial: string }) {
+/** "Salvo às 11:33" — com a data junto quando não foi hoje. */
+function quandoSalvou(ms: number): string {
+  const d = new Date(ms);
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return `Salvo às ${hora}`;
+  const dia = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return `Salvo em ${dia} às ${hora}`;
+}
+
+interface BlocoNotasProps {
+  /** O papel como está no banco. */
+  inicial: string;
+  /** Quando foi gravado pela última vez (ISO). */
+  atualizadoEm?: string | null;
+}
+
+export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
+  // O texto do banco entra já arrumado: bloco escrito com o ponto de antes
+  // aparece com o marcador de hoje sem precisar mexer em nada.
+  const primeiro = arrumar(inicial, 0).texto;
+
   const [aberto, setAberto] = useState(false);
-  const [texto, setTexto] = useState(inicial);
+  const [texto, setTexto] = useState(primeiro);
   const [salvando, setSalvando] = useState(false);
   const [sujo, setSujo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [salvoEm, setSalvoEm] = useState<number | null>(
+    atualizadoEm ? Date.parse(atualizadoEm) : null
+  );
 
   const areaRef = useRef<HTMLTextAreaElement>(null);
-  const textoRef = useRef(inicial);
+  const textoRef = useRef(primeiro);
   const cursorRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const salvoRef = useRef(inicial); // o que o banco já tem
+  const salvoRef = useRef(primeiro); // o que o banco já tem (arrumado)
   const salvoEmRef = useRef(0);
 
   // ── Gravar ────────────────────────────────────────────────────────────────
@@ -98,6 +130,7 @@ export function BlocoNotas({ inicial }: { inicial: string }) {
     }
     salvoRef.current = conteudo;
     salvoEmRef.current = Date.now();
+    setSalvoEm(salvoEmRef.current);
     setErro(null);
     setSujo(false);
   }, []);
@@ -163,12 +196,14 @@ export function BlocoNotas({ inicial }: { inicial: string }) {
   // já estava a caminho quando gravamos traga de volta o texto velho.
   useEffect(() => {
     if (aberto || sujo) return;
-    if (inicial === salvoRef.current) return;
+    const vindo = arrumar(inicial, 0).texto;
+    if (vindo === salvoRef.current) return;
     if (Date.now() - salvoEmRef.current < 10000) return;
-    salvoRef.current = inicial;
-    textoRef.current = inicial;
-    setTexto(inicial);
-  }, [inicial, aberto, sujo]);
+    salvoRef.current = vindo;
+    textoRef.current = vindo;
+    setTexto(vindo);
+    if (atualizadoEm) setSalvoEm(Date.parse(atualizadoEm));
+  }, [inicial, atualizadoEm, aberto, sujo]);
 
   // ── Digitação ─────────────────────────────────────────────────────────────
   function aoDigitar(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -178,7 +213,7 @@ export function BlocoNotas({ inicial }: { inicial: string }) {
   }
 
   // Apagar no começo da tarefa junta ela com a de cima, como em qualquer lista.
-  // Sem isso o backspace bateria no ponto, que voltaria na mesma hora — e a
+  // Sem isso o backspace bateria no marcador, que voltaria na mesma hora — e a
   // tecla pareceria travada.
   function aoApagar(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== "Backspace") return;
@@ -193,7 +228,7 @@ export function BlocoNotas({ inicial }: { inicial: string }) {
     if (inicioLinha === 0) return; // primeira linha: não há tarefa acima
 
     const antes = el.value.slice(0, inicioLinha - 1);
-    const resto = el.value.slice(inicioLinha).replace(/^[\s•]+/, "");
+    const resto = el.value.slice(inicioLinha).replace(MARCADORES, "");
     const { texto: novo, cursor } = arrumar(antes + resto, antes.length);
     aplicar(novo, cursor);
   }
@@ -213,6 +248,13 @@ export function BlocoNotas({ inicial }: { inicial: string }) {
   }
 
   const total = contar(texto);
+  const situacao = salvando
+    ? "Salvando…"
+    : sujo
+      ? "Não salvo"
+      : salvoEm
+        ? quandoSalvou(salvoEm)
+        : "";
 
   return (
     <div className="relative">
@@ -236,22 +278,21 @@ export function BlocoNotas({ inicial }: { inicial: string }) {
           {/* Clique fora fecha (e grava no caminho) */}
           <div className="fixed inset-0 z-40" onClick={fechar} aria-hidden />
 
-          <div className="absolute right-0 mt-2 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-amber-300 bg-amber-100 shadow-xl shadow-black/20 overflow-hidden z-50">
-            <div className="px-4 py-2.5 bg-amber-200/70 border-b border-amber-300 flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-amber-950">Bloco de notas</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-amber-800">
-                  {salvando ? "Salvando…" : sujo ? "Não salvo" : "Salvo"}
-                </span>
-                <button
-                  type="button"
-                  onClick={fechar}
-                  className="w-7 h-7 -mr-1.5 rounded-full flex items-center justify-center text-amber-800 hover:bg-amber-300/70 transition-colors"
-                  aria-label="Fechar bloco de notas"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+          {/* Papel branco com a tarja amarela em cima e embaixo — igual nos dois
+              temas: o bloco é o amarelo da tela, não acompanha o modo escuro. */}
+          <div className="absolute right-0 mt-2 w-[min(380px,calc(100vw-1.5rem))] rounded-xl border-2 border-amber-400 bg-white shadow-2xl shadow-black/30 overflow-hidden z-50">
+            <div className="px-4 py-2.5 bg-amber-400 flex items-center justify-between gap-2">
+              <span className="text-sm font-bold uppercase tracking-wide text-amber-950">
+                Bloco de notas
+              </span>
+              <button
+                type="button"
+                onClick={fechar}
+                className="w-7 h-7 -mr-1.5 rounded-full flex items-center justify-center text-amber-900 hover:bg-amber-300 transition-colors"
+                aria-label="Fechar bloco de notas"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <textarea
@@ -262,23 +303,17 @@ export function BlocoNotas({ inicial }: { inicial: string }) {
               spellCheck={false}
               placeholder="Escreva uma tarefa por linha…"
               // text-base no celular evita o zoom automático do iOS ao focar
-              className="block w-full h-56 sm:h-64 resize-none bg-transparent px-4 py-3 text-base sm:text-sm leading-7 font-bold uppercase tracking-wide text-amber-950 placeholder:text-amber-700/60 placeholder:font-medium placeholder:normal-case placeholder:tracking-normal focus:outline-none"
-              // as linhas do papel acompanham a rolagem do texto (background local)
-              style={{
-                backgroundImage:
-                  "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(180,83,9,.20) 27px 28px)",
-                backgroundAttachment: "local",
-                backgroundPosition: "0 12px",
-              }}
+              className="block w-full h-64 sm:h-72 resize-none bg-white px-4 py-3 text-base sm:text-sm leading-6 font-bold uppercase text-slate-900 placeholder:text-slate-400 placeholder:font-medium placeholder:normal-case focus:outline-none"
             />
 
-            <div className="px-4 py-2 bg-amber-200/70 border-t border-amber-300">
+            <div className="px-4 py-2 bg-amber-100 border-t border-amber-300 flex items-center justify-between gap-3">
               {erro ? (
                 <p className="text-[11px] text-red-700 font-medium">{erro}</p>
               ) : (
-                <p className="text-[11px] text-amber-800">
-                  Só você vê este bloco · Esc ou clique fora para fechar
-                </p>
+                <>
+                  <span className="text-[11px] text-amber-800">Só você vê este bloco.</span>
+                  <span className="text-[11px] text-amber-800 shrink-0">{situacao}</span>
+                </>
               )}
             </div>
           </div>

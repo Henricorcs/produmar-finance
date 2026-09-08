@@ -35,10 +35,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .lte("due_date", in7daysStr)
       .order("due_date", { ascending: true })
       .limit(10),
-    supabase.from("user_notes").select("content").eq("user_id", userId).maybeSingle(),
+    supabase
+      .from("user_notes")
+      .select("content, updated_at")
+      .eq("user_id", userId)
+      .maybeSingle(),
   ]);
 
-  const nota = (notaRes.data as Pick<UserNote, "content"> | null)?.content ?? "";
+  const notaRow = notaRes.data as Pick<UserNote, "content" | "updated_at"> | null;
+  const nota = notaRow?.content ?? "";
+  // A hora da última gravação aparece no rodapé do bloco ("Salvo às 11:33").
+  const notaEm = notaRow?.updated_at ?? null;
 
   const isVisualizador = profile?.role === "visualizador";
   // O encarregado anda pelo mesmo caminho do operador: painel de OS + os
@@ -51,7 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (isVisualizador) {
     return (
       <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
-        <Topbar profile={profile} notifications={[]} nota={nota} />
+        <Topbar profile={profile} notifications={[]} nota={nota} notaEm={notaEm} />
         <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
       </div>
     );
@@ -62,7 +69,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (isVaqueiro || isTecnico) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-        <Topbar profile={profile} notifications={[]} nota={nota} />
+        <Topbar profile={profile} notifications={[]} nota={nota} notaEm={notaEm} />
         <main className="max-w-3xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
       </div>
     );
@@ -77,14 +84,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!hasModules) {
       return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-          <Topbar profile={profile} notifications={[]} nota={nota} />
+          <Topbar profile={profile} notifications={[]} nota={nota} notaEm={notaEm} />
           <main className="max-w-3xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
         </div>
       );
     }
     return (
       <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
-        <Topbar profile={profile} notifications={[]} nota={nota} />
+        <Topbar profile={profile} notifications={[]} nota={nota} notaEm={notaEm} />
         <TabsNav />
         <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-safe-nav">{children}</main>
       </div>
@@ -99,7 +106,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
-      <Topbar profile={profile} notifications={notifications} nota={nota} />
+      <Topbar profile={profile} notifications={notifications} nota={nota} notaEm={notaEm} />
       <TabsNav />
       {/* pb-safe-nav limpa a nav fixa (64px) + área segura do dispositivo no mobile */}
       <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-safe-nav">{children}</main>

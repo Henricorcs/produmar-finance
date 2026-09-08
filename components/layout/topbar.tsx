@@ -24,9 +24,11 @@ interface TopbarProps {
   notifications?: NotifItem[];
   /** O bloco de notas desta pessoa, do jeito que está no banco (migration 090). */
   nota?: string;
+  /** Quando o bloco foi gravado pela última vez (ISO), para o "Salvo às ...". */
+  notaEm?: string | null;
 }
 
-export function Topbar({ profile, notifications = [], nota = "" }: TopbarProps) {
+export function Topbar({ profile, notifications = [], nota = "", notaEm = null }: TopbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
@@ -52,7 +54,7 @@ export function Topbar({ profile, notifications = [], nota = "" }: TopbarProps) 
 
         <div className="flex items-center gap-2">
           {/* Bloco de notas — o papelzinho de cada um, em toda tela */}
-          <BlocoNotas inicial={nota} />
+          <BlocoNotas inicial={nota} atualizadoEm={notaEm} />
 
           {/* Theme toggle */}
           <ThemeToggle />
