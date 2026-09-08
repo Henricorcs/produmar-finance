@@ -2152,3 +2152,15 @@ export interface RentalContractTemplate {
   created_at: string;
   updated_at: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BLOCO DE NOTAS (migration 090)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** O papelzinho de recados de cada login. Uma linha do banco por pessoa. */
+export interface UserNote {
+  user_id: string;
+  /** O papel inteiro, uma tarefa por linha. */
+  content: string;
+  updated_at: string;
+}

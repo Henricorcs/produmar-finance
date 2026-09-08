@@ -4,6 +4,7 @@ import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { Topbar } from "@/components/layout/topbar";
 import { TabsNav } from "@/components/layout/tabs-nav";
 import { hasHubModules } from "@/lib/module-access";
+import type { UserNote } from "@/lib/types";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -22,7 +23,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // chegar para só então pedir as notificações — duas esperas em fila, em toda
   // tela aberta. As notificações só aparecem para admin/financeiro; para os
   // outros perfis o resultado é descartado, mas como vai junto não custa tempo.
-  const [profile, notifRes] = await Promise.all([
+  // O bloco de notas vai na mesma leva: é uma linha só, do próprio usuário, e
+  // aparece no topo de toda tela. Sem a migration 090 a consulta dá erro e o
+  // bloco abre em branco — quem tentar escrever recebe o recado de rodá-la.
+  const [profile, notifRes, notaRes] = await Promise.all([
     getProfile(),
     supabase
       .from("transactions")
@@ -31,7 +35,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .lte("due_date", in7daysStr)
       .order("due_date", { ascending: true })
       .limit(10),
+    supabase.from("user_notes").select("content").eq("user_id", userId).maybeSingle(),
   ]);
+
+  const nota = (notaRes.data as Pick<UserNote, "content"> | null)?.content ?? "";
 
   const isVisualizador = profile?.role === "visualizador";
   // O encarregado anda pelo mesmo caminho do operador: painel de OS + os
@@ -44,7 +51,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (isVisualizador) {
     return (
       <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
-        <Topbar profile={profile} notifications={[]} />
+        <Topbar profile={profile} notifications={[]} nota={nota} />
         <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
       </div>
     );
@@ -55,7 +62,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (isVaqueiro || isTecnico) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-        <Topbar profile={profile} notifications={[]} />
+        <Topbar profile={profile} notifications={[]} nota={nota} />
         <main className="max-w-3xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
       </div>
     );
@@ -70,14 +77,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!hasModules) {
       return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-          <Topbar profile={profile} notifications={[]} />
+          <Topbar profile={profile} notifications={[]} nota={nota} />
           <main className="max-w-3xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
         </div>
       );
     }
     return (
       <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
-        <Topbar profile={profile} notifications={[]} />
+        <Topbar profile={profile} notifications={[]} nota={nota} />
         <TabsNav />
         <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-safe-nav">{children}</main>
       </div>
@@ -92,7 +99,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
-      <Topbar profile={profile} notifications={notifications} />
+      <Topbar profile={profile} notifications={notifications} nota={nota} />
       <TabsNav />
       {/* pb-safe-nav limpa a nav fixa (64px) + área segura do dispositivo no mobile */}
       <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-safe-nav">{children}</main>

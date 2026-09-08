@@ -6,6 +6,7 @@ import { Wallet, Bell, LogOut, User as UserIcon, ChevronDown, AlertTriangle, Clo
 import { getInitials, formatBRL, formatDate } from "@/lib/utils";
 import { signOutAction } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BlocoNotas } from "@/components/layout/bloco-notas";
 import type { Profile } from "@/lib/types";
 
 type NotifItem = {
@@ -21,9 +22,11 @@ type NotifItem = {
 interface TopbarProps {
   profile: Profile | null;
   notifications?: NotifItem[];
+  /** O bloco de notas desta pessoa, do jeito que está no banco (migration 090). */
+  nota?: string;
 }
 
-export function Topbar({ profile, notifications = [] }: TopbarProps) {
+export function Topbar({ profile, notifications = [], nota = "" }: TopbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
@@ -48,6 +51,9 @@ export function Topbar({ profile, notifications = [] }: TopbarProps) {
         </Link>
 
         <div className="flex items-center gap-2">
+          {/* Bloco de notas — o papelzinho de cada um, em toda tela */}
+          <BlocoNotas inicial={nota} />
+
           {/* Theme toggle */}
           <ThemeToggle />
 
