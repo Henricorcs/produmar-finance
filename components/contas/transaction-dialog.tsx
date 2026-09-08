@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect, useMemo } from "react";
-import { ChevronLeft, Pencil, Plus } from "lucide-react";
+import { ChevronLeft, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -75,6 +75,17 @@ type Passo =
 /** O caminho do lançamento novo: só o que é obrigatório. O resto sai da conferência. */
 const CAMINHO: Passo[] = ["tipo", "descricao", "valor", "vencimento", "status"];
 
+/**
+ * Na despesa o dinheiro vai para algum lugar; na receita ele vem de algum. O
+ * campo é o mesmo (a descrição), mas o nome dele muda com o tipo — é assim que
+ * se pergunta na vida real.
+ */
+function rotuloDaDescricao(type: TransactionType | null): string {
+  if (type === "entrada") return "Origem";
+  if (type === "saida") return "Destino";
+  return "Descrição";
+}
+
 export function TransactionDialog({
   open,
   onClose,
@@ -104,7 +115,6 @@ export function TransactionDialog({
   const [passo, setPasso] = useState<Passo>("tipo");
   /** Veio da conferência para arrumar um campo só: ao continuar, volta pra lá. */
   const [voltarPraRevisao, setVoltarPraRevisao] = useState(false);
-  const [verOpcionais, setVerOpcionais] = useState(false);
 
   // Local lists so we can insert newly-created entities optimistically
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
@@ -138,10 +148,6 @@ export function TransactionDialog({
     setVoltarPraRevisao(false);
     // Editando, a ficha já existe: começa pela conferência.
     setPasso(transaction ? "revisao" : "tipo");
-    setVerOpcionais(
-      !!(transaction?.category_id || transaction?.cost_center_id || transaction?.obra_id ||
-        transaction?.notes || transaction?.transaction_attachments?.length)
-    );
   }, [open, transaction]);
 
   // Sync local lists when the parent reloads data
@@ -311,9 +317,16 @@ export function TransactionDialog({
               </PassoDaVez>
             )}
 
-            {/* ── DESCRIÇÃO ────────────────────────────────────────────── */}
+            {/* ── DESTINO / ORIGEM ─────────────────────────────────────── */}
             {passo === "descricao" && (
-              <PassoDaVez titulo="O que é?" dica="Fale ou escreva — ex.: conta de energia">
+              <PassoDaVez
+                titulo={rotuloDaDescricao(type)}
+                dica={
+                  type === "entrada"
+                    ? "De onde veio — ex.: venda de animais"
+                    : "Para onde foi — ex.: conta de energia"
+                }
+              >
                 <Input
                   autoFocus
                   value={descricao}
@@ -337,7 +350,7 @@ export function TransactionDialog({
 
             {/* ── VALOR ────────────────────────────────────────────────── */}
             {passo === "valor" && (
-              <PassoDaVez titulo="Quanto?" dica="Dá para falar: mil e quinhentos">
+              <PassoDaVez titulo="Valor" dica="Dá para falar: mil e quinhentos">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none z-10">
                     R$
@@ -365,7 +378,7 @@ export function TransactionDialog({
             {/* ── VENCIMENTO ───────────────────────────────────────────── */}
             {passo === "vencimento" && (
               <PassoDaVez
-                titulo={type === "entrada" ? "Quando entra?" : "Quando vence?"}
+                titulo="Vencimento"
                 dica="Dá para falar: hoje, amanhã, dezoito de setembro"
               >
                 <Input
@@ -380,7 +393,7 @@ export function TransactionDialog({
             {/* ── STATUS ───────────────────────────────────────────────── */}
             {passo === "status" && (
               <PassoDaVez
-                titulo={type === "entrada" ? "Já recebeu?" : "Já pagou?"}
+                titulo="Status"
                 dica="Pendente é o normal de quem está lançando o que ainda vai vencer"
               >
                 <Select value={status} onValueChange={(v) => setStatus(v as TransactionStatus)}>
@@ -526,7 +539,7 @@ export function TransactionDialog({
                     onEditar={() => editar("tipo")}
                   />
                   <LinhaDaFicha
-                    rotulo="Descrição"
+                    rotulo={rotuloDaDescricao(type)}
                     valor={descricao.trim().toUpperCase() || null}
                     onEditar={() => editar("descricao")}
                   />
@@ -536,7 +549,7 @@ export function TransactionDialog({
                     onEditar={() => editar("valor")}
                   />
                   <LinhaDaFicha
-                    rotulo={type === "entrada" ? "Entrada" : "Vencimento"}
+                    rotulo="Vencimento"
                     valor={vencimento ? formatDate(vencimento) : null}
                     onEditar={() => editar("vencimento")}
                   />
@@ -557,46 +570,38 @@ export function TransactionDialog({
                   />
                 </div>
 
-                {!verOpcionais ? (
-                  <button
-                    type="button"
-                    onClick={() => setVerOpcionais(true)}
-                    className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-produmar-200 dark:border-slate-700 py-2.5 text-sm font-medium text-produmar-600 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Categoria, centro de custo, obra, observações, anexos
-                  </button>
-                ) : (
-                  <div className="rounded-xl border border-produmar-100 dark:border-slate-700 divide-y divide-produmar-100 dark:divide-slate-700 overflow-hidden">
+                {/* Os opcionais ficam à vista desde o começo: escondê-los atrás
+                    de um botão era um toque a mais para ver o que já dava para
+                    ver. Continuam opcionais — o "—" não impede de confirmar. */}
+                <div className="rounded-xl border border-produmar-100 dark:border-slate-700 divide-y divide-produmar-100 dark:divide-slate-700 overflow-hidden">
+                  <LinhaDaFicha
+                    rotulo="Categoria"
+                    valor={nomeDaCategoria ?? null}
+                    onEditar={() => editar("categoria")}
+                  />
+                  <LinhaDaFicha
+                    rotulo="Centro de custo"
+                    valor={nomeDoCentro ?? null}
+                    onEditar={() => editar("centro")}
+                  />
+                  {obras.length > 0 && (
                     <LinhaDaFicha
-                      rotulo="Categoria"
-                      valor={nomeDaCategoria ?? null}
-                      onEditar={() => editar("categoria")}
+                      rotulo="Obra"
+                      valor={nomeDaObra ?? null}
+                      onEditar={() => editar("obra")}
                     />
-                    <LinhaDaFicha
-                      rotulo="Centro de custo"
-                      valor={nomeDoCentro ?? null}
-                      onEditar={() => editar("centro")}
-                    />
-                    {obras.length > 0 && (
-                      <LinhaDaFicha
-                        rotulo="Obra"
-                        valor={nomeDaObra ?? null}
-                        onEditar={() => editar("obra")}
-                      />
-                    )}
-                    <LinhaDaFicha
-                      rotulo="Observações"
-                      valor={notas.trim().toUpperCase() || null}
-                      onEditar={() => editar("notas")}
-                    />
-                    <LinhaDaFicha
-                      rotulo="Anexos"
-                      valor={anexos > 0 ? `${anexos} arquivo${anexos > 1 ? "s" : ""}` : null}
-                      onEditar={() => editar("anexos")}
-                    />
-                  </div>
-                )}
+                  )}
+                  <LinhaDaFicha
+                    rotulo="Observações"
+                    valor={notas.trim().toUpperCase() || null}
+                    onEditar={() => editar("notas")}
+                  />
+                  <LinhaDaFicha
+                    rotulo="Anexos"
+                    valor={anexos > 0 ? `${anexos} arquivo${anexos > 1 ? "s" : ""}` : null}
+                    onEditar={() => editar("anexos")}
+                  />
+                </div>
 
                 {!completo && (
                   <p className="text-[12px] text-amber-700 dark:text-amber-400">
