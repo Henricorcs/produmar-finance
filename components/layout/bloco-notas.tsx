@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { StickyNote, X } from "lucide-react";
+import { BotaoDitado } from "@/components/ui/botao-ditado";
 import { salvarNota } from "@/app/(app)/bloco-notas/actions";
 import { actionError } from "@/lib/action-result";
 
@@ -326,14 +327,27 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
               <span className="text-sm font-bold uppercase tracking-wide text-amber-950">
                 Bloco de notas
               </span>
-              <button
-                type="button"
-                onClick={fechar}
-                className="w-7 h-7 -mr-1.5 rounded-full flex items-center justify-center text-amber-900 hover:bg-amber-300 transition-colors"
-                aria-label="Fechar bloco de notas"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-0.5">
+                {/* Falar em vez de escrever: cada fala entra como uma tarefa nova */}
+                <BotaoDitado
+                  lerAtual={() => textoRef.current}
+                  separador={"\n"}
+                  onTexto={(falado) => {
+                    const { texto: novo, cursor } = arrumar(falado, falado.length);
+                    aplicar(novo, cursor);
+                  }}
+                  rotulo="Ditar uma tarefa"
+                  className="w-7 h-7 text-amber-900 dark:text-amber-900 hover:bg-amber-300"
+                />
+                <button
+                  type="button"
+                  onClick={fechar}
+                  className="w-7 h-7 -mr-1.5 rounded-full flex items-center justify-center text-amber-900 hover:bg-amber-300 transition-colors"
+                  aria-label="Fechar bloco de notas"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <textarea

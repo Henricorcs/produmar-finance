@@ -62,11 +62,42 @@ function pegarReconhecedor(): (new () => Reconhecedor) | null {
 }
 
 /** Emenda o que foi falado no que já estava escrito. */
-function juntar(base: string, dito: string): string {
+function juntar(base: string, dito: string, separador = " "): string {
   const antes = base.replace(/\s+$/, "");
   if (!dito) return antes;
   if (!antes) return dito;
-  return `${antes} ${dito}`;
+  return antes + separador + dito;
+}
+
+/** Este aparelho sabe ouvir? Só depois de montar — no servidor não há navegador. */
+export function useSuportaDitado(): boolean {
+  const [suporta, setSuporta] = useState(false);
+  useEffect(() => setSuporta(!!pegarReconhecedor()), []);
+  return suporta;
+}
+
+/**
+ * Escreve no campo por fora do React.
+ *
+ * O sistema tem campo controlado (o valor mora num useState) e campo solto
+ * (defaultValue). Mexer no `value` do elemento não avisa nem um nem outro: o
+ * React guarda o último valor que ele mesmo escreveu e, sem esse aviso, ignora
+ * a mudança. Usando o setter original do navegador e disparando um `input` de
+ * mentira, a tela reage como se a pessoa tivesse digitado — e a máscara do
+ * campo (caixa alta, formatação) roda igual.
+ */
+export function escreverNoCampo(
+  campo: HTMLInputElement | HTMLTextAreaElement,
+  texto: string
+): void {
+  const molde =
+    campo instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(molde, "value")?.set;
+  if (setter) setter.call(campo, texto);
+  else campo.value = texto;
+  campo.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /** Sem nada ouvido nesse tempo, desliga e avisa. */
@@ -77,16 +108,29 @@ const TEMPO_MAXIMO = 20000;
 interface Props {
   /** O que já está escrito no campo — o ditado entra depois disso. */
   atual?: string;
+  /** Idem, para quem só sabe o texto na hora de começar (campo solto no DOM). */
+  lerAtual?: () => string;
   /** Devolve o campo inteiro (o que estava + o que foi falado). */
   onTexto: (texto: string) => void;
+  /** O que entra entre o texto de antes e o falado: espaço, ou quebra de linha
+   *  para cada fala virar uma linha nova (é o caso do bloco de notas). */
+  separador?: string;
   /** Ex.: "Ditar a descrição" — é o que o leitor de tela fala. */
   rotulo?: string;
   className?: string;
   disabled?: boolean;
 }
 
-export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, disabled }: Props) {
-  const [suporta, setSuporta] = useState(false);
+export function BotaoDitado({
+  atual = "",
+  lerAtual,
+  separador = " ",
+  onTexto,
+  rotulo = "Ditar",
+  className,
+  disabled,
+}: Props) {
+  const suporta = useSuportaDitado();
   const [ouvindo, setOuvindo] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
@@ -97,19 +141,22 @@ export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, 
   const timerVazioRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerTetoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const atualRef = useRef(atual);
+  const lerAtualRef = useRef(lerAtual);
+  const separadorRef = useRef(separador);
   const onTextoRef = useRef(onTexto);
 
   useEffect(() => {
     atualRef.current = atual;
   }, [atual]);
   useEffect(() => {
+    separadorRef.current = separador;
+  }, [separador]);
+  useEffect(() => {
+    lerAtualRef.current = lerAtual;
+  }, [lerAtual]);
+  useEffect(() => {
     onTextoRef.current = onTexto;
   }, [onTexto]);
-
-  // Só existe botão onde o aparelho sabe ouvir.
-  useEffect(() => {
-    setSuporta(!!pegarReconhecedor());
-  }, []);
 
   const limparEspera = useCallback(() => {
     if (timerVazioRef.current) clearTimeout(timerVazioRef.current);
@@ -200,7 +247,7 @@ export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, 
     rec.interimResults = true;
     rec.maxAlternatives = 1;
 
-    baseRef.current = atualRef.current;
+    baseRef.current = lerAtualRef.current ? lerAtualRef.current() : atualRef.current;
     finaisRef.current = "";
 
     rec.onresult = (e) => {
@@ -214,7 +261,9 @@ export function BotaoDitado({ atual = "", onTexto, rotulo = "Ditar", className, 
         if (r.isFinal) finaisRef.current = juntar(finaisRef.current, texto);
         else parcial = juntar(parcial, texto);
       }
-      onTextoRef.current(juntar(baseRef.current, juntar(finaisRef.current, parcial)));
+      onTextoRef.current(
+        juntar(baseRef.current, juntar(finaisRef.current, parcial), separadorRef.current)
+      );
     };
 
     rec.onerror = (e) => {

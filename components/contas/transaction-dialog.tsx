@@ -34,7 +34,6 @@ import type {
   TransactionStatus,
   TransactionType,
 } from "@/lib/types";
-import { BotaoDitado } from "@/components/ui/botao-ditado";
 import { formatBRLInput, parseMoney } from "@/lib/utils";
 
 interface Props {
@@ -285,29 +284,20 @@ export function TransactionDialog({
             {passo >= P_DESCRICAO && (
               <div className="space-y-1.5 animate-fade-in">
                 <Label htmlFor="description">Descrição *</Label>
-                {/* Dá para falar em vez de digitar: o microfone escreve no campo */}
-                <div className="relative">
-                  <Input
-                    id="description"
-                    name="description"
-                    value={descricao}
-                    onChange={(e) => escreverDescricao(e.target.value)}
-                    placeholder="ex: conta de energia"
-                    className="pr-11"
-                    autoCapitalize="characters"
-                    data-caixa="uppercase"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    required
-                  />
-                  <BotaoDitado
-                    atual={descricao}
-                    onTexto={escreverDescricao}
-                    rotulo="Ditar a descrição"
-                    className="absolute right-1 top-1/2 -translate-y-1/2"
-                  />
-                </div>
+                {/* O microfone vem de dentro do Input: vale em toda a ficha */}
+                <Input
+                  id="description"
+                  name="description"
+                  value={descricao}
+                  onChange={(e) => escreverDescricao(e.target.value)}
+                  placeholder="ex: conta de energia"
+                  autoCapitalize="characters"
+                  data-caixa="uppercase"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  required
+                />
               </div>
             )}
 
@@ -474,25 +464,16 @@ export function TransactionDialog({
             {passo >= P_NOTAS && (
               <div className="space-y-1.5 animate-fade-in">
                 <Label htmlFor="notes">Observações</Label>
-                <div className="relative">
-                  <Textarea
-                    id="notes"
-                    name="notes"
-                    value={notas}
-                    onChange={(e) => escreverNotas(e.target.value)}
-                    placeholder="observações opcionais..."
-                    rows={2}
-                    className="pr-11"
-                    autoCapitalize="characters"
-                    data-caixa="uppercase"
-                  />
-                  <BotaoDitado
-                    atual={notas}
-                    onTexto={escreverNotas}
-                    rotulo="Ditar a observação"
-                    className="absolute right-1 bottom-1"
-                  />
-                </div>
+                <Textarea
+                  id="notes"
+                  name="notes"
+                  value={notas}
+                  onChange={(e) => escreverNotas(e.target.value)}
+                  placeholder="observações opcionais..."
+                  rows={2}
+                  autoCapitalize="characters"
+                  data-caixa="uppercase"
+                />
               </div>
             )}
 
