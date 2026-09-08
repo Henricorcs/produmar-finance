@@ -103,6 +103,15 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
     atualizadoEm ? Date.parse(atualizadoEm) : null
   );
 
+  // ── Onde a folha aparece ──────────────────────────────────────────────────
+  // Ela NÃO pode ficar pendurada no botão: no celular ele fica no meio da barra
+  // (tema, sino e usuário vêm à direita dele), e uma folha de 350px presa ali
+  // nasce metade fora da tela, pela esquerda. Então medimos o botão e prendemos
+  // a folha na TELA: encostada nele quando cabe, respeitando a beirada quando
+  // não cabe — no celular ela ocupa a largura toda, com 12px de cada lado.
+  const [caixa, setCaixa] = useState<{ top: number; right: number; largura: number } | null>(null);
+
+  const botaoRef = useRef<HTMLButtonElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const textoRef = useRef(primeiro);
   const cursorRef = useRef<number | null>(null);
@@ -159,6 +168,33 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
     setAberto(false);
     void salvar();
   }, [salvar]);
+
+  const medir = useCallback(() => {
+    const el = botaoRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const tela = window.innerWidth;
+    const largura = Math.min(380, tela - 24);
+    // O quanto a folha pode se afastar da direita sem furar a beirada esquerda.
+    const limite = Math.max(tela - largura - 12, 12);
+    setCaixa({
+      top: Math.max(r.bottom + 8, 12),
+      right: Math.min(Math.max(tela - r.right, 12), limite),
+      largura,
+    });
+  }, []);
+
+  // Virou o celular de lado, mudou o tamanho da janela: refaz a conta.
+  useEffect(() => {
+    if (!aberto) return;
+    medir();
+    window.addEventListener("resize", medir);
+    window.addEventListener("orientationchange", medir);
+    return () => {
+      window.removeEventListener("resize", medir);
+      window.removeEventListener("orientationchange", medir);
+    };
+  }, [aberto, medir]);
 
   // ── O cursor volta para o lugar depois que o React repinta o texto ────────
   useEfeitoDePintura(() => {
@@ -234,6 +270,7 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
   }
 
   function abrir() {
+    medir(); // antes de aparecer, para não nascer no lugar errado
     setAberto(true);
     // No computador o cursor já entra no papel. No celular não: o teclado
     // subiria por cima antes de a pessoa ler o que está escrito.
@@ -257,8 +294,9 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
         : "";
 
   return (
-    <div className="relative">
+    <>
       <button
+        ref={botaoRef}
         type="button"
         onClick={() => (aberto ? fechar() : abrir())}
         className="relative w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-amber-400 hover:bg-amber-300 text-amber-950 flex items-center justify-center transition-colors shadow-sm shadow-black/10"
@@ -273,14 +311,17 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
         )}
       </button>
 
-      {aberto && (
+      {aberto && caixa && (
         <>
           {/* Clique fora fecha (e grava no caminho) */}
           <div className="fixed inset-0 z-40" onClick={fechar} aria-hidden />
 
           {/* Papel branco com a tarja amarela em cima e embaixo — igual nos dois
               temas: o bloco é o amarelo da tela, não acompanha o modo escuro. */}
-          <div className="absolute right-0 mt-2 w-[min(380px,calc(100vw-1.5rem))] rounded-xl border-2 border-amber-400 bg-white shadow-2xl shadow-black/30 overflow-hidden z-50">
+          <div
+            style={{ top: caixa.top, right: caixa.right, width: caixa.largura }}
+            className="fixed rounded-xl border-2 border-amber-400 bg-white shadow-2xl shadow-black/30 overflow-hidden z-50"
+          >
             <div className="px-4 py-2.5 bg-amber-400 flex items-center justify-between gap-2">
               <span className="text-sm font-bold uppercase tracking-wide text-amber-950">
                 Bloco de notas
@@ -319,6 +360,6 @@ export function BlocoNotas({ inicial, atualizadoEm = null }: BlocoNotasProps) {
           </div>
         </>
       )}
-    </div>
+    </>
   );
 }
