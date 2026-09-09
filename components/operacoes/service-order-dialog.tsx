@@ -41,6 +41,8 @@ import {
 } from "@/app/(app)/operacoes/actions";
 import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel, formatBRLInput, upperKeepingCaret } from "@/lib/utils";
 import { AvisoDoCelular } from "@/components/operador/aviso-do-celular";
+import { actionError } from "@/lib/action-result";
+import { avisoNaoEntregue, recadoDoAvisoNaoEntregue } from "@/lib/aviso-do-envio";
 import { PRODUCT_UNITS } from "@/lib/types";
 import type {
   Machine,
@@ -824,8 +826,23 @@ export function ServiceOrderDialog({
       const result = order
         ? await updateServiceOrder(order.id, payload)
         : await createServiceOrder(payload);
-      if (result && "error" in result) setError(result.error ?? "Erro ao salvar");
-      else onClose();
+      const falha = actionError(result);
+      if (falha) {
+        setError(falha);
+        return;
+      }
+      // Salvou. Se o celular dele não tocou, é AGORA que se diz — depois de
+      // fechada a OS, ninguém mais descobre.
+      const semAviso = avisoNaoEntregue(result);
+      if (semAviso) {
+        alert(
+          recadoDoAvisoNaoEntregue(
+            semAviso,
+            selectedOperator?.full_name || selectedOperator?.email
+          )
+        );
+      }
+      onClose();
     });
   }
 

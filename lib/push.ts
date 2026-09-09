@@ -1,5 +1,8 @@
 import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { MotivoSemAviso } from "@/lib/aviso-do-envio";
+
+export type { MotivoSemAviso };
 
 /**
  * O AVISO QUE FAZ O CELULAR DO FUNCIONÁRIO APITAR.
@@ -21,21 +24,39 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /** Nome que aparece no serviço de avisos como responsável pelo envio. */
 const CONTATO = "mailto:produmar.ma@hotmail.com";
 
-/** Configura as chaves uma vez só. Sem chaves, não há como assinar o envio. */
+/**
+ * Configura as chaves uma vez só. Sem chaves, não há como assinar o envio.
+ *
+ * NUNCA ESTOURA, e isso é o principal: a biblioteca RECUSA uma chave torta —
+ * colada com espaço, quebrada no meio, no formato errado — com um erro. Como
+ * esta função é chamada dentro do lançamento da OS e da conferência que a tela
+ * faz, esse estouro derrubava a action inteira: a OS ficava gravada, o campo
+ * "enviar para" perdia o recado de que ninguém seria avisado e a tela fechava
+ * como se tivesse dado tudo certo. Chave torta é o mesmo que chave faltando —
+ * ninguém vai ser avisado —, e a tela precisa poder DIZER isso.
+ */
 function chavesProntas(): boolean {
   const publica = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const privada = process.env.VAPID_PRIVATE_KEY;
   if (!publica || !privada) return false;
 
-  webpush.setVapidDetails(CONTATO, publica, privada);
-  return true;
+  try {
+    webpush.setVapidDetails(CONTATO, publica, privada);
+    return true;
+  } catch (e) {
+    // Vai para o log do servidor: é a única pista de que as chaves estão lá,
+    // mas erradas — de fora, isso é idêntico a não ter chave nenhuma.
+    console.error(
+      "Chaves de aviso (VAPID) recusadas — confira NEXT_PUBLIC_VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY:",
+      (e as Error)?.message
+    );
+    return false;
+  }
 }
 
-/**
- * Por que ninguém foi avisado. Existe para a TELA poder explicar: antes o aviso
- * falhava calado, e quem lançou a OS ficava achando que o celular tinha tocado.
- */
-export type MotivoSemAviso = "sem-chaves" | "sem-aparelho" | "falhou";
+/* O porquê de ninguém ter sido avisado (MotivoSemAviso) mora em
+   lib/aviso-do-envio.ts: é a TELA que precisa dele para explicar, e ela não
+   pode importar este arquivo, que carrega a biblioteca de envio. */
 
 export interface ResultadoDoAviso {
   entregues: number;

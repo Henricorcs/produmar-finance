@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { forwardServiceOrder } from "@/app/(app)/operacoes/actions";
 import { AvisoDoCelular } from "@/components/operador/aviso-do-celular";
+import { avisoNaoEntregue, recadoDoAvisoNaoEntregue } from "@/lib/aviso-do-envio";
 import type { ServiceOrder } from "@/lib/types";
 
 interface Props {
@@ -61,6 +62,10 @@ export function ForwardDialog({ order, operators, open, onClose, onForwarded }: 
         setError(result.error ?? "Não foi possível encaminhar. Tente de novo.");
         return;
       }
+      // Encaminhou. Se o celular de quem recebeu não tocou, quem passou a OS
+      // adiante precisa saber agora — senão os dois acham que está avisado.
+      const semAviso = avisoNaoEntregue(result);
+      if (semAviso) alert(recadoDoAvisoNaoEntregue(semAviso, toName));
       onForwarded(order.id);
       onClose();
     });

@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { actionError } from "@/lib/action-result";
+import { avisoNaoEntregue, recadoDoAvisoNaoEntregue } from "@/lib/aviso-do-envio";
 import {
   cn,
   formatBRL,
@@ -180,6 +181,17 @@ export function ServicoDialog({
       if (falha) {
         setError(falha);
         return;
+      }
+      // Salvou. Se o celular dele não tocou, é AGORA que se diz — depois de
+      // fechada a ficha, ninguém mais descobre.
+      const semAviso = avisoNaoEntregue(r);
+      if (semAviso) {
+        alert(
+          recadoDoAvisoNaoEntregue(
+            semAviso,
+            operators.find((o) => o.id === assignedTo)?.name
+          )
+        );
       }
       onClose();
     });

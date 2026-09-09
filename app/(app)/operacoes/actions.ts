@@ -576,17 +576,22 @@ export async function createServiceOrder(input: ServiceOrderInput) {
   // aviso falhar — sem inscrição, sem chave, sem internet no servidor —, a OS
   // já está lançada e ninguém fica sabendo do problema por um erro na tela de
   // quem lançou. O funcionário continua vendo a OS ao abrir o app.
-  if (input.assigned_to) {
-    await avisarNoCelular(input.assigned_to, {
-      titulo: created.order_number ? "OS " + created.order_number + " pra você" : "OS nova pra você",
-      corpo: recadoDaOs(input),
-      url: "/operador",
-      assunto: "os-" + created.id,
-    });
-  }
+  const aviso = input.assigned_to
+    ? await avisarNoCelular(input.assigned_to, {
+        titulo: created.order_number
+          ? "OS " + created.order_number + " pra você"
+          : "OS nova pra você",
+        corpo: recadoDaOs(input),
+        url: "/operador",
+        assunto: "os-" + created.id,
+      })
+    : null;
 
   revalidate();
-  return { ok: true, id: created.id };
+  // O motivo volta para a tela dizer que o celular NÃO tocou. Sem isto, a
+  // inscrição vencida (app apagado, aparelho novo) falha calada: o campo não
+  // avisa nada — o aparelho constava lá — e quem mandou sai achando que tocou.
+  return { ok: true, id: created.id, avisoNaoEntregue: aviso?.motivo ?? null };
 }
 
 export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
@@ -652,19 +657,20 @@ export async function updateServiceOrder(id: string, input: ServiceOrderInput) {
 
   await syncServiceOrderFinance(supabase, id);
 
-  if (input.assigned_to && input.assigned_to !== donoAntes?.assigned_to) {
-    await avisarNoCelular(input.assigned_to, {
-      titulo: donoAntes?.order_number
-        ? "OS " + donoAntes.order_number + " pra você"
-        : "OS nova pra você",
-      corpo: recadoDaOs(input),
-      url: "/operador",
-      assunto: "os-" + id,
-    });
-  }
+  const trocouDeMao = !!input.assigned_to && input.assigned_to !== donoAntes?.assigned_to;
+  const aviso = trocouDeMao
+    ? await avisarNoCelular(input.assigned_to as string, {
+        titulo: donoAntes?.order_number
+          ? "OS " + donoAntes.order_number + " pra você"
+          : "OS nova pra você",
+        corpo: recadoDaOs(input),
+        url: "/operador",
+        assunto: "os-" + id,
+      })
+    : null;
 
   revalidate();
-  return { ok: true };
+  return { ok: true, avisoNaoEntregue: aviso?.motivo ?? null };
 }
 
 export async function deleteServiceOrder(id: string) {
@@ -1022,7 +1028,7 @@ export async function forwardServiceOrder(
   // igual ao lançamento, mas era o único caminho que ainda fazia isso calado:
   // a pessoa só ia descobrir o serviço ao abrir o app por conta própria.
   // Acessório de propósito — se o aviso falhar, a OS já está no painel dela.
-  await avisarNoCelular(toUserId, {
+  const aviso = await avisarNoCelular(toUserId, {
     titulo: reatribuida?.order_number
       ? "OS " + reatribuida.order_number + " pra você"
       : "OS pra você",
@@ -1035,7 +1041,7 @@ export async function forwardServiceOrder(
 
   revalidatePath("/operador");
   revalidatePath("/operacoes");
-  return { ok: true };
+  return { ok: true, avisoNaoEntregue: aviso.motivo ?? null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
