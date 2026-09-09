@@ -13,11 +13,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { forwardServiceOrder } from "@/app/(app)/operacoes/actions";
+import { AvisoDoCelular } from "@/components/operador/aviso-do-celular";
 import type { ServiceOrder } from "@/lib/types";
 
 interface Props {
   order: ServiceOrder;
-  /** Operadores para quem dá para encaminhar (já sem o usuário atual). */
+  /** Para quem dá para encaminhar (já sem o usuário atual). */
   operators: { id: string; name: string }[];
   open: boolean;
   onClose: () => void;
@@ -26,8 +27,9 @@ interface Props {
 }
 
 /**
- * Encaminhar uma OS para outro operador. Registra de quem → para quem (+ uma
- * observação opcional). Ao confirmar, a OS muda de dono e some deste painel.
+ * Encaminhar uma OS para outra pessoa — outro operador, o encarregado ou o
+ * escritório. Registra de quem → para quem (+ uma observação opcional). Ao
+ * confirmar, a OS muda de dono, some deste painel e o celular dela apita.
  */
 export function ForwardDialog({ order, operators, open, onClose, onForwarded }: Props) {
   const [toId, setToId] = useState("");
@@ -87,7 +89,7 @@ export function ForwardDialog({ order, operators, open, onClose, onForwarded }: 
             </Label>
             {operators.length === 0 ? (
               <p className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2.5">
-                Nenhum outro operador cadastrado para receber.
+                Ninguém mais cadastrado para receber.
               </p>
             ) : (
               <SearchableSelect
@@ -96,11 +98,16 @@ export function ForwardDialog({ order, operators, open, onClose, onForwarded }: 
                 onChange={setToId}
                 getId={(op) => op.id}
                 getLabel={(op) => op.name}
-                placeholder="Escolha o operador..."
-                searchPlaceholder="Buscar operador..."
-                emptyMessage="Nenhum operador encontrado"
+                placeholder="Escolha quem vai receber..."
+                searchPlaceholder="Buscar pelo nome..."
+                emptyMessage="Ninguém com esse nome"
               />
             )}
+            {/* ...e diz na hora quando o celular daquela pessoa NÃO vai tocar */}
+            <AvisoDoCelular
+              userId={toId || null}
+              nome={operators.find((op) => op.id === toId)?.name}
+            />
           </div>
 
           <div className="space-y-1.5">

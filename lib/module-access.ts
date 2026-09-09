@@ -106,6 +106,36 @@ export function canAvisarMaterial(
   return (allowedModules ?? []).includes(AVISO_MATERIAL_SLUG);
 }
 
+// ============================================================================
+// QUEM PODE RECEBER UMA OS
+// ============================================================================
+// A OS cai no painel de quem foi escolhido no campo "enviar para". Essa lista
+// era só de operador e encarregado: o admin não aparecia nela, então não havia
+// como passar um serviço para o outro dono do sistema — ele só ficava sabendo
+// se alguém contasse.
+//
+// O admin entra na lista porque tem o mesmo caminho dos outros: o Painel de OS
+// no hub, o aviso no celular e o iniciar/finalizar da própria OS (a policy da
+// migration 075 vai pelo assigned_to, não pelo papel).
+// ============================================================================
+
+/** Papéis que aparecem no "enviar para" e têm painel de OS. */
+export const PAPEIS_QUE_RECEBEM_OS = ["operador", "encarregado", "admin"] as const;
+
+/** Este perfil recebe OS no painel dele? */
+export function recebeOs(role: string | undefined): boolean {
+  return (PAPEIS_QUE_RECEBEM_OS as readonly string[]).includes(role ?? "");
+}
+
+/**
+ * O nome como ele aparece na lista do "enviar para". O admin leva a marca do
+ * papel: numa lista onde antes só havia operador, saber que aquele nome é do
+ * escritório evita mandar a OS para a pessoa errada.
+ */
+export function nomeComPapel(nome: string, role: string | undefined): string {
+  return role === "admin" ? `${nome} · admin` : nome;
+}
+
 /** A rota da aba — o middleware confere a permissão antes de deixar entrar. */
 export function isAvisoMaterialPath(path: string): boolean {
   return matchesPrefix(path, "/operador/material");

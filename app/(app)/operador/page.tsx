@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { PAPEIS_QUE_RECEBEM_OS, nomeComPapel } from "@/lib/module-access";
 import { OperadorClient } from "@/components/operador/operador-client";
 import { PreviewBanner } from "@/components/layout/preview-banner";
 import type {
@@ -61,20 +62,22 @@ export default async function OperadorPage({
   // do fechamento). Sem detalhes aninhados pesados — o toque abre o detalhe.
   const finishedSelect = `*, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`;
 
-  // Outros operadores (para encaminhar a OS). Usa o service-role porque a RLS
-  // de profiles só deixa o admin ver os outros. Best-effort: sem a service key,
-  // segue sem a lista (o botão de encaminhar fica sem destinos).
+  // Para quem dá para ENCAMINHAR a OS: os outros operadores e também o admin —
+  // quem está na rua às vezes precisa devolver o serviço para o escritório.
+  // Usa o service-role porque a RLS de profiles só deixa o admin ver os outros.
+  // Best-effort: sem a service key, segue sem a lista (o botão de encaminhar
+  // fica sem destinos).
   const operatorsPromise = (async () => {
     try {
       const admin = createAdminClient();
       const { data } = await admin
         .from("profiles")
-        .select("id, full_name, email")
-        .in("role", ["operador", "encarregado"])
+        .select("id, full_name, email, role")
+        .in("role", [...PAPEIS_QUE_RECEBEM_OS])
         .order("full_name", { ascending: true });
-      return ((data as Pick<Profile, "id" | "full_name" | "email">[]) ?? [])
+      return ((data as Pick<Profile, "id" | "full_name" | "email" | "role">[]) ?? [])
         .filter((p) => p.id !== userId)
-        .map((p) => ({ id: p.id, name: p.full_name || p.email }));
+        .map((p) => ({ id: p.id, name: nomeComPapel(p.full_name || p.email, p.role) }));
     } catch {
       return [] as { id: string; name: string }[];
     }

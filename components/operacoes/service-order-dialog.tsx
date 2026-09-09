@@ -1077,7 +1077,7 @@ export function ServiceOrderDialog({
               </div>
             )}
 
-            {/* Operador (enviar a OS para o técnico) */}
+            {/* Para quem vai a OS: operador, encarregado ou outro admin */}
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
                 <HardHat className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
@@ -1091,7 +1091,17 @@ export function ServiceOrderDialog({
                 getLabel={(op) => op.full_name || op.email}
                 renderItem={(op) => (
                   <div className="min-w-0">
-                    <span className="truncate block">{op.full_name || op.email}</span>
+                    <span className="truncate block">
+                      {op.full_name || op.email}
+                      {/* Na lista onde antes só havia operador, a marca evita
+                          mandar a OS para o xará errado. */}
+                      {op.role === "admin" && (
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                          {" "}
+                          · admin
+                        </span>
+                      )}
+                    </span>
                     {/* Categorias só fazem sentido em OS com máquina — no serviço
                         rápido (sem veículo) viram ruído, então não mostramos. */}
                     {!isQuick && op.allowed_categories?.length > 0 && (
@@ -1102,8 +1112,8 @@ export function ServiceOrderDialog({
                   </div>
                 )}
                 placeholder="Ninguém (aparece para todos)"
-                searchPlaceholder="Buscar operador..."
-                emptyMessage="Nenhum operador cadastrado"
+                searchPlaceholder="Buscar pelo nome..."
+                emptyMessage="Ninguém com esse nome"
               />
               {!isQuick && selectedOperator && (selectedOperator.allowed_categories?.length ?? 0) > 0 && (
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-1">

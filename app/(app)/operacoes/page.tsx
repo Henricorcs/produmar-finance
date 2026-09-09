@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { PAPEIS_QUE_RECEBEM_OS } from "@/lib/module-access";
 import { OperacoesPageClient } from "@/components/operacoes/operacoes-page-client";
 import type { MaterialPickerItem } from "@/components/tecnico/material-picker-dialog";
 import type { ObraDoEstoque } from "@/components/operacoes/service-order-dialog";
@@ -94,8 +95,9 @@ export default async function OperacoesPage({
     );
   }
 
-  // Operadores (para direcionar a OS). Usa o service-role para listar os
-  // perfis 'operador' (a RLS de profiles só deixa o admin ver os outros).
+  // Quem pode receber a OS (operador, encarregado e o outro admin — o serviço
+  // também pode ser do chefe). Usa o service-role para listar os perfis (a RLS
+  // de profiles só deixa o admin ver os outros).
   // Best-effort: se a service key não estiver configurada, segue sem a lista.
   let operators: Profile[] = [];
   try {
@@ -103,7 +105,7 @@ export default async function OperacoesPage({
     const { data } = await admin
       .from("profiles")
       .select("*")
-      .in("role", ["operador", "encarregado"])
+      .in("role", [...PAPEIS_QUE_RECEBEM_OS])
       .order("full_name", { ascending: true });
     operators = (data as Profile[]) ?? [];
   } catch {

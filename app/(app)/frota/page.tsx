@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { PAPEIS_QUE_RECEBEM_OS, nomeComPapel } from "@/lib/module-access";
 import { FrotaPageClient } from "@/components/frota/frota-page-client";
 import type {
   Machine,
@@ -102,8 +103,9 @@ export default async function FrotaPage({
     }));
   }
 
-  // Operadores com login, para ENVIAR a OS ao celular deles. Usa o
-  // service-role porque a RLS de profiles só deixa o admin ver os outros.
+  // Quem pode receber a OS no celular: operador, encarregado e também o outro
+  // admin — o serviço às vezes é do chefe, e antes ele não aparecia na lista.
+  // Usa o service-role porque a RLS de profiles só deixa o admin ver os outros.
   // Best-effort: sem a service key, a tela segue sem a lista (a OS fica só no
   // escritório, como era antes).
   let operators: { id: string; name: string }[] = [];
@@ -111,13 +113,17 @@ export default async function FrotaPage({
     const admin = createAdminClient();
     const { data } = await admin
       .from("profiles")
-      .select("id, full_name, email")
-      .in("role", ["operador", "encarregado"])
+      .select("id, full_name, email, role")
+      .in("role", [...PAPEIS_QUE_RECEBEM_OS])
       .order("full_name", { ascending: true });
-    operators = ((data as Pick<Profile, "id" | "full_name" | "email">[]) ?? []).map((p) => ({
-      id: p.id,
-      name: p.full_name || p.email,
-    }));
+    operators = ((data as Pick<Profile, "id" | "full_name" | "email" | "role">[]) ?? []).map(
+      (p) => ({
+        id: p.id,
+        // A marca "admin" evita a troca de pessoa quando o nome se repete na
+        // lista — o operador João e o admin João ficam distintos.
+        name: nomeComPapel(p.full_name || p.email, p.role),
+      })
+    );
   } catch {
     operators = [];
   }

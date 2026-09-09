@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { PAPEIS_QUE_RECEBEM_OS } from "@/lib/module-access";
 import { RelatoriosClient } from "@/components/relatorios/relatorios-client";
 import type { Profile, ServiceOrder, Transaction } from "@/lib/types";
 
@@ -32,16 +33,17 @@ export default async function RelatoriosPage() {
     .gte("issue_date", startStr)
     .order("issue_date", { ascending: false });
 
-  // Operadores (para nomear o assigned_to). A RLS de profiles só deixa o admin
-  // ver os outros, então usamos o service-role. Best-effort: sem a key, segue
-  // sem nomes (cai no id) — não quebra o relatório.
+  // Quem recebe OS (para nomear o assigned_to — inclusive quando ela foi para
+  // um admin). A RLS de profiles só deixa o admin ver os outros, então usamos o
+  // service-role. Best-effort: sem a key, segue sem nomes (cai no id) — não
+  // quebra o relatório.
   let operators: Profile[] = [];
   try {
     const admin = createAdminClient();
     const { data } = await admin
       .from("profiles")
       .select("*")
-      .in("role", ["operador", "encarregado"])
+      .in("role", [...PAPEIS_QUE_RECEBEM_OS])
       .order("full_name", { ascending: true });
     operators = (data as Profile[]) ?? [];
   } catch {

@@ -469,20 +469,21 @@ export function ServicoDialog({
             />
           </div>
 
-          {/* Sem lista de operadores não dá para enviar — e é melhor dizer
-              isso do que sumir com o campo sem explicação. */}
+          {/* Sem ninguém na lista não dá para enviar — e é melhor dizer isso
+              do que sumir com o campo sem explicação. */}
           {operators.length === 0 && (
             <p className="text-[11px] text-amber-700 dark:text-amber-400">
-              Nenhum operador com login para enviar esta OS. Cadastre o operador em
-              Configurações → Usuários (papel &quot;operador&quot;) para ela cair no
-              celular dele.
+              Ninguém com login para enviar esta OS. Cadastre a pessoa em
+              Configurações → Usuários (papel &quot;operador&quot;, &quot;encarregado&quot;
+              ou &quot;admin&quot;) para ela cair no celular dela.
             </p>
           )}
 
-          {/* ENVIAR PARA O OPERADOR — a OS cai no celular dele */}
+          {/* ENVIAR PARA — operador, encarregado ou outro admin; a OS cai no
+              celular de quem for escolhido */}
           {operators.length > 0 && (
             <div className="space-y-1.5">
-              <Label>Enviar para o operador</Label>
+              <Label>Enviar para</Label>
               <SearchableSelect
                 items={operators}
                 value={assignedTo}
@@ -491,7 +492,7 @@ export function ServicoDialog({
                 getLabel={(o) => o.name}
                 placeholder="Ninguém — a OS fica só aqui"
                 searchPlaceholder="Buscar pelo nome..."
-                emptyMessage="Nenhum operador cadastrado"
+                emptyMessage="Ninguém com esse nome"
               />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
                 Ele recebe esta OS no painel dele e fecha pelo celular: toca em

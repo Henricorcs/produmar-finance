@@ -975,7 +975,7 @@ export async function resumeServiceOrder(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENCAMINHAR OS (passar a outro operador) — registra de quem, para quem e quando
+// ENCAMINHAR OS (passar a outra pessoa) — registra de quem, para quem e quando
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function forwardServiceOrder(
@@ -998,10 +998,12 @@ export async function forwardServiceOrder(
     "Operador";
 
   // Reatribui a OS ao novo responsável — ela passa a aparecer no painel dele.
-  const { error: updErr } = await supabase
+  const { data: reatribuida, error: updErr } = await supabase
     .from("service_orders")
     .update({ assigned_to: toUserId })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .select("order_number")
+    .maybeSingle<{ order_number: number | null }>();
   if (updErr) return { error: updErr.message };
 
   // Registra o encaminhamento (best-effort: não quebra se a tabela ainda não
@@ -1015,6 +1017,21 @@ export async function forwardServiceOrder(
     note: options.note?.trim() ? options.note.trim().toUpperCase() : null,
   });
   if (logErr) console.error("Falha ao registrar encaminhamento:", logErr.message);
+
+  // O celular de quem recebeu apita agora. Encaminhar é a OS trocando de mão
+  // igual ao lançamento, mas era o único caminho que ainda fazia isso calado:
+  // a pessoa só ia descobrir o serviço ao abrir o app por conta própria.
+  // Acessório de propósito — se o aviso falhar, a OS já está no painel dela.
+  await avisarNoCelular(toUserId, {
+    titulo: reatribuida?.order_number
+      ? "OS " + reatribuida.order_number + " pra você"
+      : "OS pra você",
+    corpo: options.note?.trim()
+      ? fromName + " encaminhou: " + options.note.trim()
+      : fromName + " encaminhou esta OS para você.",
+    url: "/operador",
+    assunto: "os-" + orderId,
+  });
 
   revalidatePath("/operador");
   revalidatePath("/operacoes");

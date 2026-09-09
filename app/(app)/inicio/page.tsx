@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ClipboardList } from "lucide-react";
 import { getProfile } from "@/lib/auth";
 import { modulesForProfile } from "@/lib/modules";
+import { recebeOs } from "@/lib/module-access";
 import { BotaoAtualizar } from "@/components/layout/botao-atualizar";
 import { BotaoFecharSistema } from "@/components/layout/botao-fechar-sistema";
 
@@ -23,9 +24,10 @@ export default async function InicioPage() {
   const profile = await getProfile();
 
   const modules = modulesForProfile(profile?.allowed_modules, profile?.role);
-  // Operador e encarregado recebem OS: os dois têm o painel.
-  const isOperador =
-    profile?.role === "operador" || profile?.role === "encarregado";
+  // Quem recebe OS tem o painel: operador, encarregado — e o admin, agora que
+  // dá para mandar uma OS de um admin para outro. Sem este card, a OS enviada
+  // ao chefe cairia numa tela que ele nunca abre.
+  const temPainelDeOs = recebeOs(profile?.role);
 
   return (
     <div className="animate-fade-in max-w-3xl mx-auto">
@@ -38,8 +40,9 @@ export default async function InicioPage() {
       </div>
 
       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
-        {/* Operador: acesso ao painel de OS, além dos módulos liberados */}
-        {isOperador && (
+        {/* Painel da OS que mandaram PARA ESTA PESSOA — no admin ele fica ao
+            lado dos módulos, porque ele também pode ser o destinatário. */}
+        {temPainelDeOs && (
           <Link href="/operador" className={QUADRO}>
             <span className="flex items-center justify-center w-11 h-11 rounded-xl shrink-0 bg-amber-50 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400">
               <ClipboardList className="w-6 h-6" />
