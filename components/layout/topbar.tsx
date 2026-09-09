@@ -7,6 +7,7 @@ import { getInitials, formatBRL, formatDate } from "@/lib/utils";
 import { signOutAction } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BlocoNotas } from "@/components/layout/bloco-notas";
+import { BotaoAtualizar } from "@/components/layout/botao-atualizar";
 import type { Profile } from "@/lib/types";
 
 type NotifItem = {
@@ -55,6 +56,10 @@ export function Topbar({ profile, notifications = [], nota = "", notaEm = null }
         <div className="flex items-center gap-2">
           {/* Bloco de notas — o papelzinho de cada um, em toda tela */}
           <BlocoNotas inicial={nota} atualizadoEm={notaEm} />
+
+          {/* Ao lado dele, o que troca a versão do app depois de uma
+              implantação — aqui ele fica à mão em toda tela, e não só no hub */}
+          <BotaoAtualizar />
 
           {/* Theme toggle */}
           <ThemeToggle />

@@ -3,7 +3,6 @@ import { ClipboardList } from "lucide-react";
 import { getProfile } from "@/lib/auth";
 import { modulesForProfile } from "@/lib/modules";
 import { recebeOs } from "@/lib/module-access";
-import { BotaoAtualizar } from "@/components/layout/botao-atualizar";
 import { BotaoFecharSistema } from "@/components/layout/botao-fechar-sistema";
 
 export const dynamic = "force-dynamic";
@@ -31,12 +30,12 @@ export default async function InicioPage() {
 
   return (
     <div className="animate-fade-in max-w-3xl mx-auto">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      {/* O botão de atualizar saiu daqui: agora ele fica na barra de cima, ao
+          lado do bloco de notas, alcançável de qualquer tela. */}
+      <div className="mb-4">
         <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">
           Módulos
         </h1>
-        {/* Depois de uma implantação, troca a versão sem fechar e abrir o app */}
-        <BotaoAtualizar />
       </div>
 
       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
