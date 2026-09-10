@@ -4,6 +4,8 @@ import { PAPEIS_QUE_RECEBEM_OS, nomeComPapel } from "@/lib/module-access";
 import { FrotaPageClient } from "@/components/frota/frota-page-client";
 import type {
   Machine,
+  OsDaFichaNoRelatorio,
+  OsDeOperacoesNaMaquina,
   MachineDespesa,
   MachineFichaLinha,
   MachineParceiro,
@@ -51,7 +53,8 @@ export default async function FrotaPage({
     trocasRes,
     saldosRes,
     veiculosParceiroRes,
-    abertasRes,
+    todasAsOsRes,
+    osDeOperacoesRes,
   ] = await Promise.all([
     supabase.from("v_machine_resumo").select("*").order("name"),
     supabase
@@ -83,9 +86,22 @@ export default async function FrotaPage({
     supabase.from("v_machine_parceiro_saldo").select("*"),
     // as placas das máquinas dele (migration 077)
     supabase.from("machine_parceiro_veiculos").select("*").order("plate"),
-    // As OS ainda em aberto, de QUALQUER mês — o relatório precisa delas para
-    // mostrar a que ficou para trás, que o recorte do mês esconde.
-    supabase.from("machine_servicos").select("*").eq("status", "aberta"),
+    // ── O RELATÓRIO DE OS PEGA TUDO ─────────────────────────────────────────
+    // Sem recorte de mês e sem recorte de status: a pergunta que ele responde
+    // é "o que esta máquina já fez e o que ainda deve", e isso não cabe num
+    // mês só. O resto da tela (ficha, calendário, somas) continua no mês.
+    supabase
+      .from("machine_servicos")
+      .select("id, machine_id, service_date, status, started_at, total")
+      .order("service_date", { ascending: false }),
+
+    // E a OS de Operações que usou máquina entra junto: ela não está na ficha,
+    // mas para quem olha a frota é OS da máquina do mesmo jeito.
+    supabase
+      .from("service_orders")
+      .select("id, machine_id, status, issue_date, delivery_date, total_amount")
+      .not("machine_id", "is", null)
+      .order("issue_date", { ascending: false }),
   ]);
 
   // Migration 073 ainda não rodou: a tela abre com o cadastro que já existe e
@@ -139,7 +155,10 @@ export default async function FrotaPage({
       servicos={(servicosRes.data as MachineServico[]) ?? []}
       despesas={(despesasRes.data as MachineDespesa[]) ?? []}
       operators={operators}
-      abertasDeSempre={(abertasRes.data as MachineServico[]) ?? []}
+      todasAsOs={(todasAsOsRes.data as OsDaFichaNoRelatorio[]) ?? []}
+      osDeOperacoes={
+        (osDeOperacoesRes.data as OsDeOperacoesNaMaquina[]) ?? []
+      }
       parceiros={(parceirosRes.data as MachineParceiro[]) ?? []}
       trocas={(trocasRes.data as MachineTroca[]) ?? []}
       saldos={(saldosRes.data as MachineParceiroSaldo[]) ?? []}

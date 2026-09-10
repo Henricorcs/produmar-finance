@@ -1896,6 +1896,37 @@ export interface OsDeMaquinaResumo {
   machines: { name: string; plate: string | null } | null;
 }
 
+/**
+ * Uma OS da ficha do veículo, com o mínimo que o relatório da Frota precisa.
+ *
+ * O relatório é de SEMPRE — traz toda OS de toda máquina —, então a linha
+ * inteira sairia cara à toa numa tela que já carrega a ficha do mês.
+ */
+export interface OsDaFichaNoRelatorio {
+  id: string;
+  machine_id: string;
+  service_date: string;
+  status: MachineServicoStatus;
+  started_at: string | null;
+  total: number;
+}
+
+/**
+ * A OS do módulo Operações que usou uma MÁQUINA.
+ *
+ * Ela não mora na ficha do veículo — mora em service_orders —, mas para quem
+ * olha a frota é OS da máquina do mesmo jeito. O relatório da Frota conta as
+ * duas juntas; a ficha continua mostrando esta como "Vindas de Operações".
+ */
+export interface OsDeOperacoesNaMaquina {
+  id: string;
+  machine_id: string;
+  status: ServiceOrderStatus;
+  issue_date: string;
+  delivery_date: string | null;
+  total_amount: number | null;
+}
+
 export interface MachineServicoDoOperador extends MachineServico {
   machines: { name: string; plate: string | null; tracking_type: string | null } | null;
 }

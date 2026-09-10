@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { AlertTriangle, ChevronRight, Clock, Tractor } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertTriangle, ChevronRight, Clock } from "lucide-react";
 import { MonthNav } from "@/components/ui/month-nav";
 import { Money } from "@/components/ui/money";
 import { SummaryStatCard } from "@/components/ui/summary-stat-card";
@@ -9,50 +9,77 @@ import {
   SITUACAO_PLURAL,
   SITUACAO_STYLE,
   situacaoDaMaquina,
+  situacaoDoServico,
   type SituacaoOs,
 } from "@/lib/os-situacao";
 import { cn, daysUntil, formatBRL, machineCategoryLabel } from "@/lib/utils";
-import { categoryChip } from "./frota-shared";
-import type { MachineResumo, MachineServico } from "@/lib/types";
+import { Chip, categoryChip } from "./frota-shared";
+import type {
+  MachineResumo,
+  OsDaFichaNoRelatorio,
+  OsDeOperacoesNaMaquina,
+} from "@/lib/types";
 
 /**
  * RELATÓRIO DE OS, MÁQUINA POR MÁQUINA.
  *
  * A pergunta que esta aba responde é a do dono olhando a frota: "o que cada
- * máquina fechou no mês, e o que ainda está pendurado nela?".
+ * máquina já fez, e o que ainda está pendurado nela?".
  *
- * O recorte do mês vale para o que FOI FEITO. Mas o mês esconde a OS esquecida
- * lá atrás — então cada card diz, à parte, quantas OS aquela máquina tem em
- * aberto HOJE, contando qualquer mês. E a máquina que não rodou no mês, mas
- * tem OS parada, aparece do mesmo jeito: senão a OS esquecida sumia justo do
- * relatório que deveria denunciá-la.
+ * Por isso ela NÃO é mensal como o resto da tela. O padrão é TUDO — toda OS
+ * daquela máquina, fechada ou aberta, de qualquer mês. Um relatório que só
+ * mostra o mês corrente esconde justamente as duas coisas que interessam: o
+ * histórico de quanto a máquina rendeu e a OS esquecida lá atrás. O recorte do
+ * mês continua disponível num toque, para quem quiser fechar o mês.
+ *
+ * E conta as DUAS famílias de OS da máquina: a da ficha do veículo
+ * (machine_servicos) e a do módulo Operações que usou aquela máquina — que na
+ * ficha aparece como "Vindas de Operações". Para quem olha a frota, as duas
+ * são OS da máquina.
  */
 
-/** O mês de uma máquina, do jeito que o card mostra. */
-interface MaquinaNoMes {
+/** Uma OS de máquina achatada — venha da ficha ou de Operações. */
+interface OsDaMaquina {
+  id: string;
+  origem: "ficha" | "operacoes";
+  machineId: string;
+  data: string;
+  situacao: SituacaoOs;
+  valor: number;
+}
+
+/** O que uma máquina fez no recorte escolhido. */
+interface MaquinaNoRelatorio {
   id: string;
   name: string;
   category: string | null;
   plate: string | null;
-  finalizadas: MachineServico[];
-  andamento: MachineServico[];
-  pendentes: MachineServico[];
+  finalizadas: number;
+  andamento: number;
+  pendentes: number;
+  canceladas: number;
+  daFicha: number;
+  deOperacoes: number;
   /** Só o que já fechou — é o que dá para cobrar sem discussão. */
   valorFinalizado: number;
-  /** Tudo que a máquina rodou no mês, fechado ou não. */
+  /** Tudo que a máquina rodou, fechado ou não. */
   valorTotal: number;
-  /** Em aberto HOJE, contando meses anteriores. */
+  /** Em aberto HOJE, de qualquer mês — independe do recorte da tela. */
   emAbertoAgora: number;
   /** Há quantos dias a mais antiga em aberto está esperando. */
   maisAntiga: number;
 }
 
+type Recorte = "tudo" | "mes";
+
 interface Props {
   machines: MachineResumo[];
-  /** As OS da ficha no mês da tela. */
-  servicos: MachineServico[];
-  /** As OS ainda em aberto, de qualquer mês — é o que o mês não mostra. */
-  abertasDeSempre: MachineServico[];
+  /** TODAS as OS da ficha — qualquer mês, qualquer situação. */
+  todasAsOs: OsDaFichaNoRelatorio[];
+  /** E as OS de Operações que usaram máquina. */
+  osDeOperacoes: OsDeOperacoesNaMaquina[];
+  /** "2026-09" — o mês da tela, usado só quando o recorte é o mês. */
+  mes: string;
   mesLabel: string;
   onPrevMonth: () => void;
   onNextMonth: () => void;
@@ -62,131 +89,194 @@ interface Props {
 
 export function RelatorioOsTab({
   machines,
-  servicos,
-  abertasDeSempre,
+  todasAsOs,
+  osDeOperacoes,
+  mes,
   mesLabel,
   onPrevMonth,
   onNextMonth,
   onAbrirFicha,
 }: Props) {
-  const porMaquina = useMemo(() => {
-    const dados = new Map(machines.map((m) => [m.id, m]));
+  // Começa em TUDO: o relatório existe para mostrar o histórico inteiro, e um
+  // filtro ligado por padrão é o que faz parecer que "não veio nada".
+  const [recorte, setRecorte] = useState<Recorte>("tudo");
 
-    // Quantas OS cada máquina tem em aberto hoje, e desde quando.
+  /** As duas famílias viradas na mesma linha. */
+  const todas = useMemo<OsDaMaquina[]>(
+    () => [
+      ...todasAsOs.map<OsDaMaquina>((s) => ({
+        id: s.id,
+        origem: "ficha",
+        machineId: s.machine_id,
+        data: s.service_date,
+        situacao: situacaoDaMaquina(s.status, s.started_at),
+        valor: Number(s.total ?? 0),
+      })),
+      ...osDeOperacoes.map<OsDaMaquina>((o) => ({
+        id: o.id,
+        origem: "operacoes",
+        machineId: o.machine_id,
+        // A OS de Operações conta no dia em que foi entregue; enquanto não
+        // fecha, vale o dia em que foi aberta.
+        data: o.delivery_date ?? o.issue_date,
+        situacao: situacaoDoServico(o.status),
+        valor: Number(o.total_amount ?? 0),
+      })),
+    ],
+    [todasAsOs, osDeOperacoes]
+  );
+
+  const doRecorte = useMemo(
+    () => (recorte === "tudo" ? todas : todas.filter((o) => o.data.startsWith(mes))),
+    [todas, recorte, mes]
+  );
+
+  const porMaquina = useMemo(() => {
+    const cadastro = new Map(machines.map((m) => [m.id, m]));
+
+    // Em aberto HOJE — sempre de todas, nunca do recorte: é o que está
+    // pendurado na máquina agora, e o mês da tela não muda isso.
     const abertas = new Map<string, { n: number; maisAntiga: number }>();
-    for (const s of abertasDeSempre) {
-      const cur = abertas.get(s.machine_id) ?? { n: 0, maisAntiga: 0 };
+    for (const o of todas) {
+      if (o.situacao !== "pendente" && o.situacao !== "andamento") continue;
+      const cur = abertas.get(o.machineId) ?? { n: 0, maisAntiga: 0 };
       cur.n += 1;
-      cur.maisAntiga = Math.max(cur.maisAntiga, Math.max(0, -daysUntil(s.service_date)));
-      abertas.set(s.machine_id, cur);
+      cur.maisAntiga = Math.max(cur.maisAntiga, Math.max(0, -daysUntil(o.data)));
+      abertas.set(o.machineId, cur);
     }
 
-    const novo = (id: string): MaquinaNoMes => {
-      const m = dados.get(id);
-      const emAberto = abertas.get(id);
+    const novo = (id: string): MaquinaNoRelatorio => {
+      const m = cadastro.get(id);
+      const aberto = abertas.get(id);
       return {
         id,
         name: m?.name ?? "Máquina",
         category: m?.category ?? null,
         plate: m?.plate ?? null,
-        finalizadas: [],
-        andamento: [],
-        pendentes: [],
+        finalizadas: 0,
+        andamento: 0,
+        pendentes: 0,
+        canceladas: 0,
+        daFicha: 0,
+        deOperacoes: 0,
         valorFinalizado: 0,
         valorTotal: 0,
-        emAbertoAgora: emAberto?.n ?? 0,
-        maisAntiga: emAberto?.maisAntiga ?? 0,
+        emAbertoAgora: aberto?.n ?? 0,
+        maisAntiga: aberto?.maisAntiga ?? 0,
       };
     };
 
-    const map = new Map<string, MaquinaNoMes>();
+    const map = new Map<string, MaquinaNoRelatorio>();
 
-    for (const s of servicos) {
-      if (!map.has(s.machine_id)) map.set(s.machine_id, novo(s.machine_id));
-      const alvo = map.get(s.machine_id)!;
-      const situacao = situacaoDaMaquina(s.status, s.started_at);
-      const valor = Number(s.total ?? 0);
+    for (const o of doRecorte) {
+      if (!map.has(o.machineId)) map.set(o.machineId, novo(o.machineId));
+      const alvo = map.get(o.machineId)!;
 
-      if (situacao === "finalizada") {
-        alvo.finalizadas.push(s);
-        alvo.valorFinalizado += valor;
-      } else if (situacao === "andamento") {
-        alvo.andamento.push(s);
-      } else {
-        alvo.pendentes.push(s);
+      if (o.origem === "ficha") alvo.daFicha += 1;
+      else alvo.deOperacoes += 1;
+
+      if (o.situacao === "cancelada") {
+        alvo.canceladas += 1;
+        continue;
       }
-      alvo.valorTotal += valor;
+      if (o.situacao === "finalizada") {
+        alvo.finalizadas += 1;
+        alvo.valorFinalizado += o.valor;
+      } else if (o.situacao === "andamento") {
+        alvo.andamento += 1;
+      } else {
+        alvo.pendentes += 1;
+      }
+      alvo.valorTotal += o.valor;
     }
 
-    // A máquina parada no mês, mas com OS pendurada, entra do mesmo jeito.
+    // A máquina sem nada no recorte, mas com OS pendurada, aparece do mesmo
+    // jeito — senão a OS esquecida some justo do relatório que a denuncia.
     for (const machineId of abertas.keys()) {
       if (!map.has(machineId)) map.set(machineId, novo(machineId));
     }
 
     // Quem mais rodou primeiro; empate desempata pelo que já fechou em reais.
     return [...map.values()].sort((a, b) => {
-      const qa = a.finalizadas.length + a.andamento.length + a.pendentes.length;
-      const qb = b.finalizadas.length + b.andamento.length + b.pendentes.length;
+      const qa = a.finalizadas + a.andamento + a.pendentes;
+      const qb = b.finalizadas + b.andamento + b.pendentes;
       return qb - qa || b.valorFinalizado - a.valorFinalizado;
     });
-  }, [machines, servicos, abertasDeSempre]);
+  }, [machines, doRecorte, todas]);
 
   const totais = useMemo(
     () => ({
-      finalizadas: porMaquina.reduce((s, m) => s + m.finalizadas.length, 0),
-      abertasNoMes: porMaquina.reduce(
-        (s, m) => s + m.andamento.length + m.pendentes.length,
-        0
-      ),
+      finalizadas: porMaquina.reduce((s, m) => s + m.finalizadas, 0),
+      abertas: porMaquina.reduce((s, m) => s + m.andamento + m.pendentes, 0),
       valorFinalizado: porMaquina.reduce((s, m) => s + m.valorFinalizado, 0),
     }),
     [porMaquina]
   );
 
-  const abertasHoje = abertasDeSempre.length;
+  const abertasHoje = useMemo(
+    () =>
+      todas.filter((o) => o.situacao === "pendente" || o.situacao === "andamento").length,
+    [todas]
+  );
 
   return (
     <div className="space-y-4">
-      <MonthNav label={mesLabel} onPrev={onPrevMonth} onNext={onNextMonth} />
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+        <Chip label="Tudo" ativo={recorte === "tudo"} onClick={() => setRecorte("tudo")} />
+        <Chip
+          label="Só este mês"
+          ativo={recorte === "mes"}
+          onClick={() => setRecorte("mes")}
+        />
+      </div>
+
+      {recorte === "mes" && (
+        <MonthNav label={mesLabel} onPrev={onPrevMonth} onNext={onNextMonth} />
+      )}
 
       <div className="grid grid-cols-3 gap-2">
         <SummaryStatCard
           tone="emerald"
-          icon={Tractor}
+          icon={Clock}
           label="Finalizadas"
           value={String(totais.finalizadas)}
         />
         <SummaryStatCard
           tone="amber"
-          icon={Clock}
-          label="Abertas no mês"
-          value={String(totais.abertasNoMes)}
+          icon={AlertTriangle}
+          label="Em aberto"
+          value={String(totais.abertas)}
         />
         <SummaryStatCard
           tone="produmar"
-          icon={Tractor}
+          icon={Clock}
           label="Fechado"
           amount={totais.valorFinalizado}
         />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        O que cada máquina fez em {mesLabel}. Toque numa delas para abrir a ficha.
+        {recorte === "tudo"
+          ? "Toda OS de cada máquina, fechada ou aberta, de qualquer mês — da ficha do veículo e de Operações."
+          : `As OS de cada máquina em ${mesLabel}.`}{" "}
+        Toque numa máquina para abrir a ficha dela.
         {abertasHoje > 0 && (
           <>
             {" "}
-            Ao todo há{" "}
+            A frota tem{" "}
             <span className="font-medium text-amber-600 dark:text-amber-400">
-              {abertasHoje} {abertasHoje === 1 ? "OS em aberto" : "OS em aberto"}
+              {abertasHoje} em aberto
             </span>{" "}
-            na frota hoje, contando meses anteriores.
+            hoje.
           </>
         )}
       </p>
 
       {porMaquina.length === 0 ? (
         <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
-          Nenhuma OS de máquina em {mesLabel}.
+          {recorte === "tudo"
+            ? "Nenhuma OS de máquina registrada ainda."
+            : `Nenhuma OS de máquina em ${mesLabel}.`}
         </div>
       ) : (
         <div className="space-y-3">
@@ -219,8 +309,14 @@ function Selo({ situacao, valor }: { situacao: SituacaoOs; valor: number }) {
   );
 }
 
-function MaquinaCard({ m, onClick }: { m: MaquinaNoMes; onClick: () => void }) {
-  const total = m.finalizadas.length + m.andamento.length + m.pendentes.length;
+function MaquinaCard({
+  m,
+  onClick,
+}: {
+  m: MaquinaNoRelatorio;
+  onClick: () => void;
+}) {
+  const total = m.finalizadas + m.andamento + m.pendentes;
   const falta = m.valorTotal - m.valorFinalizado;
 
   return (
@@ -251,7 +347,13 @@ function MaquinaCard({ m, onClick }: { m: MaquinaNoMes; onClick: () => void }) {
               </span>
             )}
             <span className="text-[10px] text-slate-400 dark:text-slate-500">
-              {total} no mês
+              {total} {total === 1 ? "OS" : "OS"}
+              {/* De onde vieram: ajuda a bater com o que a ficha mostra */}
+              {m.deOperacoes > 0 && m.daFicha > 0
+                ? ` · ${m.daFicha} da ficha, ${m.deOperacoes} de Operações`
+                : m.deOperacoes > 0
+                  ? " · de Operações"
+                  : ""}
             </span>
           </div>
         </div>
@@ -264,9 +366,10 @@ function MaquinaCard({ m, onClick }: { m: MaquinaNoMes; onClick: () => void }) {
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-2">
-        <Selo situacao="finalizada" valor={m.finalizadas.length} />
-        <Selo situacao="andamento" valor={m.andamento.length} />
-        <Selo situacao="pendente" valor={m.pendentes.length} />
+        <Selo situacao="finalizada" valor={m.finalizadas} />
+        <Selo situacao="andamento" valor={m.andamento} />
+        <Selo situacao="pendente" valor={m.pendentes} />
+        {m.canceladas > 0 && <Selo situacao="cancelada" valor={m.canceladas} />}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">

@@ -33,6 +33,8 @@ import {
   type MachineResumo,
   type MachineServico,
   type MachineTroca,
+  type OsDaFichaNoRelatorio,
+  type OsDeOperacoesNaMaquina,
 } from "@/lib/types";
 
 interface Props {
@@ -50,10 +52,13 @@ interface Props {
   veiculosDeParceiro: MachineParceiroVeiculo[];
   month: string;
   /**
-   * As OS da ficha ainda em aberto, de QUALQUER mês. O mês da tela não mostra
-   * a OS esquecida lá atrás, e é ela que segura a máquina.
+   * TODAS as OS da ficha — de qualquer mês e em qualquer situação. É a base do
+   * relatório, que não é mensal: a pergunta lá é o que a máquina já fez e o
+   * que ainda deve.
    */
-  abertasDeSempre: MachineServico[];
+  todasAsOs: OsDaFichaNoRelatorio[];
+  /** E as OS de Operações que usaram máquina — o relatório conta junto. */
+  osDeOperacoes: OsDeOperacoesNaMaquina[];
   /** Migration 073 ainda não rodou: a tela abre, mas avisa. */
   migrationPendente?: boolean;
   /** Migration 076 ainda não rodou: a aba da parceria avisa. */
@@ -107,7 +112,8 @@ export function FrotaPageClient({
   servicos,
   despesas,
   operators,
-  abertasDeSempre,
+  todasAsOs,
+  osDeOperacoes,
   parceiros,
   trocas,
   saldos,
@@ -505,8 +511,9 @@ export function FrotaPageClient({
       ) : aba === "relatorio" ? (
         <RelatorioOsTab
           machines={machines}
-          servicos={servicos}
-          abertasDeSempre={abertasDeSempre}
+          todasAsOs={todasAsOs}
+          osDeOperacoes={osDeOperacoes}
+          mes={month}
           mesLabel={mesLabel}
           onPrevMonth={() => navigateMonth(-1)}
           onNextMonth={() => navigateMonth(1)}
