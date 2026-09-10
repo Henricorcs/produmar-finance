@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn, formatBRL, formatBRLFull, machineCategoryLabel } from "@/lib/utils";
+import { cn, formatBRL, machineCategoryLabel } from "@/lib/utils";
 import type { Profile, ServiceOrder, Transaction } from "@/lib/types";
 
 // O gráfico entra depois que a tela abriu: a biblioteca de gráficos é o pedaço

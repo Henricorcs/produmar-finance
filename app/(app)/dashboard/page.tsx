@@ -1,4 +1,5 @@
-﻿import Link from "next/link";
+﻿import type { ReactNode } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { KpiCard } from "@/components/dashboard/kpi-card";
@@ -7,7 +8,7 @@ import { CashflowProjection } from "@/components/dashboard/cashflow-projection-l
 import { ExpenseBreakdown } from "@/components/dashboard/expense-breakdown";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 import { RefreshCw, Wallet, TrendingUp, TrendingDown, Clock, Banknote, Boxes, AlertTriangle } from "lucide-react";
-import { formatBRLFull } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import type {
   DashboardKPIs,
   ExpenseByCategory,
@@ -73,9 +74,14 @@ export default async function DashboardPage() {
     (s, p) => s + Math.max(0, Number(p.total_amount) - Number(p.amount_paid)),
     0
   );
-  const stockCards = [
-    { label: "Em estoque", value: formatBRLFull(stockValue), color: "text-emerald-700 dark:text-emerald-400", icon: Boxes },
-    { label: "Devendo jazidas", value: formatBRLFull(owedJazidas), color: "text-amber-700 dark:text-amber-400", icon: Wallet },
+  const stockCards: {
+    label: string;
+    value: ReactNode;
+    color: string;
+    icon: typeof Boxes;
+  }[] = [
+    { label: "Em estoque", value: <Money value={stockValue} />, color: "text-emerald-700 dark:text-emerald-400", icon: Boxes },
+    { label: "Devendo jazidas", value: <Money value={owedJazidas} />, color: "text-amber-700 dark:text-amber-400", icon: Wallet },
     {
       label: "Sem saldo",
       value: String(noStockCount),
@@ -181,7 +187,7 @@ export default async function DashboardPage() {
                   </span>
                   <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" />
                 </div>
-                <p className={`mt-2 text-xl sm:text-2xl font-medium tabular-nums ${c.color}`}>
+                <p className={`mt-2 text-base sm:text-2xl font-medium tabular-nums ${c.color}`}>
                   {c.value}
                 </p>
               </Link>

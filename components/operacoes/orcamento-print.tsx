@@ -108,7 +108,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
     if (hourmeterDiff != null)
       metrics.push({ label: "Horas trabalhadas", value: `${dec(hourmeterDiff)} h` });
     if (order.hourly_rate != null)
-      metrics.push({ label: "Valor da hora", value: `R$ ${formatBRL(order.hourly_rate)}` });
+      metrics.push({ label: "Valor da hora", value: formatBRL(order.hourly_rate) });
   }
   if (order.km_start != null) metrics.push({ label: "KM inicial", value: `${dec(order.km_start)} km` });
   if (order.km_end != null) metrics.push({ label: "KM final", value: `${dec(order.km_end)} km` });
@@ -121,7 +121,7 @@ export function OrcamentoPrint({ order, autoPrint }: Props) {
           : order.billing_mode === "km"
             ? "Valor do km"
             : "Valor da diária";
-      metrics.push({ label: lbl, value: `R$ ${formatBRL(order.freight_value)}` });
+      metrics.push({ label: lbl, value: formatBRL(order.freight_value) });
     }
     if (order.billing_mode === "viagem" && order.trips_count != null)
       metrics.push({ label: "Viagens", value: String(order.trips_count) });

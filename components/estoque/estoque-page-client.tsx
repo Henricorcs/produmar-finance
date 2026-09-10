@@ -17,7 +17,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatBRL, formatBRLFull, formatDate } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
+import { formatBRL, formatDate } from "@/lib/utils";
 import { PurchaseDialog } from "./purchase-dialog";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import { PaymentDialog } from "./payment-dialog";
@@ -256,13 +257,13 @@ export function EstoquePageClient({
         <KpiCard
           icon={Boxes}
           label="Em estoque"
-          value={formatBRLFull(stockValue)}
+          value={<Money value={stockValue} />}
           tone="emerald"
         />
         <KpiCard
           icon={Wallet}
           label="Devendo"
-          value={formatBRLFull(owedTotal)}
+          value={<Money value={owedTotal} />}
           tone="amber"
         />
       </div>
@@ -370,7 +371,7 @@ function KpiCard({
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
-  value: string;
+  value: React.ReactNode;
   tone: "produmar" | "emerald" | "amber";
 }) {
   const tones = {

@@ -133,9 +133,12 @@ export function formatBRL(value: number): string {
 
 /**
  * Valor cheio em reais, sem abreviar com "k"/"M" e sem centavos
- * (ex.: 144917,64 → "R$ 144.918"). Usado nos cards de resumo e nos eixos
- * dos gráficos, onde o espaço é curto mas o número precisa ser lido por
- * inteiro. Listas, diálogos e tooltips continuam com `formatBRL` (com centavos).
+ * (ex.: 144917,64 → "R$ 144.918"). É só para os EIXOS DOS GRÁFICOS, onde o
+ * centavo não diz nada e ainda embola a régua de números.
+ *
+ * Em qualquer lugar que mostre dinheiro para conferência — card, total, lista,
+ * diálogo — o centavo aparece: use `formatBRL`, ou o `<Money>` quando o
+ * número for grande e precisar caber (ele escreve o centavo menorzinho).
  */
 export function formatBRLFull(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -143,6 +146,19 @@ export function formatBRLFull(value: number): string {
     currency: "BRL",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+/**
+ * Quebra o valor em reais e centavos já formatados
+ * (44587.38 → { reais: "R$ 44.587", centavos: "38" }), para o `<Money>`
+ * escrever o centavo em corpo menor. Sai do próprio `formatBRL`, então
+ * acompanha o formato brasileiro em vez de repetir a conta na mão.
+ */
+export function splitBRL(value: number): { reais: string; centavos: string } {
+  const texto = formatBRL(value);
+  const virgula = texto.lastIndexOf(",");
+  if (virgula < 0) return { reais: texto, centavos: "" };
+  return { reais: texto.slice(0, virgula), centavos: texto.slice(virgula + 1) };
 }
 
 /** Parse de valor em R$ digitado (1.234,56 → 1234.56). */

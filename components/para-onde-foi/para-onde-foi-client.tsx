@@ -7,7 +7,8 @@ import { TrendingDown } from "lucide-react";
 import { MonthNav } from "@/components/ui/month-nav";
 import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatBRL, formatBRLFull, formatDate } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
+import { formatBRL, formatDate } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/badge";
 import type { Category, CostCenter, Transaction } from "@/lib/types";
 
@@ -123,8 +124,7 @@ export function ParaOndeFoiClient({ transactions, categories, costCenters, month
         <div className="min-w-0">
           <p className="text-xs text-red-600 dark:text-red-400 font-medium truncate">Total de despesas em {monthLabel}</p>
           <p className="text-xl sm:text-2xl font-bold text-red-700 dark:text-red-400 tabular-nums truncate">
-            <span className="sm:hidden">{formatBRLFull(totalDespesas)}</span>
-            <span className="hidden sm:inline">{formatBRL(totalDespesas)}</span>
+            <Money value={totalDespesas} />
           </p>
         </div>
         <div className="ml-auto text-right flex-shrink-0 pl-2">

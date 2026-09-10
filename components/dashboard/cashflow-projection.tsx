@@ -7,6 +7,7 @@ import {
   Tooltip, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { Money } from "@/components/ui/money";
 import { formatBRL, formatBRLFull } from "@/lib/utils";
 import type { CashflowProjectionDay } from "@/lib/types";
 
@@ -155,9 +156,8 @@ function ProjectionKpi({ label, value }: { label: string; value: number }) {
             : "text-red-700 dark:text-red-400"
         }`}
       >
-        {/* Valor cheio sem centavos no mobile (cabe em 3 colunas); com centavos no desktop */}
-        <span className="sm:hidden">{formatBRLFull(value)}</span>
-        <span className="hidden sm:inline">{formatBRL(value)}</span>
+        {/* Centavos menores: cabe nas 3 colunas do celular sem sumir com o centavo */}
+        <Money value={value} />
       </div>
     </div>
   );
