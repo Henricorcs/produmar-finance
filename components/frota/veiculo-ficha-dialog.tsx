@@ -428,7 +428,7 @@ export function VeiculoFichaDialog({
             </div>
 
             {/* Os recortes da ficha */}
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
               {FILTROS.map((f) => (
                 <Chip
                   key={f.value}

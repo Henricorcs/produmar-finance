@@ -256,7 +256,7 @@ export function ServicoDialog({
           {/* Qual serviço */}
           <div className="space-y-1.5">
             <Label htmlFor="sv_tipo">Tipo do serviço *</Label>
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
               {SERVICOS_SUGERIDOS.map((s) => (
                 <button
                   key={s}

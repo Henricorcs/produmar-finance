@@ -208,7 +208,7 @@ const DialogContent = React.forwardRef<
         // ── Mobile (base): caixa centrada na faixa livre acima do teclado ──
         // (o `top` e a altura máxima vêm de .dialog-visible-band)
         "fixed inset-x-0 z-50 mx-auto w-[calc(100%-1.5rem)] max-w-lg -translate-y-1/2",
-        "dialog-visible-band overflow-y-auto overscroll-contain",
+        "dialog-visible-band overflow-y-auto overflow-x-hidden overscroll-contain",
         "bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-5",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",

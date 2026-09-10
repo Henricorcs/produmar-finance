@@ -269,7 +269,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
           {/* A profissão */}
           <div className="space-y-1.5">
             <Label htmlFor="di_prof">Profissão</Label>
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
               {PROFISSOES_SUGERIDAS.map((p) => (
                 <button
                   key={p}

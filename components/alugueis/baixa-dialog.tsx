@@ -173,7 +173,7 @@ export function BaixaDialog({ cobranca, onClose, mesLabel }: Props) {
 
             <div className="space-y-1.5">
               <Label>Como pagou</Label>
-              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
                 {RENTAL_METHODS.map((m) => (
                   <button
                     key={m}

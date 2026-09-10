@@ -332,7 +332,7 @@ export function ServicoDialog({
           <div className="space-y-1.5">
             <Label htmlFor="ms_contratante">Contratante — pra quem foi</Label>
             {sugestoes.length > 0 && (
-              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
                 {sugestoes.map((c) => (
                   <button
                     key={c}

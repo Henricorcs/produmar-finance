@@ -251,7 +251,7 @@ export function DespesaDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="md_cat">Categoria</Label>
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
               {DESPESAS_MAQUINA_SUGERIDAS.map((c) => (
                 <button
                   key={c}

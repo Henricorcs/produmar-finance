@@ -322,7 +322,7 @@ export function ContratoDialog({
 
           <div className="space-y-1.5">
             <Label>Estado civil</Label>
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
               {ESTADOS_CIVIS.map((e) => (
                 <button
                   key={e}

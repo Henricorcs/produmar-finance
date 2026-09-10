@@ -174,7 +174,7 @@ export function MaterialPickerDialog({
         </div>
 
         {/* A lista */}
-        <div className="flex-1 overflow-y-auto -mx-1 px-1 min-h-[8rem]">
+        <div className="flex-1 overflow-y-auto min-h-[8rem]">
           {encontrados.length === 0 ? (
             <div className="py-8 text-center space-y-3">
               <p className="text-sm text-slate-500 dark:text-slate-400 px-4">

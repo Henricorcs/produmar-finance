@@ -240,7 +240,7 @@ export function ObraResponsavel({ obra, colaboradores, fechamento }: Props) {
             <div className="space-y-2.5">
               <div className="space-y-1.5">
                 <Label htmlFor="fe_tipo">O que foi feito na obra</Label>
-                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
                   {SERVICOS_SUGERIDOS.map((s) => (
                     <button
                       key={s}
