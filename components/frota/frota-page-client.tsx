@@ -18,7 +18,6 @@ import { MonthNav } from "@/components/ui/month-nav";
 import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { QuickCreateMachineDialog } from "@/components/operacoes/quick-create-machine-dialog";
 import { cn, formatBRL, formatDate, machineCategoryLabel } from "@/lib/utils";
-import { ServicoDialog } from "./servico-dialog";
 import { DespesaDialog } from "./despesa-dialog";
 import { VeiculoFichaDialog } from "./veiculo-ficha-dialog";
 import { ParceriasTab } from "./parcerias-tab";
@@ -115,7 +114,6 @@ export function FrotaPageClient({
   const [categoria, setCategoria] = useState<string>("todas");
   const [fichaMachineId, setFichaMachineId] = useState<string | null>(null);
 
-  const [servicoOpen, setServicoOpen] = useState(false);
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [novoVeiculoOpen, setNovoVeiculoOpen] = useState(false);
 
@@ -285,20 +283,17 @@ export function FrotaPageClient({
           onPrev={() => navigateMonth(-1)}
           onNext={() => navigateMonth(1)}
         />
-        <div className="grid grid-cols-2 gap-2">
-          <Button className="h-11 sm:h-10" onClick={() => setServicoOpen(true)}>
-            <Plus className="w-4 h-4" />
-            Nova OS
-          </Button>
-          <Button
-            variant="outline"
-            className="h-11 sm:h-10"
-            onClick={() => setDespesaOpen(true)}
-          >
-            <Plus className="w-4 h-4" />
-            Despesa
-          </Button>
-        </div>
+        {/* A OS saiu daqui: solta ela pedia escolher o veículo na mão, e era
+            aí que ia para a máquina errada. Agora só nasce dentro da ficha,
+            onde a máquina já vem travada. */}
+        <Button
+          variant="outline"
+          className="h-11 sm:h-10"
+          onClick={() => setDespesaOpen(true)}
+        >
+          <Plus className="w-4 h-4" />
+          Despesa
+        </Button>
       </div>
 
       {/* O mês inteiro da frota */}
@@ -531,15 +526,7 @@ export function FrotaPageClient({
         />
       )}
 
-      {/* Lançamento solto, escolhendo o veículo na hora */}
-      <ServicoDialog
-        open={servicoOpen}
-        onClose={() => setServicoOpen(false)}
-        servico={null}
-        machines={ativos}
-        contratantes={contratantes}
-        operators={operators}
-      />
+      {/* Despesa continua podendo ser lançada solta, escolhendo o veículo */}
       <DespesaDialog
         open={despesaOpen}
         onClose={() => setDespesaOpen(false)}
