@@ -307,6 +307,59 @@ export async function finalizarMachineServico(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// O HISTÓRICO DE UMA OS DE OPERAÇÕES
+// ─────────────────────────────────────────────────────────────────────────────
+// A ficha do veículo mostra a OS de Operações como uma linha só, com o valor.
+// Mas quem olha a máquina quer o que está DENTRO dela: as horas do horímetro,
+// o km rodado, cada viagem e o material carregado.
+//
+// Isso é pesado demais para vir junto com a tela — são três tabelas filhas para
+// cada OS. Então vem sob demanda: só quando alguém abre o histórico daquela
+// linha. Somente leitura; quem corrige a OS continua sendo o módulo Operações.
+
+export async function historicoDaOs(id: string) {
+  const supabase = createClient();
+
+  const { data: order, error } = await supabase
+    .from("service_orders")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) return { error: frotaError(error) };
+  if (!order) return { error: "Esta OS não existe mais." };
+
+  // As três de uma vez: nenhuma depende da outra. Best-effort — se alguma
+  // tabela ainda não existe (migrations 016/025/026), aquela lista vem vazia e
+  // o histórico mostra o resto.
+  const [tripsRes, itemsRes, pausesRes] = await Promise.all([
+    supabase
+      .from("service_order_trips")
+      .select("*")
+      .eq("service_order_id", id)
+      .order("trip_number", { ascending: true }),
+    supabase
+      .from("service_order_items")
+      .select("*, products(name)")
+      .eq("service_order_id", id),
+    supabase
+      .from("service_order_pauses")
+      .select("*")
+      .eq("service_order_id", id)
+      .order("pause_number", { ascending: true }),
+  ]);
+
+  return {
+    historico: {
+      order,
+      trips: tripsRes.data ?? [],
+      items: itemsRes.data ?? [],
+      pauses: pausesRes.data ?? [],
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DESPESA — combustível, manutenção, peça, motorista, imposto
 // ─────────────────────────────────────────────────────────────────────────────
 

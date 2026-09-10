@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   Fuel,
+  History,
   Pencil,
   Plus,
   Receipt,
@@ -32,6 +33,7 @@ import {
   setMachineServicoStatus,
 } from "@/app/(app)/frota/actions";
 import { FrotaCalendario, type DiaDaFrota } from "./frota-calendario";
+import { HistoricoOsDialog } from "./historico-os-dialog";
 import { ServicoDialog } from "./servico-dialog";
 import { DespesaDialog } from "./despesa-dialog";
 import { Chip, Numero, categoryChip, contaDoServico, kindMeta, toneResultado } from "./frota-shared";
@@ -135,6 +137,12 @@ export function VeiculoFichaDialog({
   const [diaEscolhido, setDiaEscolhido] = useState<string | null>(null);
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [editDespesa, setEditDespesa] = useState<MachineDespesa | null>(null);
+  /** A OS cujo histórico está aberto — a da ficha ou a de Operações. */
+  const [historico, setHistorico] = useState<
+    | { tipo: "ficha"; servico: MachineServico }
+    | { tipo: "operacoes"; id: string; titulo: string }
+    | null
+  >(null);
 
   const doFiltro = useMemo(
     () =>
@@ -484,6 +492,18 @@ export function VeiculoFichaDialog({
                     const trecho = [l.origin, l.destination].filter(Boolean).join(" → ");
                     const aReceber = receita && !l.internal && l.paid === false;
                     const aberta = l.kind === "servico" && l.status === "aberta";
+                    // Toda OS tem histórico — a da ficha e a que veio de
+                    // Operações. Só a despesa não tem o que contar.
+                    const abrirHistorico = servico
+                      ? () => setHistorico({ tipo: "ficha", servico })
+                      : l.kind === "os"
+                        ? () =>
+                            setHistorico({
+                              tipo: "operacoes",
+                              id: l.id,
+                              titulo: l.description,
+                            })
+                        : null;
 
                     return (
                       <div
@@ -612,9 +632,27 @@ export function VeiculoFichaDialog({
                             {receita ? "" : "− "}
                             {formatBRL(Number(l.value))}
                           </p>
-                          {editavel && (
-                            <Pencil className="w-3 h-3 text-slate-300 dark:text-slate-600" />
-                          )}
+                          <span className="flex items-center gap-1.5">
+                            {/* O que a linha não mostra: horas, km, viagens e
+                                o material carregado. */}
+                            {abrirHistorico && (
+                              <button
+                                type="button"
+                                title="Ver o histórico desta OS"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  abrirHistorico();
+                                }}
+                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300 flex items-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-800"
+                              >
+                                <History className="w-3 h-3" />
+                                histórico
+                              </button>
+                            )}
+                            {editavel && (
+                              <Pencil className="w-3 h-3 text-slate-300 dark:text-slate-600" />
+                            )}
+                          </span>
                         </div>
                       </div>
                     );
@@ -623,6 +661,8 @@ export function VeiculoFichaDialog({
               )}
 
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Toque em <strong>histórico</strong> para ver o que tem dentro da OS:
+                horas trabalhadas, km rodado, viagens e material carregado.{" "}
                 A OS e a despesa lançadas na ficha se corrigem com um toque na linha. As
                 linhas que vieram do módulo Operações são só leitura aqui — elas se
                 corrigem lá.
@@ -631,6 +671,12 @@ export function VeiculoFichaDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      <HistoricoOsDialog
+        alvo={historico}
+        onClose={() => setHistorico(null)}
+        nomeDoOperador={nomeDoOperador}
+      />
 
       <ServicoDialog
         open={servicoOpen}

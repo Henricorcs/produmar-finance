@@ -1897,6 +1897,24 @@ export interface OsDeMaquinaResumo {
 }
 
 /**
+ * O HISTÓRICO DE UMA OS DE OPERAÇÕES, do jeito que a ficha do veículo mostra.
+ *
+ * É o que o dono pede olhando a máquina: quantas horas ela trabalhou, quantos
+ * km rodou, quantas viagens fez e o que levou em cada uma. Nada disso está na
+ * linha da ficha — mora na OS e nas tabelas filhas dela, e por isso vem sob
+ * demanda, só quando alguém abre o histórico daquela linha.
+ */
+export interface HistoricoDaOs {
+  order: ServiceOrder;
+  /** Cada viagem, com hora de saída, chegada e quem recebeu. */
+  trips: ServiceOrderTrip[];
+  /** O que foi carregado — o material sai daqui. */
+  items: (ServiceOrderItem & { products: { name: string } | null })[];
+  /** As paradas do dia, com a leitura do horímetro/hodômetro. */
+  pauses: ServiceOrderPause[];
+}
+
+/**
  * Uma OS da ficha do veículo, com o mínimo que o relatório da Frota precisa.
  *
  * O relatório é de SEMPRE — traz toda OS de toda máquina —, então a linha
