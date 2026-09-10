@@ -1866,6 +1866,8 @@ export interface OsAbertaDeServico {
   status: ServiceOrderStatus;
   /** Para quem a OS foi enviada — é por ele que o relatório agrupa. */
   assigned_to: string | null;
+  /** Que máquina fez o serviço — o outro jeito de agrupar o relatório. */
+  machine_id: string | null;
   issue_date: string;
   client_name: string | null;
   service_description: string | null;
@@ -1874,14 +1876,18 @@ export interface OsAbertaDeServico {
 }
 
 /**
- * Uma OS da ficha do veículo ainda em aberto. Aqui não há "em andamento":
- * quem responde se ela já começou é o `started_at`, gravado quando o operador
- * toca em INICIAR no painel dele.
+ * Uma OS da ficha do veículo, como o relatório precisa dela.
+ *
+ * Aqui não há "em andamento": o status só diz aberta ou concluída, e quem
+ * responde se ela já COMEÇOU é o `started_at`, gravado quando o operador toca
+ * em INICIAR no painel dele.
  */
-export interface OsAbertaDaMaquina {
+export interface OsDeMaquinaResumo {
   id: string;
+  machine_id: string;
   service_date: string;
   kind: MachineServicoKind;
+  status: MachineServicoStatus;
   contratante: string | null;
   description: string | null;
   total: number;

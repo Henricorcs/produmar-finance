@@ -30,10 +30,12 @@ import { Money } from "@/components/ui/money";
 import { cn, daysUntil, formatBRL, machineCategoryLabel } from "@/lib/utils";
 import { MACHINE_SERVICO_KINDS } from "@/lib/types";
 import type {
-  OsAbertaDaMaquina,
   OsAbertaDeServico,
+  OsDeMaquinaResumo,
   Profile,
   ServiceOrder,
+  ServiceOrderStatus,
+  ServiceOrderType,
   Transaction,
 } from "@/lib/types";
 
@@ -84,28 +86,34 @@ interface OperatorAgg {
   orders: OrderWithMachine[];
 }
 
+/** Em que pé a OS está — a mesma resposta para as duas famílias de OS. */
+type SituacaoOs = "pendente" | "andamento" | "finalizada" | "cancelada";
+
 /**
- * Uma OS que ainda não fechou — venha ela do módulo Operações ou da ficha do
- * veículo. As duas viram a MESMA linha aqui: para quem cobra o serviço, "OS
- * parada" é uma coisa só, não duas listas em telas diferentes.
+ * Uma OS achatada — venha ela do módulo Operações ou da ficha do veículo.
+ *
+ * As duas viram a MESMA linha aqui: para quem cobra o serviço, "OS parada" é
+ * uma coisa só, não duas listas em telas diferentes. É desta linha que saem os
+ * dois relatórios de OS: o por usuário e o por máquina.
  */
-interface OsEmAberto {
+interface OsNaLista {
   id: string;
   origem: "servico" | "maquina";
   /** A OS de serviço tem número; a da máquina não. */
   numero: number | null;
   data: string;
-  /** Já começou? É isto que separa "em andamento" de "pendente". */
-  iniciada: boolean;
+  situacao: SituacaoOs;
   /** Para quem ela foi enviada. */
   responsavel: string | null;
+  /** Que máquina fez o serviço — null quando a OS não usa máquina. */
+  maquinaId: string | null;
+  maquina: string | null;
   /** Para quem o serviço é — cliente ou contratante. */
   para: string;
   /** O que é — tipo da OS, ou a forma de cobrança da máquina. */
   oQue: string;
-  maquina: string | null;
   valor: number;
-  /** Há quantos dias ela está parada. */
+  /** Há quantos dias ela está parada (ou foi feita). */
   dias: number;
 }
 
@@ -113,11 +121,30 @@ interface OsEmAberto {
 interface UsuarioComOs {
   id: string;
   name: string;
-  pendentes: OsEmAberto[];
-  andamento: OsEmAberto[];
+  pendentes: OsNaLista[];
+  andamento: OsNaLista[];
   valor: number;
   /** A mais antiga da fila — é a que dói. */
   maisAntiga: number;
+}
+
+/** O mês de uma máquina: o que ela fechou, o que está na mão e o que espera. */
+interface MaquinaComOs {
+  id: string;
+  name: string;
+  finalizadas: OsNaLista[];
+  andamento: OsNaLista[];
+  pendentes: OsNaLista[];
+  canceladas: number;
+  valorTotal: number;
+  /** Só o que já fechou — é o que dá para cobrar sem discussão. */
+  valorFinalizado: number;
+  /**
+   * Quantas OS desta máquina estão em aberto HOJE, contando as de meses
+   * anteriores. O mês da tela não mostra a OS esquecida lá atrás — e é ela
+   * que segura a máquina.
+   */
+  emAbertoAgora: number;
 }
 
 interface Props {
@@ -125,18 +152,21 @@ interface Props {
   orders: OrderWithMachine[];
   /** OS de serviço ainda em aberto — de sempre, não de um mês. */
   osAbertas: OsAbertaDeServico[];
-  /** OS da ficha do veículo ainda em aberto. */
-  osAbertasMaquina: OsAbertaDaMaquina[];
+  /** OS da ficha do veículo ainda em aberto — também de sempre. */
+  osAbertasMaquina: OsDeMaquinaResumo[];
+  /** OS da ficha do veículo na janela de 12 meses, abertas E concluídas. */
+  osMaquinaDoPeriodo: OsDeMaquinaResumo[];
   operators: Profile[];
 }
 
-type Tab = "dre" | "cashflow" | "operadores" | "os-abertas";
+type Tab = "dre" | "cashflow" | "operadores" | "os-abertas" | "os-maquina";
 
 const TAB_LABEL: Record<Tab, string> = {
   dre: "DRE",
   cashflow: "Fluxo de Caixa",
   operadores: "Operadores",
   "os-abertas": "OS em aberto",
+  "os-maquina": "OS por máquina",
 };
 type GroupBy = "category" | "cost_center";
 
@@ -159,12 +189,96 @@ const OS_TYPE_LABEL: Record<ServiceOrder["type"], string> = {
   servico_rapido: "Serviço rápido",
 };
 
+const SITUACAO_LABEL: Record<SituacaoOs, string> = {
+  pendente:   "Pendente",
+  andamento:  "Em andamento",
+  finalizada: "Finalizada",
+  cancelada:  "Cancelada",
+};
+
+const SITUACAO_STYLE: Record<SituacaoOs, string> = {
+  pendente:   "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  andamento:  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
+  finalizada: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
+  cancelada:  "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400",
+};
+
 const OS_STATUS: Record<ServiceOrder["status"], { label: string; cls: string }> = {
   pendente:     { label: "Pendente",     cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" },
   em_andamento: { label: "Em andamento", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" },
   entregue:     { label: "Entregue",     cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" },
   cancelado:    { label: "Cancelada",    cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" },
 };
+
+/** daysUntil olha para a frente; nos relatórios de OS a conta é para trás. */
+function diasParada(data: string): number {
+  return Math.max(0, -daysUntil(data));
+}
+
+const ROTULO_DO_KIND = new Map(MACHINE_SERVICO_KINDS.map((k) => [k.value, k.label]));
+
+/**
+ * O mínimo que os dois relatórios precisam de uma OS de serviço. Escrito como
+ * subconjunto de propósito: serve tanto para a OS inteira (`orders`) quanto
+ * para a consulta enxuta das que estão em aberto.
+ */
+type ServicoNormalizavel = {
+  id: string;
+  order_number: number;
+  type: ServiceOrderType;
+  status: ServiceOrderStatus;
+  assigned_to: string | null;
+  machine_id: string | null;
+  issue_date: string;
+  client_name: string | null;
+  service_description: string | null;
+  total_amount: number | null;
+  machines: { name: string; plate: string | null } | null;
+};
+
+function normalizarServico(o: ServicoNormalizavel): OsNaLista {
+  return {
+    id: o.id,
+    origem: "servico",
+    numero: o.order_number,
+    data: o.issue_date,
+    situacao:
+      o.status === "entregue"
+        ? "finalizada"
+        : o.status === "em_andamento"
+          ? "andamento"
+          : o.status === "cancelado"
+            ? "cancelada"
+            : "pendente",
+    responsavel: o.assigned_to,
+    maquinaId: o.machine_id,
+    maquina: o.machines?.name ?? null,
+    para: o.client_name || o.service_description || "—",
+    oQue: OS_TYPE_LABEL[o.type],
+    valor: Number(o.total_amount ?? 0),
+    dias: diasParada(o.issue_date),
+  };
+}
+
+function normalizarMaquina(s: OsDeMaquinaResumo): OsNaLista {
+  return {
+    id: s.id,
+    origem: "maquina",
+    numero: null,
+    data: s.service_date,
+    // A OS da máquina não tem "em andamento" no banco: quem responde se ela já
+    // começou é o toque do operador em INICIAR, que grava o started_at.
+    situacao:
+      s.status === "concluida" ? "finalizada" : s.started_at ? "andamento" : "pendente",
+    responsavel: s.assigned_to,
+    maquinaId: s.machine_id,
+    maquina: s.machines?.name ?? null,
+    para: s.contratante || s.description || "—",
+    oQue: ROTULO_DO_KIND.get(s.kind) ?? "Serviço",
+    valor: Number(s.total ?? 0),
+    dias: diasParada(s.service_date),
+  };
+}
 
 function currentYM(): string {
   const d = new Date();
@@ -233,6 +347,7 @@ export function RelatoriosClient({
   orders,
   osAbertas,
   osAbertasMaquina,
+  osMaquinaDoPeriodo,
   operators,
 }: Props) {
   const [tab, setTab] = useState<Tab>("dre");
@@ -259,6 +374,8 @@ export function RelatoriosClient({
 
   /** O usuário cuja fila de OS está aberta no diálogo. */
   const [filaAberta, setFilaAberta] = useState<UsuarioComOs | null>(null);
+  /** A máquina cujas OS do mês estão abertas no diálogo. */
+  const [maquinaAberta, setMaquinaAberta] = useState<MaquinaComOs | null>(null);
 
   // A data só entra depois que a tela abriu: calculada no servidor ela pode vir
   // de um dia e o navegador desenhar outro (o relatório é "de agora").
@@ -417,42 +534,13 @@ export function RelatoriosClient({
   // Sem recorte de mês, de propósito: a pergunta aqui não é "quanto se fez em
   // setembro", é "o que está parado na mão de quem". Uma OS esquecida em março
   // some de um relatório mensal — e é justamente ela que precisa aparecer.
-  const emAberto = useMemo<OsEmAberto[]>(() => {
-    const rotuloDoKind = new Map(MACHINE_SERVICO_KINDS.map((k) => [k.value, k.label]));
-    /** daysUntil olha para a frente; aqui a conta é para trás. */
-    const parada = (data: string) => Math.max(0, -daysUntil(data));
-
-    return [
-      ...osAbertas.map<OsEmAberto>((o) => ({
-        id: o.id,
-        origem: "servico",
-        numero: o.order_number,
-        data: o.issue_date,
-        iniciada: o.status === "em_andamento",
-        responsavel: o.assigned_to,
-        para: o.client_name || o.service_description || "—",
-        oQue: OS_TYPE_LABEL[o.type],
-        maquina: o.machines?.name ?? null,
-        valor: Number(o.total_amount ?? 0),
-        dias: parada(o.issue_date),
-      })),
-      ...osAbertasMaquina.map<OsEmAberto>((s) => ({
-        id: s.id,
-        origem: "maquina",
-        numero: null,
-        data: s.service_date,
-        // A OS da máquina não tem "em andamento": quem responde se ela já
-        // começou é o toque do operador em INICIAR, que grava o started_at.
-        iniciada: !!s.started_at,
-        responsavel: s.assigned_to,
-        para: s.contratante || s.description || "—",
-        oQue: rotuloDoKind.get(s.kind) ?? "Serviço",
-        maquina: s.machines?.name ?? null,
-        valor: Number(s.total ?? 0),
-        dias: parada(s.service_date),
-      })),
-    ];
-  }, [osAbertas, osAbertasMaquina]);
+  const emAberto = useMemo<OsNaLista[]>(
+    () => [
+      ...osAbertas.map(normalizarServico),
+      ...osAbertasMaquina.map(normalizarMaquina),
+    ],
+    [osAbertas, osAbertasMaquina]
+  );
 
   const filaPorUsuario = useMemo(() => {
     const map = new Map<string, UsuarioComOs>();
@@ -472,7 +560,7 @@ export function RelatoriosClient({
         });
       }
       const u = map.get(key)!;
-      (os.iniciada ? u.andamento : u.pendentes).push(os);
+      (os.situacao === "andamento" ? u.andamento : u.pendentes).push(os);
       u.valor += os.valor;
       if (os.dias > u.maisAntiga) u.maisAntiga = os.dias;
     }
@@ -500,6 +588,112 @@ export function RelatoriosClient({
       valor: filaPorUsuario.reduce((s, u) => s + u.valor, 0),
     }),
     [filaPorUsuario]
+  );
+
+  // ── OS por máquina, no mês da tela ───────────────────────────────────────────
+  //
+  // Esta é mensal, ao contrário da de cima: a pergunta aqui inclui o que a
+  // máquina JÁ FECHOU, e "tudo que ela fechou desde sempre" não cabe em tela.
+  // O que o mês esconde — a OS parada lá atrás — o card mostra à parte.
+  const osDoMes = useMemo<OsNaLista[]>(
+    () => [
+      ...orders
+        .filter((o) => (o.delivery_date ?? o.issue_date).startsWith(period))
+        .map(normalizarServico),
+      ...osMaquinaDoPeriodo
+        .filter((s) => s.service_date.startsWith(period))
+        .map(normalizarMaquina),
+    ],
+    [orders, osMaquinaDoPeriodo, period]
+  );
+
+  const porMaquina = useMemo(() => {
+    // Quantas OS cada máquina tem em aberto HOJE, de qualquer mês.
+    const abertasDela = new Map<string, number>();
+    for (const os of emAberto) {
+      const key = os.maquinaId ?? "__none__";
+      abertasDela.set(key, (abertasDela.get(key) ?? 0) + 1);
+    }
+
+    const map = new Map<string, MaquinaComOs>();
+    for (const os of osDoMes) {
+      const key = os.maquinaId ?? "__none__";
+      if (!map.has(key)) {
+        map.set(key, {
+          id: key,
+          name: key === "__none__" ? "Sem máquina" : (os.maquina ?? "Máquina"),
+          finalizadas: [],
+          andamento: [],
+          pendentes: [],
+          canceladas: 0,
+          valorTotal: 0,
+          valorFinalizado: 0,
+          emAbertoAgora: abertasDela.get(key) ?? 0,
+        });
+      }
+      const m = map.get(key)!;
+      // A primeira OS pode ter vindo sem o nome da máquina; a próxima corrige.
+      if (os.maquina && m.name === "Máquina") m.name = os.maquina;
+
+      if (os.situacao === "cancelada") {
+        m.canceladas += 1;
+        continue;
+      }
+      if (os.situacao === "finalizada") {
+        m.finalizadas.push(os);
+        m.valorFinalizado += os.valor;
+      } else if (os.situacao === "andamento") {
+        m.andamento.push(os);
+      } else {
+        m.pendentes.push(os);
+      }
+      m.valorTotal += os.valor;
+    }
+
+    for (const os of emAberto) {
+      const key = os.maquinaId ?? "__none__";
+      if (map.has(key)) continue;
+      map.set(key, {
+        id: key,
+        name: key === "__none__" ? "Sem máquina" : (os.maquina ?? "Máquina"),
+        finalizadas: [],
+        andamento: [],
+        pendentes: [],
+        canceladas: 0,
+        valorTotal: 0,
+        valorFinalizado: 0,
+        emAbertoAgora: abertasDela.get(key) ?? 0,
+      });
+    }
+
+    for (const m of map.values()) {
+      const recente = (a: OsNaLista, b: OsNaLista) => b.data.localeCompare(a.data);
+      m.finalizadas.sort(recente);
+      m.andamento.sort(recente);
+      m.pendentes.sort(recente);
+    }
+
+    // Máquina que mais rodou primeiro; "sem máquina" por último.
+    return [...map.values()].sort((a, b) => {
+      if (a.id === "__none__") return 1;
+      if (b.id === "__none__") return -1;
+      const qa = a.finalizadas.length + a.andamento.length + a.pendentes.length;
+      const qb = b.finalizadas.length + b.andamento.length + b.pendentes.length;
+      return qb - qa || b.valorFinalizado - a.valorFinalizado;
+    });
+  }, [osDoMes, emAberto]);
+
+  const maquinaTotais = useMemo(
+    () => ({
+      os: porMaquina.reduce(
+        (s, m) => s + m.finalizadas.length + m.andamento.length + m.pendentes.length,
+        0
+      ),
+      finalizadas: porMaquina.reduce((s, m) => s + m.finalizadas.length, 0),
+      abertas: porMaquina.reduce((s, m) => s + m.andamento.length + m.pendentes.length, 0),
+      valorFinalizado: porMaquina.reduce((s, m) => s + m.valorFinalizado, 0),
+    }),
+    [porMaquina]
   );
 
   // ── Exports ──────────────────────────────────────────────────────────────────
@@ -556,13 +750,35 @@ export function RelatoriosClient({
       filaPorUsuario.flatMap((u) =>
         [...u.andamento, ...u.pendentes].map((o) => [
           u.name,
-          o.iniciada ? "Em andamento" : "Pendente",
+          o.situacao === "andamento" ? "Em andamento" : "Pendente",
           o.numero != null ? `#${o.numero}` : "—",
           formatDateBR(o.data),
           o.dias,
           o.oQue,
           o.para,
           o.maquina ?? "",
+          o.valor,
+        ])
+      )
+    );
+  }
+
+  function exportOsPorMaquina() {
+    downloadCSV(
+      `OS_por_maquina_${period}.csv`,
+      [
+        "Máquina", "Situação", "OS", "Data", "O que é",
+        "Para quem", "Responsável", "Valor (R$)",
+      ],
+      porMaquina.flatMap((m) =>
+        [...m.finalizadas, ...m.andamento, ...m.pendentes].map((o) => [
+          m.name,
+          SITUACAO_LABEL[o.situacao],
+          o.numero != null ? `#${o.numero}` : "—",
+          formatDateBR(o.data),
+          o.oQue,
+          o.para,
+          (o.responsavel && operatorNameById.get(o.responsavel)) || "—",
           o.valor,
         ])
       )
@@ -584,7 +800,9 @@ export function RelatoriosClient({
         ? exportCashflow
         : tab === "operadores"
           ? exportOperadores
-          : exportOsAbertas;
+          : tab === "os-abertas"
+            ? exportOsAbertas
+            : exportOsPorMaquina;
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -596,7 +814,8 @@ export function RelatoriosClient({
             Relatórios
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            DRE, fluxo de caixa, desempenho por operador e OS em aberto
+            DRE, fluxo de caixa, desempenho por operador e as OS por usuário e
+            por máquina
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -620,7 +839,9 @@ export function RelatoriosClient({
       {/* Tab switcher */}
       <div className="-mx-1 px-1 overflow-x-auto print:hidden">
         <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit">
-          {(["dre", "cashflow", "operadores", "os-abertas"] as Tab[]).map((t) => (
+          {(
+            ["dre", "cashflow", "operadores", "os-abertas", "os-maquina"] as Tab[]
+          ).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -967,6 +1188,54 @@ export function RelatoriosClient({
         </div>
       )}
 
+      {/* ══ OS POR MÁQUINA ═══════════════════════════════════════════════════ */}
+      {tab === "os-maquina" && (
+        <div className="space-y-4">
+          <div className="print:hidden">
+            <PeriodNav period={period} onChange={setPeriod} />
+          </div>
+
+          {/* Título do papel */}
+          <div className="hidden print:block text-center mb-6">
+            <p className="text-xl font-bold text-slate-900 capitalize">
+              OS por máquina — {fullMonthLabel(period)}
+            </p>
+            <p className="text-sm text-slate-500 mt-1">PRODUMAR Finance</p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <SummaryStat label="OS no mês" value={String(maquinaTotais.os)} />
+            <SummaryStat
+              label="Finalizadas"
+              value={String(maquinaTotais.finalizadas)}
+              accent="emerald"
+            />
+            <SummaryStat label="Ainda abertas" value={String(maquinaTotais.abertas)} />
+            <SummaryStat
+              label="Fechado no mês"
+              value={<Money value={maquinaTotais.valorFinalizado} />}
+              accent="produmar"
+            />
+          </div>
+
+          <p className="text-xs text-slate-400 dark:text-slate-500 print:hidden">
+            Toque numa máquina para ver as OS dela no mês.
+          </p>
+
+          {porMaquina.length === 0 ? (
+            <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
+              Nenhuma OS neste período.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {porMaquina.map((m) => (
+                <MaquinaCard key={m.id} m={m} onClick={() => setMaquinaAberta(m)} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Drill-down de lançamentos (DRE) ── */}
       {drill && (
         <Dialog open onOpenChange={(v) => !v && setDrill(null)}>
@@ -1094,6 +1363,40 @@ export function RelatoriosClient({
         </Dialog>
       )}
 
+      {/* ── As OS do mês de uma máquina ── */}
+      {maquinaAberta && (
+        <Dialog open onOpenChange={(v) => !v && setMaquinaAberta(null)}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
+                <Tractor className="w-4 h-4 text-teal-600 dark:text-teal-400 flex-shrink-0" />
+                <span className="truncate">{maquinaAberta.name}</span>
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-slate-400 dark:text-slate-500 -mt-2">
+              <span className="capitalize">{fullMonthLabel(period)}</span> ·{" "}
+              {maquinaAberta.finalizadas.length}{" "}
+              {maquinaAberta.finalizadas.length === 1 ? "finalizada" : "finalizadas"} ·
+              fechado {formatBRL(maquinaAberta.valorFinalizado)} de{" "}
+              {formatBRL(maquinaAberta.valorTotal)}
+            </p>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {[
+                ...maquinaAberta.andamento,
+                ...maquinaAberta.pendentes,
+                ...maquinaAberta.finalizadas,
+              ].map((os) => (
+                <LinhaDaFila
+                  key={`${os.origem}-${os.id}`}
+                  os={os}
+                  mostrarMaquina={false}
+                />
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* ── A fila de OS em aberto de um usuário ── */}
       {filaAberta && (
         <Dialog open onOpenChange={(v) => !v && setFilaAberta(null)}>
@@ -1213,7 +1516,109 @@ function FilaDoUsuarioCard({ u, onClick }: { u: UsuarioComOs; onClick: () => voi
             {os.oQue} · {os.para}
             {os.maquina ? ` · ${os.maquina}` : ""} · {formatDateBR(os.data)} ·{" "}
             {os.dias} {os.dias === 1 ? "dia" : "dias"} ·{" "}
-            {os.iniciada ? "em andamento" : "pendente"} · {formatBRL(os.valor)}
+            {os.situacao === "andamento" ? "em andamento" : "pendente"} ·{" "}
+            {formatBRL(os.valor)}
+          </p>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+/** O card de uma máquina na aba "OS por máquina". */
+function MaquinaCard({ m, onClick }: { m: MaquinaComOs; onClick: () => void }) {
+  const total = m.finalizadas.length + m.andamento.length + m.pendentes.length;
+  const semMaquina = m.id === "__none__";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left rounded-xl border border-produmar-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 transition-colors hover:bg-produmar-50/40 dark:hover:bg-slate-800/40"
+    >
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div
+            className={cn(
+              "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0",
+              semMaquina
+                ? "bg-slate-100 dark:bg-slate-800"
+                : "bg-teal-50 dark:bg-teal-900/30"
+            )}
+          >
+            {semMaquina ? (
+              <Package className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+            ) : (
+              <Tractor className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-slate-800 dark:text-slate-100 truncate">
+              {m.name}
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              {total} OS no mês
+            </p>
+          </div>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+            <Money value={m.valorFinalizado} />
+          </p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">fechado</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        <StatusChip
+          label="finalizadas"
+          value={m.finalizadas.length}
+          cls={SITUACAO_STYLE.finalizada}
+        />
+        <StatusChip
+          label="em andamento"
+          value={m.andamento.length}
+          cls={SITUACAO_STYLE.andamento}
+        />
+        <StatusChip
+          label={m.pendentes.length === 1 ? "pendente" : "pendentes"}
+          value={m.pendentes.length}
+          cls={SITUACAO_STYLE.pendente}
+        />
+        {m.canceladas > 0 && (
+          <StatusChip
+            label="canceladas"
+            value={m.canceladas}
+            cls={SITUACAO_STYLE.cancelada}
+          />
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        {/* O mês esconde a OS parada lá atrás — esta linha é que a denuncia */}
+        {m.emAbertoAgora > 0 ? (
+          <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+            <Clock className="w-3.5 h-3.5" />
+            {m.emAbertoAgora} em aberto hoje, contando meses anteriores
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+            <Clock className="w-3.5 h-3.5" />
+            Nada em aberto nesta máquina
+          </span>
+        )}
+        <span className="ml-auto flex items-center gap-0.5 text-produmar-600 dark:text-produmar-400 print:hidden">
+          Ver as OS <ChevronRight className="w-3.5 h-3.5" />
+        </span>
+      </div>
+
+      {/* No papel o card vira a lista inteira */}
+      <div className="hidden print:block mt-2 border-t border-slate-200 pt-2 space-y-0.5">
+        {[...m.finalizadas, ...m.andamento, ...m.pendentes].map((os) => (
+          <p key={`${os.origem}-${os.id}`} className="text-[11px] text-slate-700">
+            {os.numero != null ? `#${os.numero} · ` : ""}
+            {os.oQue} · {os.para} · {formatDateBR(os.data)} ·{" "}
+            {SITUACAO_LABEL[os.situacao].toLowerCase()} · {formatBRL(os.valor)}
           </p>
         ))}
       </div>
@@ -1225,7 +1630,14 @@ function FilaDoUsuarioCard({ u, onClick }: { u: UsuarioComOs; onClick: () => voi
  * Uma OS na fila. A de serviço abre a folha para conferir; a da máquina não
  * tem folha própria — ela mora na ficha do veículo.
  */
-function LinhaDaFila({ os }: { os: OsEmAberto }) {
+function LinhaDaFila({
+  os,
+  mostrarMaquina = true,
+}: {
+  os: OsNaLista;
+  /** Falso dentro do relatório da própria máquina, onde o nome só repete. */
+  mostrarMaquina?: boolean;
+}) {
   const conteudo = (
     <>
       <div className="flex items-center justify-between gap-2">
@@ -1255,14 +1667,12 @@ function LinhaDaFila({ os }: { os: OsEmAberto }) {
         <span
           className={cn(
             "text-[10px] font-medium px-1.5 py-0.5 rounded",
-            os.iniciada
-              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
-              : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            SITUACAO_STYLE[os.situacao]
           )}
         >
-          {os.iniciada ? "Em andamento" : "Pendente"}
+          {SITUACAO_LABEL[os.situacao]}
         </span>
-        {os.maquina && (
+        {mostrarMaquina && os.maquina && (
           <span className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-0.5 truncate">
             <Tractor className="w-3 h-3 flex-shrink-0" />
             {os.maquina}

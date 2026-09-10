@@ -3,8 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PAPEIS_QUE_RECEBEM_OS } from "@/lib/module-access";
 import { RelatoriosClient } from "@/components/relatorios/relatorios-client";
 import type {
-  OsAbertaDaMaquina,
   OsAbertaDeServico,
+  OsDeMaquinaResumo,
   Profile,
   ServiceOrder,
   Transaction,
@@ -22,7 +22,8 @@ export default async function RelatoriosPage() {
   const startStr  = startDate.toISOString().split("T")[0];
   const endStr    = endDate.toISOString().split("T")[0];
 
-  const [txRes, ordersRes, abertasRes, abertasMaquinaRes] = await Promise.all([
+  const [txRes, ordersRes, abertasRes, abertasMaquinaRes, maquinaMesRes] =
+    await Promise.all([
     // Movimentos confirmados (pago / recebido) — base do DRE e fluxo de caixa.
     supabase
       .from("transactions")
@@ -46,7 +47,7 @@ export default async function RelatoriosPage() {
     supabase
       .from("service_orders")
       .select(
-        "id, order_number, type, status, assigned_to, issue_date, client_name, service_description, total_amount, machines(name, plate)"
+        "id, order_number, type, status, assigned_to, machine_id, issue_date, client_name, service_description, total_amount, machines(name, plate)"
       )
       .in("status", ["pendente", "em_andamento"])
       .order("issue_date", { ascending: true }),
@@ -56,11 +57,22 @@ export default async function RelatoriosPage() {
     supabase
       .from("machine_servicos")
       .select(
-        "id, service_date, kind, contratante, description, total, assigned_to, started_at, machines(name, plate)"
+        "id, machine_id, service_date, kind, status, contratante, description, total, assigned_to, started_at, machines(name, plate)"
       )
       .eq("status", "aberta")
       .order("service_date", { ascending: true }),
-  ]);
+
+    // A OS da ficha do veículo NO PERÍODO — esta traz também as concluídas,
+    // que é o que o relatório por máquina precisa mostrar. A de serviço já
+    // vem completa na consulta de `orders` acima.
+    supabase
+      .from("machine_servicos")
+      .select(
+        "id, machine_id, service_date, kind, status, contratante, description, total, assigned_to, started_at, machines(name, plate)"
+      )
+      .gte("service_date", startStr)
+      .order("service_date", { ascending: false }),
+    ]);
 
   // Quem recebe OS (para nomear o assigned_to — inclusive quando ela foi para
   // um admin). A RLS de profiles só deixa o admin ver os outros, então usamos o
@@ -89,7 +101,12 @@ export default async function RelatoriosPage() {
         machines: { name: string; plate: string | null; category: string | null } | null;
       })[]}
       osAbertas={(abertasRes.data ?? []) as unknown as OsAbertaDeServico[]}
-      osAbertasMaquina={(abertasMaquinaRes.data ?? []) as unknown as OsAbertaDaMaquina[]}
+      osAbertasMaquina={
+        (abertasMaquinaRes.data ?? []) as unknown as OsDeMaquinaResumo[]
+      }
+      osMaquinaDoPeriodo={
+        (maquinaMesRes.data ?? []) as unknown as OsDeMaquinaResumo[]
+      }
       operators={operators}
     />
   );
