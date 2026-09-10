@@ -51,6 +51,7 @@ export default async function FrotaPage({
     trocasRes,
     saldosRes,
     veiculosParceiroRes,
+    abertasRes,
   ] = await Promise.all([
     supabase.from("v_machine_resumo").select("*").order("name"),
     supabase
@@ -82,6 +83,9 @@ export default async function FrotaPage({
     supabase.from("v_machine_parceiro_saldo").select("*"),
     // as placas das máquinas dele (migration 077)
     supabase.from("machine_parceiro_veiculos").select("*").order("plate"),
+    // As OS ainda em aberto, de QUALQUER mês — o relatório precisa delas para
+    // mostrar a que ficou para trás, que o recorte do mês esconde.
+    supabase.from("machine_servicos").select("*").eq("status", "aberta"),
   ]);
 
   // Migration 073 ainda não rodou: a tela abre com o cadastro que já existe e
@@ -135,6 +139,7 @@ export default async function FrotaPage({
       servicos={(servicosRes.data as MachineServico[]) ?? []}
       despesas={(despesasRes.data as MachineDespesa[]) ?? []}
       operators={operators}
+      abertasDeSempre={(abertasRes.data as MachineServico[]) ?? []}
       parceiros={(parceirosRes.data as MachineParceiro[]) ?? []}
       trocas={(trocasRes.data as MachineTroca[]) ?? []}
       saldos={(saldosRes.data as MachineParceiroSaldo[]) ?? []}

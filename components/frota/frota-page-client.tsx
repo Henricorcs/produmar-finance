@@ -19,6 +19,7 @@ import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { QuickCreateMachineDialog } from "@/components/operacoes/quick-create-machine-dialog";
 import { cn, formatBRL, formatDate, machineCategoryLabel } from "@/lib/utils";
 import { DespesaDialog } from "./despesa-dialog";
+import { RelatorioOsTab } from "./relatorio-os-tab";
 import { VeiculoFichaDialog } from "./veiculo-ficha-dialog";
 import { ParceriasTab } from "./parcerias-tab";
 import { Chip, categoryChip, toneResultado } from "./frota-shared";
@@ -48,17 +49,26 @@ interface Props {
   saldos: MachineParceiroSaldo[];
   veiculosDeParceiro: MachineParceiroVeiculo[];
   month: string;
+  /**
+   * As OS da ficha ainda em aberto, de QUALQUER mês. O mês da tela não mostra
+   * a OS esquecida lá atrás, e é ela que segura a máquina.
+   */
+  abertasDeSempre: MachineServico[];
   /** Migration 073 ainda não rodou: a tela abre, mas avisa. */
   migrationPendente?: boolean;
   /** Migration 076 ainda não rodou: a aba da parceria avisa. */
   parceriaPendente?: boolean;
 }
 
-/** As duas metades da tela: a frota e o escambo de diárias com o parceiro. */
-type Aba = "veiculos" | "parceria";
+/**
+ * Os três recortes da tela: a frota, o relatório de OS de cada máquina e o
+ * escambo de diárias com o parceiro.
+ */
+type Aba = "veiculos" | "relatorio" | "parceria";
 
 const ABAS = [
   { value: "veiculos" as const, label: "Veículos" },
+  { value: "relatorio" as const, label: "Relatório de OS" },
   { value: "parceria" as const, label: "Troca com parceiro" },
 ];
 
@@ -97,6 +107,7 @@ export function FrotaPageClient({
   servicos,
   despesas,
   operators,
+  abertasDeSempre,
   parceiros,
   trocas,
   saldos,
@@ -491,6 +502,16 @@ export function FrotaPageClient({
       )}
 
       </>
+      ) : aba === "relatorio" ? (
+        <RelatorioOsTab
+          machines={machines}
+          servicos={servicos}
+          abertasDeSempre={abertasDeSempre}
+          mesLabel={mesLabel}
+          onPrevMonth={() => navigateMonth(-1)}
+          onNextMonth={() => navigateMonth(1)}
+          onAbrirFicha={setFichaMachineId}
+        />
       ) : (
         <ParceriasTab
           parceiros={parceiros}

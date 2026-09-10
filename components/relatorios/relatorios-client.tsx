@@ -27,6 +27,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Money } from "@/components/ui/money";
+import {
+  SITUACAO_LABEL,
+  SITUACAO_STYLE,
+  situacaoDaMaquina,
+  situacaoDoServico,
+  type SituacaoOs,
+} from "@/lib/os-situacao";
 import { cn, daysUntil, formatBRL, machineCategoryLabel } from "@/lib/utils";
 import { MACHINE_SERVICO_KINDS } from "@/lib/types";
 import type {
@@ -85,9 +92,6 @@ interface OperatorAgg {
   valorEntregue: number;
   orders: OrderWithMachine[];
 }
-
-/** Em que pé a OS está — a mesma resposta para as duas famílias de OS. */
-type SituacaoOs = "pendente" | "andamento" | "finalizada" | "cancelada";
 
 /**
  * Uma OS achatada — venha ela do módulo Operações ou da ficha do veículo.
@@ -189,20 +193,6 @@ const OS_TYPE_LABEL: Record<ServiceOrder["type"], string> = {
   servico_rapido: "Serviço rápido",
 };
 
-const SITUACAO_LABEL: Record<SituacaoOs, string> = {
-  pendente:   "Pendente",
-  andamento:  "Em andamento",
-  finalizada: "Finalizada",
-  cancelada:  "Cancelada",
-};
-
-const SITUACAO_STYLE: Record<SituacaoOs, string> = {
-  pendente:   "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-  andamento:  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
-  finalizada: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
-  cancelada:  "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400",
-};
-
 const OS_STATUS: Record<ServiceOrder["status"], { label: string; cls: string }> = {
   pendente:     { label: "Pendente",     cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" },
   em_andamento: { label: "Em andamento", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" },
@@ -242,14 +232,7 @@ function normalizarServico(o: ServicoNormalizavel): OsNaLista {
     origem: "servico",
     numero: o.order_number,
     data: o.issue_date,
-    situacao:
-      o.status === "entregue"
-        ? "finalizada"
-        : o.status === "em_andamento"
-          ? "andamento"
-          : o.status === "cancelado"
-            ? "cancelada"
-            : "pendente",
+    situacao: situacaoDoServico(o.status),
     responsavel: o.assigned_to,
     maquinaId: o.machine_id,
     maquina: o.machines?.name ?? null,
@@ -266,10 +249,7 @@ function normalizarMaquina(s: OsDeMaquinaResumo): OsNaLista {
     origem: "maquina",
     numero: null,
     data: s.service_date,
-    // A OS da máquina não tem "em andamento" no banco: quem responde se ela já
-    // começou é o toque do operador em INICIAR, que grava o started_at.
-    situacao:
-      s.status === "concluida" ? "finalizada" : s.started_at ? "andamento" : "pendente",
+    situacao: situacaoDaMaquina(s.status, s.started_at),
     responsavel: s.assigned_to,
     maquinaId: s.machine_id,
     maquina: s.machines?.name ?? null,
