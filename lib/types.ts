@@ -1850,6 +1850,46 @@ export interface MachineServico {
 }
 
 /** A OS da ficha como o painel do operador precisa dela: com o veículo junto. */
+// ── OS em aberto (relatório por usuário) ────────────────────────────────────
+//
+// O relatório de OS em aberto junta as DUAS famílias de OS que existem no
+// sistema: a de serviço (service_orders, do módulo Operações) e a da ficha do
+// veículo (machine_servicos, do módulo Máquinas e Veículos). Cada uma carrega
+// só o que o relatório precisa — a lista é de SEMPRE, não de um mês, e puxar a
+// linha inteira de cada tabela sairia caro à toa.
+
+/** Uma OS de serviço que ainda não fechou (pendente ou em andamento). */
+export interface OsAbertaDeServico {
+  id: string;
+  order_number: number;
+  type: ServiceOrderType;
+  status: ServiceOrderStatus;
+  /** Para quem a OS foi enviada — é por ele que o relatório agrupa. */
+  assigned_to: string | null;
+  issue_date: string;
+  client_name: string | null;
+  service_description: string | null;
+  total_amount: number | null;
+  machines: { name: string; plate: string | null } | null;
+}
+
+/**
+ * Uma OS da ficha do veículo ainda em aberto. Aqui não há "em andamento":
+ * quem responde se ela já começou é o `started_at`, gravado quando o operador
+ * toca em INICIAR no painel dele.
+ */
+export interface OsAbertaDaMaquina {
+  id: string;
+  service_date: string;
+  kind: MachineServicoKind;
+  contratante: string | null;
+  description: string | null;
+  total: number;
+  assigned_to: string | null;
+  started_at: string | null;
+  machines: { name: string; plate: string | null } | null;
+}
+
 export interface MachineServicoDoOperador extends MachineServico {
   machines: { name: string; plate: string | null; tracking_type: string | null } | null;
 }

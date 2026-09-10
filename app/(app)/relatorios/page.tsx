@@ -2,7 +2,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PAPEIS_QUE_RECEBEM_OS } from "@/lib/module-access";
 import { RelatoriosClient } from "@/components/relatorios/relatorios-client";
-import type { Profile, ServiceOrder, Transaction } from "@/lib/types";
+import type {
+  OsAbertaDaMaquina,
+  OsAbertaDeServico,
+  Profile,
+  ServiceOrder,
+  Transaction,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,22 +22,45 @@ export default async function RelatoriosPage() {
   const startStr  = startDate.toISOString().split("T")[0];
   const endStr    = endDate.toISOString().split("T")[0];
 
-  // Movimentos confirmados (pago / recebido) — base do DRE e fluxo de caixa.
-  const txRes = await supabase
-    .from("transactions")
-    .select("*, categories(name, color), cost_centers(name)")
-    .in("status", ["pago", "recebido"])
-    .gte("due_date", startStr)
-    .lte("due_date", endStr)
-    .order("due_date", { ascending: true });
+  const [txRes, ordersRes, abertasRes, abertasMaquinaRes] = await Promise.all([
+    // Movimentos confirmados (pago / recebido) — base do DRE e fluxo de caixa.
+    supabase
+      .from("transactions")
+      .select("*, categories(name, color), cost_centers(name)")
+      .in("status", ["pago", "recebido"])
+      .gte("due_date", startStr)
+      .lte("due_date", endStr)
+      .order("due_date", { ascending: true }),
 
-  // Ordens de serviço do período — base do relatório por operador. Usa
-  // issue_date para a janela; a página agrupa por mês de entrega (ou emissão).
-  const ordersRes = await supabase
-    .from("service_orders")
-    .select("*, machines(name, plate, category)")
-    .gte("issue_date", startStr)
-    .order("issue_date", { ascending: false });
+    // Ordens de serviço do período — base do relatório por operador. Usa
+    // issue_date para a janela; a página agrupa por mês de entrega (ou emissão).
+    supabase
+      .from("service_orders")
+      .select("*, machines(name, plate, category)")
+      .gte("issue_date", startStr)
+      .order("issue_date", { ascending: false }),
+
+    // ── OS EM ABERTO, DE SEMPRE ─────────────────────────────────────────────
+    // Estas duas NÃO entram na janela de 12 meses de propósito: uma OS parada
+    // desde o ano passado é justamente a que precisa aparecer no relatório.
+    supabase
+      .from("service_orders")
+      .select(
+        "id, order_number, type, status, assigned_to, issue_date, client_name, service_description, total_amount, machines(name, plate)"
+      )
+      .in("status", ["pendente", "em_andamento"])
+      .order("issue_date", { ascending: true }),
+
+    // A OS da ficha do veículo. Best-effort: sem as migrations 073-075 a
+    // consulta falha, e o relatório segue só com as OS de serviço.
+    supabase
+      .from("machine_servicos")
+      .select(
+        "id, service_date, kind, contratante, description, total, assigned_to, started_at, machines(name, plate)"
+      )
+      .eq("status", "aberta")
+      .order("service_date", { ascending: true }),
+  ]);
 
   // Quem recebe OS (para nomear o assigned_to — inclusive quando ela foi para
   // um admin). A RLS de profiles só deixa o admin ver os outros, então usamos o
@@ -59,6 +88,8 @@ export default async function RelatoriosPage() {
       orders={(ordersRes.data ?? []) as (ServiceOrder & {
         machines: { name: string; plate: string | null; category: string | null } | null;
       })[]}
+      osAbertas={(abertasRes.data ?? []) as unknown as OsAbertaDeServico[]}
+      osAbertasMaquina={(abertasMaquinaRes.data ?? []) as unknown as OsAbertaDaMaquina[]}
       operators={operators}
     />
   );
