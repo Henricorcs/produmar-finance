@@ -16,10 +16,12 @@ import { LoteDetailDialog } from "./lote-detail-dialog";
 import { AnimalVendaDialog } from "./animal-venda-dialog";
 import { AnimalDespesaDialog } from "./animal-despesa-dialog";
 import type {
+  AnimalDespesa,
   AnimalLoteMovimento,
   AnimalLoteResumo,
   AnimalSpecies,
   AnimalTanque,
+  AnimalVenda,
   AnimalWithInfo,
 } from "@/lib/types";
 
@@ -27,6 +29,10 @@ interface Props {
   tanques: AnimalTanque[];
   lotes: AnimalLoteResumo[];
   movimentos: AnimalLoteMovimento[];
+  /** As despesas cruas — é por elas que o tanque abre uma na correção. */
+  despesas?: AnimalDespesa[];
+  /** As vendas de lote cruas — idem. */
+  vendas?: AnimalVenda[];
   /** Rebanho inteiro — a despesa lançada daqui pode amarrar num animal. */
   animals: AnimalWithInfo[];
   /**
@@ -51,6 +57,8 @@ export function LotesTab({
   tanques,
   lotes,
   movimentos,
+  despesas = [],
+  vendas = [],
   animals,
   speciesFixa,
 }: Props) {
@@ -66,6 +74,9 @@ export function LotesTab({
   const [detalhe, setDetalhe] = useState<AnimalLoteResumo | null>(null);
   const [vendaLote, setVendaLote] = useState<AnimalLoteResumo | null>(null);
   const [despesaLote, setDespesaLote] = useState<AnimalLoteResumo | null>(null);
+  /** Lançamento aberto para conserto — veio da lista de dentro do tanque. */
+  const [editVenda, setEditVenda] = useState<AnimalVenda | null>(null);
+  const [editDespesa, setEditDespesa] = useState<AnimalDespesa | null>(null);
 
   const doFiltro = useMemo(
     () =>
@@ -273,6 +284,8 @@ export function LotesTab({
         onClose={() => setDetalhe(null)}
         lote={detalheAtual}
         movimentos={movimentos}
+        despesas={despesas}
+        vendas={vendas}
         onLancarVenda={(l) => {
           setDetalhe(null);
           setVendaLote(l);
@@ -280,6 +293,14 @@ export function LotesTab({
         onLancarDespesa={(l) => {
           setDetalhe(null);
           setDespesaLote(l);
+        }}
+        onEditarVenda={(v) => {
+          setDetalhe(null);
+          setEditVenda(v);
+        }}
+        onEditarDespesa={(d) => {
+          setDetalhe(null);
+          setEditDespesa(d);
         }}
         onEditar={(l) => {
           setDetalhe(null);
@@ -303,6 +324,25 @@ export function LotesTab({
         despesa={null}
         presetSpecies={despesaLote ? speciesOf(despesaLote.species) : null}
         presetLoteId={despesaLote?.id ?? null}
+        lotes={lotes}
+        animals={animals}
+      />
+
+      {/* Os mesmos diálogos, agora abrindo um lançamento que JÁ EXISTE para
+          conserto — é o que faltava para quem errou o gasto no tanque. */}
+      <AnimalVendaDialog
+        open={!!editVenda}
+        onClose={() => setEditVenda(null)}
+        venda={editVenda}
+        presetSpecies={editVenda ? speciesOf(editVenda.species) : null}
+        lotes={lotes}
+      />
+
+      <AnimalDespesaDialog
+        open={!!editDespesa}
+        onClose={() => setEditDespesa(null)}
+        despesa={editDespesa}
+        presetSpecies={editDespesa ? speciesOf(editDespesa.species) : null}
         lotes={lotes}
         animals={animals}
       />

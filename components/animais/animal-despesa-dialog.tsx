@@ -401,7 +401,12 @@ export function AnimalDespesaDialog({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <Label htmlFor="ad_unitario">Valor unitário (R$)</Label>
+              {/* O nome do campo carrega a unidade escolhida: "Valor de cada SC"
+                  não se confunde com "Valor final", e era essa confusão que
+                  fazia o preço de um saco virar o total da compra. */}
+              <Label htmlFor="ad_unitario">
+                Valor de cada {unit.trim() ? `${unit.trim()} ` : ""}(R$)
+              </Label>
               <Input
                 id="ad_unitario"
                 value={unitPrice}
@@ -433,6 +438,21 @@ export function AnimalDespesaDialog({
             </div>
           </div>
 
+          {/* A pegadinha do lançamento: marcou a quantidade, digitou o total e
+              deixou o valor de cada um em branco. Aí o preço de UM saco entra
+              como a compra inteira, e a ficha soma errado sem avisar. */}
+          {conta.qtd > 0 && conta.preco <= 0 && total > 0 && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-2 -mt-2">
+              <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                Você marcou {formatQty(conta.qtd)}
+                {unit.trim() ? ` ${unit.trim()}` : ""} mas deixou o valor de cada um em
+                branco: vai entrar {formatBRL(total)} pela compra toda. Se{" "}
+                {formatBRL(total)} é o preço de UM, ponha no campo do lado — a conta se
+                faz sozinha.
+              </p>
+            </div>
+          )}
+
           {/* A conta por extenso, para conferir o que está sendo lançado */}
           {conta.total > 0 && (
             <div className="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50/60 dark:bg-rose-950/20 px-2.5 py-2 space-y-1 -mt-2">
@@ -460,9 +480,10 @@ export function AnimalDespesaDialog({
           )}
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500 -mt-2">
-            O VALOR FINAL é o que entra na ficha. Ele se preenche sozinho pela conta
-            acima — mude na mão quando a nota vier com desconto ou acréscimo. Quantidade
-            e unidade podem ficar em branco no frete e na diária.
+            O VALOR FINAL é o que entra na ficha — é a compra toda, não o preço de um.
+            Ele se preenche sozinho pela conta acima; mude na mão quando a nota vier com
+            desconto ou acréscimo. Quantidade e unidade podem ficar em branco no frete e
+            na diária.
           </p>
 
           <div className="space-y-1.5">

@@ -1,7 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowDownRight, ArrowUpRight, Lock, LockOpen, Plus, Scale, Trash2 } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Calculator,
+  HandCoins,
+  Lock,
+  LockOpen,
+  Pencil,
+  Plus,
+  Receipt,
+  Scale,
+  Trash2,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,9 +38,11 @@ import {
 } from "./animal-shared";
 import {
   LOTE_MOVIMENTO_LABEL,
+  type AnimalDespesa,
   type AnimalLoteMovimento,
   type AnimalLoteMovimentoKind,
   type AnimalLoteResumo,
+  type AnimalVenda,
 } from "@/lib/types";
 
 interface Props {
@@ -37,8 +51,14 @@ interface Props {
   lote: AnimalLoteResumo | null;
   /** Movimentos de todos os ciclos — o diálogo filtra os deste. */
   movimentos: AnimalLoteMovimento[];
+  /** Despesas de todos os ciclos — idem: aqui só aparecem as deste tanque. */
+  despesas?: AnimalDespesa[];
+  /** Vendas de lote de todos os ciclos. */
+  vendas?: AnimalVenda[];
   onLancarVenda: (lote: AnimalLoteResumo) => void;
   onLancarDespesa: (lote: AnimalLoteResumo) => void;
+  onEditarVenda: (venda: AnimalVenda) => void;
+  onEditarDespesa: (despesa: AnimalDespesa) => void;
   onEditar: (lote: AnimalLoteResumo) => void;
 }
 
@@ -62,8 +82,12 @@ export function LoteDetailDialog({
   onClose,
   lote,
   movimentos,
+  despesas = [],
+  vendas = [],
   onLancarVenda,
   onLancarDespesa,
+  onEditarVenda,
+  onEditarDespesa,
   onEditar,
 }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -90,6 +114,25 @@ export function LoteDetailDialog({
         .sort((a, b) => b.moved_on.localeCompare(a.moved_on)),
     [movimentos, lote?.id]
   );
+
+  /**
+   * O DINHEIRO DESTE TANQUE, lançamento por lançamento.
+   *
+   * Os três números lá em cima (bruto, custo, líquido) só diziam o resultado.
+   * Quem lançou a despesa errada via o custo torto e não tinha por onde
+   * consertar — a correção morava só na aba Ficha, longe de onde o gasto
+   * nasceu. Agora é tocar na linha.
+   */
+  const lancamentos = useMemo(() => {
+    if (!lote) return [];
+    const daDespesa = despesas
+      .filter((d) => d.lote_id === lote.id)
+      .map((d) => ({ kind: "despesa" as const, data: d.expense_date, despesa: d, venda: null }));
+    const daVenda = vendas
+      .filter((v) => v.lote_id === lote.id)
+      .map((v) => ({ kind: "venda" as const, data: v.sale_date, despesa: null, venda: v }));
+    return [...daVenda, ...daDespesa].sort((a, b) => b.data.localeCompare(a.data));
+  }, [despesas, vendas, lote]);
 
   if (!lote) return null;
 
@@ -244,13 +287,78 @@ export function LoteDetailDialog({
             </Button>
           </div>
 
-          {/* Onde se conserta o que foi lançado errado. Esta tela mostra só os
-              números do ciclo; quem guarda lançamento por lançamento é a
-              Ficha, e sem essa linha ninguém descobria isso. */}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Errou a venda ou a despesa? Abra a aba Ficha e toque no lançamento para
-            corrigir ou apagar.
-          </p>
+          {/* O DINHEIRO DO TANQUE — e o lugar de consertar o que saiu errado */}
+          {lancamentos.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Vendas e despesas deste {palavra.toLowerCase()}
+              </p>
+              <ul className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                {lancamentos.map((l) => {
+                  const venda = l.kind === "venda";
+                  const d = l.despesa;
+                  const v = l.venda;
+                  const valor = Number(venda ? v!.amount : d!.amount);
+                  // A conta por extenso, quando ela existe: 20 SC × R$ 95,00
+                  const temConta = !!d && Number(d.quantity) > 0 && Number(d.unit_price) > 0;
+                  return (
+                    <li key={`${l.kind}-${venda ? v!.id : d!.id}`}>
+                      <button
+                        type="button"
+                        onClick={() => (venda ? onEditarVenda(v!) : onEditarDespesa(d!))}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                      >
+                        <span
+                          className={cn(
+                            "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0",
+                            venda
+                              ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+                              : "bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
+                          )}
+                        >
+                          {venda ? (
+                            <HandCoins className="w-3.5 h-3.5" />
+                          ) : (
+                            <Receipt className="w-3.5 h-3.5" />
+                          )}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
+                            {venda ? v!.description : d!.description}
+                          </p>
+                          {temConta && (
+                            <p className="text-[11px] font-medium text-rose-700 dark:text-rose-400 tabular-nums truncate flex items-center gap-1">
+                              <Calculator className="w-3 h-3 flex-shrink-0" />
+                              {formatQty(Number(d!.quantity))}
+                              {d!.unit ? ` ${d!.unit}` : ""} × {formatBRL(Number(d!.unit_price))}
+                            </p>
+                          )}
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                            {formatDate(l.data)}
+                          </p>
+                        </div>
+                        <span
+                          className={cn(
+                            "text-sm font-semibold tabular-nums flex-shrink-0",
+                            venda
+                              ? "text-emerald-700 dark:text-emerald-400"
+                              : "text-rose-700 dark:text-rose-400"
+                          )}
+                        >
+                          {venda ? "" : "− "}
+                          {formatBRL(valor)}
+                        </span>
+                        <Pencil className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 flex-shrink-0" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Toque num lançamento para corrigir ou apagar.
+              </p>
+            </div>
+          )}
 
           {/* Movimento novo */}
           {!fechado && (

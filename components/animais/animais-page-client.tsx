@@ -985,6 +985,8 @@ export function AnimaisPageClient({
               tanques={tanques}
               lotes={lotes}
               movimentos={movimentos}
+              despesas={despesas}
+              vendas={vendas}
               animals={allAnimals}
               speciesFixa={species}
             />
@@ -1326,6 +1328,8 @@ export function AnimaisPageClient({
           tanques={tanques}
           lotes={lotes}
           movimentos={movimentos}
+          despesas={despesas}
+          vendas={vendas}
           animals={allAnimals}
         />
       )}
