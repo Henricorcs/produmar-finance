@@ -2159,6 +2159,8 @@ function BirthRequestCard({
     hour: "2-digit",
     minute: "2-digit",
   });
+  // O bicho que o vaqueiro marcou (migration 091). Envio antigo é bovino.
+  const nomes = SPECIES_META[speciesOf(request.species)];
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-3">
       <button
@@ -2170,7 +2172,7 @@ function BirthRequestCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={photoUrl}
-            alt={`Bezerro da mãe ${request.mother_tag}`}
+            alt={`${nomes.youngMale} da mãe ${request.mother_tag}`}
             className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-slate-200 dark:border-slate-700"
           />
         ) : (
@@ -2180,7 +2182,7 @@ function BirthRequestCard({
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-            Bezerro {request.calf_sex === "macho" ? "macho" : "fêmea"}
+            {nomes.youngMale} {request.calf_sex === "macho" ? "macho" : "fêmea"}
             {request.calf_tag ? ` · nº ${request.calf_tag}` : ""}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">

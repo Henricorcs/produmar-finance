@@ -205,6 +205,13 @@ export const LOTE_SPECIES_OPTIONS = SPECIES_OPTIONS.filter((o) =>
   criacaoPorLote(o.value)
 );
 
+/**
+ * Os tipos que PAREM um bicho de cada vez — os únicos que cabem na tela de
+ * nascimento do vaqueiro. Peixe e ave não têm parto para ele anotar: a criação
+ * deles se controla por lote, no tanque e no galpão.
+ */
+export const PARTO_SPECIES_OPTIONS = SPECIES_OPTIONS.filter((o) => !criacaoPorLote(o.value));
+
 export function localLabel(species?: AnimalSpecies | null): string {
   const s = speciesOf(species);
   if (s === "piscicultura") return "Tanque";

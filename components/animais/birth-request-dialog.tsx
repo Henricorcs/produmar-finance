@@ -17,9 +17,11 @@ import { resolveBirthRequest } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
   FOOTER_SUBMIT,
+  SPECIES_META,
   STICKY_FOOTER,
   SexPicker,
   categoryLabel,
+  speciesOf,
 } from "./animal-shared";
 import type { AnimalBirthRequest, AnimalSex, AnimalWithInfo } from "@/lib/types";
 
@@ -61,7 +63,20 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
 
   if (!request) return null;
 
-  const matched = mothers.some((m) => m.id === motherId);
+  const selecionada = mothers.find((m) => m.id === motherId) ?? null;
+  const matched = !!selecionada;
+
+  /**
+   * Como chamar a cria nesta tela. O vaqueiro marcou o bicho no celular
+   * (migration 091), mas quem manda é a MÃE escolhida aqui: é dela que
+   * `createBirth` puxa tipo e raça. Escolheu uma ovelha, é cordeiro — mesmo
+   * que ele tenha marcado bovino sem prestar atenção.
+   */
+  const nomes = SPECIES_META[speciesOf(selecionada?.species ?? request.species)];
+  const cria = nomes.youngMale.toLowerCase();
+  const tipoDivergente =
+    !!selecionada && speciesOf(selecionada.species) !== speciesOf(request.species);
+  const tipoMarcado = SPECIES_META[speciesOf(request.species)];
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,7 +84,7 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
 
     if (!motherId) return setError("Selecione a mãe");
     if (!birthDate) return setError("Informe a data do nascimento");
-    if (!calfTag.trim()) return setError("Informe o número do bezerro");
+    if (!calfTag.trim()) return setError(`Informe o número do ${cria}`);
 
     startTransition(async () => {
       const r = await resolveBirthRequest(request!.id, {
@@ -97,7 +112,7 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={photoUrl}
-            alt={`Bezerro da mãe ${request.mother_tag}`}
+            alt={`${nomes.youngMale} da mãe ${request.mother_tag}`}
             className="w-full h-48 object-cover rounded-xl border border-slate-200 dark:border-slate-700 mb-4"
           />
         )}
@@ -129,6 +144,15 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
                 ? `O vaqueiro digitou ${request.mother_tag} — já casou com o cadastro.`
                 : `O vaqueiro digitou "${request.mother_tag}", mas não achamos esse número entre as fêmeas — busque a mãe certa.`}
             </p>
+            {/* A cria puxa tipo e raça da mãe: se a mãe escolhida é de outro
+                bicho, o que vai entrar no rebanho não é o que ele marcou. */}
+            {tipoDivergente && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2.5 py-2">
+                O vaqueiro marcou {tipoMarcado.label.toLowerCase()}, mas esta mãe é{" "}
+                {nomes.label.toLowerCase()} — a cria vai entrar como {nomes.label.toLowerCase()},
+                com o tipo e a raça dela.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -143,12 +167,12 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
           </div>
 
           <div className="space-y-1.5">
-            <Label>Sexo do bezerro *</Label>
+            <Label>Sexo do {cria} *</Label>
             <SexPicker value={calfSex} onChange={setCalfSex} />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="brq_calf_tag">Nº do bezerro *</Label>
+            <Label htmlFor="brq_calf_tag">Nº do {cria} *</Label>
             <Input
               id="brq_calf_tag"
               value={calfTag}
@@ -159,7 +183,7 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
               autoComplete="off"
             />
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              O vaqueiro não numera o bezerro — o número é seu, agora.
+              O vaqueiro não numera o {cria} — o número é seu, agora.
             </p>
           </div>
 

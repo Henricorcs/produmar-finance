@@ -828,6 +828,14 @@ export interface AnimalBirthRequest {
   /** Vazio no envio do vaqueiro — quem numera é o patrão ao lançar (migration 053). */
   calf_tag: string | null;
   calf_sex: AnimalSex;
+  /**
+   * Que bicho nasceu, do jeito que o vaqueiro marcou no celular (migration
+   * 091) — é ele que dá nome à fila: bezerro, potro, cabrito, cordeiro,
+   * leitão. Vem `undefined` enquanto a migration não roda, e envio antigo é
+   * bovino: leia sempre com `speciesOf`. O tipo que ENTRA no cadastro
+   * continua sendo o da mãe escolhida pelo patrão.
+   */
+  species?: AnimalSpecies | null;
   birth_date: string;
   photo_path: string | null;
   created_by: string | null;

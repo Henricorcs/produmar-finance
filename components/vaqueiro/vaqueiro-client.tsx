@@ -19,8 +19,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn, formatDate, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { requestCalfBirth } from "@/app/(app)/vaqueiro/actions";
-import { SexPicker } from "@/components/animais/animal-shared";
-import type { AnimalSex } from "@/lib/types";
+import {
+  PARTO_SPECIES_OPTIONS,
+  SPECIES_META,
+  SexPicker,
+  speciesOf,
+  youngNoun,
+} from "@/components/animais/animal-shared";
+import type { AnimalSex, AnimalSpecies } from "@/lib/types";
 import { comprimirImagem } from "@/lib/comprimir-imagem";
 import {
   filaApagar,
@@ -54,10 +60,13 @@ async function enviarNascimento(registro: NascimentoGuardado): Promise<Resultado
   fd.append("mother_tag", registro.mother_tag);
   fd.append("birth_date", registro.birth_date);
   fd.append("calf_sex", registro.calf_sex);
+  // O que ficou guardado antes desta versão da tela não tem o bicho marcado:
+  // aquilo é bovino, o único que a tela conhecia.
+  fd.append("species", speciesOf(registro.species));
   if (registro.foto) {
     fd.append(
       "photo",
-      new File([registro.foto], registro.foto_nome || "bezerro.jpg", {
+      new File([registro.foto], registro.foto_nome || "foto.jpg", {
         type: registro.foto.type || "image/jpeg",
       })
     );
@@ -74,6 +83,16 @@ async function enviarNascimento(registro: NascimentoGuardado): Promise<Resultado
   }
 }
 
+/**
+ * Como a fila chama o que foi anotado: "Cordeiro fêmea", "Potro macho". Quem
+ * foi guardado antes de a tela perguntar o bicho é bovino — era o único que
+ * ela conhecia.
+ */
+function nomeDoNascimento(r: NascimentoGuardado): string {
+  const nomes = SPECIES_META[speciesOf(r.species)];
+  return `${nomes.youngMale} ${r.calf_sex === "macho" ? "macho" : "fêmea"}`;
+}
+
 export function VaqueiroClient({ podeOffline = false }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +100,12 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
 
   const [motherTag, setMotherTag] = useState("");
   const [calfSex, setCalfSex] = useState<AnimalSex>("femea");
+  /**
+   * Que bicho nasceu. Antes a tela só sabia falar de gado, e o cordeiro da
+   * ovelha chegava no patrão escrito "bezerro" — sem como saber que bicho era
+   * aquele da foto.
+   */
+  const [species, setSpecies] = useState<AnimalSpecies>("bovino");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -98,6 +123,11 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
   const today = localDateISO();
   const pendentes = fila.filter((r) => !r.enviado_em);
   const enviados = fila.filter((r) => r.enviado_em);
+
+  // Como se chama o filhote do bicho escolhido. Fica na forma do macho —
+  // "foto do cordeiro", "sexo do potro" — que é a que cabe depois do "do".
+  const filhote = youngNoun(species);
+  const filhoteMaiusculo = SPECIES_META[speciesOf(species)].youngMale;
 
   // Libera a URL do objeto quando troca ou some a foto — evita vazar memória.
   useEffect(() => {
@@ -237,6 +267,8 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
     setMotherTag("");
     setCalfSex("femea");
     handlePhotoChange(null);
+    // O bicho escolhido FICA: quem está no curral das ovelhas anota um cordeiro
+    // atrás do outro, e voltar para bovino a cada envio só faria ele errar.
   }
 
   async function apagarDaFila(id: string) {
@@ -254,7 +286,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
     setSuccess(null);
 
     if (!motherTag.trim()) return setError("Informe o número da mãe");
-    if (!photo) return setError("Coloque uma foto do bezerro");
+    if (!photo) return setError(`Coloque uma foto do ${filhote}`);
 
     // ── O caminho normal: GRAVA NO CELULAR, e só então tenta a rede ──────────
     // O formulário só é limpo depois que o nascimento está seguro no aparelho.
@@ -264,9 +296,10 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
         id: novoId(),
         mother_tag: motherTag.trim().toUpperCase(),
         calf_sex: calfSex,
+        species,
         birth_date: today,
         foto: photo,
-        foto_nome: photo.name || "bezerro.jpg",
+        foto_nome: photo.name || "foto.jpg",
         criado_em: Date.now(),
         enviado_em: null,
         erro: null,
@@ -279,8 +312,8 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
         resetForm();
         setSuccess(
           temRede
-            ? `Bezerro da mãe ${registro.mother_tag} anotado! Enviando para o patrão...`
-            : `Bezerro da mãe ${registro.mother_tag} anotado no celular! Sem rede agora — vai sozinho quando o sinal voltar.`
+            ? `${filhoteMaiusculo} da mãe ${registro.mother_tag} anotado! Enviando para o patrão...`
+            : `${filhoteMaiusculo} da mãe ${registro.mother_tag} anotado no celular! Sem rede agora — vai sozinho quando o sinal voltar.`
         );
         esvaziarFila();
         return;
@@ -297,6 +330,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
     fd.append("mother_tag", motherTag);
     fd.append("birth_date", today);
     fd.append("calf_sex", calfSex);
+    fd.append("species", species);
     fd.append("photo", photo);
 
     startTransition(async () => {
@@ -307,7 +341,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
           return;
         }
         setSuccess(
-          `Bezerro da mãe ${motherTag.toUpperCase()} enviado! O patrão dá o número e lança no rebanho.`
+          `${filhoteMaiusculo} da mãe ${motherTag.toUpperCase()} enviado! O patrão dá o número e lança no rebanho.`
         );
         resetForm();
       } catch {
@@ -324,7 +358,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
         </div>
         <div>
           <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            Nascimento de bezerro
+            Novo nascimento
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">Hoje, {formatDate(today)}</p>
         </div>
@@ -356,12 +390,54 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Novo bezerro</CardTitle>
+          <CardTitle className="text-base">Nascimento de {filhote}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* O BICHO VEM PRIMEIRO: é ele que dá nome a tudo o que vem
+                abaixo — foto do cordeiro, sexo do potro, e o recado que o
+                patrão vê na fila dele. */}
             <div className="space-y-1.5">
-              <Label>Foto do bezerro *</Label>
+              <Label>Que bicho nasceu? *</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {PARTO_SPECIES_OPTIONS.map((opt) => {
+                  const nomes = SPECIES_META[opt.value];
+                  const escolhido = species === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setSpecies(opt.value)}
+                      className={cn(
+                        "min-h-[56px] px-3 py-2 rounded-xl border text-left transition-colors active:scale-[0.98]",
+                        escolhido
+                          ? "bg-produmar-50 border-produmar-300 dark:bg-produmar-950/40 dark:border-produmar-700"
+                          : "bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "block text-sm font-semibold",
+                          escolhido
+                            ? "text-produmar-700 dark:text-produmar-300"
+                            : "text-slate-600 dark:text-slate-300"
+                        )}
+                      >
+                        {nomes.label}
+                      </span>
+                      {/* "ovelha pariu cordeiro": o vaqueiro não precisa saber
+                          que ovelha é "ovino" para achar o botão certo. */}
+                      <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                        {nomes.female.toLowerCase()} pariu {nomes.youngMale.toLowerCase()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Foto do {filhote} *</Label>
               {/* `capture` força a câmera no celular — o segundo input é para a
                   foto que o vaqueiro já tirou antes de abrir o sistema. */}
               <input
@@ -390,7 +466,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={photoUrl}
-                    alt="Foto do bezerro"
+                    alt={`Foto do ${filhote}`}
                     className="w-full h-56 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
                   />
                   <button
@@ -461,10 +537,10 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Sexo do bezerro *</Label>
+              <Label>Sexo do {filhote} *</Label>
               <SexPicker value={calfSex} onChange={setCalfSex} />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                O número do bezerro quem dá é o patrão, na hora de lançar no rebanho.
+                O número do {filhote} quem dá é o patrão, na hora de lançar no rebanho.
               </p>
             </div>
 
@@ -525,7 +601,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                    Bezerro {r.calf_sex === "macho" ? "macho" : "fêmea"} · mãe {r.mother_tag}
+                    {nomeDoNascimento(r)} · mãe {r.mother_tag}
                   </p>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
                     Nasceu {formatDate(r.birth_date)}
@@ -573,7 +649,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                    Bezerro {r.calf_sex === "macho" ? "macho" : "fêmea"} · mãe {r.mother_tag}
+                    {nomeDoNascimento(r)} · mãe {r.mother_tag}
                   </p>
                   <p className="text-[11px] text-slate-400">
                     Nasceu {formatDate(r.birth_date)} · enviado{" "}

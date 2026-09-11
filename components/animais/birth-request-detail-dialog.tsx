@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { categoryLabel } from "./animal-shared";
+import { SPECIES_META, categoryLabel, speciesOf } from "./animal-shared";
 import type { AnimalBirthRequest, AnimalWithInfo } from "@/lib/types";
 
 interface Props {
@@ -47,6 +47,12 @@ export function BirthRequestDetailDialog({
   const typed = request.mother_tag.trim().toUpperCase();
   const mother = mothers.find((m) => m.tag.trim().toUpperCase() === typed) ?? null;
 
+  // O bicho que o vaqueiro marcou (migration 091). Envio antigo é bovino.
+  const nomes = SPECIES_META[speciesOf(request.species)];
+  // A mãe achada é de outro bicho? O tipo que vale no cadastro é o DELA — então
+  // ou o vaqueiro marcou errado, ou esse número é de outro animal.
+  const tipoDivergente = mother ? speciesOf(mother.species) !== speciesOf(request.species) : false;
+
   const sentAt = new Date(request.created_at).toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
@@ -72,7 +78,7 @@ export function BirthRequestDetailDialog({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={photoUrl}
-              alt={`Bezerro da mãe ${request.mother_tag}`}
+              alt={`${nomes.youngMale} da mãe ${request.mother_tag}`}
               className="w-full h-48 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
             />
             {/* o curral é escuro e a foto sai pequena: o patrão precisa abrir inteira */}
@@ -90,14 +96,21 @@ export function BirthRequestDetailDialog({
         <div className="space-y-3">
           <div>
             <p className="text-xl font-semibold text-slate-800 dark:text-slate-100">
-              Bezerro {request.calf_sex === "macho" ? "macho" : "fêmea"}
+              {nomes.youngMale} {request.calf_sex === "macho" ? "macho" : "fêmea"}
             </p>
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Mãe informada: {request.mother_tag}
             </p>
           </div>
 
-          {mother ? (
+          {mother && tipoDivergente ? (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2.5 py-2">
+              Atenção: o vaqueiro marcou {nomes.youngMale.toLowerCase()}, mas o número{" "}
+              {mother.tag} do cadastro é {categoryLabel(mother.category, mother.sex, mother.species)}
+              {mother.breed_name ? ` · ${mother.breed_name}` : ""}. Confira a mãe ao lançar: o tipo
+              e a raça da cria saem dela.
+            </p>
+          ) : mother ? (
             <p className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg px-2.5 py-2">
               O número {mother.tag} casou com o cadastro —{" "}
               {categoryLabel(mother.category, mother.sex, mother.species)}
@@ -110,6 +123,7 @@ export function BirthRequestDetailDialog({
           )}
 
           <dl className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <Linha rotulo="Tipo do animal" valor={nomes.label} />
             <Linha rotulo="Sexo" valor={request.calf_sex === "macho" ? "Macho" : "Fêmea"} />
             <Linha rotulo="Data do nascimento" valor={formatDate(request.birth_date)} />
             <Linha rotulo="Enviado em" valor={sentAt} />
@@ -118,7 +132,8 @@ export function BirthRequestDetailDialog({
           </dl>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            O número do bezerro é seu — você dá na hora de lançar no rebanho.
+            O número do {nomes.youngMale.toLowerCase()} é seu — você dá na hora de lançar no
+            rebanho.
           </p>
         </div>
 

@@ -3,10 +3,35 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { AnimalSex } from "@/lib/types";
+import type { AnimalSex, AnimalSpecies } from "@/lib/types";
 import { removerArquivos, uploadArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+/**
+ * Os bichos que o vaqueiro pode marcar, e como se chama o filhote de cada um —
+ * é esse nome que entra nos recados desta tela. Peixe e ave ficam fora: a
+ * criação deles é por lote, no tanque e no galpão, e não tem parto para anotar
+ * aqui.
+ */
+const FILHOTE_DE = {
+  bovino: "bezerro",
+  equino: "potro",
+  caprino: "cabrito",
+  ovino: "cordeiro",
+  suino: "leitão",
+} as const;
+
+type TipoQuePare = keyof typeof FILHOTE_DE;
+
+/** O que vier de fora da lista vale como bovino — é o que todo envio feito
+ *  antes da migration 091 sempre foi. */
+function normTipo(v: string): TipoQuePare {
+  return Object.keys(FILHOTE_DE).includes(v) ? (v as TipoQuePare) : "bovino";
+}
+
+/** As colunas novas da tabela, na ordem em que podem faltar no banco. */
+const COLUNAS_NOVAS = ["client_id", "species"] as const;
 
 /**
  * Traduz o erro do Postgres em um recado que diz O QUE FALTA rodar. Cada caso
@@ -25,9 +50,9 @@ function birthRequestError(error: { code?: string; message: string }): string {
   if (error.code === "PGRST205" || error.message.includes("schema cache"))
     return "Tabela ainda não visível: recarregue o schema no Supabase (NOTIFY pgrst, 'reload schema')";
 
-  // calf_tag ainda NOT NULL: a 053 é que solta o número do bezerro
+  // calf_tag ainda NOT NULL: a 053 é que solta o número da cria
   if (error.code === "23502" && error.message.includes("calf_tag"))
-    return "Rode a migration 053 no Supabase para enviar sem o número do bezerro";
+    return "Rode a migration 053 no Supabase para enviar sem o número da cria";
 
   // RLS barrou o INSERT: perfil não é vaqueiro/admin, ou as policies da 048 não subiram
   if (error.code === "42501")
@@ -38,10 +63,11 @@ function birthRequestError(error: { code?: string; message: string }): string {
 }
 
 /**
- * Sobe a foto do bezerro e grava a SOLICITAÇÃO em animal_birth_requests
- * (migrations 048 e 053). O vaqueiro só digita o número da MÃE — não escolhe da
- * lista, e não numera o bezerro: o número é do patrão, que confere e lança de
- * verdade na aba "Nascimentos" de Animais. Nada entra no rebanho aqui.
+ * Sobe a foto da cria e grava a SOLICITAÇÃO em animal_birth_requests
+ * (migrations 048, 053 e 091). O vaqueiro marca QUE BICHO nasceu e digita o
+ * número da MÃE — não escolhe da lista, e não numera a cria: o número é do
+ * patrão, que confere e lança de verdade na aba "Nascimentos" de Animais. Nada
+ * entra no rebanho aqui.
  */
 export async function requestCalfBirth(formData: FormData) {
   const supabase = createClient();
@@ -55,6 +81,12 @@ export async function requestCalfBirth(formData: FormData) {
   const calfSex = String(formData.get("calf_sex") ?? "") as AnimalSex;
   const photo = formData.get("photo");
 
+  // Que bicho nasceu. Serve para a fila do patrão chamar o cordeiro de cordeiro
+  // e o potro de potro — o tipo que ENTRA no cadastro é o da mãe que ele
+  // escolher na conferência (createBirth puxa tipo e raça de quem pariu).
+  const species = normTipo(String(formData.get("species") ?? ""));
+  const filhote = FILHOTE_DE[species];
+
   // O carimbo que o CELULAR deu a este nascimento antes de tentar enviar. É ele
   // que impede o mesmo bezerro de entrar duas vezes quando a rede cai depois de
   // o banco já ter gravado (migration 081). Carimbo torto é ignorado, não
@@ -66,9 +98,10 @@ export async function requestCalfBirth(formData: FormData) {
 
   if (!motherTag) return { error: "Informe o número da mãe" };
   if (!birthDate) return { error: "Informe a data do nascimento" };
-  if (calfSex !== "macho" && calfSex !== "femea") return { error: "Informe o sexo do bezerro" };
+  if (calfSex !== "macho" && calfSex !== "femea")
+    return { error: `Informe o sexo do ${filhote}` };
   if (!(photo instanceof File) || photo.size === 0)
-    return { error: "Coloque uma foto do bezerro" };
+    return { error: `Coloque uma foto do ${filhote}` };
   if (photo.size > MAX_FILE_SIZE) return { error: "A foto deve ter no máximo 10 MB" };
 
   const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "foto.jpg";
@@ -85,6 +118,7 @@ export async function requestCalfBirth(formData: FormData) {
     photo_path: string;
     created_by: string;
     client_id?: string;
+    species?: AnimalSpecies;
   } = {
     mother_tag: motherTag,
     // o número do bezerro nasce na conferência do patrão (migration 053)
@@ -93,16 +127,20 @@ export async function requestCalfBirth(formData: FormData) {
     birth_date: birthDate,
     photo_path: photoPath,
     created_by: user.id,
+    species,
   };
   if (clientId) solicitacao.client_id = clientId;
 
   let { error } = await supabase.from("animal_birth_requests").insert(solicitacao);
 
-  // Banco ainda sem a coluna (a 081 não rodou): manda sem o carimbo. Perde só a
-  // proteção contra o repetido — e isso é bem melhor que o vaqueiro travado no
-  // curral porque a publicação chegou antes da migration.
-  if (error && clientId && (error.code === "42703" || error.code === "PGRST204")) {
-    delete solicitacao.client_id;
+  // Banco ainda sem alguma coluna nova (a 081 ou a 091 não rodaram): tira só a
+  // que ele não conhece — o erro diz o nome dela — e manda de novo. Perde o
+  // carimbo contra repetido, ou o nome do bicho, e isso é bem melhor que o
+  // vaqueiro travado no curral porque a publicação chegou antes da migration.
+  while (error && (error.code === "42703" || error.code === "PGRST204")) {
+    const faltando = COLUNAS_NOVAS.find((c) => c in solicitacao && error!.message.includes(c));
+    if (!faltando) break;
+    delete solicitacao[faltando];
     ({ error } = await supabase.from("animal_birth_requests").insert(solicitacao));
   }
 

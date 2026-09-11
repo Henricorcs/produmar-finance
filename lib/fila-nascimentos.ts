@@ -19,7 +19,7 @@
  * aqui esperando a próxima chance.
  */
 
-import type { AnimalSex } from "@/lib/types";
+import type { AnimalSex, AnimalSpecies } from "@/lib/types";
 
 /** Um nascimento esperando (ou já) subir. */
 export interface NascimentoGuardado {
@@ -31,6 +31,12 @@ export interface NascimentoGuardado {
   id: string;
   mother_tag: string;
   calf_sex: AnimalSex;
+  /**
+   * Que bicho nasceu — bovino, equino, caprino, ovino ou suíno. Vem vazio no
+   * que ficou guardado antes desta versão da tela: aquilo é tudo bovino, que é
+   * o único bicho que a tela conhecia. Leia com `speciesOf`.
+   */
+  species?: AnimalSpecies;
   /** O dia em que o bezerro NASCEU — não o dia em que a rede voltou. */
   birth_date: string;
   /** A foto, já encolhida. Some depois que o envio confirma, para não entupir
