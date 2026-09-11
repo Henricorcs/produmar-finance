@@ -9,8 +9,28 @@ import type { LoanPaymentMethod, LoanRepaymentType, LoanStatus } from "@/lib/typ
 import { loanTotalDue } from "@/lib/utils";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
+/**
+ * ESTE MÓDULO NÃO ALIMENTA O CAIXA.
+ *
+ * Ele nasceu como "Empréstimos" e lançava tudo sozinho: a saída quando o
+ * dinheiro era emprestado, um recebível por parcela e a entrada a cada
+ * pagamento. O dono pediu para parar — quem lança no caixa é ele, na mão, no
+ * dia em que o dinheiro de fato se move. Aqui é CONTROLE DE DEVEDORES: quem
+ * deve, quanto, quando vence e quanto já pagou.
+ *
+ * A regra, para não voltar atrás sem querer: o módulo nunca mais CRIA nem
+ * ATUALIZA linha em `transactions`. Ele só APAGA as que ele mesmo havia
+ * criado antes desta mudança, e só quando o dono delas morre — a dívida é
+ * excluída, o pagamento é removido, o cronograma é refeito. Lançamento órfão
+ * no caixa ("A RECEBER #12" de uma dívida que não existe mais) é pior que
+ * lançamento nenhum.
+ *
+ * As colunas `transaction_id` / `receivable_transaction_id` continuam na
+ * tabela por causa dessas dívidas antigas. Em dívida nova elas ficam nulas.
+ */
 function revalidate() {
   revalidatePath("/devedores");
+  // O caixa ainda é revalidado porque APAGAR uma dívida antiga mexe nele.
   revalidatePath("/dashboard");
   revalidatePath("/contas");
 }
@@ -27,56 +47,25 @@ function addMonths(dateStr: string, months: number): string {
 }
 
 /**
- * Busca o id da categoria dedicada (criada na migration 006).
+ * Gera/recria o cronograma de parcelas de uma dívida parcelada.
  *
- * Os NOMES abaixo são procurados no cadastro de categorias tal como estão —
- * não os traduza para o vocabulário novo de Devedores sem renomear a categoria
- * no banco junto, senão o lançamento no caixa fica sem categoria.
- */
-async function loanCategoryId(
-  supabase: SupabaseClient,
-  type: "entrada" | "saida"
-): Promise<string | null> {
-  const name = type === "saida" ? "Empréstimo concedido" : "Recebimento de empréstimo";
-  const { data } = await supabase
-    .from("categories")
-    .select("id")
-    .eq("name", name)
-    .eq("type", type)
-    .maybeSingle();
-  return data?.id ?? null;
-}
-
-interface LoanMeta {
-  id: string;
-  loan_number: number;
-  borrower_name: string;
-}
-
-/**
- * Gera/recria o cronograma de parcelas de um empréstimo parcelado.
- * Cada parcela ganha uma transação de ENTRADA pendente (recebível), que
- * aparece em "A receber" e vira "Recebido" quando a parcela é marcada paga.
+ * O cronograma é do MÓDULO, não do caixa: aqui nascem só as linhas de
+ * `loan_installments` — a parcela, o valor e o vencimento, que é o que a
+ * cobrança precisa. Nenhum lançamento é criado (ver a nota no topo do arquivo).
+ *
+ * Os recebíveis das parcelas ANTIGAS (de antes desta mudança) são apagados
+ * junto com elas: o cronograma que os explicava deixou de existir, e recebível
+ * órfão no caixa é pior que nenhum.
  */
 async function regenerateInstallments(
   supabase: SupabaseClient,
-  loan: LoanMeta,
+  loanId: string,
   total: number,
   count: number,
-  firstDueDate: string,
-  categoryId: string | null,
-  userId: string
+  firstDueDate: string
 ) {
-  // Remove parcelas antigas e seus recebíveis
-  const { data: old } = await supabase
-    .from("loan_installments")
-    .select("transaction_id")
-    .eq("loan_id", loan.id);
-  const oldTxIds = (old ?? [])
-    .map((o) => o.transaction_id)
-    .filter((x): x is string => !!x);
-  if (oldTxIds.length > 0) await supabase.from("transactions").delete().in("id", oldTxIds);
-  await supabase.from("loan_installments").delete().eq("loan_id", loan.id);
+  await apagarLancamentosDasParcelas(supabase, loanId);
+  await supabase.from("loan_installments").delete().eq("loan_id", loanId);
 
   if (count < 1) return;
 
@@ -85,85 +74,54 @@ async function regenerateInstallments(
     const isLast = i === count - 1;
     // última parcela absorve o arredondamento
     const amount = isLast ? Math.round((total - base * (count - 1)) * 100) / 100 : base;
-    const due = addMonths(firstDueDate, i);
-
-    const { data: tx } = await supabase
-      .from("transactions")
-      .insert({
-        type: "entrada",
-        description: `A RECEBER EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name} (parcela ${i + 1}/${count})`,
-        amount,
-        due_date: due,
-        status: "pendente",
-        category_id: categoryId,
-        created_by: userId,
-      })
-      .select("id")
-      .single();
 
     await supabase.from("loan_installments").insert({
-      loan_id: loan.id,
+      loan_id: loanId,
       number: i + 1,
-      due_date: due,
+      due_date: addMonths(firstDueDate, i),
       amount,
-      transaction_id: tx?.id ?? null,
     });
   }
 }
 
 /**
- * Cria/atualiza o recebível único de um empréstimo AVULSO.
- * O valor reflete o saldo devedor (total − pago); quando quita, o lançamento
- * é cancelado para sair de "A receber".
+ * O cronograma que está gravado já é este? Comparar antes de refazer importa:
+ * `regenerateInstallments` apaga e recria as parcelas, e com elas vai embora a
+ * marca de PAGA de cada uma (o pagamento em si sobrevive, mas a parcela volta
+ * a aparecer em aberto). Sem esta conferência, corrigir o telefone do devedor
+ * ressuscitava parcela que já tinha sido paga.
  */
-async function syncAvulsoReceivable(
+async function cronogramaMudou(
   supabase: SupabaseClient,
-  loan: LoanMeta & {
-    receivable_transaction_id: string | null;
-    principal: number;
-    interest_rate: number | null;
-    term_months: number | null;
-    interest_amount: number | null;
-    due_date: string | null;
-    loan_date: string;
-  },
-  categoryId: string | null,
-  userId: string
-) {
-  const { data: payments } = await supabase
-    .from("loan_payments")
-    .select("amount")
-    .eq("loan_id", loan.id);
-  const totalPaid = (payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
-  const outstanding = Math.max(0, loanTotalDue(loan) - totalPaid);
+  loanId: string,
+  total: number,
+  count: number,
+  firstDueDate: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("loan_installments")
+    .select("amount, due_date")
+    .eq("loan_id", loanId)
+    .order("due_date", { ascending: true });
 
-  const due = loan.due_date || loan.loan_date;
-  const description = `A RECEBER EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name}`;
-  const status = outstanding > 0.005 ? "pendente" : "cancelado";
+  const atuais = data ?? [];
+  if (atuais.length !== count) return true;
+  if (atuais[0]?.due_date !== firstDueDate) return true;
 
-  if (loan.receivable_transaction_id) {
-    await supabase
-      .from("transactions")
-      .update({ amount: outstanding, due_date: due, description, status })
-      .eq("id", loan.receivable_transaction_id);
-  } else {
-    const { data: tx } = await supabase
-      .from("transactions")
-      .insert({
-        type: "entrada",
-        description,
-        amount: outstanding,
-        due_date: due,
-        status,
-        category_id: categoryId,
-        created_by: userId,
-      })
-      .select("id")
-      .single();
-    if (tx) {
-      await supabase.from("loans").update({ receivable_transaction_id: tx.id }).eq("id", loan.id);
-    }
-  }
+  const somaAtual = atuais.reduce((s, i) => s + Number(i.amount), 0);
+  return Math.abs(somaAtual - total) >= 0.005;
+}
+
+/** Tira do caixa os recebíveis que as parcelas antigas deste devedor deixaram. */
+async function apagarLancamentosDasParcelas(supabase: SupabaseClient, loanId: string) {
+  const { data: antigas } = await supabase
+    .from("loan_installments")
+    .select("transaction_id")
+    .eq("loan_id", loanId);
+  const ids = (antigas ?? [])
+    .map((o) => o.transaction_id)
+    .filter((x): x is string => !!x);
+  if (ids.length > 0) await supabase.from("transactions").delete().in("id", ids);
 }
 
 /** Recalcula o status (quitado / em_aberto) com base nos pagamentos. Não mexe em 'cancelado'. */
@@ -289,54 +247,15 @@ export async function createLoan(input: LoanInput) {
   if (error || !loan)
     return { error: error ? loanError(error, "Erro ao criar a dívida") : "Erro ao criar a dívida" };
 
-  // Lançamento de SAÍDA — o dinheiro saiu do caixa
-  const categoryId = await loanCategoryId(supabase, "saida");
-  const { data: tx } = await supabase
-    .from("transactions")
-    .insert({
-      type: "saida",
-      description: `EMPRÉSTIMO #${loan.loan_number} - ${fields.borrower_name}`,
-      amount: fields.principal,
-      due_date: fields.loan_date,
-      paid_date: fields.loan_date,
-      status: "pago",
-      category_id: categoryId,
-      notes: fields.notes,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
-
-  if (tx) {
-    await supabase.from("loans").update({ transaction_id: tx.id }).eq("id", loan.id);
-  }
-
-  // Recebíveis (entradas pendentes) → aparecem em "A receber"
-  const recCategoryId = await loanCategoryId(supabase, "entrada");
-  const meta: LoanMeta = {
-    id: loan.id,
-    loan_number: loan.loan_number,
-    borrower_name: fields.borrower_name,
-  };
-
+  // Parcelado: nasce o cronograma. Nada vai para o caixa — quem lança lá é o
+  // dono, na mão, no dia em que o dinheiro de fato entrar ou sair.
   if (fields.repayment_type === "parcelado" && fields.installments_count) {
-    const total = loanTotalDue(fields);
-    const firstDue = fields.due_date || addMonths(fields.loan_date, 1);
     await regenerateInstallments(
       supabase,
-      meta,
-      total,
+      loan.id,
+      loanTotalDue(fields),
       fields.installments_count,
-      firstDue,
-      recCategoryId,
-      user.id
-    );
-  } else {
-    await syncAvulsoReceivable(
-      supabase,
-      { ...meta, ...fields, receivable_transaction_id: null },
-      recCategoryId,
-      user.id
+      fields.due_date || addMonths(fields.loan_date, 1)
     );
   }
 
@@ -355,70 +274,24 @@ export async function updateLoan(id: string, input: LoanInput) {
   if (!user) return { error: "Não autenticado" };
   const fields = sanitize(input);
 
-  const { data: existing } = await supabase
-    .from("loans")
-    .select("transaction_id, loan_number, receivable_transaction_id")
-    .eq("id", id)
-    .single();
-
   const { error } = await supabase.from("loans").update(fields).eq("id", id);
   if (error) return { error: loanError(error, "Erro ao salvar a dívida") };
 
-  // Mantém o lançamento de saída em sincronia (valor / descrição / data)
-  if (existing?.transaction_id) {
-    await supabase
-      .from("transactions")
-      .update({
-        amount: fields.principal,
-        description: `EMPRÉSTIMO #${existing.loan_number} - ${fields.borrower_name}`,
-        due_date: fields.loan_date,
-        paid_date: fields.loan_date,
-      })
-      .eq("id", existing.transaction_id);
-  }
-
-  const recCategoryId = await loanCategoryId(supabase, "entrada");
-  const meta: LoanMeta = {
-    id,
-    loan_number: existing?.loan_number ?? 0,
-    borrower_name: fields.borrower_name,
-  };
-
+  // O lançamento que uma dívida ANTIGA deixou no caixa não é mexido aqui de
+  // propósito: o caixa é da mão do dono agora, e a tela corrigindo valor por
+  // baixo do dedo é justamente o que ele pediu para acabar.
   if (fields.repayment_type === "parcelado" && fields.installments_count) {
-    // Se antes era avulso, remove o recebível único
-    if (existing?.receivable_transaction_id) {
-      await supabase.from("transactions").delete().eq("id", existing.receivable_transaction_id);
-      await supabase.from("loans").update({ receivable_transaction_id: null }).eq("id", id);
-    }
     const total = loanTotalDue(fields);
     const firstDue = fields.due_date || addMonths(fields.loan_date, 1);
-    await regenerateInstallments(
-      supabase,
-      meta,
-      total,
-      fields.installments_count,
-      firstDue,
-      recCategoryId,
-      user.id
-    );
+    // Só refaz o cronograma quando ele REALMENTE mudou — refazer à toa apaga
+    // a marca das parcelas já pagas.
+    if (await cronogramaMudou(supabase, id, total, fields.installments_count, firstDue)) {
+      await regenerateInstallments(supabase, id, total, fields.installments_count, firstDue);
+    }
   } else {
-    // Avulso: remove parcelas + seus recebíveis, e mantém o recebível único
-    const { data: insts } = await supabase
-      .from("loan_installments")
-      .select("transaction_id")
-      .eq("loan_id", id);
-    const instTxIds = (insts ?? [])
-      .map((i) => i.transaction_id)
-      .filter((x): x is string => !!x);
-    if (instTxIds.length > 0) await supabase.from("transactions").delete().in("id", instTxIds);
+    // Virou avulso: o cronograma não vale mais.
+    await apagarLancamentosDasParcelas(supabase, id);
     await supabase.from("loan_installments").delete().eq("loan_id", id);
-
-    await syncAvulsoReceivable(
-      supabase,
-      { ...meta, ...fields, receivable_transaction_id: existing?.receivable_transaction_id ?? null },
-      recCategoryId,
-      user.id
-    );
   }
 
   await recomputeStatus(supabase, id);
@@ -429,7 +302,10 @@ export async function updateLoan(id: string, input: LoanInput) {
 export async function deleteLoan(id: string) {
   const supabase = createClient();
 
-  // Coleta lançamentos vinculados + comprovantes no storage
+  // Coleta os lançamentos que esta dívida deixou no caixa QUANDO O MÓDULO
+  // ainda lançava sozinho (dívida nova não tem nenhum) e os comprovantes no
+  // storage. Apagar a dívida e deixar o "A RECEBER" dela lá deixaria o caixa
+  // cobrando um dinheiro que ninguém mais controla.
   const [{ data: loan }, { data: payments }, { data: insts }, { data: attachments }] =
     await Promise.all([
       supabase.from("loans").select("transaction_id, receivable_transaction_id").eq("id", id).single(),
@@ -489,86 +365,21 @@ export async function addPayment(loanId: string, input: PaymentInput) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
 
-  const { data: loan, error: loanErr } = await supabase
-    .from("loans")
-    .select(
-      "loan_number, borrower_name, principal, interest_rate, term_months, interest_amount, due_date, loan_date, receivable_transaction_id, repayment_type"
-    )
-    .eq("id", loanId)
-    .single();
-  if (loanErr || !loan) return { error: loanErr?.message ?? "Dívida não encontrada" };
-
-  const recCategoryId = await loanCategoryId(supabase, "entrada");
-  let txId: string | null = null;
-
-  if (input.installment_id) {
-    // Pagamento de parcela: o recebível pendente da parcela vira "recebido"
-    const { data: inst } = await supabase
-      .from("loan_installments")
-      .select("transaction_id")
-      .eq("id", input.installment_id)
-      .single();
-
-    if (inst?.transaction_id) {
-      await supabase
-        .from("transactions")
-        .update({ status: "recebido", paid_date: input.payment_date })
-        .eq("id", inst.transaction_id);
-      txId = inst.transaction_id;
-    } else {
-      // Parcela sem recebível (empréstimo antigo): cria um recebido novo
-      const { data: tx } = await supabase
-        .from("transactions")
-        .insert({
-          type: "entrada",
-          description: `RECEB. EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name}`,
-          amount: input.amount,
-          due_date: input.payment_date,
-          paid_date: input.payment_date,
-          status: "recebido",
-          category_id: recCategoryId,
-          created_by: user.id,
-        })
-        .select("id")
-        .single();
-      txId = tx?.id ?? null;
-    }
-
-    await supabase.from("loan_installments").update({ paid: true }).eq("id", input.installment_id);
-  } else {
-    // Pagamento avulso: registra a entrada no caixa
-    const { data: tx } = await supabase
-      .from("transactions")
-      .insert({
-        type: "entrada",
-        description: `RECEB. EMPRÉSTIMO #${loan.loan_number} - ${loan.borrower_name}`,
-        amount: input.amount,
-        due_date: input.payment_date,
-        paid_date: input.payment_date,
-        status: "recebido",
-        category_id: recCategoryId,
-        notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
-        created_by: user.id,
-      })
-      .select("id")
-      .single();
-    txId = tx?.id ?? null;
-  }
-
+  // O pagamento fica SÓ aqui: abate o saldo do devedor e marca a parcela.
+  // A entrada no caixa é lançada à mão pelo dono, no dia em que o dinheiro
+  // entrou de verdade — foi para isso que a integração automática saiu.
   const { error } = await supabase.from("loan_payments").insert({
     loan_id: loanId,
     installment_id: input.installment_id || null,
     amount: input.amount,
     payment_date: input.payment_date,
-    transaction_id: txId,
     notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
     created_by: user.id,
   });
   if (error) return { error: error.message };
 
-  // Avulso: encolhe o recebível único conforme o saldo cai
-  if (!input.installment_id && loan.repayment_type !== "parcelado") {
-    await syncAvulsoReceivable(supabase, { id: loanId, ...loan }, recCategoryId, user.id);
+  if (input.installment_id) {
+    await supabase.from("loan_installments").update({ paid: true }).eq("id", input.installment_id);
   }
 
   await recomputeStatus(supabase, loanId);
@@ -590,42 +401,29 @@ export async function deletePayment(paymentId: string) {
     .single();
   if (!payment) return { error: "Pagamento não encontrado" };
 
-  if (payment.installment_id) {
-    // Parcela: o recebível volta a ficar PENDENTE (não apaga o lançamento)
-    const { data: inst } = await supabase
-      .from("loan_installments")
-      .select("transaction_id")
-      .eq("id", payment.installment_id)
-      .single();
-
-    if (inst?.transaction_id && inst.transaction_id === payment.transaction_id) {
+  // Pagamento ANTIGO (de antes desta mudança) levou junto um lançamento no
+  // caixa. Apagar o pagamento e deixar o recebido lá faria o caixa contar um
+  // dinheiro que o módulo diz que não entrou — então ele cai junto.
+  if (payment.transaction_id) {
+    await supabase.from("transactions").delete().eq("id", payment.transaction_id);
+    // A parcela apontava para o mesmo lançamento: limpa o ponteiro para não
+    // ficar apontando para o que não existe mais.
+    if (payment.installment_id) {
       await supabase
-        .from("transactions")
-        .update({ status: "pendente", paid_date: null })
-        .eq("id", inst.transaction_id);
-    } else if (payment.transaction_id) {
-      await supabase.from("transactions").delete().eq("id", payment.transaction_id);
+        .from("loan_installments")
+        .update({ transaction_id: null })
+        .eq("id", payment.installment_id)
+        .eq("transaction_id", payment.transaction_id);
     }
-    await supabase.from("loan_installments").update({ paid: false }).eq("id", payment.installment_id);
-    await supabase.from("loan_payments").delete().eq("id", paymentId);
-  } else {
-    // Avulso: apaga o recebido e restaura o recebível ao novo saldo
-    if (payment.transaction_id) {
-      await supabase.from("transactions").delete().eq("id", payment.transaction_id);
-    }
-    await supabase.from("loan_payments").delete().eq("id", paymentId);
+  }
 
-    const { data: loan } = await supabase
-      .from("loans")
-      .select(
-        "loan_number, borrower_name, principal, interest_rate, term_months, interest_amount, due_date, loan_date, receivable_transaction_id"
-      )
-      .eq("id", payment.loan_id)
-      .single();
-    if (loan) {
-      const recCategoryId = await loanCategoryId(supabase, "entrada");
-      await syncAvulsoReceivable(supabase, { id: payment.loan_id, ...loan }, recCategoryId, user.id);
-    }
+  await supabase.from("loan_payments").delete().eq("id", paymentId);
+
+  if (payment.installment_id) {
+    await supabase
+      .from("loan_installments")
+      .update({ paid: false })
+      .eq("id", payment.installment_id);
   }
 
   await recomputeStatus(supabase, payment.loan_id);

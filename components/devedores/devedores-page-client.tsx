@@ -165,7 +165,12 @@ export function DevedoresPageClient({ loans }: Props) {
     setDetail(null);
   }
   async function handleDelete(id: string) {
-    if (!confirm("Excluir esta dívida? Os lançamentos no caixa também serão removidos.")) return;
+    if (
+      !confirm(
+        "Excluir esta dívida, com as parcelas e os pagamentos dela? Isso não tem volta."
+      )
+    )
+      return;
     startTransition(async () => {
       await deleteLoan(id);
     });
