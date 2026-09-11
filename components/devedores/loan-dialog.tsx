@@ -27,7 +27,8 @@ import {
   type LoanInput,
 } from "@/app/(app)/devedores/actions";
 import { loanTotalDue, formatBRL, formatBRLInput } from "@/lib/utils";
-import type { Loan, LoanRepaymentType } from "@/lib/types";
+import { LOAN_PAYMENT_METHODS, LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
+import type { Loan, LoanPaymentMethod, LoanRepaymentType } from "@/lib/types";
 import { comprimirImagens } from "@/lib/comprimir-imagem";
 
 interface Props {
@@ -51,6 +52,8 @@ export function LoanDialog({ open, onClose, loan }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [repaymentType, setRepaymentType] = useState<LoanRepaymentType>("avulso");
+  /** Boleto, pix, cartão ou dinheiro — em branco enquanto não se escolhe. */
+  const [paymentMethod, setPaymentMethod] = useState<LoanPaymentMethod | null>(null);
   const [amount, setAmount] = useState("");
   const [interestType, setInterestType] = useState<"percent" | "fixed">("percent");
   const [interestRate, setInterestRate] = useState("");
@@ -68,6 +71,7 @@ export function LoanDialog({ open, onClose, loan }: Props) {
   useEffect(() => {
     if (open) {
       setRepaymentType(loan?.repayment_type ?? "avulso");
+      setPaymentMethod(loan?.payment_method ?? null);
       setAmount(loan?.principal ? formatBRLInput(loan.principal) : "");
       if (loan?.interest_amount) {
         setInterestType("fixed");
@@ -141,6 +145,7 @@ export function LoanDialog({ open, onClose, loan }: Props) {
       repayment_type: repaymentType,
       installments_count:
         repaymentType === "parcelado" ? parseInt(installments, 10) || null : null,
+      payment_method: paymentMethod,
       loan_date: String(fd.get("loan_date") ?? ""),
       due_date: String(fd.get("due_date") ?? "") || null,
       notes: String(fd.get("notes") ?? "") || null,
@@ -339,9 +344,34 @@ export function LoanDialog({ open, onClose, loan }: Props) {
             </div>
           )}
 
-          {/* Forma de pagamento */}
+          {/* COMO O DINHEIRO ENTRA — é a primeira pergunta de quem vai cobrar:
+              boleto se manda, pix se pede a chave, dinheiro alguém busca.
+              Toque de novo no escolhido para deixar em branco. */}
           <div className="space-y-1.5">
             <Label>Forma de pagamento</Label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {LOAN_PAYMENT_METHODS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPaymentMethod(paymentMethod === m ? null : m)}
+                  className={`min-h-[44px] px-1 text-sm rounded-lg border font-medium transition-colors ${
+                    paymentMethod === m
+                      ? "bg-produmar-50 dark:bg-produmar-950/40 border-produmar-300 dark:border-produmar-800 text-produmar-700 dark:text-produmar-400"
+                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  {LOAN_PAYMENT_METHOD_LABEL[m]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Parcelamento — quantas vezes, não por qual meio. Isto já se
+              chamou "Forma de pagamento"; o nome mudou quando o meio do
+              pagamento ganhou campo próprio, para não haver dois iguais. */}
+          <div className="space-y-1.5">
+            <Label>Parcelamento</Label>
             <div className="grid grid-cols-2 gap-2">
               {(["avulso", "parcelado"] as LoanRepaymentType[]).map((t) => (
                 <button

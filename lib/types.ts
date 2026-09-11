@@ -461,6 +461,24 @@ export interface ServiceOrderTrip {
 export type LoanRepaymentType = "avulso" | "parcelado";
 export type LoanStatus = "em_aberto" | "quitado" | "cancelado";
 
+/**
+ * Como a dívida é paga (migration 093). Não confundir com `LoanRepaymentType`,
+ * que diz se ela é parcelada ou de pagamentos avulsos — este é o MEIO do
+ * pagamento, o que decide se a cobrança manda boleto, chave pix ou vai buscar.
+ */
+export type LoanPaymentMethod = "boleto" | "pix" | "cartao" | "dinheiro";
+
+export const LOAN_PAYMENT_METHOD_LABEL: Record<LoanPaymentMethod, string> = {
+  boleto: "Boleto",
+  pix: "PIX",
+  cartao: "Cartão",
+  dinheiro: "Dinheiro",
+};
+
+export const LOAN_PAYMENT_METHODS = Object.keys(
+  LOAN_PAYMENT_METHOD_LABEL
+) as LoanPaymentMethod[];
+
 export interface Loan {
   id: string;
   loan_number: number;
@@ -476,6 +494,13 @@ export interface Loan {
 
   repayment_type: LoanRepaymentType;
   installments_count: number | null;
+
+  /**
+   * Boleto, pix, cartão ou dinheiro (migration 093). Vem `undefined` enquanto
+   * a migration não roda, e `null` na dívida lançada antes dela — nos dois
+   * casos a tela não mostra nada, que é melhor que mostrar um chute.
+   */
+  payment_method?: LoanPaymentMethod | null;
 
   loan_date: string;
   due_date: string | null;

@@ -4,7 +4,8 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { LoanRepaymentType, LoanStatus } from "@/lib/types";
+import { LOAN_PAYMENT_METHODS } from "@/lib/types";
+import type { LoanPaymentMethod, LoanRepaymentType, LoanStatus } from "@/lib/types";
 import { loanTotalDue } from "@/lib/utils";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
@@ -200,9 +201,30 @@ export interface LoanInput {
   interest_amount?: number | null;
   repayment_type: LoanRepaymentType;
   installments_count?: number | null;
+  /** Boleto, pix, cartão ou dinheiro (093) — em branco quando não informado. */
+  payment_method?: LoanPaymentMethod | null;
   loan_date: string;
   due_date?: string | null;
   notes?: string | null;
+}
+
+/** Só os quatro meios que a tela oferece entram no banco. */
+function normPaymentMethod(v?: LoanPaymentMethod | null): LoanPaymentMethod | null {
+  return v && LOAN_PAYMENT_METHODS.includes(v) ? v : null;
+}
+
+/**
+ * Erro do banco em recado que diz o que fazer. O caso que importa é a coluna
+ * da forma de pagamento faltando: sem separar, o dono via o erro cru do
+ * Postgres e não tinha como saber que o que faltava era rodar a 093.
+ */
+function loanError(error: { code?: string; message: string }, padrao: string): string {
+  if (
+    (error.code === "42703" || error.code === "PGRST204") &&
+    error.message.includes("payment_method")
+  )
+    return "Rode a migration 093 no Supabase para guardar a forma de pagamento";
+  return error.message || padrao;
 }
 
 function validate(input: LoanInput): string | null {
@@ -238,6 +260,7 @@ function sanitize(input: LoanInput) {
     repayment_type: input.repayment_type,
     installments_count:
       input.repayment_type === "parcelado" ? input.installments_count ?? null : null,
+    payment_method: normPaymentMethod(input.payment_method),
     loan_date: input.loan_date,
     due_date: input.due_date || null,
     notes: input.notes?.trim() ? input.notes.trim().toUpperCase() : null,
@@ -263,7 +286,8 @@ export async function createLoan(input: LoanInput) {
     .insert({ ...fields, created_by: user.id })
     .select()
     .single();
-  if (error || !loan) return { error: error?.message ?? "Erro ao criar a dívida" };
+  if (error || !loan)
+    return { error: error ? loanError(error, "Erro ao criar a dívida") : "Erro ao criar a dívida" };
 
   // Lançamento de SAÍDA — o dinheiro saiu do caixa
   const categoryId = await loanCategoryId(supabase, "saida");
@@ -338,7 +362,7 @@ export async function updateLoan(id: string, input: LoanInput) {
     .single();
 
   const { error } = await supabase.from("loans").update(fields).eq("id", id);
-  if (error) return { error: error.message };
+  if (error) return { error: loanError(error, "Erro ao salvar a dívida") };
 
   // Mantém o lançamento de saída em sincronia (valor / descrição / data)
   if (existing?.transaction_id) {

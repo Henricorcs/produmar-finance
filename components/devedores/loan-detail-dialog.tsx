@@ -23,6 +23,7 @@ import {
   daysUntil,
   formatBRLInput,
 } from "@/lib/utils";
+import { LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
 import type { LoanWithDetails } from "@/app/(app)/devedores/page";
 
 interface Props {
@@ -138,6 +139,24 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
             />
             <SummaryItem label="Total a receber" value={formatBRL(total)} strong />
             <SummaryItem label="Já recebido" value={formatBRL(totalPaid)} tone="emerald" />
+          </div>
+
+          {/* Como ele paga e em quantas vezes — o que se precisa saber antes de
+              pegar o telefone para cobrar. */}
+          <div className="flex items-center gap-2 flex-wrap text-[11px]">
+            {loan.payment_method && (
+              <span className="font-medium px-2 py-1 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {LOAN_PAYMENT_METHOD_LABEL[loan.payment_method]}
+              </span>
+            )}
+            <span className="font-medium px-2 py-1 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {loan.repayment_type === "parcelado"
+                ? `Parcelado em ${loan.installments_count ?? installments.length}x`
+                : "Pagamentos avulsos"}
+            </span>
+            <span className="text-slate-400 dark:text-slate-500">
+              dívida de {formatDate(loan.loan_date)}
+            </span>
           </div>
 
           <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-produmar-50/60 dark:bg-slate-800/50 px-4 py-3 flex items-center justify-between">

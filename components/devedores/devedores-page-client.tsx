@@ -16,6 +16,7 @@ import {
   formatDate,
   daysUntil,
 } from "@/lib/utils";
+import { LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
 import type { Loan } from "@/lib/types";
 import type { LoanWithDetails } from "@/app/(app)/devedores/page";
 
@@ -113,8 +114,13 @@ export function DevedoresPageClient({ loans }: Props) {
     const q = search.trim().toLowerCase();
     return decorated.filter(({ loan, status }) => {
       if (filter && status !== filter) return false;
-      if (q && !loan.borrower_name.toLowerCase().includes(q)) return false;
-      return true;
+      if (!q) return true;
+      // A busca pega o nome E a forma de pagamento: digitar "pix" separa num
+      // toque quem paga por pix, que é como a cobrança se organiza no dia.
+      const forma = loan.payment_method
+        ? LOAN_PAYMENT_METHOD_LABEL[loan.payment_method].toLowerCase()
+        : "";
+      return loan.borrower_name.toLowerCase().includes(q) || forma.includes(q);
     });
   }, [decorated, filter, search]);
 
@@ -198,7 +204,7 @@ export function DevedoresPageClient({ loans }: Props) {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar pelo nome do devedor..."
+            placeholder="Buscar por nome ou forma de pagamento..."
             className="pl-9"
           />
         </div>
@@ -275,6 +281,14 @@ export function DevedoresPageClient({ loans }: Props) {
                         </span>
                       )}
                       <span className="text-xs text-slate-400">{formatDate(loan.loan_date)}</span>
+                      {/* Como ele paga: decide se a cobrança manda boleto,
+                          pede pix ou vai buscar. Some quando não foi
+                          informado — dívida antiga não tem isso. */}
+                      {loan.payment_method && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          {LOAN_PAYMENT_METHOD_LABEL[loan.payment_method]}
+                        </span>
+                      )}
                       {loan.repayment_type === "parcelado" && (
                         <span className="text-[10px] text-slate-400">
                           {loan.installments_count}x
