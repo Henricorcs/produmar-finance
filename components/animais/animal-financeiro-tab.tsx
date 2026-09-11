@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { HandCoins, Hash, Plus, Receipt, Scale, Stethoscope, Wallet } from "lucide-react";
+import {
+  Calculator,
+  HandCoins,
+  Hash,
+  Pencil,
+  Plus,
+  Receipt,
+  Scale,
+  Stethoscope,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatBRL, formatDate, formatQty } from "@/lib/utils";
 import {
@@ -420,6 +430,17 @@ export function AnimalFinanceiroTab({
                         {formatBRL(Number(l.price_per_unit))} = {formatBRL(Number(l.value))}
                       </p>
                     )}
+                    {/* A compra por extenso: 20 SC × R$ 95,00. É o que responde
+                        "por quanto saiu o saco?" (migration 092). O total fica
+                        à direita: ele pode ter vindo com desconto na nota. */}
+                    {despesa && Number(despesa.quantity) > 0 && Number(despesa.unit_price) > 0 && (
+                      <p className="text-[11px] font-medium text-rose-700 dark:text-rose-400 tabular-nums truncate flex items-center gap-1">
+                        <Calculator className="w-3 h-3 flex-shrink-0" />
+                        {formatQty(Number(despesa.quantity))}
+                        {despesa.unit ? ` ${despesa.unit}` : ""} ×{" "}
+                        {formatBRL(Number(despesa.unit_price))}
+                      </p>
+                    )}
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
                       {formatDate(l.entry_date)}
                       {` · ${SPECIES_META[speciesOf(l.species)].label}`}
@@ -429,17 +450,25 @@ export function AnimalFinanceiroTab({
                       {l.person ? ` · ${l.person}` : ""}
                     </p>
                   </div>
-                  <p
-                    className={cn(
-                      "text-sm font-semibold tabular-nums flex-shrink-0",
-                      venda
-                        ? "text-emerald-700 dark:text-emerald-400"
-                        : "text-rose-700 dark:text-rose-400"
+                  {/* O lápis é o que diz que dá para corrigir: sem ele, a linha
+                      parecia só um extrato, e quem errou o lançamento não
+                      descobria que era só tocar nela. */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <p
+                      className={cn(
+                        "text-sm font-semibold tabular-nums",
+                        venda
+                          ? "text-emerald-700 dark:text-emerald-400"
+                          : "text-rose-700 dark:text-rose-400"
+                      )}
+                    >
+                      {venda ? "" : "− "}
+                      {formatBRL(Number(l.value))}
+                    </p>
+                    {editavel && (
+                      <Pencil className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
                     )}
-                  >
-                    {venda ? "" : "− "}
-                    {formatBRL(Number(l.value))}
-                  </p>
+                  </div>
                 </div>
               );
             })}

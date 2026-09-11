@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { Receipt, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { Calculator, Receipt, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { cn, formatBRLInput, localDateISO, parseMoney, upperKeepingCaret } from "@/lib/utils";
+import {
+  cn,
+  formatBRL,
+  formatBRLInput,
+  formatQty,
+  localDateISO,
+  parseMoney,
+  upperKeepingCaret,
+} from "@/lib/utils";
 import {
   createAnimalDespesa,
   deleteAnimalDespesa,
@@ -26,16 +34,25 @@ import {
   SPECIES_META,
   SPECIES_OPTIONS,
   STICKY_FOOTER,
+  formatDecimalInput,
   localLabel,
+  parseDecimal,
   speciesOf,
 } from "./animal-shared";
 import {
   DESPESAS_ANIMAIS_SUGERIDAS,
+  UNIDADES_DESPESA_ANIMAIS,
   type AnimalDespesa,
   type AnimalLoteResumo,
   type AnimalSpecies,
   type AnimalWithInfo,
 } from "@/lib/types";
+
+/** Número do banco no formato que a máscara de digitação usa (vírgula). */
+function numeroNoCampo(v?: number | null): string {
+  const n = Number(v ?? 0);
+  return n > 0 ? formatDecimalInput(String(n).replace(".", ",")) : "";
+}
 
 interface Props {
   open: boolean;
@@ -59,6 +76,16 @@ interface Props {
  * descobre quanto o caprino custa, e não só quanto "os bichos" custam. O animal
  * é opcional — só quando o gasto foi de um bicho, e não do lote.
  *
+ * A COMPRA fica em pé (migration 092): o PRODUTO de um lado, e do outro a
+ * conta — quantidade × valor unitário, na unidade que foi comprada. Antes só
+ * havia "o que foi" e o total, então "20 SACOS DE RAÇÃO — R$ 1.900,00" não
+ * dizia por quanto saiu o saco, e não dava para comparar com a compra do mês
+ * passado. Quantidade e valor unitário são OPCIONAIS: frete e mão de obra não
+ * têm quantidade nenhuma, e cobrar isso deles só atrapalharia.
+ *
+ * O TOTAL se preenche sozinho a partir da conta, e continua digitável: na nota
+ * o desconto e o arredondamento existem, e quem manda é o que foi pago.
+ *
  * Isto NÃO cria lançamento no módulo Contas: é registro e relatório dentro de
  * Animais, do mesmo jeito que a despesa da obra.
  */
@@ -79,7 +106,16 @@ export function AnimalDespesaDialog({
   const [date, setDate] = useState(localDateISO());
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [unit, setUnit] = useState("");
+  const [unitPrice, setUnitPrice] = useState("");
   const [amount, setAmount] = useState("");
+  /**
+   * O total foi digitado na mão? Enquanto não for, ele acompanha a conta.
+   * Digitou, manda quem digitou: a nota vem com desconto e arredondamento, e
+   * a tela corrigindo o valor pago por baixo do dedo seria pior que o erro.
+   */
+  const [totalNaMao, setTotalNaMao] = useState(false);
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
   const [loteId, setLoteId] = useState("");
@@ -91,7 +127,20 @@ export function AnimalDespesaDialog({
     setDate(despesa?.expense_date ?? localDateISO());
     setCategory(despesa?.category ?? "");
     setDescription(despesa?.description ?? "");
+    setQuantity(numeroNoCampo(despesa?.quantity));
+    setUnit(despesa?.unit ?? "");
+    setUnitPrice(despesa?.unit_price ? formatBRLInput(Number(despesa.unit_price)) : "");
     setAmount(despesa ? formatBRLInput(Number(despesa.amount)) : "");
+    // Corrigindo: o total só fica travado se ele NÃO for o resultado da conta —
+    // aí veio digitado na mão (desconto na nota, ou lançamento antigo, sem
+    // quantidade nenhuma) e ninguém pode mexer nele por baixo do dedo. Se bate
+    // com a conta, corrigir a quantidade corrige o total junto, que é o que
+    // quem abriu para consertar espera.
+    const contaSalva =
+      Number(despesa?.quantity ?? 0) * Number(despesa?.unit_price ?? 0);
+    setTotalNaMao(
+      !!despesa && Math.abs(contaSalva - Number(despesa.amount)) >= 0.01
+    );
     setSupplier(despesa?.supplier ?? "");
     setNotes(despesa?.notes ?? "");
     setLoteId(despesa?.lote_id ?? presetLoteId ?? "");
@@ -106,15 +155,44 @@ export function AnimalDespesaDialog({
     (l) => speciesOf(l.species) === species && (l.status === "aberto" || l.id === loteId)
   );
 
+  /** A conta da compra: quantidade × valor unitário. */
+  const conta = useMemo(() => {
+    const qtd = parseDecimal(quantity);
+    const preco = parseMoney(unitPrice);
+    return { qtd, preco, total: Math.round(qtd * preco * 100) / 100 };
+  }, [quantity, unitPrice]);
+
+  const total = parseMoney(amount);
+  /** O total digitado não bate com a conta — a tela mostra e deixa ele escolher. */
+  const contaDiverge = totalNaMao && conta.total > 0 && Math.abs(conta.total - total) >= 0.01;
+
+  /**
+   * Mexeu na quantidade ou no valor unitário: o total acompanha, enquanto
+   * ninguém o tiver digitado na mão.
+   */
+  function recalcular(novaQtd: string, novoPreco: string) {
+    if (totalNaMao) return;
+    const t = parseDecimal(novaQtd) * parseMoney(novoPreco);
+    setAmount(t > 0 ? formatBRLInput(t) : "");
+  }
+
+  /** Volta o total para o que a conta diz. */
+  function usarAConta() {
+    setAmount(formatBRLInput(conta.total));
+    setTotalNaMao(false);
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
     if (!description.trim()) {
-      setError("Escreva o que foi a despesa");
+      setError("Escreva qual foi o produto");
       return;
     }
-    const valor = parseMoney(amount);
+    // Sem total digitado, vale a conta — quem preencheu quantidade e valor
+    // unitário não tem por que repetir o resultado embaixo.
+    const valor = total || conta.total;
     if (valor <= 0) {
       setError("Informe o valor da despesa");
       return;
@@ -128,6 +206,9 @@ export function AnimalDespesaDialog({
         expense_date: date,
         category,
         description,
+        quantity: conta.qtd,
+        unit,
+        unit_price: conta.preco,
         amount: valor,
         supplier,
         notes,
@@ -248,30 +329,141 @@ export function AnimalDespesaDialog({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="ad_desc">O que foi *</Label>
+            <Label htmlFor="ad_desc">Produto *</Label>
             <Input
               id="ad_desc"
               value={description}
               onChange={(e) => setDescription(upperKeepingCaret(e))}
-              placeholder="ex: 20 sacos de ração"
+              placeholder="ex: ração engorda"
               autoCapitalize="characters"
               className="h-11 sm:h-10"
               autoComplete="off"
             />
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              Só o produto — a quantidade e o preço vão nos campos de baixo.
+            </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="ad_valor">Valor (R$) *</Label>
-            <Input
-              id="ad_valor"
-              value={amount}
-              onChange={(e) => setAmount(formatBRLInput(e.target.value))}
-              placeholder="0,00"
-              className="h-11 text-base tabular-nums font-semibold sm:h-10"
-              inputMode="decimal"
-              autoComplete="off"
-            />
+          {/* A CONTA DA COMPRA: 20 SC × R$ 95,00. É o que responde "por quanto
+              saiu o saco?" um mês depois — e o que deixa comparar com a compra
+              anterior. Fica em branco no frete e na mão de obra, que não têm
+              quantidade nenhuma. */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="ad_qtd">Quantidade</Label>
+              <Input
+                id="ad_qtd"
+                value={quantity}
+                onChange={(e) => {
+                  const v = formatDecimalInput(e.target.value);
+                  setQuantity(v);
+                  recalcular(v, unitPrice);
+                }}
+                placeholder="0"
+                className="h-11 text-base tabular-nums font-semibold sm:h-10"
+                inputMode="decimal"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ad_unidade">Unidade</Label>
+              <Input
+                id="ad_unidade"
+                value={unit}
+                onChange={(e) => setUnit(upperKeepingCaret(e))}
+                placeholder="saco, kg..."
+                autoCapitalize="characters"
+                className="h-11 text-base font-semibold sm:h-10"
+                autoComplete="off"
+              />
+            </div>
           </div>
+
+          {/* As unidades da nota do dia a dia, a um toque. O campo continua
+              livre: quem compra em "balde" escreve balde. */}
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mt-2">
+            {UNIDADES_DESPESA_ANIMAIS.map((u) => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => setUnit(unit === u ? "" : u)}
+                className={cn(
+                  "flex-shrink-0 min-h-[34px] px-3 rounded-lg border text-[11px] font-semibold transition-colors",
+                  unit === u
+                    ? "bg-slate-700 border-slate-700 text-white"
+                    : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                )}
+              >
+                {u}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="ad_unitario">Valor unitário (R$)</Label>
+              <Input
+                id="ad_unitario"
+                value={unitPrice}
+                onChange={(e) => {
+                  const v = formatBRLInput(e.target.value);
+                  setUnitPrice(v);
+                  recalcular(quantity, v);
+                }}
+                placeholder="0,00"
+                className="h-11 text-base tabular-nums font-semibold sm:h-10"
+                inputMode="decimal"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ad_valor">Valor final (R$) *</Label>
+              <Input
+                id="ad_valor"
+                value={amount}
+                onChange={(e) => {
+                  setAmount(formatBRLInput(e.target.value));
+                  setTotalNaMao(true);
+                }}
+                placeholder="0,00"
+                className="h-11 text-base tabular-nums font-semibold sm:h-10"
+                inputMode="decimal"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          {/* A conta por extenso, para conferir o que está sendo lançado */}
+          {conta.total > 0 && (
+            <div className="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50/60 dark:bg-rose-950/20 px-2.5 py-2 space-y-1 -mt-2">
+              <p className="text-[11px] text-rose-800 dark:text-rose-300 tabular-nums flex items-center gap-1.5">
+                <Calculator className="w-3 h-3 flex-shrink-0" />
+                {formatQty(conta.qtd)}
+                {unit.trim() ? ` ${unit.trim()}` : ""} × {formatBRL(conta.preco)} ={" "}
+                {formatBRL(conta.total)}
+              </p>
+              {contaDiverge && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-rose-700/80 dark:text-rose-400/80">
+                    Você digitou {formatBRL(total)} — vale o que você digitou.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={usarAConta}
+                    className="flex-shrink-0 text-[11px] font-semibold text-rose-700 dark:text-rose-300 underline underline-offset-2"
+                  >
+                    usar a conta
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 -mt-2">
+            O VALOR FINAL é o que entra na ficha. Ele se preenche sozinho pela conta
+            acima — mude na mão quando a nota vier com desconto ou acréscimo. Quantidade
+            e unidade podem ficar em branco no frete e na diária.
+          </p>
 
           <div className="space-y-1.5">
             <Label htmlFor="ad_data">Data</Label>

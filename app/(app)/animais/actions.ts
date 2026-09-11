@@ -38,6 +38,12 @@ function money(v?: number | null): number {
   return isNaN(n) ? 0 : Math.round(n * 100) / 100;
 }
 
+/** Quantidade sempre positiva, com 3 casas — nem tudo se compra inteiro. */
+function qtd(v?: number | null): number {
+  const n = Math.abs(Number(v ?? 0));
+  return isNaN(n) ? 0 : Math.round(n * 1000) / 1000;
+}
+
 /** Nome do tipo em português para as mensagens de erro ("um SUÍNO com esse número"). */
 const SPECIES_LABEL: Record<AnimalSpecies, string> = {
   bovino: "bovino",
@@ -1270,6 +1276,14 @@ export async function undoAnimalExit(animalId: string) {
  * problema no lugar errado.
  */
 function despesaError(error: { code?: string; message: string }): string {
+  // As colunas da conta (quantidade, unidade, valor unitário) são da 092. Sem
+  // separar, o recado mandava rodar a 072 — que já tinha rodado.
+  if (
+    /quantity|unit_price|unit\b/.test(error.message) &&
+    (error.code === "42703" || error.code === "PGRST204")
+  )
+    return "Rode a migration 092 no Supabase para lançar quantidade, unidade e valor unitário";
+
   if (error.code === "42P01" || error.code === "42703")
     return "Rode a migration 072 no Supabase para lançar despesas com animais";
 
@@ -1295,7 +1309,13 @@ export interface AnimalDespesaInput {
   animal_id?: string | null;
   expense_date?: string | null;
   category?: string | null;
+  /** O produto comprado. */
   description: string;
+  /** A conta da compra (092) — opcional: frete e diária não têm quantidade. */
+  quantity?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  /** O TOTAL do gasto: é este valor que a ficha soma. */
   amount: number;
   supplier?: string | null;
   notes?: string | null;
@@ -1310,15 +1330,21 @@ function despesaRow(input: AnimalDespesaInput) {
     expense_date: input.expense_date?.trim() || undefined,
     category: clean(input.category),
     description: clean(input.description),
-    amount: money(input.amount),
+    quantity: qtd(input.quantity),
+    unit: clean(input.unit),
+    unit_price: money(input.unit_price),
+    // O total é o que a ficha soma. Quando não veio digitado mas a conta dá
+    // para ser feita, ela vale — quem preencheu quantidade e valor unitário
+    // não deve ter de repetir o resultado.
+    amount: money(input.amount) || qtd(input.quantity) * money(input.unit_price),
     supplier: clean(input.supplier),
     notes: clean(input.notes),
   };
 }
 
 function despesaInvalida(input: AnimalDespesaInput): string | null {
-  if (!clean(input.description)) return "Escreva o que foi a despesa";
-  if (money(input.amount) <= 0) return "Informe o valor da despesa";
+  if (!clean(input.description)) return "Escreva qual foi o produto";
+  if (despesaRow(input).amount <= 0) return "Informe o valor da despesa";
   return null;
 }
 

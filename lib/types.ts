@@ -919,6 +919,24 @@ export interface AnimalWeight {
 // gasto com os bichos não tinha onde ser lançado. Com os dois lados juntos e
 // SEMPRE amarrados à espécie, a ficha responde "o caprino se paga?".
 
+/**
+ * Unidades de medida sugeridas na compra (migration 092) — o campo continua
+ * livre. São as que aparecem na nota do dia a dia: saco de ração, quilo de
+ * sal, litro de vermífugo, milheiro de alevino e de pintinho.
+ */
+export const UNIDADES_DESPESA_ANIMAIS = [
+  "SC",
+  "KG",
+  "T",
+  "L",
+  "ML",
+  "UN",
+  "CX",
+  "FD",
+  "DOSE",
+  "MILHEIRO",
+] as const;
+
 /** Categorias sugeridas na despesa — o campo continua livre. */
 export const DESPESAS_ANIMAIS_SUGERIDAS = [
   "RAÇÃO",
@@ -951,7 +969,17 @@ export interface AnimalDespesa {
   expense_date: string;
   /** Ração, sal mineral, medicamento... texto livre; agrupa o relatório. */
   category: string | null;
+  /** O PRODUTO comprado: "RAÇÃO ENGORDA", "SAL MINERAL", "VERMÍFUGO". */
   description: string;
+  /**
+   * A conta da compra (migration 092): quanto foi comprado, em que unidade, e
+   * quanto custou cada uma. Os três são opcionais — frete e mão de obra não
+   * têm quantidade. Vêm `undefined` enquanto a migration não roda.
+   */
+  quantity?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  /** O TOTAL do gasto — é ele que a ficha soma, com ou sem a conta acima. */
   amount: number;
   /** De quem se comprou, quem prestou o serviço. */
   supplier: string | null;

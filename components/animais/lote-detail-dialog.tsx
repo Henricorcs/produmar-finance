@@ -244,6 +244,14 @@ export function LoteDetailDialog({
             </Button>
           </div>
 
+          {/* Onde se conserta o que foi lançado errado. Esta tela mostra só os
+              números do ciclo; quem guarda lançamento por lançamento é a
+              Ficha, e sem essa linha ninguém descobria isso. */}
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Errou a venda ou a despesa? Abra a aba Ficha e toque no lançamento para
+            corrigir ou apagar.
+          </p>
+
           {/* Movimento novo */}
           {!fechado && (
             <form
