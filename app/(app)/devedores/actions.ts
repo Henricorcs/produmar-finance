@@ -10,7 +10,7 @@ import { loanTotalDue } from "@/lib/utils";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 /**
- * ESTE MÓDULO NÃO ALIMENTA O CAIXA.
+ * ESTE MÓDULO NÃO ENCOSTA NO CAIXA. NUNCA.
  *
  * Ele nasceu como "Empréstimos" e lançava tudo sozinho: a saída quando o
  * dinheiro era emprestado, um recebível por parcela e a entrada a cada
@@ -18,21 +18,24 @@ import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
  * dia em que o dinheiro de fato se move. Aqui é CONTROLE DE DEVEDORES: quem
  * deve, quanto, quando vence e quanto já pagou.
  *
- * A regra, para não voltar atrás sem querer: o módulo nunca mais CRIA nem
- * ATUALIZA linha em `transactions`. Ele só APAGA as que ele mesmo havia
- * criado antes desta mudança, e só quando o dono delas morre — a dívida é
- * excluída, o pagamento é removido, o cronograma é refeito. Lançamento órfão
- * no caixa ("A RECEBER #12" de uma dívida que não existe mais) é pior que
- * lançamento nenhum.
+ * A regra é uma só, sem exceção: NENHUMA operação daqui escreve, atualiza ou
+ * APAGA linha em `transactions`. Nem criar dívida, nem editar, nem excluir,
+ * nem registrar ou remover pagamento.
+ *
+ * Por que nem apagar: as dívidas lançadas antes desta mudança deixaram
+ * lançamentos no caixa, e eles são passado do dono — dinheiro que ele já
+ * conferiu. Excluir uma dívida aqui e ver o caixa encolher sozinho é
+ * exatamente o susto que este módulo existe para não dar. Se um "A RECEBER"
+ * ficar sobrando lá depois de a dívida sumir daqui, quem apaga é ele, em
+ * Finanças, olhando o que está apagando.
  *
  * As colunas `transaction_id` / `receivable_transaction_id` continuam na
- * tabela por causa dessas dívidas antigas. Em dívida nova elas ficam nulas.
+ * tabela por causa dessas dívidas antigas — ninguém mais as lê nem as
+ * escreve. Em dívida nova elas ficam nulas.
  */
 function revalidate() {
+  // Só a tela do módulo: nada do que se faz aqui muda o caixa.
   revalidatePath("/devedores");
-  // O caixa ainda é revalidado porque APAGAR uma dívida antiga mexe nele.
-  revalidatePath("/dashboard");
-  revalidatePath("/contas");
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -53,9 +56,8 @@ function addMonths(dateStr: string, months: number): string {
  * `loan_installments` — a parcela, o valor e o vencimento, que é o que a
  * cobrança precisa. Nenhum lançamento é criado (ver a nota no topo do arquivo).
  *
- * Os recebíveis das parcelas ANTIGAS (de antes desta mudança) são apagados
- * junto com elas: o cronograma que os explicava deixou de existir, e recebível
- * órfão no caixa é pior que nenhum.
+ * O recebível que as parcelas antigas deixaram no caixa NÃO é tocado — ver a
+ * regra no topo do arquivo.
  */
 async function regenerateInstallments(
   supabase: SupabaseClient,
@@ -64,7 +66,6 @@ async function regenerateInstallments(
   count: number,
   firstDueDate: string
 ) {
-  await apagarLancamentosDasParcelas(supabase, loanId);
   await supabase.from("loan_installments").delete().eq("loan_id", loanId);
 
   if (count < 1) return;
@@ -110,18 +111,6 @@ async function cronogramaMudou(
 
   const somaAtual = atuais.reduce((s, i) => s + Number(i.amount), 0);
   return Math.abs(somaAtual - total) >= 0.005;
-}
-
-/** Tira do caixa os recebíveis que as parcelas antigas deste devedor deixaram. */
-async function apagarLancamentosDasParcelas(supabase: SupabaseClient, loanId: string) {
-  const { data: antigas } = await supabase
-    .from("loan_installments")
-    .select("transaction_id")
-    .eq("loan_id", loanId);
-  const ids = (antigas ?? [])
-    .map((o) => o.transaction_id)
-    .filter((x): x is string => !!x);
-  if (ids.length > 0) await supabase.from("transactions").delete().in("id", ids);
 }
 
 /** Recalcula o status (quitado / em_aberto) com base nos pagamentos. Não mexe em 'cancelado'. */
@@ -289,8 +278,8 @@ export async function updateLoan(id: string, input: LoanInput) {
       await regenerateInstallments(supabase, id, total, fields.installments_count, firstDue);
     }
   } else {
-    // Virou avulso: o cronograma não vale mais.
-    await apagarLancamentosDasParcelas(supabase, id);
+    // Virou avulso: o cronograma não vale mais. O recebível que as parcelas
+    // antigas deixaram no caixa fica onde está — ver a regra no topo.
     await supabase.from("loan_installments").delete().eq("loan_id", id);
   }
 
@@ -302,30 +291,17 @@ export async function updateLoan(id: string, input: LoanInput) {
 export async function deleteLoan(id: string) {
   const supabase = createClient();
 
-  // Coleta os lançamentos que esta dívida deixou no caixa QUANDO O MÓDULO
-  // ainda lançava sozinho (dívida nova não tem nenhum) e os comprovantes no
-  // storage. Apagar a dívida e deixar o "A RECEBER" dela lá deixaria o caixa
-  // cobrando um dinheiro que ninguém mais controla.
-  const [{ data: loan }, { data: payments }, { data: insts }, { data: attachments }] =
-    await Promise.all([
-      supabase.from("loans").select("transaction_id, receivable_transaction_id").eq("id", id).single(),
-      supabase.from("loan_payments").select("transaction_id").eq("loan_id", id),
-      supabase.from("loan_installments").select("transaction_id").eq("loan_id", id),
-      supabase.from("loan_attachments").select("storage_path").eq("loan_id", id),
-    ]);
+  // O que esta dívida deixou no caixa quando o módulo ainda lançava sozinho
+  // NÃO é tocado: é passado do dono, e ver o caixa encolher por causa de uma
+  // exclusão feita aqui é o susto que este módulo existe para não dar. Sobrou
+  // um "A RECEBER" lá? Quem apaga é ele, em Finanças.
+  const { data: attachments } = await supabase
+    .from("loan_attachments")
+    .select("storage_path")
+    .eq("loan_id", id);
 
-  const txIds = [
-    loan?.transaction_id,
-    loan?.receivable_transaction_id,
-    ...(payments ?? []).map((p) => p.transaction_id),
-    ...(insts ?? []).map((i) => i.transaction_id),
-  ].filter((x): x is string => !!x);
-
-  if (txIds.length > 0) {
-    await supabase.from("transactions").delete().in("id", txIds);
-  }
-
-  // Remove os arquivos do storage (as linhas caem por cascade junto com o loan)
+  // Os comprovantes, sim: são arquivos DESTE módulo, e sem a dívida eles
+  // viram lixo pago no storage.
   if (attachments && attachments.length > 0) {
     await removerArquivos(attachments.map((a) => a.storage_path));
   }
@@ -396,27 +372,13 @@ export async function deletePayment(paymentId: string) {
 
   const { data: payment } = await supabase
     .from("loan_payments")
-    .select("loan_id, installment_id, transaction_id")
+    .select("loan_id, installment_id")
     .eq("id", paymentId)
     .single();
   if (!payment) return { error: "Pagamento não encontrado" };
 
-  // Pagamento ANTIGO (de antes desta mudança) levou junto um lançamento no
-  // caixa. Apagar o pagamento e deixar o recebido lá faria o caixa contar um
-  // dinheiro que o módulo diz que não entrou — então ele cai junto.
-  if (payment.transaction_id) {
-    await supabase.from("transactions").delete().eq("id", payment.transaction_id);
-    // A parcela apontava para o mesmo lançamento: limpa o ponteiro para não
-    // ficar apontando para o que não existe mais.
-    if (payment.installment_id) {
-      await supabase
-        .from("loan_installments")
-        .update({ transaction_id: null })
-        .eq("id", payment.installment_id)
-        .eq("transaction_id", payment.transaction_id);
-    }
-  }
-
+  // A entrada que um pagamento ANTIGO deixou no caixa fica lá: é dinheiro que
+  // o dono já conferiu, e quem decide tirar é ele, em Finanças.
   await supabase.from("loan_payments").delete().eq("id", paymentId);
 
   if (payment.installment_id) {

@@ -167,7 +167,7 @@ export function DevedoresPageClient({ loans }: Props) {
   async function handleDelete(id: string) {
     if (
       !confirm(
-        "Excluir esta dívida, com as parcelas e os pagamentos dela? Isso não tem volta."
+        "Excluir esta dívida, com as parcelas e os pagamentos dela? Isso não tem volta.\n\nO caixa não é alterado."
       )
     )
       return;

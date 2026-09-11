@@ -441,8 +441,8 @@ export function LoanDialog({ open, onClose, loan }: Props) {
              lançado por ele na mão. Dito na tela para ninguém abrir Finanças
              procurando um lançamento que o sistema não faz mais. */}
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Esta tela é só o controle da dívida — ela não lança nada no caixa. A saída e
-            os recebimentos você lança em Finanças, na mão.
+            Esta tela é só o controle da dívida: nada aqui mexe no caixa — nem lançar, nem
+            editar, nem excluir. A saída e os recebimentos você lança em Finanças, na mão.
           </p>
 
           {/* Observações */}

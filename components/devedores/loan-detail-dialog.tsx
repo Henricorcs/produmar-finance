@@ -84,7 +84,12 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
   }
 
   function handleDeletePayment(id: string) {
-    if (!confirm("Remover este pagamento? O saldo do devedor volta a subir.")) return;
+    if (
+      !confirm(
+        "Remover este pagamento? O saldo do devedor volta a subir.\n\nO caixa não é alterado."
+      )
+    )
+      return;
     startTransition(async () => {
       await deletePayment(id);
     });
