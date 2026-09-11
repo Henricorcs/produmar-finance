@@ -25,7 +25,7 @@ import {
   updateLoan,
   uploadLoanAttachments,
   type LoanInput,
-} from "@/app/(app)/emprestimos/actions";
+} from "@/app/(app)/devedores/actions";
 import { loanTotalDue, formatBRL, formatBRLInput } from "@/lib/utils";
 import type { Loan, LoanRepaymentType } from "@/lib/types";
 import { comprimirImagens } from "@/lib/comprimir-imagem";
@@ -147,7 +147,7 @@ export function LoanDialog({ open, onClose, loan }: Props) {
     };
 
     startTransition(async () => {
-      // Cria/atualiza o empréstimo. savedIdRef evita recriar caso o upload
+      // Cria/atualiza a dívida. savedIdRef evita recriar caso o upload
       // do comprovante falhe e o usuário tente enviar novamente.
       let loanId = savedIdRef.current;
 
@@ -176,7 +176,7 @@ export function LoanDialog({ open, onClose, loan }: Props) {
         const up = await uploadLoanAttachments(loanId, upload);
         if (up && "error" in up) {
           setError(
-            `Empréstimo salvo, mas falha ao anexar o comprovante: ${up.error}. Tente enviar de novo.`
+            `Dívida salva, mas falha ao anexar o comprovante: ${up.error}. Tente enviar de novo.`
           );
           return;
         }
@@ -190,7 +190,7 @@ export function LoanDialog({ open, onClose, loan }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{loan ? "Editar empréstimo" : "Novo empréstimo"}</DialogTitle>
+          <DialogTitle>{loan ? "Editar dívida" : "Nova dívida"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -201,7 +201,7 @@ export function LoanDialog({ open, onClose, loan }: Props) {
               id="borrower_name"
               name="borrower_name"
               defaultValue={loan?.borrower_name ?? ""}
-              placeholder="nome de quem pegou emprestado"
+              placeholder="nome de quem deve"
               autoCapitalize="characters"
               data-caixa="uppercase"
               required
@@ -231,9 +231,9 @@ export function LoanDialog({ open, onClose, loan }: Props) {
             </div>
           </div>
 
-          {/* Valor emprestado */}
+          {/* Valor devido */}
           <div className="space-y-1.5">
-            <Label htmlFor="amount">Valor emprestado *</Label>
+            <Label htmlFor="amount">Valor devido *</Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none">
                 R$
@@ -385,7 +385,7 @@ export function LoanDialog({ open, onClose, loan }: Props) {
           {/* Datas */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="loan_date">Data do empréstimo *</Label>
+              <Label htmlFor="loan_date">Data da dívida *</Label>
               <Input
                 id="loan_date"
                 name="loan_date"
@@ -522,7 +522,7 @@ export function LoanDialog({ open, onClose, loan }: Props) {
               Cancelar
             </Button>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Salvando..." : loan ? "Salvar alterações" : "Emprestar"}
+              {isPending ? "Salvando..." : loan ? "Salvar alterações" : "Lançar dívida"}
             </Button>
           </DialogFooter>
         </form>

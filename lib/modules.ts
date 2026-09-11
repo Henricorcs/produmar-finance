@@ -44,7 +44,7 @@ export const APP_MODULES: AppModule[] = [
   {
     slug: "financas",
     name: "Finanças",
-    description: "Dashboard, contas, empréstimos, notas e relatórios",
+    description: "Dashboard, contas, notas e relatórios",
     href: "/dashboard",
     icon: Wallet,
     accentIcon:
@@ -53,7 +53,6 @@ export const APP_MODULES: AppModule[] = [
       { href: "/dashboard",     label: "Dashboard",     short: "Início",   icon: LayoutDashboard },
       { href: "/para-onde-foi", label: "Para onde foi", short: "Despesas", icon: GitFork },
       { href: "/contas",        label: "Lançamentos",   short: "Lanç.",    icon: CalendarClock },
-      { href: "/emprestimos",   label: "Empréstimos",   short: "Empr.",    icon: HandCoins },
       { href: "/notas-fiscais", label: "Notas fiscais", short: "Notas",    icon: FileText },
       { href: "/relatorios",    label: "Relatórios",    short: "Relat.",   icon: BarChart3 },
       { href: "/configuracoes", label: "Config.",       short: "Config",   icon: Settings },
@@ -148,6 +147,20 @@ export const APP_MODULES: AppModule[] = [
     accentIcon:
       "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400",
     tabs: [{ href: "/alugueis", label: "Aluguéis", short: "Aluguéis", icon: Building2 }],
+  },
+  {
+    // QUEM DEVE PARA A EMPRESA. Isto morava numa aba lá dentro de Finanças,
+    // a três toques de distância — e cobrança é coisa de olhar todo dia, não
+    // de caçar no meio do dashboard. Mesma tabela de sempre (`loans`): o que
+    // mudou foi o caminho, então nada do que já estava lançado se perdeu.
+    slug: "devedores",
+    name: "Devedores",
+    description: "Quem deve, quanto falta, quando vence e o que já foi pago",
+    href: "/devedores",
+    icon: HandCoins,
+    accentIcon:
+      "bg-red-50 text-red-600 dark:bg-red-900/40 dark:text-red-400",
+    tabs: [{ href: "/devedores", label: "Devedores", short: "Devedores", icon: HandCoins }],
   },
   {
     slug: "animais",

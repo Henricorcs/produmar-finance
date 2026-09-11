@@ -1,23 +1,11 @@
-import { createClient } from "@/lib/supabase/server";
-import { EmprestimosPageClient } from "@/components/emprestimos/emprestimos-page-client";
-import type { Loan, LoanInstallment, LoanPayment, LoanAttachment } from "@/lib/types";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export type LoanWithDetails = Loan & {
-  loan_payments: LoanPayment[];
-  loan_installments: LoanInstallment[];
-  loan_attachments: LoanAttachment[];
-};
-
-export default async function EmprestimosPage() {
-  const supabase = createClient();
-
-  const { data } = await supabase
-    .from("loans")
-    .select("*, loan_payments(*), loan_installments(*), loan_attachments(*)")
-    .order("loan_date", { ascending: false })
-    .order("loan_number", { ascending: false });
-
-  return <EmprestimosPageClient loans={(data as LoanWithDetails[]) ?? []} />;
+/**
+ * O ENDEREÇO VELHO DA TELA. Ela era uma aba de Finanças (/emprestimos) e virou
+ * módulo próprio, Devedores. Quem tem o link salvo no celular, o atalho na tela
+ * inicial ou o costume de digitar o endereço cai aqui e é levado para o lugar
+ * novo — em vez de bater numa página que não existe mais.
+ */
+export default function EmprestimosRedirect() {
+  redirect("/devedores");
 }

@@ -15,7 +15,7 @@ import {
   uploadLoanAttachments,
   getLoanAttachmentSignedUrl,
   deleteLoanAttachment,
-} from "@/app/(app)/emprestimos/actions";
+} from "@/app/(app)/devedores/actions";
 import type { LoanAttachment } from "@/lib/types";
 import { comprimirImagens } from "@/lib/comprimir-imagem";
 

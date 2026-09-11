@@ -9,7 +9,7 @@ import { loanTotalDue } from "@/lib/utils";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 
 function revalidate() {
-  revalidatePath("/emprestimos");
+  revalidatePath("/devedores");
   revalidatePath("/dashboard");
   revalidatePath("/contas");
 }
@@ -25,7 +25,13 @@ function addMonths(dateStr: string, months: number): string {
   ).padStart(2, "0")}`;
 }
 
-/** Busca o id da categoria dedicada de empréstimo (criada na migration 006). */
+/**
+ * Busca o id da categoria dedicada (criada na migration 006).
+ *
+ * Os NOMES abaixo são procurados no cadastro de categorias tal como estão —
+ * não os traduza para o vocabulário novo de Devedores sem renomear a categoria
+ * no banco junto, senão o lançamento no caixa fica sem categoria.
+ */
 async function loanCategoryId(
   supabase: SupabaseClient,
   type: "entrada" | "saida"
@@ -201,8 +207,8 @@ export interface LoanInput {
 
 function validate(input: LoanInput): string | null {
   if (!input.borrower_name?.trim()) return "Nome do devedor é obrigatório";
-  if (!(input.principal > 0)) return "Valor emprestado inválido";
-  if (!input.loan_date) return "Data do empréstimo é obrigatória";
+  if (!(input.principal > 0)) return "Valor devido inválido";
+  if (!input.loan_date) return "Data da dívida é obrigatória";
   if (input.interest_rate != null && input.interest_rate < 0) return "Juros inválido";
   if (input.repayment_type === "parcelado") {
     if (!input.installments_count || input.installments_count < 1)
@@ -257,7 +263,7 @@ export async function createLoan(input: LoanInput) {
     .insert({ ...fields, created_by: user.id })
     .select()
     .single();
-  if (error || !loan) return { error: error?.message ?? "Erro ao criar empréstimo" };
+  if (error || !loan) return { error: error?.message ?? "Erro ao criar a dívida" };
 
   // Lançamento de SAÍDA — o dinheiro saiu do caixa
   const categoryId = await loanCategoryId(supabase, "saida");
@@ -466,7 +472,7 @@ export async function addPayment(loanId: string, input: PaymentInput) {
     )
     .eq("id", loanId)
     .single();
-  if (loanErr || !loan) return { error: loanErr?.message ?? "Empréstimo não encontrado" };
+  if (loanErr || !loan) return { error: loanErr?.message ?? "Dívida não encontrada" };
 
   const recCategoryId = await loanCategoryId(supabase, "entrada");
   let txId: string | null = null;

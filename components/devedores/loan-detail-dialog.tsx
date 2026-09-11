@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { addPayment, deletePayment } from "@/app/(app)/emprestimos/actions";
+import { addPayment, deletePayment } from "@/app/(app)/devedores/actions";
 import { LoanComprovantes } from "./loan-comprovantes";
 import {
   loanTotalDue,
@@ -23,7 +23,7 @@ import {
   daysUntil,
   formatBRLInput,
 } from "@/lib/utils";
-import type { LoanWithDetails } from "@/app/(app)/emprestimos/page";
+import type { LoanWithDetails } from "@/app/(app)/devedores/page";
 
 interface Props {
   open: boolean;
@@ -94,7 +94,7 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="pr-6 line-clamp-2">
-            Empréstimo — {loan.borrower_name}
+            Dívida — {loan.borrower_name}
           </DialogTitle>
         </DialogHeader>
 
@@ -125,7 +125,7 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
         <div className="space-y-4">
           {/* Resumo financeiro */}
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <SummaryItem label="Emprestado" value={formatBRL(loan.principal)} />
+            <SummaryItem label="Valor devido" value={formatBRL(loan.principal)} />
             <SummaryItem
               label={
                 loan.interest_amount
@@ -194,7 +194,7 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
             </div>
           )}
 
-          {/* Registrar pagamento avulso — só p/ empréstimos sem parcelas */}
+          {/* Registrar pagamento avulso — só p/ dívidas sem parcelas */}
           {balance > 0 && installments.length === 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">

@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { LoanDialog } from "./loan-dialog";
 import { LoanDetailDialog } from "./loan-detail-dialog";
-import { deleteLoan } from "@/app/(app)/emprestimos/actions";
+import { deleteLoan } from "@/app/(app)/devedores/actions";
 import {
   loanTotalDue,
   loanBalance,
@@ -17,7 +17,7 @@ import {
   daysUntil,
 } from "@/lib/utils";
 import type { Loan } from "@/lib/types";
-import type { LoanWithDetails } from "@/app/(app)/emprestimos/page";
+import type { LoanWithDetails } from "@/app/(app)/devedores/page";
 
 interface Props {
   loans: LoanWithDetails[];
@@ -36,6 +36,35 @@ type FilterValue = (typeof FILTER_TABS)[number]["value"];
 
 function totalPaidOf(loan: LoanWithDetails): number {
   return loan.loan_payments.reduce((s, p) => s + Number(p.amount), 0);
+}
+
+/**
+ * O PRÓXIMO VENCIMENTO da dívida — a parcela mais antiga ainda não paga, ou o
+ * vencimento único quando não é parcelado. É a informação que decide o dia de
+ * quem cobra, e ela não aparecia na lista: era preciso abrir cada dívida para
+ * saber quem vence amanhã.
+ */
+function nextDueOf(loan: LoanWithDetails): string | null {
+  const abertas = loan.loan_installments
+    .filter((i) => !i.paid)
+    .map((i) => i.due_date)
+    .sort();
+  if (abertas.length > 0) return abertas[0];
+  return loan.loan_installments.length === 0 ? loan.due_date : null;
+}
+
+/** "vence 12/10", "venceu 12/09 · 5 dias", "vence hoje". */
+function dueLabel(due: string): { texto: string; atrasado: boolean } {
+  const dias = daysUntil(due);
+  if (dias < 0) {
+    const n = Math.abs(dias);
+    return {
+      texto: `venceu ${formatDate(due)} · ${n} ${n === 1 ? "dia" : "dias"}`,
+      atrasado: true,
+    };
+  }
+  if (dias === 0) return { texto: "vence hoje", atrasado: true };
+  return { texto: `vence ${formatDate(due)}`, atrasado: false };
 }
 
 function displayStatusOf(loan: LoanWithDetails): DisplayStatus {
@@ -61,7 +90,7 @@ const STATUS_BADGE: Record<DisplayStatus, { label: string; variant: "success" | 
   cancelado: { label: "Cancelado", variant: "muted" },
 };
 
-export function EmprestimosPageClient({ loans }: Props) {
+export function DevedoresPageClient({ loans }: Props) {
   const [, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Loan | null>(null);
@@ -89,19 +118,24 @@ export function EmprestimosPageClient({ loans }: Props) {
     });
   }, [decorated, filter, search]);
 
-  // Totais (ignora cancelados)
+  // Os quatro números da cobrança (dívida cancelada fica de fora de todos).
+  // VENCIDO é o que o módulo existe para mostrar: não adianta saber que faltam
+  // R$ 40 mil se ninguém sabe quanto já passou do dia.
   const totals = useMemo(() => {
-    let emprestado = 0;
+    let devido = 0;
     let aReceber = 0;
     let recebido = 0;
+    let vencido = 0;
     for (const l of loans) {
       if (l.status === "cancelado") continue;
       const paid = totalPaidOf(l);
-      emprestado += l.principal;
+      const saldo = loanBalance(l, paid);
+      devido += loanTotalDue(l);
       recebido += paid;
-      aReceber += loanBalance(l, paid);
+      aReceber += saldo;
+      if (displayStatusOf(l) === "atrasado") vencido += saldo;
     }
-    return { emprestado, aReceber, recebido };
+    return { devido, aReceber, recebido, vencido };
   }, [loans]);
 
   function openCreate() {
@@ -125,7 +159,7 @@ export function EmprestimosPageClient({ loans }: Props) {
     setDetail(null);
   }
   async function handleDelete(id: string) {
-    if (!confirm("Excluir este empréstimo? Os lançamentos no caixa também serão removidos.")) return;
+    if (!confirm("Excluir esta dívida? Os lançamentos no caixa também serão removidos.")) return;
     startTransition(async () => {
       await deleteLoan(id);
     });
@@ -136,22 +170,25 @@ export function EmprestimosPageClient({ loans }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Empréstimos</h1>
+          <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Devedores</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Dinheiro emprestado a terceiros
+            Quem deve para a empresa — quanto falta e quando vence
           </p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="w-4 h-4" />
-          Empréstimo
+          Nova dívida
         </Button>
       </div>
 
-      {/* Summary cards — empilhados no celular p/ caber o valor inteiro */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-        <SummaryCard label="Emprestado" value={totals.emprestado} tone="slate" />
-        <SummaryCard label="A receber" value={totals.aReceber} tone="amber" />
-        <SummaryCard label="Recebido" value={totals.recebido} tone="emerald" />
+      {/* Os quatro números: dois de cada lado no celular, tudo numa linha no
+          computador. VENCIDO vem por último de propósito — é o que o olho
+          procura, e no fim da linha ele não se perde no meio dos outros. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <SummaryCard label="Dívida total" value={totals.devido} tone="slate" />
+        <SummaryCard label="Já recebido" value={totals.recebido} tone="emerald" />
+        <SummaryCard label="Falta receber" value={totals.aReceber} tone="amber" />
+        <SummaryCard label="Vencido" value={totals.vencido} tone="red" />
       </div>
 
       {/* Search + filters */}
@@ -161,7 +198,7 @@ export function EmprestimosPageClient({ loans }: Props) {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar devedor..."
+            placeholder="Buscar pelo nome do devedor..."
             className="pl-9"
           />
         </div>
@@ -187,9 +224,9 @@ export function EmprestimosPageClient({ loans }: Props) {
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-center">
             <HandCoins className="w-8 h-8 text-slate-300 mb-2" />
-            <p className="text-sm text-slate-400">Nenhum empréstimo encontrado</p>
+            <p className="text-sm text-slate-400">Nenhum devedor encontrado</p>
             <button onClick={openCreate} className="mt-3 text-xs text-produmar-600 hover:underline">
-              + Registrar o primeiro empréstimo
+              + Registrar a primeira dívida
             </button>
           </div>
         ) : (
@@ -198,6 +235,10 @@ export function EmprestimosPageClient({ loans }: Props) {
               const paid = totalPaidOf(loan);
               const balance = loanBalance(loan, paid);
               const badge = STATUS_BADGE[status];
+              // O vencimento só interessa enquanto há saldo: dívida paga não
+              // vence mais, e mostrar data nela só sujaria a lista.
+              const due = balance > 0 ? nextDueOf(loan) : null;
+              const vencimento = due ? dueLabel(due) : null;
               return (
                 <div
                   key={loan.id}
@@ -220,6 +261,19 @@ export function EmprestimosPageClient({ loans }: Props) {
                       {loan.borrower_name}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      {/* O vencimento vem PRIMEIRO: é por ele que se cobra.
+                          A data da dívida é histórico e fica atrás. */}
+                      {vencimento && (
+                        <span
+                          className={`text-xs font-medium ${
+                            vencimento.atrasado
+                              ? "text-red-600 dark:text-red-400"
+                              : "text-slate-500 dark:text-slate-400"
+                          }`}
+                        >
+                          {vencimento.texto}
+                        </span>
+                      )}
                       <span className="text-xs text-slate-400">{formatDate(loan.loan_date)}</span>
                       {loan.repayment_type === "parcelado" && (
                         <span className="text-[10px] text-slate-400">
@@ -295,19 +349,19 @@ function SummaryCard({
 }: {
   label: string;
   value: number;
-  tone: "slate" | "amber" | "emerald";
+  tone: "slate" | "amber" | "emerald" | "red";
 }) {
   const styles = {
     slate: "bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300",
     amber: "bg-amber-50 dark:bg-amber-950/40 border-amber-100 dark:border-amber-900/50 text-amber-700 dark:text-amber-400",
     emerald: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400",
+    red: "bg-red-50 dark:bg-red-950/40 border-red-100 dark:border-red-900/50 text-red-700 dark:text-red-400",
   }[tone];
   return (
-    // Celular: label e valor lado a lado (largura total). Desktop: empilhado.
-    <div
-      className={`rounded-xl px-4 py-3 sm:p-4 border min-w-0 flex items-center justify-between sm:block ${styles}`}
-    >
-      <p className="text-xs font-medium opacity-80 sm:mb-1">{label}</p>
+    // Quatro cartões em duas colunas no celular: o rótulo em cima e o valor
+    // embaixo, senão "Falta receber" e o número brigam pela mesma linha.
+    <div className={`rounded-xl px-3 py-2.5 sm:p-4 border min-w-0 ${styles}`}>
+      <p className="text-xs font-medium opacity-80 mb-0.5 sm:mb-1 truncate">{label}</p>
       <p className="text-base font-semibold tabular-nums">{formatBRL(value)}</p>
     </div>
   );
