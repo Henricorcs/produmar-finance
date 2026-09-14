@@ -836,6 +836,8 @@ function FinalizarFrotaOSDialog({
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [leituraFinal, setLeituraFinal] = useState("");
+  /** Só usada quando a OS começou sem leitura — ver `semPartida`. */
+  const [leituraInicialDigitada, setLeituraInicialDigitada] = useState("");
   const [quantidade, setQuantidade] = useState("");
   /** Ele mexeu na quantidade? Então a conta do horímetro para de sobrescrever. */
   const [qtdNaMao, setQtdNaMao] = useState(false);
@@ -844,9 +846,12 @@ function FinalizarFrotaOSDialog({
   const meta = kindMeta(os?.kind);
   const fechado = meta.value === "servico";
   const medicao: Medicao = os ? medicaoDaOs(os) : "horimetro";
-  const inicio = os ? leituraInicial(os, medicao) : null;
-  // A leitura é pedida quando a OS começou com uma — senão não há o que subtrair.
-  const pedeLeitura = inicio !== null;
+  const inicioGravado = os ? leituraInicial(os, medicao) : null;
+  // A OS começou SEM a leitura de partida: foi iniciada antes de o celular
+  // pedir o horímetro, ou está sendo fechada direto em "Já terminei". Então o
+  // FINALIZAR pede as duas — senão não haveria de onde tirar as horas.
+  const semPartida = inicioGravado === null;
+  const inicio = semPartida ? lerLeitura(leituraInicialDigitada) : inicioGravado;
   // Cobrança que sai direto da leitura: hora ← horímetro, km ← hodômetro.
   const quantidadeDaLeitura =
     (meta.value === "hora" && medicao === "horimetro") ||
@@ -855,6 +860,7 @@ function FinalizarFrotaOSDialog({
   useEffect(() => {
     if (!os) return;
     setLeituraFinal("");
+    setLeituraInicialDigitada("");
     setQuantidade(formatQty(Number(os.quantity)));
     setQtdNaMao(false);
     setOQueFoiFeito(os.completion_notes ?? "");
@@ -874,19 +880,25 @@ function FinalizarFrotaOSDialog({
     if (!os) return;
     setErro(null);
 
-    if (pedeLeitura) {
-      if (fim === null) {
-        return setErro(
-          medicao === "horimetro"
-            ? "Anote o horímetro final da máquina"
-            : "Anote o KM final do painel"
-        );
-      }
-      if (inicio !== null && fim < inicio) {
-        return setErro(
-          `A leitura final não pode ser menor que a inicial (${mostrarLeitura(inicio, medicao)}).`
-        );
-      }
+    // Toda OS de máquina fecha com as duas leituras — é delas que saem as horas.
+    if (semPartida && inicio === null) {
+      return setErro(
+        medicao === "horimetro"
+          ? "Anote o horímetro de quando a máquina começou"
+          : "Anote o KM de quando o veículo saiu"
+      );
+    }
+    if (fim === null) {
+      return setErro(
+        medicao === "horimetro"
+          ? "Anote o horímetro final da máquina"
+          : "Anote o KM final do painel"
+      );
+    }
+    if (inicio !== null && fim < inicio) {
+      return setErro(
+        `A leitura final não pode ser menor que a inicial (${mostrarLeitura(inicio, medicao)}).`
+      );
     }
 
     const feito = fechado ? null : parseMoney(quantidade);
@@ -901,6 +913,8 @@ function FinalizarFrotaOSDialog({
           completion_notes: oQueFoiFeito,
           horimetroFinal: medicao === "horimetro" ? fim : null,
           kmFinal: medicao === "km" ? fim : null,
+          horimetroInicial: semPartida && medicao === "horimetro" ? inicio : null,
+          kmInicial: semPartida && medicao === "km" ? inicio : null,
           dataLocal: localDateISO(),
           horaLocal: agoraHHMM(),
         })
@@ -923,8 +937,21 @@ function FinalizarFrotaOSDialog({
         <div className="space-y-5">
           <Maquina os={os} />
 
-          {pedeLeitura && (
+          {semPartida && (
             <CampoLeitura
+              medicao={medicao}
+              titulo={medicao === "horimetro" ? "Horímetro inicial" : "KM inicial"}
+              valor={leituraInicialDigitada}
+              onChange={setLeituraInicialDigitada}
+              ajuda={
+                medicao === "horimetro"
+                  ? "Quanto marcava quando a máquina começou este serviço."
+                  : "Quanto marcava o painel quando o veículo saiu."
+              }
+            />
+          )}
+
+          <CampoLeitura
               medicao={medicao}
               titulo={medicao === "horimetro" ? "Horímetro final" : "KM final"}
               valor={leituraFinal}
@@ -936,10 +963,11 @@ function FinalizarFrotaOSDialog({
                         ? `${formatQty(Math.round(diferenca * 10) / 10)} h trabalhadas`
                         : `${formatQty(Math.round(diferenca * 10) / 10)} km rodados`
                     }`
-                  : `Começou com ${mostrarLeitura(inicio, medicao)}`
+                  : inicio !== null
+                    ? `Começou com ${mostrarLeitura(inicio, medicao)}`
+                    : undefined
               }
             />
-          )}
 
           {!fechado && (
             <div className="space-y-2">
@@ -958,8 +986,8 @@ function FinalizarFrotaOSDialog({
                 autoComplete="off"
               />
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                {quantidadeDaLeitura && pedeLeitura
-                  ? "Sai da leitura final. Se precisar, corrija aqui."
+                {quantidadeDaLeitura
+                  ? "Sai das leituras do horímetro. Se precisar, corrija aqui."
                   : "Já vem com o que foi combinado. Se fez mais ou menos, corrija aqui."}
               </p>
             </div>

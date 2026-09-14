@@ -438,6 +438,13 @@ export async function finalizarMachineServico(
     /** Leitura final — horímetro da máquina ou km do caminhão/caçamba. */
     horimetroFinal?: number | null;
     kmFinal?: number | null;
+    /**
+     * Leitura inicial, para a OS que começou SEM ela — a que foi iniciada antes
+     * de o celular pedir o horímetro, ou fechada direto em "Já terminei". Só
+     * grava onde a de partida está vazia: nunca apaga a que veio do INICIAR.
+     */
+    horimetroInicial?: number | null;
+    kmInicial?: number | null;
     /** Relógio do celular, para fechar uma pausa que ficou aberta. */
     dataLocal?: string | null;
     horaLocal?: string | null;
@@ -451,6 +458,8 @@ export async function finalizarMachineServico(
 
   const horimetroFinal = leitura(input.horimetroFinal);
   const kmFinal = leitura(input.kmFinal);
+  let horimetroInicial = leitura(input.horimetroInicial);
+  let kmInicial = leitura(input.kmInicial);
 
   // A leitura final não pode ser menor que a de partida: o horímetro e o
   // hodômetro só andam para frente. Pego a de partida no banco, e não na
@@ -462,21 +471,22 @@ export async function finalizarMachineServico(
       .eq("id", id)
       .maybeSingle();
     const partida = os as { hourmeter_start: number | null; km_start: number | null } | null;
-    if (
-      horimetroFinal !== null &&
-      partida?.hourmeter_start != null &&
-      horimetroFinal < Number(partida.hourmeter_start)
-    )
+    // A de partida que já estava gravada manda; a digitada agora só preenche o vazio.
+    if (partida?.hourmeter_start != null) horimetroInicial = null;
+    if (partida?.km_start != null) kmInicial = null;
+    const hIni = partida?.hourmeter_start ?? horimetroInicial;
+    const kIni = partida?.km_start ?? kmInicial;
+    if (horimetroFinal !== null && hIni != null && horimetroFinal < Number(hIni))
       return {
-        error: `O horímetro final não pode ser menor que o inicial (${Number(
-          partida.hourmeter_start
-        ).toLocaleString("pt-BR")}).`,
+        error: `O horímetro final não pode ser menor que o inicial (${Number(hIni).toLocaleString(
+          "pt-BR"
+        )}).`,
       };
-    if (kmFinal !== null && partida?.km_start != null && kmFinal < Number(partida.km_start))
+    if (kmFinal !== null && kIni != null && kmFinal < Number(kIni))
       return {
-        error: `O km final não pode ser menor que o inicial (${Number(
-          partida.km_start
-        ).toLocaleString("pt-BR")}).`,
+        error: `O km final não pode ser menor que o inicial (${Number(kIni).toLocaleString(
+          "pt-BR"
+        )}).`,
       };
   }
 
@@ -493,6 +503,8 @@ export async function finalizarMachineServico(
   const patch = { ...base };
   if (horimetroFinal !== null) patch.hourmeter_end = horimetroFinal;
   if (kmFinal !== null) patch.km_end = kmFinal;
+  if (horimetroInicial !== null) patch.hourmeter_start = horimetroInicial;
+  if (kmInicial !== null) patch.km_start = kmInicial;
 
   let { error } = await supabase
     .from("machine_servicos")
