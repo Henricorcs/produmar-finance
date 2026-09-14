@@ -17,6 +17,7 @@ import {
   Users,
   Tractor,
   Building2,
+  Printer,
   type LucideIcon,
 } from "lucide-react";
 
@@ -141,12 +142,16 @@ export const APP_MODULES: AppModule[] = [
     // aluguel de cada mês dando baixa — ver a migration 078.
     slug: "alugueis",
     name: "Aluguéis",
-    description: "Imóveis, contratos e o aluguel de cada mês",
+    description: "Imóveis, impressoras, contratos e a cobrança de cada mês",
     href: "/alugueis",
     icon: Building2,
     accentIcon:
       "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400",
-    tabs: [{ href: "/alugueis", label: "Aluguéis", short: "Aluguéis", icon: Building2 }],
+    tabs: [
+      { href: "/alugueis", label: "Imóveis", short: "Imóveis", icon: Building2 },
+      // o aluguel de impressoras: contador de cada mês e a fatura (migration 096)
+      { href: "/impressoras", label: "Impressoras", short: "Impress.", icon: Printer },
+    ],
   },
   {
     // QUEM DEVE PARA A EMPRESA. Isto morava numa aba lá dentro de Finanças,

@@ -2366,6 +2366,86 @@ export interface RentalContractTemplate {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ALUGUEL DE IMPRESSORAS (migration 096)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type PrinterContractStatus = "ativo" | "encerrado";
+
+/** O contrato: o cliente, a franquia de páginas e o preço da página. */
+export interface PrinterContract {
+  id: string;
+  client_name: string;
+  client_document: string | null;
+  contract_number: string | null;
+  /** Quem cobra — sai no cabeçalho do relatório impresso. */
+  issuer_name: string | null;
+  /** Páginas que o contrato já cobre: saem do total da fatura. */
+  franchise_pages: number;
+  /** Preço da página para toda impressora que não tem o seu. */
+  page_price: number;
+  due_day: number;
+  start_date: string;
+  status: PrinterContractStatus;
+  notes: string | null;
+  created_at: string;
+}
+
+/** Uma impressora alugada. */
+export interface Printer {
+  id: string;
+  contract_id: string;
+  /** UNID — o número da impressora no contrato. */
+  unit: number;
+  serial_number: string;
+  model: string | null;
+  location: string | null;
+  monthly_fee: number;
+  /** Vazio = usa o preço da página do contrato. */
+  page_price: number | null;
+  /** O contador no dia da instalação: a leitura anterior do primeiro mês. */
+  initial_reading: number;
+  active: boolean;
+  notes: string | null;
+  created_at: string;
+}
+
+/** A fatura do mês de um contrato, com os totais gravados no fechamento. */
+export interface PrinterBilling {
+  id: string;
+  contract_id: string;
+  /** O mês de referência, no dia 1. */
+  competencia: string;
+  previous_date: string | null;
+  reading_date: string;
+  due_date: string | null;
+  franchise_pages: number;
+  franchise_price: number;
+  total_pages: number;
+  total_fees: number;
+  total_prints: number;
+  franchise_amount: number;
+  total_amount: number;
+  paid_at: string | null;
+  paid_amount: number;
+  method: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** O contador de uma impressora num mês. */
+export interface PrinterReading {
+  id: string;
+  billing_id: string;
+  printer_id: string;
+  previous_reading: number;
+  current_reading: number;
+  monthly_fee: number;
+  page_price: number;
+  created_at: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // BLOCO DE NOTAS (migration 090)
 // ─────────────────────────────────────────────────────────────────────────────
 
