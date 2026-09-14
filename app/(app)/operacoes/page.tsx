@@ -4,6 +4,7 @@ import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PAPEIS_QUE_RECEBEM_OS } from "@/lib/module-access";
 import { OperacoesPageClient } from "@/components/operacoes/operacoes-page-client";
+import { COLUNAS_OS_SEM_ASSINATURA } from "@/lib/os-colunas";
 import type { MaterialPickerItem } from "@/components/tecnico/material-picker-dialog";
 import type { ObraDoEstoque } from "@/components/operacoes/service-order-dialog";
 import type {
@@ -54,8 +55,10 @@ export default async function OperacoesPage({
     await Promise.all([
       supabase
         .from("service_orders")
+        // Sem a assinatura: a lista não a mostra, e ela pesava 85% da tela.
+        // Quem desenha a assinatura é a folha impressa da OS, que busca a sua.
         .select(
-          "*, machines(name, plate), pickup_locations(name), service_order_items(*, products(name))"
+          `${COLUNAS_OS_SEM_ASSINATURA}, machines(name, plate), pickup_locations(name), service_order_items(*, products(name))`
         )
         .or(
           `and(delivery_date.gte.${startDate},delivery_date.lte.${endDate}),and(delivery_date.is.null,issue_date.gte.${startDate},issue_date.lte.${endDate})`
@@ -80,7 +83,7 @@ export default async function OperacoesPage({
   // Inclui máquinas inativas que estão em uso por alguma OS do período — senão
   // a edição perde a máquina e, com ela, o modo de precificação (horímetro/km).
   const activeMachines = (machinesRes.data as Machine[]) ?? [];
-  const orders = (ordersRes.data as ServiceOrderWithDetails[]) ?? [];
+  const orders = (ordersRes.data as unknown as ServiceOrderWithDetails[]) ?? [];
   const activeIds = new Set(activeMachines.map((m) => m.id));
   const missingIds = [
     ...new Set(

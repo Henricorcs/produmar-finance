@@ -4,6 +4,7 @@ import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PAPEIS_QUE_RECEBEM_OS, nomeComPapel } from "@/lib/module-access";
 import { OperadorClient } from "@/components/operador/operador-client";
+import { COLUNAS_OS_SEM_ASSINATURA } from "@/lib/os-colunas";
 import { PreviewBanner } from "@/components/layout/preview-banner";
 import type {
   MachineServicoDoOperador,
@@ -54,14 +55,16 @@ export default async function OperadorPage({
   // Isolamento estrito: cada operador só vê o que foi direcionado a ele — a OS
   // de um operador NÃO aparece para outro. OS sem dono (assigned_to NULL) não
   // aparecem em nenhum painel; o escritório precisa enviá-las a alguém.
-  const select = `*, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`;
+  // Sem a assinatura da OS (uma imagem por OS — ver lib/os-colunas.ts): o
+  // painel não a mostra, e o operador abre esta tela no 4G, no meio da rua.
+  const select = `${COLUNAS_OS_SEM_ASSINATURA}, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`;
 
   // Histórico: OS que ESTE operador finalizou (somente leitura). Estrito a
   // finalized_by = ele — gravado ao clicar FINALIZAR. Best-effort: se a coluna
   // ainda não existe (migration 030 não aplicada), cai para as OS entregues que
   // estavam atribuídas a ele, que é o mesmo conjunto (encaminhar reatribui antes
   // do fechamento). Sem detalhes aninhados pesados — o toque abre o detalhe.
-  const finishedSelect = `*, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`;
+  const finishedSelect = `${COLUNAS_OS_SEM_ASSINATURA}, machines(name, plate, tracking_type), pickup_locations(name), service_order_items(*, products(name))`;
 
   // Para quem dá para ENCAMINHAR a OS: os outros operadores e também o admin —
   // quem está na rua às vezes precisa devolver o serviço para o escritório.
@@ -168,7 +171,7 @@ export default async function OperadorPage({
     orders = fallback.data;
   }
 
-  const list = (orders as OrderWithDetails[]) ?? [];
+  const list = (orders as unknown as OrderWithDetails[]) ?? [];
 
   let finishedRows = finished.data;
   if (finished.error) {
@@ -181,7 +184,7 @@ export default async function OperadorPage({
       .limit(100);
     finishedRows = fallback.data;
   }
-  const finalizedList = (finishedRows as OrderWithDetails[]) ?? [];
+  const finalizedList = (finishedRows as unknown as OrderWithDetails[]) ?? [];
 
   // Detalhes das OS abertas. Nenhuma depende da outra, então saem todas na
   // mesma leva — antes eram cinco esperas em fila, uma para cada tabela.

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PAPEIS_QUE_RECEBEM_OS } from "@/lib/module-access";
 import { RelatoriosClient } from "@/components/relatorios/relatorios-client";
+import { COLUNAS_OS_SEM_ASSINATURA } from "@/lib/os-colunas";
 import type {
   OsAbertaDeServico,
   OsDeMaquinaResumo,
@@ -35,9 +36,11 @@ export default async function RelatoriosPage() {
 
     // Ordens de serviço do período — base do relatório por operador. Usa
     // issue_date para a janela; a página agrupa por mês de entrega (ou emissão).
+    // Sem a assinatura: ela é uma imagem por OS e o relatório não a mostra —
+    // era 84% do peso desta tela (ver lib/os-colunas.ts).
     supabase
       .from("service_orders")
-      .select("*, machines(name, plate, category)")
+      .select(`${COLUNAS_OS_SEM_ASSINATURA}, machines(name, plate, category)`)
       .gte("issue_date", startStr)
       .order("issue_date", { ascending: false }),
 
@@ -97,7 +100,7 @@ export default async function RelatoriosPage() {
         categories: { name: string; color: string } | null;
         cost_centers: { name: string } | null;
       })[]}
-      orders={(ordersRes.data ?? []) as (ServiceOrder & {
+      orders={(ordersRes.data ?? []) as unknown as (ServiceOrder & {
         machines: { name: string; plate: string | null; category: string | null } | null;
       })[]}
       osAbertas={(abertasRes.data ?? []) as unknown as OsAbertaDeServico[]}
