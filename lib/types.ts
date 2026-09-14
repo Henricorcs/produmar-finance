@@ -1905,8 +1905,38 @@ export interface MachineServico {
   finalized_by?: string | null;
   /** O que o operador escreveu que fez, ao finalizar. */
   completion_notes?: string | null;
+  /**
+   * As leituras que o operador anota no celular (migration 094). Máquina anota
+   * horímetro; caminhão e caçamba anotam km. Horas trabalhadas = fim − início.
+   */
+  hourmeter_start?: number | null;
+  hourmeter_end?: number | null;
+  km_start?: number | null;
+  km_end?: number | null;
   notes: string | null;
   created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Uma parada da OS da máquina (migration 094) — o fim do expediente de um
+ * serviço que atravessa dias. Pausa em aberto = resume_time vazio.
+ */
+export interface MachineServicoPausa {
+  id: string;
+  machine_servico_id: string;
+  pause_number: number;
+  pause_date: string | null;
+  pause_time: string | null;
+  /** Horímetro ou km no momento da parada. */
+  pause_reading: number | null;
+  pause_notes: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  location_accuracy: number | null;
+  resume_date: string | null;
+  resume_time: string | null;
+  resume_reading: number | null;
   created_at: string;
 }
 
@@ -2008,6 +2038,8 @@ export interface OsDeOperacoesNaMaquina {
 
 export interface MachineServicoDoOperador extends MachineServico {
   machines: { name: string; plate: string | null; tracking_type: string | null } | null;
+  /** As paradas desta OS — vêm à parte, e vazias antes da migration 094. */
+  pausas?: MachineServicoPausa[];
 }
 
 /** Gasto de uma máquina/veículo. Litros e marcação só no abastecimento. */

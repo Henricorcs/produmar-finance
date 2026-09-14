@@ -49,8 +49,34 @@ function optional(v?: number | null): number | null {
   return Math.round(n * 1000) / 1000;
 }
 
+/**
+ * A leitura do horímetro ou do km: positiva, com 1 casa. Vazio ou inválido vira
+ * null — quem decide se é obrigatória é a tela, que sabe o que a máquina mede.
+ */
+function leitura(v?: number | null): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  if (isNaN(n) || n < 0) return null;
+  return Math.round(n * 10) / 10;
+}
+
+/** A coluna ou a tabela da migration 094 ainda não existe no banco. */
+function faltaA094(error: { code?: string; message: string }): boolean {
+  return (
+    error.code === "42703" ||
+    error.code === "42P01" ||
+    error.code === "PGRST204" ||
+    error.code === "PGRST205" ||
+    /hourmeter_|km_start|km_end|machine_servico_pausas/.test(error.message)
+  );
+}
+
+const RECADO_094 =
+  "Rode a migration 094 no Supabase para a OS da máquina ter horímetro, km e pausa";
+
 /** Erro de tabela que ainda não existe → recado que diz o que fazer. */
 function frotaError(error: { code?: string; message: string }): string {
+  if (/hourmeter_|km_start|km_end|machine_servico_pausas/.test(error.message)) return RECADO_094;
   if (error.code === "42P01" || error.message.includes("machine_servicos"))
     return "Rode a migration 073 no Supabase para usar a ficha das máquinas";
   if (error.message.includes("machine_despesas"))
@@ -251,23 +277,152 @@ export async function setMachineServicoStatus(id: string, status: MachineServico
 // O operador só alcança a OS que foi enviada a ele: as duas actions abaixo
 // filtram por assigned_to, e a policy da migration 075 faz o mesmo no banco.
 
-/** INICIAR: marca a hora em que a máquina começou o serviço. */
-export async function iniciarMachineServico(id: string) {
+/**
+ * INICIAR: marca a hora em que a máquina começou e a leitura de partida — o
+ * horímetro da máquina, ou o km do caminhão e da caçamba. É dessa leitura que
+ * sai, no fim, quantas horas ela trabalhou ou quantos km rodou.
+ */
+export async function iniciarMachineServico(
+  id: string,
+  input: { horimetro?: number | null; km?: number | null } = {}
+) {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
 
-  const { error } = await supabase
+  const patch: Record<string, unknown> = { started_at: new Date().toISOString() };
+  const horimetro = leitura(input.horimetro);
+  const km = leitura(input.km);
+  if (horimetro !== null) patch.hourmeter_start = horimetro;
+  if (km !== null) patch.km_start = km;
+
+  let { error } = await supabase
     .from("machine_servicos")
-    .update({ started_at: new Date().toISOString() })
+    .update(patch)
     .eq("id", id)
     .eq("assigned_to", user.id);
+
+  // Sem a migration 094 a coluna da leitura não existe: a OS começa do mesmo
+  // jeito — o operador na rua não pode ficar travado por causa do banco.
+  if (error && faltaA094(error)) {
+    ({ error } = await supabase
+      .from("machine_servicos")
+      .update({ started_at: patch.started_at })
+      .eq("id", id)
+      .eq("assigned_to", user.id));
+  }
 
   if (error) return { error: frotaError(error) };
   revalidate();
   return { ok: true };
+}
+
+/**
+ * PAUSAR: o fim do expediente de um serviço que continua amanhã. Grava a hora,
+ * a leitura do horímetro/km e o que ficou do dia. Uma pausa aberta por vez.
+ */
+export async function pausarMachineServico(
+  id: string,
+  input: {
+    pauseDate?: string | null;
+    pauseTime?: string | null;
+    reading?: number | null;
+    notes?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locationAccuracy?: number | null;
+  }
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: aberta, error: erroAberta } = await supabase
+    .from("machine_servico_pausas")
+    .select("id")
+    .eq("machine_servico_id", id)
+    .is("resume_time", null)
+    .limit(1)
+    .maybeSingle();
+  if (erroAberta) return { error: faltaA094(erroAberta) ? RECADO_094 : erroAberta.message };
+  if (aberta) return { error: "Este serviço já está pausado." };
+
+  const { data: ultima } = await supabase
+    .from("machine_servico_pausas")
+    .select("pause_number")
+    .eq("machine_servico_id", id)
+    .order("pause_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await supabase.from("machine_servico_pausas").insert({
+    machine_servico_id: id,
+    pause_number: (ultima?.pause_number ?? 0) + 1,
+    pause_date: input.pauseDate?.trim() || null,
+    pause_time: input.pauseTime?.trim() || null,
+    pause_reading: leitura(input.reading),
+    pause_notes: clean(input.notes),
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    location_accuracy: input.locationAccuracy ?? null,
+  });
+  if (error) return { error: faltaA094(error) ? RECADO_094 : error.message };
+
+  revalidate();
+  return { ok: true };
+}
+
+/** CONTINUAR: fecha a pausa aberta com a hora e a leitura de quando voltou. */
+export async function retomarMachineServico(
+  id: string,
+  input: { resumeDate?: string | null; resumeTime?: string | null; reading?: number | null }
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const { data: aberta, error: erroAberta } = await supabase
+    .from("machine_servico_pausas")
+    .select("id")
+    .eq("machine_servico_id", id)
+    .is("resume_time", null)
+    .order("pause_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (erroAberta) return { error: faltaA094(erroAberta) ? RECADO_094 : erroAberta.message };
+  if (!aberta) return { error: "Este serviço não está pausado." };
+
+  const { error } = await supabase
+    .from("machine_servico_pausas")
+    .update({
+      resume_date: input.resumeDate?.trim() || null,
+      resume_time: input.resumeTime?.trim() || null,
+      resume_reading: leitura(input.reading),
+    })
+    .eq("id", aberta.id);
+  if (error) return { error: error.message };
+
+  revalidate();
+  return { ok: true };
+}
+
+/** As paradas de uma OS da ficha, para o histórico do escritório. */
+export async function pausasDaOsDaMaquina(id: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("machine_servico_pausas")
+    .select("*")
+    .eq("machine_servico_id", id)
+    .order("pause_number", { ascending: true });
+  // Sem a 094 a tabela não existe: o histórico mostra o resto, sem paradas.
+  if (error) return { pausas: [] };
+  return { pausas: data ?? [] };
 }
 
 /**
@@ -277,7 +432,16 @@ export async function iniciarMachineServico(id: string) {
  */
 export async function finalizarMachineServico(
   id: string,
-  input: { quantity?: number | null; completion_notes?: string | null }
+  input: {
+    quantity?: number | null;
+    completion_notes?: string | null;
+    /** Leitura final — horímetro da máquina ou km do caminhão/caçamba. */
+    horimetroFinal?: number | null;
+    kmFinal?: number | null;
+    /** Relógio do celular, para fechar uma pausa que ficou aberta. */
+    dataLocal?: string | null;
+    horaLocal?: string | null;
+  }
 ) {
   const supabase = createClient();
   const {
@@ -285,7 +449,38 @@ export async function finalizarMachineServico(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
 
-  const patch: Record<string, unknown> = {
+  const horimetroFinal = leitura(input.horimetroFinal);
+  const kmFinal = leitura(input.kmFinal);
+
+  // A leitura final não pode ser menor que a de partida: o horímetro e o
+  // hodômetro só andam para frente. Pego a de partida no banco, e não na
+  // tela, para a conta valer mesmo se o celular estiver desatualizado.
+  if (horimetroFinal !== null || kmFinal !== null) {
+    const { data: os } = await supabase
+      .from("machine_servicos")
+      .select("hourmeter_start, km_start")
+      .eq("id", id)
+      .maybeSingle();
+    const partida = os as { hourmeter_start: number | null; km_start: number | null } | null;
+    if (
+      horimetroFinal !== null &&
+      partida?.hourmeter_start != null &&
+      horimetroFinal < Number(partida.hourmeter_start)
+    )
+      return {
+        error: `O horímetro final não pode ser menor que o inicial (${Number(
+          partida.hourmeter_start
+        ).toLocaleString("pt-BR")}).`,
+      };
+    if (kmFinal !== null && partida?.km_start != null && kmFinal < Number(partida.km_start))
+      return {
+        error: `O km final não pode ser menor que o inicial (${Number(
+          partida.km_start
+        ).toLocaleString("pt-BR")}).`,
+      };
+  }
+
+  const base: Record<string, unknown> = {
     status: "concluida",
     finished_at: new Date().toISOString(),
     finalized_by: user.id,
@@ -293,15 +488,41 @@ export async function finalizarMachineServico(
   };
   // quantidade só entra se veio preenchida: em branco mantém a combinada
   if (input.quantity !== null && input.quantity !== undefined && qty(input.quantity) > 0)
-    patch.quantity = qty(input.quantity);
+    base.quantity = qty(input.quantity);
 
-  const { error } = await supabase
+  const patch = { ...base };
+  if (horimetroFinal !== null) patch.hourmeter_end = horimetroFinal;
+  if (kmFinal !== null) patch.km_end = kmFinal;
+
+  let { error } = await supabase
     .from("machine_servicos")
     .update(patch)
     .eq("id", id)
     .eq("assigned_to", user.id);
 
+  // Sem a migration 094 a OS fecha do mesmo jeito, só sem a leitura.
+  if (error && faltaA094(error)) {
+    ({ error } = await supabase
+      .from("machine_servicos")
+      .update(base)
+      .eq("id", id)
+      .eq("assigned_to", user.id));
+  }
+
   if (error) return { error: frotaError(error) };
+
+  // Terminou com a OS pausada: a pausa aberta fecha junto, na hora do fim.
+  // Senão o histórico mostraria uma parada que nunca voltou. Best-effort.
+  await supabase
+    .from("machine_servico_pausas")
+    .update({
+      resume_date: input.dataLocal?.trim() || null,
+      resume_time: input.horaLocal?.trim() || null,
+      resume_reading: horimetroFinal ?? kmFinal,
+    })
+    .eq("machine_servico_id", id)
+    .is("resume_time", null);
+
   revalidate();
   return { ok: true };
 }

@@ -7,6 +7,7 @@ import { OperadorClient } from "@/components/operador/operador-client";
 import { PreviewBanner } from "@/components/layout/preview-banner";
 import type {
   MachineServicoDoOperador,
+  MachineServicoPausa,
   Profile,
   ServiceOrder,
   ServiceOrderAttachment,
@@ -126,7 +127,28 @@ export default async function OperadorPage({
   // De quem é o painel: o meu perfil, ou o de quem o admin está olhando.
   const profile = (perfilRes.data as Profile | null) ?? null;
 
-  const frotaOS = (frotaRes.data as MachineServicoDoOperador[]) ?? [];
+  const frotaSemPausas = (frotaRes.data as MachineServicoDoOperador[]) ?? [];
+
+  // As paradas das OS de máquina em aberto — é por elas que o card sabe se o
+  // serviço está pausado. Vêm à parte, e não junto na consulta de cima: antes
+  // da migration 094 a tabela não existe, e pendurada ali ela derrubaria a
+  // lista inteira. Assim, sem a 094, as OS aparecem do mesmo jeito, só sem pausa.
+  let pausasDaFrota: MachineServicoPausa[] = [];
+  if (frotaSemPausas.length > 0) {
+    const { data, error } = await supabase
+      .from("machine_servico_pausas")
+      .select("*")
+      .in(
+        "machine_servico_id",
+        frotaSemPausas.map((s) => s.id)
+      )
+      .order("pause_number", { ascending: true });
+    if (!error) pausasDaFrota = (data as MachineServicoPausa[]) ?? [];
+  }
+  const frotaOS = frotaSemPausas.map((s) => ({
+    ...s,
+    pausas: pausasDaFrota.filter((p) => p.machine_servico_id === s.id),
+  }));
   const frotaFinalizadas = (frotaFeitasRes.data as MachineServicoDoOperador[]) ?? [];
 
   // A consulta da OS de máquina falha quando as migrations 073-075 ainda não

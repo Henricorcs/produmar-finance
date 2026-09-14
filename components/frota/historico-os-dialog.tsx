@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { actionError } from "@/lib/action-result";
-import { historicoDaOs } from "@/app/(app)/frota/actions";
+import { historicoDaOs, pausasDaOsDaMaquina } from "@/app/(app)/frota/actions";
 import { contaDoServico, kindMeta } from "./frota-shared";
 import {
   cn,
@@ -30,7 +30,7 @@ import {
   formatQty,
   osTypeLabel,
 } from "@/lib/utils";
-import type { HistoricoDaOs, MachineServico } from "@/lib/types";
+import type { HistoricoDaOs, MachineServico, MachineServicoPausa } from "@/lib/types";
 
 /**
  * O HISTÓRICO DE UMA OS, aberto da ficha do veículo.
@@ -43,7 +43,8 @@ import type { HistoricoDaOs, MachineServico } from "@/lib/types";
  * As duas famílias de OS entram aqui, cada uma com o que tem:
  *
  *   • a OS da FICHA (machine_servicos) já veio inteira com a tela — a conta, o
- *     trecho, o operador e o relógio de quando começou e acabou;
+ *     trecho, o operador, o relógio e as leituras do horímetro/km que ele
+ *     anotou no celular; só as paradas são buscadas na hora;
  *   • a OS de OPERAÇÕES é buscada na hora, porque o miolo dela mora em três
  *     tabelas filhas que seria caro carregar junto com a ficha.
  *
@@ -161,6 +162,28 @@ function HistoricoDaFicha({
   const trecho = [servico.origin, servico.destination].filter(Boolean).join(" → ");
   const levou = duracao(servico.started_at, servico.finished_at);
 
+  const num = (v?: number | null) => (v === null || v === undefined ? null : Number(v));
+  const hIni = num(servico.hourmeter_start);
+  const hFim = num(servico.hourmeter_end);
+  const kIni = num(servico.km_start);
+  const kFim = num(servico.km_end);
+  const horas = hIni !== null && hFim !== null ? hFim - hIni : null;
+  const kmRodado = kIni !== null && kFim !== null ? kFim - kIni : null;
+
+  // As paradas moram numa tabela à parte (migration 094): vêm na hora.
+  const [pausas, setPausas] = useState<MachineServicoPausa[] | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    setPausas(null);
+    (async () => {
+      const r = await pausasDaOsDaMaquina(servico.id);
+      if (vivo) setPausas((r.pausas as MachineServicoPausa[]) ?? []);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [servico.id]);
+
   return (
     <div className="space-y-3">
       <div>
@@ -198,6 +221,84 @@ function HistoricoDaFicha({
           <Linha icone={User} label="Quem estava na máquina" valor={servico.operator} />
         )}
       </Secao>
+
+      {/* HORÍMETRO — anotado pelo operador ao iniciar e ao finalizar */}
+      {(hIni !== null || hFim !== null) && (
+        <Secao titulo="Horímetro">
+          <Linha
+            icone={Gauge}
+            label="Início"
+            valor={hIni !== null ? `${formatQty(hIni)} h` : "—"}
+          />
+          <Linha
+            icone={Gauge}
+            label="Fim"
+            valor={hFim !== null ? `${formatQty(hFim)} h` : "ainda trabalhando"}
+          />
+          {horas !== null && (
+            <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
+              <Linha
+                icone={Clock}
+                label="Horas trabalhadas"
+                valor={`${formatQty(Math.round(horas * 10) / 10)} h`}
+              />
+            </div>
+          )}
+        </Secao>
+      )}
+
+      {/* HODÔMETRO — o do caminhão e da caçamba */}
+      {(kIni !== null || kFim !== null) && (
+        <Secao titulo="Hodômetro">
+          <Linha icone={Gauge} label="KM inicial" valor={kIni !== null ? formatQty(kIni) : "—"} />
+          <Linha
+            icone={Gauge}
+            label="KM final"
+            valor={kFim !== null ? formatQty(kFim) : "ainda rodando"}
+          />
+          {kmRodado !== null && (
+            <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
+              <Linha
+                icone={Route}
+                label="KM rodado"
+                valor={`${formatQty(Math.round(kmRodado * 10) / 10)} km`}
+              />
+            </div>
+          )}
+        </Secao>
+      )}
+
+      {/* PARADAS — o serviço que atravessou dias */}
+      {pausas && pausas.length > 0 && (
+        <Secao titulo={`Paradas (${pausas.length})`}>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {pausas.map((p) => (
+              <div key={p.id} className="py-1.5">
+                <div className="flex items-center gap-2">
+                  <Pause className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                  <span className="text-xs text-slate-700 dark:text-slate-200 truncate">
+                    {p.pause_date ? formatDate(p.pause_date) : "—"}
+                    {p.pause_time ? ` às ${p.pause_time.slice(0, 5)}` : ""}
+                    {p.resume_time
+                      ? ` → ${p.resume_date ? formatDate(p.resume_date) : ""} às ${p.resume_time.slice(0, 5)}`
+                      : " → não voltou"}
+                  </span>
+                  {p.pause_reading != null && (
+                    <span className="text-[10px] text-slate-400 ml-auto tabular-nums flex-shrink-0">
+                      {formatQty(Number(p.pause_reading))}
+                    </span>
+                  )}
+                </div>
+                {p.pause_notes && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-5">
+                    {p.pause_notes}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Secao>
+      )}
 
       <Secao titulo="O relógio">
         {servico.assigned_to && (
