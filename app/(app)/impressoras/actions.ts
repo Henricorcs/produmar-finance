@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { calcularFatura, centavos, precoDaPagina, vencimentoDaFatura } from "@/lib/impressoras";
-import type { Printer, PrinterContract, PrinterContractStatus } from "@/lib/types";
+import type {
+  DadosDoRelatorioImpressoes,
+  Printer,
+  PrinterBilling,
+  PrinterContract,
+  PrinterContractStatus,
+  PrinterReading,
+} from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ALUGUEL DE IMPRESSORAS (migration 096)
@@ -13,6 +20,8 @@ import type { Printer, PrinterContract, PrinterContractStatus } from "@/lib/type
 
 function revalidate() {
   revalidatePath("/impressoras");
+  // a aba do operador que lança a leitura (migration 097)
+  revalidatePath("/operador/impressoras");
 }
 
 /** Texto de cadastro: CAIXA ALTA, vazio vira null. */
@@ -57,6 +66,11 @@ export interface PrinterContractInput {
   due_day?: number | null;
   start_date?: string | null;
   notes?: string | null;
+  initial_reading_date?: string | null;
+  issuer_city?: string | null;
+  signer_name?: string | null;
+  signer_document?: string | null;
+  signer_phone?: string | null;
 }
 
 function contratoRow(input: PrinterContractInput) {
@@ -70,6 +84,11 @@ function contratoRow(input: PrinterContractInput) {
     due_day: Math.min(31, Math.max(1, Math.round(Number(input.due_day) || 10))),
     start_date: input.start_date?.trim() || undefined,
     notes: clean(input.notes),
+    initial_reading_date: input.initial_reading_date?.trim() || null,
+    issuer_city: clean(input.issuer_city),
+    signer_name: clean(input.signer_name),
+    signer_document: clean(input.signer_document),
+    signer_phone: input.signer_phone?.trim() || null,
   };
 }
 
@@ -314,6 +333,53 @@ export async function salvarLeiturasDoMes(input: LeiturasDoMesInput) {
 
   revalidate();
   return { ok: true, id: billingId };
+}
+
+/**
+ * Os dados de uma fatura para montar o relatório em PDF — a fatura, o contrato
+ * (com a assinatura do rodapé), as leituras e as impressoras delas. Serve à
+ * tela do dono e à aba do operador, que lê o contador e manda o PDF dali mesmo.
+ */
+export async function dadosDoRelatorio(
+  billingId: string
+): Promise<{ dados: DadosDoRelatorioImpressoes } | { error: string }> {
+  const supabase = createClient();
+  const { data: fatura, error } = await supabase
+    .from("printer_billings")
+    .select("*")
+    .eq("id", billingId)
+    .maybeSingle();
+  if (error) return { error: impressoraError(error) };
+  if (!fatura) return { error: "Fatura não encontrada" };
+  const billing = fatura as PrinterBilling;
+
+  const [contratoRes, leiturasRes] = await Promise.all([
+    supabase.from("printer_contracts").select("*").eq("id", billing.contract_id).maybeSingle(),
+    supabase.from("printer_readings").select("*").eq("billing_id", billing.id),
+  ]);
+  if (!contratoRes.data) return { error: "Contrato não encontrado" };
+  const readings = (leiturasRes.data as PrinterReading[]) ?? [];
+
+  let printers: Printer[] = [];
+  if (readings.length > 0) {
+    const { data } = await supabase
+      .from("printers")
+      .select("*")
+      .in(
+        "id",
+        readings.map((r) => r.printer_id)
+      );
+    printers = (data as Printer[]) ?? [];
+  }
+
+  return {
+    dados: {
+      billing,
+      contract: contratoRes.data as PrinterContract,
+      readings,
+      printers,
+    },
+  };
 }
 
 /** Apaga a fatura do mês e as leituras dela — o mês volta a ficar sem leitura. */

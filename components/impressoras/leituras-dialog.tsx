@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { AlertTriangle, Gauge } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Gauge } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/impressoras";
 import { salvarLeiturasDoMes } from "@/app/(app)/impressoras/actions";
 import { FOOTER_CANCEL, FOOTER_SUBMIT, STICKY_FOOTER } from "@/components/alugueis/alugueis-shared";
+import { RelatorioPdfAcoes } from "./relatorio-pdf-acoes";
 import type { Printer, PrinterBilling, PrinterContract, PrinterReading } from "@/lib/types";
 
 interface Props {
@@ -40,6 +41,11 @@ interface Props {
   competencia: string;
   /** A data da leitura do mês passado. */
   dataAnterior: string | null;
+  /**
+   * Quem está lançando. O operador, que lê os contadores na rua, não mexe no
+   * vencimento — ele sai do dia combinado no contrato.
+   */
+  modo?: "escritorio" | "operador";
 }
 
 /** Só dígitos: o contador é número inteiro. */
@@ -68,11 +74,19 @@ export function LeiturasDialog({
   anteriores,
   competencia,
   dataAnterior,
+  modo = "escritorio",
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
+  /** A fatura acabou de ser fechada: a caixa vira a do relatório em PDF. */
+  const [salvo, setSalvo] = useState<{ id: string; total: number } | null>(null);
 
-  const [previousDate, setPreviousDate] = useState("");
+  // A data da leitura ANTERIOR não é mais digitada: ela é a da leitura do mês
+  // passado (ou a dos contadores de instalação, no primeiro mês). O campo que
+  // pedia essa data não tinha sentido para quem lança — ninguém sabe de cabeça,
+  // e o sistema já sabe.
+  const previousDate =
+    billing?.previous_date ?? dataAnterior ?? contract.initial_reading_date ?? null;
   const [readingDate, setReadingDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [valores, setValores] = useState<Record<string, { anterior: string; atual: string }>>({});
@@ -80,7 +94,7 @@ export function LeiturasDialog({
   useEffect(() => {
     if (!open) return;
     setErro(null);
-    setPreviousDate(billing?.previous_date ?? dataAnterior ?? "");
+    setSalvo(null);
     setReadingDate(billing?.reading_date ?? localDateISO());
     setDueDate(billing?.due_date ?? vencimentoDaFatura(competencia, contract.due_day));
     const daFatura = new Map(readings.map((r) => [r.printer_id, r]));
@@ -133,22 +147,24 @@ export function LeiturasDialog({
       );
 
     startTransition(async () => {
-      const falha = actionError(
-        await salvarLeiturasDoMes({
-          contract_id: contract.id,
-          competencia,
-          previous_date: previousDate || null,
-          reading_date: readingDate,
-          due_date: dueDate || null,
-          leituras: printers.map((p) => ({
-            printer_id: p.id,
-            previous_reading: Number(valores[p.id]?.anterior || 0),
-            current_reading: Number(valores[p.id]?.atual || 0),
-          })),
-        })
-      );
+      const r = await salvarLeiturasDoMes({
+        contract_id: contract.id,
+        competencia,
+        previous_date: previousDate,
+        reading_date: readingDate,
+        due_date: dueDate || null,
+        leituras: printers.map((p) => ({
+          printer_id: p.id,
+          previous_reading: Number(valores[p.id]?.anterior || 0),
+          current_reading: Number(valores[p.id]?.atual || 0),
+        })),
+      });
+      const falha = actionError(r);
       if (falha) return setErro(falha);
-      onClose();
+      // Fechou: em vez de sumir, a caixa entrega o relatório em PDF — é o que
+      // quem leu os contadores manda para o cliente.
+      if ("id" in r && r.id) setSalvo({ id: r.id, total: conta.total_amount });
+      else onClose();
     });
   }
 
@@ -164,20 +180,28 @@ export function LeiturasDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="lt_ant">Leitura anterior em</Label>
-              <Input
-                id="lt_ant"
-                type="date"
-                value={previousDate}
-                onChange={(e) => setPreviousDate(e.target.value)}
-                className="tabular-nums"
-              />
+        {salvo ? (
+          <div className="space-y-4">
+            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 px-4 py-3 text-center">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mx-auto mb-1" />
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                Fatura de <span className="capitalize">{nomeDoMes(competencia)}</span> fechada
+              </p>
+              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                {formatBRL(salvo.total)}
+              </p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lt_atual">Leitura atual em *</Label>
+            <RelatorioPdfAcoes billingId={salvo.id} />
+            <Button type="button" variant="outline" className="w-full" onClick={onClose}>
+              Fechar
+            </Button>
+          </div>
+        ) : (
+        <>
+        <div className="space-y-4">
+          <div className={cn("grid gap-3", modo === "escritorio" && "sm:grid-cols-2")}>
+            <div className="space-y-1.5 min-w-0">
+              <Label htmlFor="lt_atual">Data da leitura *</Label>
               <Input
                 id="lt_atual"
                 type="date"
@@ -186,17 +210,18 @@ export function LeiturasDialog({
                 className="tabular-nums"
               />
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="lt_venc">Vencimento da fatura</Label>
-            <Input
-              id="lt_venc"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="tabular-nums"
-            />
+            {modo === "escritorio" && (
+              <div className="space-y-1.5 min-w-0">
+                <Label htmlFor="lt_venc">Vencimento da fatura</Label>
+                <Input
+                  id="lt_venc"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="tabular-nums"
+                />
+              </div>
+            )}
           </div>
 
           {printers.length === 0 ? (
@@ -331,6 +356,8 @@ export function LeiturasDialog({
             {isPending ? "Salvando..." : billing ? "Salvar correção" : "Fechar a fatura"}
           </Button>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   );

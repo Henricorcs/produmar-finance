@@ -37,6 +37,7 @@ import { ContratoImpressoraDialog } from "./contrato-impressora-dialog";
 import { ImpressoraDialog } from "./impressora-dialog";
 import { LeiturasDialog } from "./leituras-dialog";
 import { BaixaFaturaDialog } from "./baixa-fatura-dialog";
+import { RelatorioPdfDialog } from "./relatorio-pdf-dialog";
 import type { Printer, PrinterBilling, PrinterContract, PrinterReading } from "@/lib/types";
 
 interface Props {
@@ -80,6 +81,7 @@ export function ImpressorasPageClient({
   const [editImpressora, setEditImpressora] = useState<Printer | null>(null);
   const [leiturasOpen, setLeiturasOpen] = useState(false);
   const [baixa, setBaixa] = useState<PrinterBilling | null>(null);
+  const [pdfDe, setPdfDe] = useState<PrinterBilling | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   // O contrato da tela: o da URL, senão o primeiro ativo, senão o primeiro.
@@ -332,12 +334,9 @@ export function ImpressorasPageClient({
                       <Pencil className="w-4 h-4" />
                       Corrigir leituras
                     </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => window.open(`/imprimir/impressoras/${fatura.id}`, "_blank")}
-                    >
+                    <Button variant="outline" onClick={() => setPdfDe(fatura)}>
                       <FileText className="w-4 h-4" />
-                      Relatório
+                      Relatório PDF
                     </Button>
                     <Button onClick={() => setBaixa(fatura)} className="col-span-2 sm:col-span-1">
                       <HandCoins className="w-4 h-4" />
@@ -526,6 +525,7 @@ export function ImpressorasPageClient({
             onClose={() => setBaixa(null)}
             clientName={contrato.client_name}
           />
+          <RelatorioPdfDialog billing={pdfDe} onClose={() => setPdfDe(null)} />
         </>
       )}
 

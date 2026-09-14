@@ -1,6 +1,6 @@
 import { getProfile } from "@/lib/auth";
 import { OperadorNav } from "@/components/operador/operador-nav";
-import { canAvisarMaterial } from "@/lib/module-access";
+import { canAvisarMaterial, canLerImpressoras } from "@/lib/module-access";
 
 /**
  * O painel de quem está na rua. A OS que mandaram para ele está sempre aqui; a
@@ -12,10 +12,13 @@ import { canAvisarMaterial } from "@/lib/module-access";
 export default async function OperadorLayout({ children }: { children: React.ReactNode }) {
   const profile = await getProfile();
   const podeMaterial = canAvisarMaterial(profile?.role, profile?.allowed_modules);
+  const podeImpressoras = canLerImpressoras(profile?.role, profile?.allowed_modules);
 
   return (
     <>
-      {podeMaterial && <OperadorNav />}
+      {(podeMaterial || podeImpressoras) && (
+        <OperadorNav material={podeMaterial} impressoras={podeImpressoras} />
+      )}
       {children}
     </>
   );

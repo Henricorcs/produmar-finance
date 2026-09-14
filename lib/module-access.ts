@@ -78,11 +78,23 @@ export const MODULE_EXEMPT_PREFIXES = ["/inicio", "/configuracoes"];
 /** Avisar o material levado para a obra, na aba do painel do operador. */
 export const AVISO_MATERIAL_SLUG = "aviso-material";
 
+/**
+ * Lançar a leitura dos contadores das impressoras alugadas, na aba do painel
+ * do operador. Quem lê o contador é quem vai de impressora em impressora — e o
+ * relatório em PDF sai dali mesmo (migration 097).
+ */
+export const LEITURA_IMPRESSORAS_SLUG = "leitura-impressoras";
+
 export const EXTRA_PERMISSIONS = [
   {
     slug: AVISO_MATERIAL_SLUG,
     name: "Avisar material da obra",
     description: "Aba no painel do operador para informar o material que ele levou",
+  },
+  {
+    slug: LEITURA_IMPRESSORAS_SLUG,
+    name: "Leitura das impressoras",
+    description: "Aba no painel do operador para lançar o contador e tirar o relatório em PDF",
   },
 ] as const;
 
@@ -143,6 +155,23 @@ export function nomeComPapel(nome: string, role: string | undefined): string {
 /** A rota da aba — o middleware confere a permissão antes de deixar entrar. */
 export function isAvisoMaterialPath(path: string): boolean {
   return matchesPrefix(path, "/operador/material");
+}
+
+/**
+ * Pode lançar a leitura das impressoras pelo painel? O admin sempre; operador e
+ * encarregado, só com "Leitura das impressoras" marcada no cadastro.
+ */
+export function canLerImpressoras(
+  role: string | undefined,
+  allowedModules: string[] | undefined
+): boolean {
+  if (role === "admin") return true;
+  if (role !== "operador" && role !== "encarregado") return false;
+  return (allowedModules ?? []).includes(LEITURA_IMPRESSORAS_SLUG);
+}
+
+export function isLeituraImpressorasPath(path: string): boolean {
+  return matchesPrefix(path, "/operador/impressoras");
 }
 
 function matchesPrefix(path: string, prefix: string): boolean {

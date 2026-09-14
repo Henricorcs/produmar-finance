@@ -56,6 +56,12 @@ export function ContratoImpressoraDialog({ open, onClose, contract, onCreated }:
   const [diaVencimento, setDiaVencimento] = useState("10");
   const [inicio, setInicio] = useState(localDateISO());
   const [obs, setObs] = useState("");
+  // o rodapé do relatório em PDF e a data de partida (migration 097)
+  const [dataContador, setDataContador] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [assinante, setAssinante] = useState("");
+  const [documentoAssinante, setDocumentoAssinante] = useState("");
+  const [telefoneAssinante, setTelefoneAssinante] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -71,6 +77,11 @@ export function ContratoImpressoraDialog({ open, onClose, contract, onCreated }:
     setDiaVencimento(contract ? String(contract.due_day) : "10");
     setInicio(contract?.start_date ?? localDateISO());
     setObs(contract?.notes ?? "");
+    setDataContador(contract?.initial_reading_date ?? "");
+    setCidade(contract?.issuer_city ?? "");
+    setAssinante(contract?.signer_name ?? "");
+    setDocumentoAssinante(contract?.signer_document ?? "");
+    setTelefoneAssinante(contract?.signer_phone ?? "");
   }, [open, contract]);
 
   function salvar() {
@@ -86,6 +97,11 @@ export function ContratoImpressoraDialog({ open, onClose, contract, onCreated }:
       due_day: Math.round(lerNumero(diaVencimento)) || 10,
       start_date: inicio,
       notes: obs,
+      initial_reading_date: dataContador || null,
+      issuer_city: cidade,
+      signer_name: assinante,
+      signer_document: documentoAssinante,
+      signer_phone: telefoneAssinante,
     };
     startTransition(async () => {
       if (contract) {
@@ -215,6 +231,21 @@ export function ContratoImpressoraDialog({ open, onClose, contract, onCreated }:
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="ci_datacont">Data dos contadores de instalação</Label>
+            <Input
+              id="ci_datacont"
+              type="date"
+              value={dataContador}
+              onChange={(e) => setDataContador(e.target.value)}
+              className="tabular-nums"
+            />
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              A data da leitura de onde saiu o contador de cada impressora. É a “leitura
+              anterior” do primeiro mês no relatório.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="ci_emitente">Quem cobra (cabeçalho do relatório)</Label>
             <Input
               id="ci_emitente"
@@ -224,6 +255,59 @@ export function ContratoImpressoraDialog({ open, onClose, contract, onCreated }:
               autoCapitalize="characters"
               autoComplete="off"
             />
+          </div>
+
+          {/* O rodapé do PDF: cidade, data e a assinatura de quem responde */}
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 p-3 space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Rodapé do relatório em PDF
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="ci_cidade">Cidade</Label>
+              <Input
+                id="ci_cidade"
+                value={cidade}
+                onChange={(e) => setCidade(upperKeepingCaret(e))}
+                placeholder="ex: SÃO MATEUS DO MARANHÃO"
+                autoCapitalize="characters"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ci_assina">Quem assina</Label>
+              <Input
+                id="ci_assina"
+                value={assinante}
+                onChange={(e) => setAssinante(upperKeepingCaret(e))}
+                placeholder="nome completo"
+                autoCapitalize="characters"
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5 min-w-0">
+                <Label htmlFor="ci_doc_assina">Documento</Label>
+                <Input
+                  id="ci_doc_assina"
+                  value={documentoAssinante}
+                  onChange={(e) => setDocumentoAssinante(upperKeepingCaret(e))}
+                  placeholder="ex: RG ... SSP-MA"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-1.5 min-w-0">
+                <Label htmlFor="ci_tel_assina">Telefone</Label>
+                <Input
+                  id="ci_tel_assina"
+                  value={telefoneAssinante}
+                  onChange={(e) => setTelefoneAssinante(e.target.value)}
+                  placeholder="(99)99999-9999"
+                  inputMode="tel"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-1.5">

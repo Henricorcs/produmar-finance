@@ -2387,7 +2387,23 @@ export interface PrinterContract {
   start_date: string;
   status: PrinterContractStatus;
   notes: string | null;
+  /** Data da leitura dos contadores de instalação — a anterior do 1º mês (097). */
+  initial_reading_date?: string | null;
+  /** O rodapé do relatório: "SÃO MATEUS DO MARANHÃO, 25 de agosto de 2026". */
+  issuer_city?: string | null;
+  /** Quem assina o relatório enviado ao cliente. */
+  signer_name?: string | null;
+  signer_document?: string | null;
+  signer_phone?: string | null;
   created_at: string;
+}
+
+/** Tudo que o relatório de uma fatura precisa, numa viagem só. */
+export interface DadosDoRelatorioImpressoes {
+  billing: PrinterBilling;
+  contract: PrinterContract;
+  readings: PrinterReading[];
+  printers: Printer[];
 }
 
 /** Uma impressora alugada. */

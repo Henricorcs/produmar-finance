@@ -2,25 +2,33 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, PackageOpen } from "lucide-react";
+import { ClipboardList, PackageOpen, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const ABAS = [
-  { href: "/operador", label: "Serviços", icon: ClipboardList },
-  { href: "/operador/material", label: "Material", icon: PackageOpen },
-];
-
 /**
- * As duas coisas do painel de quem está na rua: a OS que mandaram para ele e o
- * material que ele levou para a obra. Um toque para trocar — sem menu, porque
- * o perfil do operador é fechado nestas rotas.
+ * As coisas do painel de quem está na rua: a OS que mandaram para ele, o
+ * material que ele levou para a obra e a leitura das impressoras alugadas. Um
+ * toque para trocar — sem menu, porque o perfil do operador é fechado nestas
+ * rotas. Material e Impressoras só aparecem para quem tem a permissão.
  */
-export function OperadorNav() {
+export function OperadorNav({
+  material = false,
+  impressoras = false,
+}: {
+  material?: boolean;
+  impressoras?: boolean;
+}) {
   const pathname = usePathname();
+
+  const abas = [
+    { href: "/operador", label: "Serviços", icon: ClipboardList, mostra: true },
+    { href: "/operador/material", label: "Material", icon: PackageOpen, mostra: material },
+    { href: "/operador/impressoras", label: "Impressoras", icon: Printer, mostra: impressoras },
+  ].filter((a) => a.mostra);
 
   return (
     <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 mb-4">
-      {ABAS.map((aba) => {
+      {abas.map((aba) => {
         const Icon = aba.icon;
         const active = pathname === aba.href;
         return (

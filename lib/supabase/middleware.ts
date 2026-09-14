@@ -2,8 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   canAvisarMaterial,
+  canLerImpressoras,
   hasHubModules,
   isAvisoMaterialPath,
+  isLeituraImpressorasPath,
   isModuleBlocked,
   moduleSlugForPath,
 } from "@/lib/module-access";
@@ -129,10 +131,14 @@ export async function updateSession(request: NextRequest) {
       // A aba de avisar material é o único pedaço do painel que pede permissão
       // marcada no cadastro: nem todo operador descarrega material na obra.
       const ehAvisoMaterial = isAvisoMaterialPath(path);
+      // A aba das impressoras idem: só quem lê os contadores.
+      const ehLeituraImpressoras = isLeituraImpressorasPath(path);
       const podeVer = (mods: string[]) =>
         (ehAvisoMaterial
           ? canAvisarMaterial(role, mods)
-          : path.startsWith("/operador")) ||
+          : ehLeituraImpressoras
+            ? canLerImpressoras(role, mods)
+            : path.startsWith("/operador")) ||
         path.startsWith("/imprimir") ||
         (hasHubModules(mods) &&
           (path.startsWith("/inicio") ||
