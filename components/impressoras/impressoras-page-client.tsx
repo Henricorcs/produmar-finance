@@ -171,7 +171,15 @@ export function ImpressorasPageClient({
     [printers]
   );
 
-  const proximaUnidade = doContrato.reduce((max, p) => Math.max(max, p.unit), 0) + 1;
+  // A impressora nova ganha o PRIMEIRO número livre a partir do 1, e não o
+  // maior + 1: cadastrada depois das outras, a que faltava na planilha virava
+  // a 18 e a lista começava no 2 — quando ela era, na verdade, a unidade 1.
+  const proximaUnidade = (() => {
+    const usadas = new Set(doContrato.map((p) => p.unit));
+    let n = 1;
+    while (usadas.has(n)) n++;
+    return n;
+  })();
 
   function abrirContrato(c: PrinterContract | null) {
     setEditContrato(c);
