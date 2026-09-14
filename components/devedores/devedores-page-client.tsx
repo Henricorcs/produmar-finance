@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
-import { Plus, Pencil, Trash2, HandCoins, Search, Paperclip } from "lucide-react";
+import { Plus, Pencil, Trash2, HandCoins, Search, Paperclip, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { LoanDialog } from "./loan-dialog";
 import { LoanDetailDialog } from "./loan-detail-dialog";
+import { LoanCalculatorDialog } from "./loan-calculator-dialog";
 import { deleteLoan } from "@/app/(app)/devedores/actions";
 import {
   loanTotalDue,
@@ -94,6 +95,7 @@ const STATUS_BADGE: Record<DisplayStatus, { label: string; variant: "success" | 
 export function DevedoresPageClient({ loans }: Props) {
   const [, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
   const [editing, setEditing] = useState<Loan | null>(null);
   const [detail, setDetail] = useState<LoanWithDetails | null>(null);
   const [filter, setFilter] = useState<FilterValue>("");
@@ -186,10 +188,16 @@ export function DevedoresPageClient({ loans }: Props) {
             Quem deve para a empresa — quanto falta e quando vence
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="w-4 h-4" />
-          Nova dívida
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setCalcOpen(true)}>
+            <Calculator className="w-4 h-4" />
+            Calculadora
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="w-4 h-4" />
+            Nova dívida
+          </Button>
+        </div>
       </div>
 
       {/* Os quatro números: dois de cada lado no celular, tudo numa linha no
@@ -350,6 +358,7 @@ export function DevedoresPageClient({ loans }: Props) {
       </Card>
 
       <LoanDialog open={dialogOpen} onClose={() => setDialogOpen(false)} loan={editing} />
+      <LoanCalculatorDialog open={calcOpen} onClose={() => setCalcOpen(false)} />
       <LoanDetailDialog
         open={detailLive !== null}
         onClose={() => setDetail(null)}
