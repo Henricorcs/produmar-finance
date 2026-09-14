@@ -950,7 +950,7 @@ export async function resolveBirthRequest(requestId: string, input: ResolveBirth
 
   const { data: request, error: reqErr } = await supabase
     .from("animal_birth_requests")
-    .select("photo_path")
+    .select("*")
     .eq("id", requestId)
     .maybeSingle();
   if (reqErr) return { error: birthRequestsTableError(reqErr) };
@@ -976,10 +976,98 @@ export async function resolveBirthRequest(requestId: string, input: ResolveBirth
       .eq("id", result.calfAnimalId);
   }
 
+  // O que o vaqueiro aplicou no nascimento entra na ficha da cria, um
+  // tratamento por medicamento, na data em que ela nasceu. Best-effort: a cria
+  // já está no rebanho, e um tratamento que não gravou não pode desfazer isso.
+  const aplicados = Array.isArray(request.protocolo_aplicado)
+    ? (request.protocolo_aplicado as { medicine?: string; dose?: string | null }[])
+    : [];
+  const tratamentos = aplicados
+    .filter((i) => i?.medicine)
+    .map((i) => ({
+      animal_id: result.calfAnimalId,
+      description: "PROTOCOLO DO NASCIMENTO",
+      medicine: clean(i.medicine),
+      dose: clean(i.dose),
+      applied_at: input.birth_date,
+      notes: "APLICADO PELO VAQUEIRO NO ATO DO NASCIMENTO",
+      created_by: (request.created_by as string | null) ?? user.id,
+    }));
+  if (tratamentos.length > 0) {
+    await supabase.from("animal_treatments").insert(tratamentos);
+  }
+
   await supabase.from("animal_birth_requests").delete().eq("id", requestId);
 
   revalidate();
   return { ok: true, calfAnimalId: result.calfAnimalId };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROTOCOLO DO NASCIMENTO (o que a cria toma ao nascer — migration 095)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function protocoloError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.code === "PGRST205")
+    return "Rode a migration 095 no Supabase para montar o protocolo do nascimento";
+  return error.message;
+}
+
+export async function addProtocoloItem(input: {
+  species: AnimalSpecies;
+  medicine: string;
+  dose?: string | null;
+}) {
+  const supabase = createClient();
+  const medicine = clean(input.medicine);
+  if (!medicine) return { error: "Escreva o medicamento" };
+
+  // entra no fim da lista daquele bicho
+  const { data: ultimo } = await supabase
+    .from("animal_protocolo_nascimento")
+    .select("sort_order")
+    .eq("species", input.species)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await supabase.from("animal_protocolo_nascimento").insert({
+    species: input.species,
+    medicine,
+    dose: clean(input.dose),
+    sort_order: ((ultimo?.sort_order as number | undefined) ?? 0) + 1,
+  });
+  if (error) return { error: protocoloError(error) };
+  revalidate();
+  revalidatePath("/vaqueiro");
+  return { ok: true };
+}
+
+export async function updateProtocoloItem(
+  id: string,
+  input: { medicine: string; dose?: string | null }
+) {
+  const supabase = createClient();
+  const medicine = clean(input.medicine);
+  if (!medicine) return { error: "Escreva o medicamento" };
+
+  const { error } = await supabase
+    .from("animal_protocolo_nascimento")
+    .update({ medicine, dose: clean(input.dose) })
+    .eq("id", id);
+  if (error) return { error: protocoloError(error) };
+  revalidate();
+  revalidatePath("/vaqueiro");
+  return { ok: true };
+}
+
+export async function deleteProtocoloItem(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_protocolo_nascimento").delete().eq("id", id);
+  if (error) return { error: protocoloError(error) };
+  revalidate();
+  revalidatePath("/vaqueiro");
+  return { ok: true };
 }
 
 /** Descarta a solicitação (duplicada, mãe sem conserto, envio errado etc). */

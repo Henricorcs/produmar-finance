@@ -187,6 +187,14 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
             </p>
           </div>
 
+          {request.protocolo_aplicado && request.protocolo_aplicado.length > 0 && (
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg px-2.5 py-2">
+              O vaqueiro aplicou{" "}
+              {request.protocolo_aplicado.map((i) => i.medicine).join(", ")} — entra como
+              tratamento na ficha do {cria}.
+            </p>
+          )}
+
           {error && (
             <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
               {error}

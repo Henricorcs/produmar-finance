@@ -19,7 +19,7 @@
  * aqui esperando a próxima chance.
  */
 
-import type { AnimalSex, AnimalSpecies } from "@/lib/types";
+import type { AnimalSex, AnimalSpecies, ProtocoloItemAplicado } from "@/lib/types";
 
 /** Um nascimento esperando (ou já) subir. */
 export interface NascimentoGuardado {
@@ -39,6 +39,11 @@ export interface NascimentoGuardado {
   species?: AnimalSpecies;
   /** O dia em que o bezerro NASCEU — não o dia em que a rede voltou. */
   birth_date: string;
+  /**
+   * Os medicamentos do protocolo que ele marcou como aplicados, como a lista
+   * estava na hora (migration 095). Vazio no que ficou guardado antes.
+   */
+  protocolo?: ProtocoloItemAplicado[];
   /** A foto, já encolhida. Some depois que o envio confirma, para não entupir
    *  o celular guardando o que já está no servidor. */
   foto: Blob | null;

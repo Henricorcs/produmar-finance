@@ -863,8 +863,32 @@ export interface AnimalBirthRequest {
   species?: AnimalSpecies | null;
   birth_date: string;
   photo_path: string | null;
+  /**
+   * O que o vaqueiro marcou como aplicado do protocolo do nascimento, como a
+   * lista estava na hora (migration 095). Vazio em envio antigo.
+   */
+  protocolo_aplicado?: ProtocoloItemAplicado[] | null;
   created_by: string | null;
   created_at: string;
+}
+
+/**
+ * Um item do PROTOCOLO DO NASCIMENTO (migration 095): o que a cria de um tipo
+ * de bicho toma ao nascer. O dono monta; o vaqueiro marca como aplicado.
+ */
+export interface ProtocoloNascimentoItem {
+  id: string;
+  species: AnimalSpecies;
+  medicine: string;
+  dose: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+/** O que viaja com o nascimento: a fotografia do item, sem id nem ordem. */
+export interface ProtocoloItemAplicado {
+  medicine: string;
+  dose: string | null;
 }
 
 /** Tratamento — o remédio usado aparece na tela ao passar o mouse. */

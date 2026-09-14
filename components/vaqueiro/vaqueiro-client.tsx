@@ -5,7 +5,10 @@ import {
   Baby,
   Camera,
   Check,
+  CheckSquare,
   CloudOff,
+  Square,
+  Syringe,
   ImagePlus,
   RefreshCw,
   Trash2,
@@ -26,7 +29,12 @@ import {
   speciesOf,
   youngNoun,
 } from "@/components/animais/animal-shared";
-import type { AnimalSex, AnimalSpecies } from "@/lib/types";
+import type {
+  AnimalSex,
+  AnimalSpecies,
+  ProtocoloItemAplicado,
+  ProtocoloNascimentoItem,
+} from "@/lib/types";
 import { comprimirImagem } from "@/lib/comprimir-imagem";
 import {
   filaApagar,
@@ -49,6 +57,11 @@ interface Props {
    * tela guardada onde não precisa é tela velha aparecendo depois.
    */
   podeOffline?: boolean;
+  /**
+   * O protocolo do nascimento que o dono montou, de todos os bichos. A tela
+   * mostra só o do bicho escolhido e não deixa salvar sem marcar tudo.
+   */
+  protocolo?: ProtocoloNascimentoItem[];
 }
 
 type ResultadoEnvio = { ok: true } | { erro: string } | { semRede: true };
@@ -63,6 +76,9 @@ async function enviarNascimento(registro: NascimentoGuardado): Promise<Resultado
   // O que ficou guardado antes desta versão da tela não tem o bicho marcado:
   // aquilo é bovino, o único que a tela conhecia.
   fd.append("species", speciesOf(registro.species));
+  if (registro.protocolo && registro.protocolo.length > 0) {
+    fd.append("protocolo", JSON.stringify(registro.protocolo));
+  }
   if (registro.foto) {
     fd.append(
       "photo",
@@ -93,7 +109,7 @@ function nomeDoNascimento(r: NascimentoGuardado): string {
   return `${nomes.youngMale} ${r.calf_sex === "macho" ? "macho" : "fêmea"}`;
 }
 
-export function VaqueiroClient({ podeOffline = false }: Props) {
+export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -106,6 +122,8 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
    * aquele da foto.
    */
   const [species, setSpecies] = useState<AnimalSpecies>("bovino");
+  /** Os itens do protocolo que ele já marcou como aplicados (pelo id). */
+  const [aplicados, setAplicados] = useState<Set<string>>(new Set());
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -128,6 +146,31 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
   // "foto do cordeiro", "sexo do potro" — que é a que cabe depois do "do".
   const filhote = youngNoun(species);
   const filhoteMaiusculo = SPECIES_META[speciesOf(species)].youngMale;
+
+  // O protocolo é do BICHO: o bezerro toma uma coisa, o leitão outra.
+  const protocoloDoBicho = protocolo.filter((i) => i.species === species);
+  const faltaAplicar = protocoloDoBicho.filter((i) => !aplicados.has(i.id));
+
+  /** A fotografia do que foi aplicado — é isto que viaja com o nascimento. */
+  function protocoloMarcado(): ProtocoloItemAplicado[] {
+    return protocoloDoBicho
+      .filter((i) => aplicados.has(i.id))
+      .map((i) => ({ medicine: i.medicine, dose: i.dose }));
+  }
+
+  function alternarAplicado(id: string) {
+    setAplicados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
+
+  // Trocou de bicho: a marcação era do protocolo do outro, começa de novo.
+  useEffect(() => {
+    setAplicados(new Set());
+  }, [species]);
 
   // Libera a URL do objeto quando troca ou some a foto — evita vazar memória.
   useEffect(() => {
@@ -266,6 +309,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
   function resetForm() {
     setMotherTag("");
     setCalfSex("femea");
+    setAplicados(new Set());
     handlePhotoChange(null);
     // O bicho escolhido FICA: quem está no curral das ovelhas anota um cordeiro
     // atrás do outro, e voltar para bovino a cada envio só faria ele errar.
@@ -287,6 +331,13 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
 
     if (!motherTag.trim()) return setError("Informe o número da mãe");
     if (!photo) return setError(`Coloque uma foto do ${filhote}`);
+    // A EXIGÊNCIA: sem aplicar o protocolo inteiro, o nascimento não sai.
+    if (faltaAplicar.length > 0) {
+      return setError(
+        `Aplique no ${filhote} e marque: ${faltaAplicar.map((i) => i.medicine).join(", ")}`
+      );
+    }
+    const protocoloDoEnvio = protocoloMarcado();
 
     // ── O caminho normal: GRAVA NO CELULAR, e só então tenta a rede ──────────
     // O formulário só é limpo depois que o nascimento está seguro no aparelho.
@@ -298,6 +349,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
         calf_sex: calfSex,
         species,
         birth_date: today,
+        protocolo: protocoloDoEnvio,
         foto: photo,
         foto_nome: photo.name || "foto.jpg",
         criado_em: Date.now(),
@@ -331,6 +383,7 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
     fd.append("birth_date", today);
     fd.append("calf_sex", calfSex);
     fd.append("species", species);
+    if (protocoloDoEnvio.length > 0) fd.append("protocolo", JSON.stringify(protocoloDoEnvio));
     fd.append("photo", photo);
 
     startTransition(async () => {
@@ -544,6 +597,75 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
               </p>
             </div>
 
+            {/* O PROTOCOLO DO NASCIMENTO — o que o patrão mandou aplicar agora,
+                com a cria na mão. Sem marcar tudo, o botão de salvar não passa. */}
+            {protocoloDoBicho.length > 0 && (
+              <div className="space-y-2 rounded-xl border-2 border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/20 p-3">
+                <div className="flex items-start gap-2">
+                  <Syringe className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                      Aplique agora no {filhote} *
+                    </p>
+                    <p className="text-[12px] text-amber-800/80 dark:text-amber-300/80">
+                      Toque em cada um depois de aplicar. Só salva com tudo marcado.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {protocoloDoBicho.map((item) => {
+                    const feito = aplicados.has(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => alternarAplicado(item.id)}
+                        aria-pressed={feito}
+                        className={cn(
+                          "w-full min-h-[56px] flex items-center gap-3 px-3 py-2 rounded-xl border text-left transition-colors active:scale-[0.99]",
+                          feito
+                            ? "bg-emerald-50 border-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-800"
+                            : "bg-white border-slate-200 dark:bg-slate-900 dark:border-slate-700"
+                        )}
+                      >
+                        {feito ? (
+                          <CheckSquare className="w-6 h-6 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                        ) : (
+                          <Square className="w-6 h-6 text-slate-400 flex-shrink-0" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={cn(
+                              "block text-[15px] font-semibold break-words",
+                              feito
+                                ? "text-emerald-800 dark:text-emerald-300"
+                                : "text-slate-700 dark:text-slate-200"
+                            )}
+                          >
+                            {item.medicine}
+                          </span>
+                          {item.dose && (
+                            <span className="block text-[12px] text-slate-500 dark:text-slate-400">
+                              {item.dose}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-[11px] font-bold flex-shrink-0",
+                            feito ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"
+                          )}
+                        >
+                          {feito ? "APLICADO" : "FALTA"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {error && (
               <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
                 {error}
@@ -557,9 +679,11 @@ export function VaqueiroClient({ podeOffline = false }: Props) {
             >
               {isPending
                 ? "Enviando..."
-                : guardaNoCelular
-                  ? "Salvar nascimento"
-                  : "Enviar nascimento"}
+                : faltaAplicar.length > 0
+                  ? `Falta aplicar ${faltaAplicar.length} de ${protocoloDoBicho.length}`
+                  : guardaNoCelular
+                    ? "Salvar nascimento"
+                    : "Enviar nascimento"}
             </Button>
 
             {guardaNoCelular && (

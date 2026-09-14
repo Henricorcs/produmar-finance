@@ -13,6 +13,7 @@ import {
   Printer,
   Search,
   Settings2,
+  Pencil,
   Syringe,
   Table2,
   Layers,
@@ -38,6 +39,7 @@ import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import { TreatmentDialog } from "./treatment-dialog";
 import { BirthDialog } from "./birth-dialog";
 import { BirthRequestDialog } from "./birth-request-dialog";
+import { ProtocoloNascimentoDialog } from "./protocolo-nascimento-dialog";
 import { BirthRequestDetailDialog } from "./birth-request-detail-dialog";
 import { QuickAddRow } from "./quick-add-row";
 import { QuickAddBar } from "./quick-add-bar";
@@ -68,6 +70,7 @@ import {
 import type {
   AnimalBirth,
   AnimalBirthRequest,
+  ProtocoloNascimentoItem,
   AnimalBreed,
   AnimalCategory,
   AnimalDespesa,
@@ -117,6 +120,8 @@ interface Props {
   lotes?: AnimalLoteResumo[];
   /** Entradas, mortes e correções de contagem de todos os ciclos. */
   movimentos?: AnimalLoteMovimento[];
+  /** O que a cria de cada bicho toma ao nascer (migration 095). */
+  protocolo?: ProtocoloNascimentoItem[];
 }
 
 type Tab =
@@ -182,6 +187,7 @@ export function AnimaisPageClient({
   tanques = [],
   lotes = [],
   movimentos = [],
+  protocolo = [],
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -216,6 +222,7 @@ export function AnimaisPageClient({
   const [treatmentOpen, setTreatmentOpen] = useState(false);
   const [treatmentPresetId, setTreatmentPresetId] = useState<string | null>(null);
   const [birthOpen, setBirthOpen] = useState(false);
+  const [protocoloOpen, setProtocoloOpen] = useState(false);
   const [birthPresetId, setBirthPresetId] = useState<string | null>(null);
   const [weightOpen, setWeightOpen] = useState(false);
   const [weightPresetId, setWeightPresetId] = useState<string | null>(null);
@@ -1242,6 +1249,30 @@ export function AnimaisPageClient({
       {/* ── Aba: Nascimentos — envios do vaqueiro aguardando conferência ──── */}
       {tab === "nascimentos" && (
         <>
+          {/* O protocolo do nascimento: o que o vaqueiro tem que aplicar na
+              cria antes de conseguir informar. Fica no topo da aba porque é
+              daqui que saem os nascimentos. */}
+          <button
+            type="button"
+            onClick={() => setProtocoloOpen(true)}
+            className="w-full flex items-center gap-3 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 px-4 py-3 text-left hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+          >
+            <span className="w-9 h-9 rounded-lg flex items-center justify-center bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 flex-shrink-0">
+              <Syringe className="w-4 h-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-amber-900 dark:text-amber-200">
+                Protocolo do nascimento
+              </span>
+              <span className="block text-[12px] text-amber-800/80 dark:text-amber-300/80">
+                {protocolo.length === 0
+                  ? "Indique os medicamentos que o vaqueiro aplica na cria ao nascer"
+                  : `${protocolo.length} ${protocolo.length === 1 ? "medicamento" : "medicamentos"} — o vaqueiro só salva o nascimento depois de aplicar`}
+              </span>
+            </span>
+            <Pencil className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          </button>
+
           {birthRequests.length === 0 ? (
             <EmptyState
               icon={Baby}
@@ -1438,6 +1469,11 @@ export function AnimaisPageClient({
           setDetailRequest(null);
           if (r) handleDiscardRequest(r);
         }}
+      />
+      <ProtocoloNascimentoDialog
+        open={protocoloOpen}
+        onClose={() => setProtocoloOpen(false)}
+        protocolo={protocolo}
       />
       <BirthRequestDialog
         open={!!resolveRequest}

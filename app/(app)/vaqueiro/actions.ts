@@ -3,7 +3,7 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { AnimalSex, AnimalSpecies } from "@/lib/types";
+import type { AnimalSex, AnimalSpecies, ProtocoloItemAplicado } from "@/lib/types";
 import { removerArquivos, uploadArquivo } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -31,7 +31,29 @@ function normTipo(v: string): TipoQuePare {
 }
 
 /** As colunas novas da tabela, na ordem em que podem faltar no banco. */
-const COLUNAS_NOVAS = ["client_id", "species"] as const;
+const COLUNAS_NOVAS = ["client_id", "species", "protocolo_aplicado"] as const;
+
+/**
+ * Lê o que o celular mandou como aplicado. Chega como texto (FormData só leva
+ * texto), e o que vier torto é ignorado item a item — o nascimento importa
+ * mais que um item mal escrito.
+ */
+function lerProtocoloAplicado(bruto: string): ProtocoloItemAplicado[] {
+  if (!bruto) return [];
+  try {
+    const lista = JSON.parse(bruto);
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .map((i) => ({
+        medicine: String(i?.medicine ?? "").trim().toUpperCase(),
+        dose: String(i?.dose ?? "").trim().toUpperCase() || null,
+      }))
+      .filter((i) => i.medicine)
+      .slice(0, 30);
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Traduz o erro do Postgres em um recado que diz O QUE FALTA rodar. Cada caso
@@ -96,6 +118,12 @@ export async function requestCalfBirth(formData: FormData) {
     ? carimbo
     : null;
 
+  // O protocolo do nascimento que ele marcou (migration 095). A exigência de
+  // marcar tudo mora na TELA, e não aqui: um nascimento guardado offline de
+  // manhã não pode ser recusado à tarde só porque o dono mudou a lista nesse
+  // meio-tempo. Aqui só se grava o que ele disse que aplicou.
+  const protocoloAplicado = lerProtocoloAplicado(String(formData.get("protocolo") ?? ""));
+
   if (!motherTag) return { error: "Informe o número da mãe" };
   if (!birthDate) return { error: "Informe a data do nascimento" };
   if (calfSex !== "macho" && calfSex !== "femea")
@@ -119,6 +147,7 @@ export async function requestCalfBirth(formData: FormData) {
     created_by: string;
     client_id?: string;
     species?: AnimalSpecies;
+    protocolo_aplicado?: ProtocoloItemAplicado[];
   } = {
     mother_tag: motherTag,
     // o número do bezerro nasce na conferência do patrão (migration 053)
@@ -130,6 +159,7 @@ export async function requestCalfBirth(formData: FormData) {
     species,
   };
   if (clientId) solicitacao.client_id = clientId;
+  if (protocoloAplicado.length > 0) solicitacao.protocolo_aplicado = protocoloAplicado;
 
   let { error } = await supabase.from("animal_birth_requests").insert(solicitacao);
 

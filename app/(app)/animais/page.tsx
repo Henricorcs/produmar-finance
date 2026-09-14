@@ -3,6 +3,7 @@ import { AnimaisPageClient } from "@/components/animais/animais-page-client";
 import type {
   AnimalBirth,
   AnimalBirthRequest,
+  ProtocoloNascimentoItem,
   AnimalBreed,
   AnimalDespesa,
   AnimalFinanceiroLinha,
@@ -39,6 +40,7 @@ export default async function AnimaisPage() {
     tanquesRes,
     lotesRes,
     movimentosRes,
+    protocoloRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -106,6 +108,13 @@ export default async function AnimaisPage() {
       .select("*")
       .order("moved_on", { ascending: false })
       .limit(5000),
+    // o protocolo do nascimento (migration 095 — sem ela a aba Nascimentos
+    // abre igual, só com o protocolo vazio e o aviso de rodar a migration)
+    supabase
+      .from("animal_protocolo_nascimento")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true }),
   ]);
 
   return (
@@ -125,6 +134,7 @@ export default async function AnimaisPage() {
       tanques={(tanquesRes.data as AnimalTanque[]) ?? []}
       lotes={(lotesRes.data as AnimalLoteResumo[]) ?? []}
       movimentos={(movimentosRes.data as AnimalLoteMovimento[]) ?? []}
+      protocolo={(protocoloRes.data as ProtocoloNascimentoItem[]) ?? []}
     />
   );
 }

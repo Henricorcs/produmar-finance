@@ -1,6 +1,6 @@
 "use client";
 
-import { Baby, Maximize2 } from "lucide-react";
+import { Baby, CheckSquare, Maximize2, Syringe } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -130,6 +130,35 @@ export function BirthRequestDetailDialog({
             {/* envio antigo, de antes da 053, quando o vaqueiro ainda numerava */}
             {request.calf_tag && <Linha rotulo="Nº que veio no envio" valor={request.calf_tag} />}
           </dl>
+
+          {/* O PROTOCOLO que o vaqueiro marcou como aplicado, no ato */}
+          {request.protocolo_aplicado && request.protocolo_aplicado.length > 0 ? (
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5 mb-1.5">
+                <Syringe className="w-3.5 h-3.5" />
+                Aplicado no nascimento
+              </p>
+              <ul className="space-y-1">
+                {request.protocolo_aplicado.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <span className="text-xs text-slate-700 dark:text-slate-200">
+                      {item.medicine}
+                      {item.dose ? <span className="text-slate-500"> · {item.dose}</span> : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 mt-1.5">
+                Ao lançar no rebanho, cada item entra como tratamento na ficha da cria.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-2">
+              Este envio veio sem protocolo do nascimento — ou não havia protocolo para{" "}
+              {nomes.youngMale.toLowerCase()} na hora, ou foi enviado antes da regra.
+            </p>
+          )}
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
             O número do {nomes.youngMale.toLowerCase()} é seu — você dá na hora de lançar no
