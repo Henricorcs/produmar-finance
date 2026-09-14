@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, Pencil, Plus, Syringe, Trash2, X } from "lucide-react";
 import {
   Dialog,
@@ -10,11 +10,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { actionError } from "@/lib/action-result";
 import { cn, upperKeepingCaret } from "@/lib/utils";
 import {
-  addProtocoloItem,
+  addProtocoloItens,
   deleteProtocoloItem,
   updateProtocoloItem,
 } from "@/app/(app)/animais/actions";
@@ -27,50 +26,93 @@ interface Props {
   protocolo: ProtocoloNascimentoItem[];
 }
 
+/** Uma linha nova ainda não salva — só existe na tela até tocar em Salvar. */
+interface LinhaNova {
+  chave: number;
+  medicine: string;
+  dose: string;
+}
+
 /**
- * O PROTOCOLO DO NASCIMENTO — o que a cria toma na hora em que nasce.
+ * O PROTOCOLO DO NASCIMENTO — os medicamentos que a cria toma assim que nasce.
  *
  * Quem decide é o dono, bicho por bicho: o bezerro toma uma coisa, o leitão
- * outra. O que entrar aqui aparece no celular do vaqueiro no ato de informar o
- * nascimento, e ele só consegue salvar depois de marcar cada item como
- * aplicado. Ao lançar a cria no rebanho, cada item vira um tratamento na ficha
- * dela.
+ * outra. São QUANTOS MEDICAMENTOS ELE QUISER, cada um na sua linha com a sua
+ * dose. A primeira versão desta tela tinha um formulário só embaixo da lista, e
+ * parecia que o protocolo era um medicamento: o segundo acabava escrito dentro
+ * da dose do primeiro. Agora a tela abre com linhas para preencher e um botão
+ * "Mais um medicamento" que acrescenta outra — e salva todas de uma vez.
  *
- * Mudar a lista vale para os próximos nascimentos — o que já foi enviado
- * guarda o que estava valendo na hora.
+ * O que entrar aqui aparece no celular do vaqueiro no ato de informar o
+ * nascimento, e ele só salva depois de marcar cada item como aplicado. Ao
+ * lançar a cria no rebanho, cada item vira um tratamento na ficha dela.
  */
 export function ProtocoloNascimentoDialog({ open, onClose, protocolo }: Props) {
   const [species, setSpecies] = useState<AnimalSpecies>("bovino");
-  const [medicine, setMedicine] = useState("");
-  const [dose, setDose] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  /** O item em correção, com o texto que está sendo digitado. */
+  const proximaChave = useRef(1);
+  const novaLinha = (): LinhaNova => ({ chave: proximaChave.current++, medicine: "", dose: "" });
+  const [novas, setNovas] = useState<LinhaNova[]>([]);
+  /** O campo de medicamento que deve ganhar o foco (a linha recém-criada). */
+  const [focar, setFocar] = useState<number | null>(null);
+
+  /** O item já salvo em correção, com o texto que está sendo digitado. */
   const [editando, setEditando] = useState<{ id: string; medicine: string; dose: string } | null>(
     null
   );
 
-  useEffect(() => {
-    if (!open) return;
-    setMedicine("");
-    setDose("");
-    setErro(null);
-    setEditando(null);
-  }, [open]);
-
   const doBicho = protocolo.filter((i) => i.species === species);
   const nomes = SPECIES_META[species];
 
-  function adicionar(e: React.FormEvent) {
-    e.preventDefault();
+  // Ao abrir e ao trocar de bicho: a lista vazia já vem com uma linha para
+  // preencher; a que já tem itens mostra os itens e o botão de acrescentar.
+  useEffect(() => {
+    if (!open) return;
     setErro(null);
-    if (!medicine.trim()) return setErro("Escreva o medicamento");
+    setAviso(null);
+    setEditando(null);
+    setNovas(protocolo.some((i) => i.species === species) ? [] : [novaLinha()]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, species]);
+
+  function maisUm() {
+    const linha = novaLinha();
+    setNovas((atual) => [...atual, linha]);
+    setFocar(linha.chave);
+    setAviso(null);
+  }
+
+  function mudar(chave: number, campo: "medicine" | "dose", valor: string) {
+    setNovas((atual) => atual.map((l) => (l.chave === chave ? { ...l, [campo]: valor } : l)));
+  }
+
+  function tirarLinha(chave: number) {
+    setNovas((atual) => atual.filter((l) => l.chave !== chave));
+  }
+
+  const preenchidas = novas.filter((l) => l.medicine.trim());
+
+  function salvarNovas() {
+    setErro(null);
+    setAviso(null);
+    if (preenchidas.length === 0) return setErro("Escreva o nome do medicamento");
     startTransition(async () => {
-      const falha = actionError(await addProtocoloItem({ species, medicine, dose }));
+      const r = await addProtocoloItens(
+        species,
+        preenchidas.map((l) => ({ medicine: l.medicine, dose: l.dose }))
+      );
+      const falha = actionError(r);
       if (falha) return setErro(falha);
-      setMedicine("");
-      setDose("");
+      const n = preenchidas.length;
+      setNovas([]);
+      setAviso(
+        n === 1
+          ? "Medicamento adicionado ao protocolo."
+          : `${n} medicamentos adicionados ao protocolo.`
+      );
     });
   }
 
@@ -93,6 +135,7 @@ export function ProtocoloNascimentoDialog({ open, onClose, protocolo }: Props) {
   function remover(item: ProtocoloNascimentoItem) {
     if (!confirm(`Tirar ${item.medicine} do protocolo do ${nomes.youngMale.toLowerCase()}?`)) return;
     setErro(null);
+    setAviso(null);
     startTransition(async () => {
       const falha = actionError(await deleteProtocoloItem(item.id));
       if (falha) setErro(falha);
@@ -112,8 +155,8 @@ export function ProtocoloNascimentoDialog({ open, onClose, protocolo }: Props) {
         </DialogHeader>
 
         <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
-          O que a cria toma assim que nasce. Aparece no celular do vaqueiro e ele só salva o
-          nascimento depois de marcar cada item como aplicado.
+          Os medicamentos que a cria toma assim que nasce — quantos precisar, um em cada
+          linha. O vaqueiro só salva o nascimento depois de marcar cada um como aplicado.
         </p>
 
         {/* De que bicho é o protocolo */}
@@ -125,11 +168,7 @@ export function ProtocoloNascimentoDialog({ open, onClose, protocolo }: Props) {
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => {
-                  setSpecies(opt.value);
-                  setEditando(null);
-                  setErro(null);
-                }}
+                onClick={() => setSpecies(opt.value)}
                 className={cn(
                   "flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
                   ativo
@@ -147,14 +186,11 @@ export function ProtocoloNascimentoDialog({ open, onClose, protocolo }: Props) {
         <div className="mt-3 space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
             O {nomes.youngMale.toLowerCase()} toma ao nascer
+            {doBicho.length > 0 && ` · ${doBicho.length} ${doBicho.length === 1 ? "medicamento" : "medicamentos"}`}
           </p>
 
-          {doBicho.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-4 text-center">
-              Nada ainda — o vaqueiro informa o nascimento de{" "}
-              {nomes.youngMale.toLowerCase()} sem protocolo.
-            </p>
-          ) : (
+          {/* Os que já estão no protocolo */}
+          {doBicho.length > 0 && (
             <ol className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
               {doBicho.map((item, i) =>
                 editando?.id === item.id ? (
@@ -201,7 +237,7 @@ export function ProtocoloNascimentoDialog({ open, onClose, protocolo }: Props) {
                   </li>
                 ) : (
                   <li key={item.id} className="flex items-center gap-2 px-3 py-2">
-                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400 tabular-nums w-4 flex-shrink-0">
+                    <span className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[11px] font-bold flex items-center justify-center tabular-nums flex-shrink-0">
                       {i + 1}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -209,7 +245,9 @@ export function ProtocoloNascimentoDialog({ open, onClose, protocolo }: Props) {
                         {item.medicine}
                       </p>
                       {item.dose && (
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">{item.dose}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 break-words">
+                          {item.dose}
+                        </p>
                       )}
                     </div>
                     <button
@@ -237,48 +275,96 @@ export function ProtocoloNascimentoDialog({ open, onClose, protocolo }: Props) {
               )}
             </ol>
           )}
-        </div>
 
-        {/* O campo para indicar o que aplicar */}
-        <form onSubmit={adicionar} className="mt-3 space-y-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 p-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="prot_medicine">Medicamento a aplicar *</Label>
-            <Input
-              id="prot_medicine"
-              value={medicine}
-              onChange={(e) => setMedicine(upperKeepingCaret(e))}
-              placeholder="ex: IODO NO UMBIGO"
-              autoCapitalize="characters"
-              autoComplete="off"
-            />
-          </div>
-          <div className="flex gap-2 items-end">
-            <div className="space-y-1.5 flex-1 min-w-0">
-              <Label htmlFor="prot_dose">Dose</Label>
+          {/* As linhas novas, uma por medicamento */}
+          {novas.map((linha, n) => (
+            <div
+              key={linha.chave}
+              className="rounded-xl border-2 border-dashed border-produmar-200 dark:border-produmar-900/60 bg-produmar-50/30 dark:bg-slate-800/40 p-2.5 space-y-2"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-produmar-700 dark:text-produmar-400">
+                  Medicamento {doBicho.length + n + 1}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => tirarLinha(linha.chave)}
+                  disabled={isPending}
+                  aria-label="Tirar esta linha"
+                  className="w-8 h-8 -m-1 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
               <Input
-                id="prot_dose"
-                value={dose}
-                onChange={(e) => setDose(upperKeepingCaret(e))}
-                placeholder="ex: 2 ML (opcional)"
+                value={linha.medicine}
+                onChange={(e) => mudar(linha.chave, "medicine", upperKeepingCaret(e))}
+                placeholder="Nome — ex: UMBICURA NO UMBIGO"
+                autoCapitalize="characters"
+                autoComplete="off"
+                autoFocus={focar === linha.chave}
+              />
+              <Input
+                value={linha.dose}
+                onChange={(e) => mudar(linha.chave, "dose", upperKeepingCaret(e))}
+                placeholder="Dose — ex: 2 ML (opcional)"
                 autoCapitalize="characters"
                 autoComplete="off"
               />
             </div>
-            <Button type="submit" disabled={isPending} className="h-11 sm:h-10 flex-shrink-0">
-              <Plus className="w-4 h-4" />
-              Adicionar
-            </Button>
-          </div>
-        </form>
+          ))}
 
+          <Button
+            type="button"
+            variant="outline"
+            onClick={maisUm}
+            disabled={isPending}
+            className="w-full h-11 border-dashed"
+          >
+            <Plus className="w-4 h-4" />
+            {doBicho.length + novas.length === 0 ? "Adicionar medicamento" : "Mais um medicamento"}
+          </Button>
+
+          {novas.length > 0 && (
+            <Button
+              type="button"
+              onClick={salvarNovas}
+              disabled={isPending || preenchidas.length === 0}
+              className="w-full h-11"
+            >
+              <Check className="w-4 h-4" />
+              {isPending
+                ? "Salvando..."
+                : preenchidas.length <= 1
+                  ? "Salvar no protocolo"
+                  : `Salvar ${preenchidas.length} medicamentos`}
+            </Button>
+          )}
+        </div>
+
+        {aviso && (
+          <p className="mt-3 text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-400">
+            {aviso}
+          </p>
+        )}
         {erro && (
           <p className="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
             {erro}
           </p>
         )}
 
-        <Button type="button" variant="outline" className="w-full mt-4" onClick={onClose}>
-          Pronto
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full mt-3"
+          onClick={() => {
+            // Linha preenchida e não salva: avisa antes de perder o que digitou.
+            if (preenchidas.length > 0 && !confirm("Tem medicamento digitado e não salvo. Fechar mesmo assim?"))
+              return;
+            onClose();
+          }}
+        >
+          Fechar
         </Button>
       </DialogContent>
     </Dialog>

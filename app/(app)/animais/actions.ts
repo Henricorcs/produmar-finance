@@ -1013,34 +1013,42 @@ function protocoloError(error: { code?: string; message: string }): string {
   return error.message;
 }
 
-export async function addProtocoloItem(input: {
-  species: AnimalSpecies;
-  medicine: string;
-  dose?: string | null;
-}) {
+/**
+ * Põe VÁRIOS medicamentos no protocolo de uma vez, na ordem em que vieram, no
+ * fim da lista daquele bicho. Linha sem medicamento é ignorada — é a linha em
+ * branco que sobrou na tela, não um erro.
+ */
+export async function addProtocoloItens(
+  species: AnimalSpecies,
+  itens: { medicine: string; dose?: string | null }[]
+) {
   const supabase = createClient();
-  const medicine = clean(input.medicine);
-  if (!medicine) return { error: "Escreva o medicamento" };
+  const validos = itens
+    .map((i) => ({ medicine: clean(i.medicine), dose: clean(i.dose) }))
+    .filter((i): i is { medicine: string; dose: string | null } => !!i.medicine);
+  if (validos.length === 0) return { error: "Escreva pelo menos um medicamento" };
 
-  // entra no fim da lista daquele bicho
   const { data: ultimo } = await supabase
     .from("animal_protocolo_nascimento")
     .select("sort_order")
-    .eq("species", input.species)
+    .eq("species", species)
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
+  const base = (ultimo?.sort_order as number | undefined) ?? 0;
 
-  const { error } = await supabase.from("animal_protocolo_nascimento").insert({
-    species: input.species,
-    medicine,
-    dose: clean(input.dose),
-    sort_order: ((ultimo?.sort_order as number | undefined) ?? 0) + 1,
-  });
+  const { error } = await supabase.from("animal_protocolo_nascimento").insert(
+    validos.map((i, n) => ({
+      species,
+      medicine: i.medicine,
+      dose: i.dose,
+      sort_order: base + n + 1,
+    }))
+  );
   if (error) return { error: protocoloError(error) };
   revalidate();
   revalidatePath("/vaqueiro");
-  return { ok: true };
+  return { ok: true, adicionados: validos.length };
 }
 
 export async function updateProtocoloItem(
