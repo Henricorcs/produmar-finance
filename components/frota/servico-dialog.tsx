@@ -93,7 +93,6 @@ export function ServicoDialog({
   const [destination, setDestination] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unitPrice, setUnitPrice] = useState("");
-  const [operator, setOperator] = useState("");
   const [internal, setInternal] = useState(false);
   const [assignedTo, setAssignedTo] = useState("");
   const [status, setStatus] = useState<MachineServicoStatus>("aberta");
@@ -112,7 +111,6 @@ export function ServicoDialog({
     setDestination(servico?.destination ?? "");
     setQuantity(servico ? formatQty(Number(servico.quantity)) : "1");
     setUnitPrice(servico ? formatBRLInput(Number(servico.unit_price)) : "");
-    setOperator(servico?.operator ?? "");
     setAssignedTo(servico?.assigned_to ?? "");
     setInternal(servico?.internal ?? false);
     setStatus(servico?.status ?? "aberta");
@@ -157,6 +155,12 @@ export function ServicoDialog({
     }
 
     startTransition(async () => {
+      // Quem estava na máquina é quem recebeu a OS: o nome dele vai junto para
+      // a ficha, a planilha e o histórico. OS antiga, lançada antes do "Enviar
+      // para", guarda o nome que foi digitado na época.
+      const escolhido = operators.find((o) => o.id === assignedTo)?.name;
+      const operator =
+        escolhido ?? (servico && !servico.assigned_to ? servico.operator : null);
       const input = {
         machine_id: machineId,
         service_date: date,
@@ -439,19 +443,6 @@ export function ServicoDialog({
                 autoComplete="off"
               />
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="ms_operador">Motorista / operador</Label>
-            <Input
-              id="ms_operador"
-              value={operator}
-              onChange={(e) => setOperator(upperKeepingCaret(e))}
-              placeholder="opcional, quem estava na máquina"
-              autoCapitalize="characters"
-              className="h-11 sm:h-10"
-              autoComplete="off"
-            />
           </div>
 
           {/* As duas chaves da conta: é cobrado? já recebeu? */}
