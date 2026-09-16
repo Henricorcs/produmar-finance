@@ -55,7 +55,13 @@ function cleanDate(s?: string | null): string | null {
 function diaristaError(error: { code?: string; message: string }): string {
   if (error.code === "23505" && error.message.includes("uq_diarista_dia"))
     return "Esse dia já estava lançado para este diarista";
+  if (error.code === "23505" && error.message.includes("uq_diarista_acerto_mes"))
+    return "O salário desse mês já foi pago. Desfaça o pagamento antes de pagar de novo.";
   if (error.code === "23505") return "Já existe um colaborador com esse nome";
+
+  // O banco ainda só conhece diarista e empreiteiro: falta a 098.
+  if (error.code === "23514" && error.message.includes("worker_type"))
+    return "Rode a migration 098 no Supabase para cadastrar funcionário CLT";
 
   // O banco recusou por permissão: o RLS de adiantamento e acerto só deixa
   // gravar quem manda no dinheiro (admin, financeiro, ou operador com o
@@ -67,6 +73,12 @@ function diaristaError(error: { code?: string; message: string }): string {
   if (error.code === "42P01" || error.code === "42703") {
     if (error.message.includes("half_day"))
       return "Rode a migration 064 no Supabase para usar a meia diária";
+    if (
+      error.message.includes("monthly_salary") ||
+      error.message.includes("reference_month") ||
+      error.message.includes("salary_total")
+    )
+      return "Rode a migration 098 no Supabase para usar o salário do funcionário CLT";
     if (
       error.message.includes("payment_mode") ||
       error.message.includes("meter_rate") ||
@@ -112,16 +124,30 @@ export interface DiaristaInput {
   meter_rate?: number | null;
   /** Preço combinado da obra inteira (070). */
   job_rate?: number | null;
+  /** Salário do mês — só do CLT (098). */
+  monthly_salary?: number | null;
   notes?: string | null;
 }
 
 /**
  * O tipo é o que decide a tela: quem é diarista aparece no calendário do
- * técnico, quem é empreiteiro recebe pelo serviço lançado no setor da obra.
- * Qualquer coisa fora dos dois vira diarista — é como sempre foi.
+ * técnico, quem é empreiteiro recebe pelo serviço lançado no setor da obra, e
+ * o CLT recebe o salário do mês. Qualquer coisa fora dos três vira diarista —
+ * é como sempre foi.
  */
 function cleanWorkerType(v?: WorkerType | null): WorkerType {
-  return v === "empreiteiro" ? "empreiteiro" : "diarista";
+  return v === "empreiteiro" || v === "clt" ? v : "diarista";
+}
+
+/**
+ * O salário só vai para o banco quando a pessoa é CLT. Mandar a coluna sempre
+ * faria o cadastro de QUALQUER colaborador falhar enquanto a migration 098 não
+ * roda — e quem deixa de ser CLT guarda o número antigo, que nada mais lê.
+ */
+function salarioDoCadastro(input: DiaristaInput) {
+  return cleanWorkerType(input.worker_type) === "clt"
+    ? { monthly_salary: normMoney(input.monthly_salary) }
+    : {};
 }
 
 /**
@@ -154,6 +180,7 @@ export async function createDiarista(input: DiaristaInput) {
       payment_mode: cleanPaymentMode(input.payment_mode),
       meter_rate: normMoney(input.meter_rate),
       job_rate: normMoney(input.job_rate),
+      ...salarioDoCadastro(input),
       notes: clean(input.notes),
       created_by: user.id,
     })
@@ -183,6 +210,7 @@ export async function updateDiarista(id: string, input: DiaristaInput) {
       payment_mode: cleanPaymentMode(input.payment_mode),
       meter_rate: normMoney(input.meter_rate),
       job_rate: normMoney(input.job_rate),
+      ...salarioDoCadastro(input),
       notes: clean(input.notes),
     })
     .eq("id", id);
@@ -435,11 +463,20 @@ export async function deleteDiaristaAdiantamento(id: string) {
  * `settled_on` também serve de corte: dia trabalhado (ou serviço feito) DEPOIS
  * dessa data continua em aberto, para o acerto de sábado não levar junto o que
  * veio no domingo.
+ *
+ * O CLT (098) paga o SALDO DO MÊS pela mesma porta, com duas diferenças:
+ *   • o salário do cadastro entra no que ele tem a receber, e o acerto guarda
+ *     de qual mês ele é (`reference_month`) — o mesmo mês não sai duas vezes;
+ *   • o corte é o ÚLTIMO DIA daquele mês, e não o dia do pagamento: o salário
+ *     de setembro, pago em 5 de outubro, desconta os vales de setembro e deixa
+ *     o de outubro para o salário de outubro.
  */
 export async function createDiaristaAcerto(input: {
   diarista_id: string;
   settled_on?: string | null;
   notes?: string | null;
+  /** CLT: o mês do salário que está sendo pago, em YYYY-MM (098). */
+  reference_month?: string | null;
 }) {
   const supabase = createClient();
   const {
@@ -448,7 +485,51 @@ export async function createDiaristaAcerto(input: {
   if (!user) return { error: "Não autenticado" };
 
   if (!input.diarista_id) return { error: "Colaborador não informado" };
-  const ate = cleanDate(input.settled_on) ?? new Date().toISOString().slice(0, 10);
+  const pagoEm = cleanDate(input.settled_on) ?? new Date().toISOString().slice(0, 10);
+
+  // `select *` e não a lista de colunas: sem a migration 098 a coluna do
+  // salário não existe, e o acerto do diarista não pode quebrar por causa dela
+  const { data: pessoa, error: pessoaErr } = await supabase
+    .from("diaristas")
+    .select("*")
+    .eq("id", input.diarista_id)
+    .maybeSingle();
+  if (pessoaErr) return { error: diaristaError(pessoaErr) };
+  if (!pessoa) return { error: "Colaborador não encontrado" };
+
+  const clt = pessoa.worker_type === "clt";
+  let mesReferencia: string | null = null;
+  let salario = 0;
+  let ate = pagoEm;
+
+  if (clt) {
+    const m = /^(\d{4})-(\d{2})$/.exec(input.reference_month?.trim() ?? "");
+    const ano = m ? Number(m[1]) : NaN;
+    const mes = m ? Number(m[2]) : NaN;
+    if (!m || mes < 1 || mes > 12) return { error: "Escolha o mês do salário" };
+
+    salario = normMoney(pessoa.monthly_salary as number);
+    if (salario <= 0)
+      return { error: "Informe o salário mensal no cadastro dele antes de pagar o mês" };
+
+    mesReferencia = `${m[1]}-${m[2]}-01`;
+    // Date.UTC(ano, mes, 0) = dia 0 do mês seguinte = último dia deste mês
+    ate = new Date(Date.UTC(ano, mes, 0)).toISOString().slice(0, 10);
+
+    const { data: jaPago } = await supabase
+      .from("diarista_acertos")
+      .select("settled_on")
+      .eq("diarista_id", input.diarista_id)
+      .eq("reference_month", mesReferencia)
+      .maybeSingle();
+    if (jaPago)
+      return {
+        error: `O salário de ${m[2]}/${m[1]} já foi pago em ${String(jaPago.settled_on)
+          .split("-")
+          .reverse()
+          .join("/")}. Desfaça aquele pagamento antes de pagar de novo.`,
+      };
+  }
 
   const [diasRes, valesRes, servicosRes] = await Promise.all([
     supabase
@@ -482,7 +563,8 @@ export async function createDiaristaAcerto(input: {
   // acerto continua funcionando com o que existia antes, sem quebrar a tela
   const servicos = servicosRes.error ? [] : servicosRes.data ?? [];
 
-  if (dias.length === 0 && vales.length === 0 && servicos.length === 0)
+  // o CLT sempre tem o salário a receber, então para ele nunca cai aqui
+  if (!clt && dias.length === 0 && vales.length === 0 && servicos.length === 0)
     return { error: "Não há diária, serviço nem adiantamento em aberto até essa data" };
 
   const diariasTotal = normMoney(dias.reduce((s, d) => s + Number(d.daily_rate), 0));
@@ -490,8 +572,8 @@ export async function createDiaristaAcerto(input: {
     servicos.reduce((s, v) => s + Number(v.total_value), 0)
   );
   // days_total é a coluna do recibo (068): guarda o que ele TINHA A RECEBER,
-  // venha de dia trabalhado ou de serviço fechado
-  const diasTotal = normMoney(diariasTotal + servicosTotal);
+  // venha de dia trabalhado, de serviço fechado ou do salário do mês (098)
+  const diasTotal = normMoney(diariasTotal + servicosTotal + salario);
   const valesTotal = normMoney(vales.reduce((s, v) => s + Number(v.amount), 0));
   const aPagar = normMoney(diasTotal - valesTotal);
 
@@ -499,18 +581,23 @@ export async function createDiaristaAcerto(input: {
   // a dívida dele. O saldo negativo segue para a semana que vem.
   if (valesTotal > diasTotal)
     return {
-      error:
-        "O adiantado é maior que o trabalhado até essa data — não há acerto a fazer. O saldo passa para a próxima semana.",
+      error: clt
+        ? "O adiantado passa do salário do mês — não há saldo a pagar. Confira as datas dos adiantamentos."
+        : "O adiantado é maior que o trabalhado até essa data — não há acerto a fazer. O saldo passa para a próxima semana.",
     };
 
   const { data: acerto, error: acertoErr } = await supabase
     .from("diarista_acertos")
     .insert({
       diarista_id: input.diarista_id,
-      settled_on: ate,
+      // no CLT é o dia em que o saldo foi pago; nos outros, o próprio corte
+      settled_on: clt ? pagoEm : ate,
       days_total: diasTotal,
       advance_total: valesTotal,
       amount_paid: aPagar,
+      // as colunas da 098 só vão no pagamento do CLT: o acerto do diarista
+      // continua gravando mesmo com a migration por rodar
+      ...(clt ? { reference_month: mesReferencia, salary_total: salario } : {}),
       notes: clean(input.notes),
       created_by: user.id,
     })
@@ -559,7 +646,16 @@ export async function createDiaristaAcerto(input: {
   }
 
   revalidate();
-  return { ok: true, acertoId, diasTotal, diariasTotal, servicosTotal, valesTotal, aPagar };
+  return {
+    ok: true,
+    acertoId,
+    diasTotal,
+    diariasTotal,
+    servicosTotal,
+    salario,
+    valesTotal,
+    aPagar,
+  };
 }
 
 /**

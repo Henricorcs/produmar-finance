@@ -115,7 +115,7 @@ export const APP_MODULES: AppModule[] = [
     // permissão dessas pessoas. O que mudou foi o NOME da tela (migration 069).
     slug: "diaristas",
     name: "Colaboradores",
-    description: "Diaristas e empreiteiros — dias, serviços e o que se deve a cada um",
+    description: "Diaristas, empreiteiros e CLT — dias, serviços, salários e o que se deve a cada um",
     href: "/diaristas",
     icon: Users,
     accentIcon:

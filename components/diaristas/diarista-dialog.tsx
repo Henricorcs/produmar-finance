@@ -32,12 +32,13 @@ interface Props {
 
 /**
  * Cadastro do colaborador — só o chefe. É aqui que ficam as coisas que o
- * técnico não decide: se a pessoa é DIARISTA ou EMPREITEIRO, qual é a profissão
- * dela, quanto vale o dia e para onde vai o PIX.
+ * técnico não decide: se a pessoa é DIARISTA, EMPREITEIRO ou CLT, qual é a
+ * profissão dela, quanto ganha e para onde vai o PIX.
  *
  * O tipo é o que muda a vida da pessoa no sistema: o diarista ganha pelo dia
  * marcado no calendário; o empreiteiro ganha pelo serviço fechado no setor da
- * obra. Os dois recebem pela mesma porta — o acerto.
+ * obra; o CLT ganha o salário do mês, com adiantamento no meio e o saldo no
+ * fim. Os três recebem pela mesma porta — o acerto.
  */
 export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -52,6 +53,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
   const [dailyRate, setDailyRate] = useState("");
   const [meterRate, setMeterRate] = useState("");
   const [jobRate, setJobRate] = useState("");
+  const [salary, setSalary] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -68,11 +70,13 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
     setDailyRate(diarista ? formatBRLInput(Number(diarista.daily_rate)) : "");
     setMeterRate(diarista ? formatBRLInput(Number(diarista.meter_rate ?? 0)) : "");
     setJobRate(diarista ? formatBRLInput(Number(diarista.job_rate ?? 0)) : "");
+    setSalary(diarista ? formatBRLInput(Number(diarista.monthly_salary ?? 0)) : "");
     setNotes(diarista?.notes ?? "");
     setError(null);
   }, [open, diarista]);
 
   const empreiteiro = workerType === "empreiteiro";
+  const clt = workerType === "clt";
 
   /**
    * O diarista é pago por dia, e ponto: a escolha da forma de pagamento só
@@ -81,7 +85,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
    */
   function trocarTipo(t: WorkerType) {
     setWorkerType(t);
-    if (t === "diarista") setPaymentMode("diaria");
+    if (t !== "empreiteiro") setPaymentMode("diaria");
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -94,6 +98,12 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
     }
 
     const modo = empreiteiro ? paymentMode : "diaria";
+
+    // sem o salário o fim do mês não tem de onde tirar o saldo
+    if (clt && parseMoney(salary) <= 0) {
+      setError("Informe o salário mensal dele");
+      return;
+    }
 
     // o preço da forma escolhida é o que vai ser usado no lançamento — sem ele
     // o serviço nasce zerado e ninguém sabe quanto tem a receber
@@ -117,6 +127,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
         payment_mode: modo,
         meter_rate: parseMoney(meterRate),
         job_rate: parseMoney(jobRate),
+        monthly_salary: parseMoney(salary),
         notes,
       };
       const r = diarista
@@ -157,18 +168,19 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
           {/* Como ele ganha — é o que muda a tela dele no sistema inteiro */}
           <div className="space-y-1.5">
             <Label>Como ele ganha *</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {(
                 [
                   { v: "diarista", label: "Diarista", hint: "por dia trabalhado" },
                   { v: "empreiteiro", label: "Empreiteiro", hint: "por serviço fechado" },
+                  { v: "clt", label: "CLT", hint: "salário do mês" },
                 ] as const
               ).map((t) => (
                 <button
                   key={t.v}
                   type="button"
                   onClick={() => trocarTipo(t.v)}
-                  className={`min-h-[56px] rounded-xl border px-3 py-2 text-left transition-colors ${
+                  className={`min-h-[56px] rounded-xl border px-2.5 py-2 text-left transition-colors ${
                     workerType === t.v
                       ? "bg-produmar-50 border-produmar-400 dark:bg-produmar-950/40 dark:border-produmar-700"
                       : "bg-white border-slate-200 dark:bg-slate-900 dark:border-slate-700"
@@ -190,9 +202,30 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               {empreiteiro
                 ? "O empreiteiro recebe pelo serviço lançado no setor da obra. Ele não precisa ser marcado no calendário."
-                : "O diarista é marcado no calendário e ganha por dia. Ele também pode pegar um serviço por empreita, se for o caso."}
+                : clt
+                  ? "O CLT ganha o salário do mês. O que ele pegar adiantado sai do salário, e no fim do mês você paga o saldo."
+                  : "O diarista é marcado no calendário e ganha por dia. Ele também pode pegar um serviço por empreita, se for o caso."}
             </p>
           </div>
+
+          {/* O SALÁRIO — só do CLT: é dele que sai o saldo do fim do mês */}
+          {clt && (
+            <div className="space-y-1.5">
+              <Label htmlFor="di_salario">Salário mensal (R$) *</Label>
+              <Input
+                id="di_salario"
+                value={salary}
+                onChange={(e) => setSalary(formatBRLInput(e.target.value))}
+                placeholder="0,00"
+                inputMode="decimal"
+                className="tabular-nums text-lg font-semibold"
+                autoComplete="off"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                O valor que ele recebe no mês. Mudar aqui NÃO mexe no que já foi pago.
+              </p>
+            </div>
+          )}
 
           {/* A FORMA DE PAGAMENTO — só do empreiteiro: o diarista ganha por dia */}
           {empreiteiro && (
@@ -298,7 +331,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
           <div className="space-y-1.5">
             <Label htmlFor="di_rate">
               Valor da diária (R$)
-              {empreiteiro && paymentMode !== "diaria"
+              {(empreiteiro && paymentMode !== "diaria") || clt
                 ? " — se ele também vier por dia"
                 : ""}
             </Label>
@@ -314,7 +347,9 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               {empreiteiro
                 ? "O empreiteiro ganha pelo serviço; a diária aqui só vale se um dia ele for marcado no calendário. Pode ficar zerada."
-                : "É o que cada dia marcado no calendário passa a valer. Mudar aqui NÃO mexe no que já foi lançado."}
+                : clt
+                  ? "O CLT ganha pelo salário; a diária aqui só vale para um dia avulso, fora do salário, marcado no calendário. Pode ficar zerada."
+                  : "É o que cada dia marcado no calendário passa a valer. Mudar aqui NÃO mexe no que já foi lançado."}
             </p>
           </div>
 

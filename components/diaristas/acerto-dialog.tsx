@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { HandCoins, Plus, RotateCcw, Trash2, Wallet } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  HandCoins,
+  Plus,
+  RotateCcw,
+  Trash2,
+  Wallet,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +33,12 @@ import {
   deleteDiaristaAcerto,
   deleteDiaristaAdiantamento,
 } from "@/app/(app)/diaristas/actions";
+import {
+  mesDoProximoSalario,
+  monthKey,
+  monthLabel,
+  monthRange,
+} from "./diarista-shared";
 import type {
   DiaristaAcerto,
   DiaristaAdiantamento,
@@ -62,6 +76,10 @@ interface Props {
  * O adiantamento é o vale do meio da semana. O acerto é o pagamento: fecha as
  * diárias e os serviços em aberto, desconta os vales e pinta aqueles dias de
  * CINZA no calendário — a partir dali nada disso entra na próxima semana.
+ *
+ * O CLT (098) usa a mesma tela para o salário: o adiantamento é o vale do meio
+ * do mês e o acerto é o PAGAMENTO DO SALDO de um mês escolhido — o salário do
+ * cadastro menos o que ele pegou até o último dia daquele mês.
  */
 export function AcertoDialog({
   open,
@@ -90,8 +108,10 @@ export function AcertoDialog({
   const [valeValor, setValeValor] = useState("");
   const [valeObs, setValeObs] = useState("");
 
-  // acerto
+  // acerto — no CLT é o dia em que o saldo do mês foi pago
   const [acertoData, setAcertoData] = useState(localDateISO());
+  /** CLT: de qual mês é o salário que vai ser pago. */
+  const [mesSalario, setMesSalario] = useState(() => mesDoProximoSalario(null));
 
   useEffect(() => {
     if (!open) return;
@@ -99,7 +119,17 @@ export function AcertoDialog({
     setValeValor("");
     setValeObs("");
     setAcertoData(localDateISO());
+    // abre no mês seguinte ao último salário pago, para ninguém pagar o mesmo
+    // mês duas vezes nem pular um
+    const ultimoPago = acertos
+      .filter((a) => a.diarista_id === diarista?.id && a.reference_month)
+      .map((a) => a.reference_month as string)
+      .sort()
+      .pop();
+    setMesSalario(mesDoProximoSalario(ultimoPago));
     setErro(null);
+    // só ao abrir: o mês escolhido não pode pular sozinho a cada revalidação
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, diarista?.id]);
 
   const meusVales = useMemo(
@@ -131,6 +161,27 @@ export function AcertoDialog({
   const diasAbertos = Number(diarista?.pending_days ?? 0);
   const servicosAbertosTotal = Number(diarista?.pending_services ?? 0);
 
+  const clt = diarista?.worker_type === "clt";
+  const salarioMensal = clt ? Number(diarista?.monthly_salary ?? 0) : 0;
+  const mesSalarioLabel = monthLabel(mesSalario.year, mesSalario.month);
+
+  /**
+   * O corte do que entra no acerto. No diarista é o dia escolhido; no CLT é o
+   * último dia do mês do salário — o vale de outubro não sai do salário de
+   * setembro, mesmo que setembro seja pago em outubro.
+   */
+  const corte = clt
+    ? monthRange(mesSalario.year, mesSalario.month).to
+    : acertoData;
+
+  /** CLT: o acerto que já pagou o mês escolhido, se houver. */
+  const mesJaPago = clt
+    ? meusAcertos.find(
+        (a) =>
+          a.reference_month?.slice(0, 7) === monthKey(mesSalario.year, mesSalario.month)
+      )
+    : undefined;
+
   /**
    * O que ENTRA neste acerto: só o que aconteceu até a data de corte — diárias
    * E serviços. É a mesma conta que o servidor refaz na hora de gravar; aqui
@@ -138,13 +189,12 @@ export function AcertoDialog({
    */
   const doAcerto = useMemo(() => {
     const diasNoCorte = dias.filter(
-      (d) => d.diarista_id === diarista?.id && !d.acerto_id && d.work_date <= acertoData
+      (d) => d.diarista_id === diarista?.id && !d.acerto_id && d.work_date <= corte
     );
     const servicosNoCorte = servicos.filter(
-      (s) =>
-        s.diarista_id === diarista?.id && !s.acerto_id && s.service_date <= acertoData
+      (s) => s.diarista_id === diarista?.id && !s.acerto_id && s.service_date <= corte
     );
-    const valesNoCorte = valesAbertos.filter((v) => v.advance_date <= acertoData);
+    const valesNoCorte = valesAbertos.filter((v) => v.advance_date <= corte);
     const totalDiarias = diasNoCorte.reduce((s, d) => s + Number(d.daily_rate), 0);
     const totalServicos = servicosNoCorte.reduce(
       (s, v) => s + Number(v.total_value),
@@ -157,12 +207,14 @@ export function AcertoDialog({
       vales: valesNoCorte.length,
       totalDiarias,
       totalServicos,
-      /** O que ele tem a receber neste corte, das duas origens somadas. */
-      totalDias: totalDiarias + totalServicos,
+      /** CLT: o salário do mês, que entra inteiro (098). */
+      salario: salarioMensal,
+      /** O que ele tem a receber neste corte, as origens todas somadas. */
+      totalDias: totalDiarias + totalServicos + salarioMensal,
       totalVales,
-      aPagar: totalDiarias + totalServicos - totalVales,
+      aPagar: totalDiarias + totalServicos + salarioMensal - totalVales,
     };
-  }, [dias, servicos, valesAbertos, diarista?.id, acertoData]);
+  }, [dias, servicos, valesAbertos, diarista?.id, corte, salarioMensal]);
 
   /** O corte deixou algo de fora? Então vale avisar, para ninguém se assustar. */
   const sobraForaDoCorte =
@@ -204,10 +256,26 @@ export function AcertoDialog({
     });
   }
 
+  function stepMesSalario(delta: number) {
+    const d = new Date(mesSalario.year, mesSalario.month + delta, 1);
+    setMesSalario({ year: d.getFullYear(), month: d.getMonth() });
+  }
+
   function handleAcerto() {
     setErro(null);
-    const msg =
-      `Fechar o acerto de ${diarista!.name} até ${formatDate(acertoData)}?\n\n` +
+    const msg = clt
+      ? `Pagar o salário de ${mesSalarioLabel} de ${diarista!.name}?\n\n` +
+        `Salário: ${formatBRL(doAcerto.salario)}\n` +
+        (doAcerto.totalDiarias > 0
+          ? `Diárias: ${formatBRL(doAcerto.totalDiarias)}\n`
+          : "") +
+        (doAcerto.totalServicos > 0
+          ? `Serviços: ${formatBRL(doAcerto.totalServicos)}\n`
+          : "") +
+        `Adiantado: −${formatBRL(doAcerto.totalVales)}\n` +
+        `Saldo a pagar agora: ${formatBRL(doAcerto.aPagar)}\n\n` +
+        `Os adiantamentos até ${formatDate(corte)} saem da conta dele.`
+      : `Fechar o acerto de ${diarista!.name} até ${formatDate(acertoData)}?\n\n` +
       (doAcerto.totalDiarias > 0
         ? `Diárias: ${formatBRL(doAcerto.totalDiarias)}\n`
         : "") +
@@ -223,6 +291,7 @@ export function AcertoDialog({
       const r = await createDiaristaAcerto({
         diarista_id: diarista!.id,
         settled_on: acertoData,
+        ...(clt ? { reference_month: monthKey(mesSalario.year, mesSalario.month) } : {}),
       });
       if (r && "error" in r) {
         setErro({ onde: "acerto", msg: r.error ?? "Erro ao registrar o acerto" });
@@ -235,7 +304,9 @@ export function AcertoDialog({
   function handleDesfazer(a: DiaristaAcerto) {
     if (
       !confirm(
-        `Desfazer o acerto de ${formatDate(a.settled_on)}?\n\nAs diárias e os serviços voltam a contar como em aberto e os adiantamentos daquele acerto voltam a ser descontados.`
+        a.reference_month
+          ? `Desfazer o pagamento do salário de ${mesDoAcerto(a.reference_month)}?\n\nO mês volta a ficar em aberto e os adiantamentos daquele pagamento voltam a ser descontados.`
+          : `Desfazer o acerto de ${formatDate(a.settled_on)}?\n\nAs diárias e os serviços voltam a contar como em aberto e os adiantamentos daquele acerto voltam a ser descontados.`
       )
     )
       return;
@@ -250,8 +321,10 @@ export function AcertoDialog({
 
   // olha o que entra NESTE corte, não a conta inteira: com a data recuada para
   // antes da primeira diária não há acerto a fazer, e o botão tem que dizer isso
-  const podeAcertar =
-    doAcerto.dias > 0 || doAcerto.servicos > 0 || doAcerto.vales > 0;
+  // o CLT sempre tem o salário a pagar — desde que o mês ainda não tenha sido pago
+  const podeAcertar = clt
+    ? salarioMensal > 0 && !mesJaPago
+    : doAcerto.dias > 0 || doAcerto.servicos > 0 || doAcerto.vales > 0;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -261,7 +334,7 @@ export function AcertoDialog({
             <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
               <HandCoins className="w-4 h-4" />
             </span>
-            Acerto e adiantamentos
+            {clt ? "Salário e adiantamentos" : "Acerto e adiantamentos"}
           </DialogTitle>
           <p className="text-[11px] text-slate-400">{diarista.name}</p>
         </DialogHeader>
@@ -273,6 +346,7 @@ export function AcertoDialog({
               label="Valor a receber"
               hint={
                 [
+                  clt ? "salário do mês" : null,
                   diasAbertos > 0
                     ? `${diasAbertos} ${diasAbertos === 1 ? "diária" : "diárias"}`
                     : null,
@@ -313,8 +387,9 @@ export function AcertoDialog({
 
           {saldo < 0 && (
             <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-lg px-3 py-2">
-              Ele pegou mais adiantado do que trabalhou até agora. Não dá para fechar o
-              acerto assim — esse saldo continua valendo e desconta nas próximas diárias.
+              {clt
+                ? "Ele pegou mais adiantado do que o salário do mês. Confira as datas dos adiantamentos antes de pagar o mês."
+                : "Ele pegou mais adiantado do que trabalhou até agora. Não dá para fechar o acerto assim — esse saldo continua valendo e desconta nas próximas diárias."}
             </p>
           )}
 
@@ -404,26 +479,87 @@ export function AcertoDialog({
           {/* Fechar a semana */}
           <div className="space-y-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
             <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-              Acerto semanal
+              {clt ? "Pagamento do saldo do mês" : "Acerto semanal"}
             </p>
-            <div className="space-y-1">
-              <Label htmlFor="acerto_data" className="text-[11px]">
-                Acertar tudo até o dia
-              </Label>
-              <Input
-                id="acerto_data"
-                type="date"
-                value={acertoData}
-                onChange={(e) => setAcertoData(e.target.value)}
-              />
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Diária ou serviço lançado depois dessa data continua em aberto para a
-                próxima semana.
-              </p>
-            </div>
+
+            {clt ? (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Salário do mês de</Label>
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-white dark:bg-slate-900">
+                    <button
+                      type="button"
+                      onClick={() => stepMesSalario(-1)}
+                      aria-label="Mês anterior"
+                      className="w-11 h-11 flex items-center justify-center rounded-lg text-emerald-700 dark:text-emerald-400"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 capitalize">
+                      {mesSalarioLabel}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => stepMesSalario(1)}
+                      aria-label="Próximo mês"
+                      className="w-11 h-11 flex items-center justify-center rounded-lg text-emerald-700 dark:text-emerald-400"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="acerto_data" className="text-[11px]">
+                    Pago em
+                  </Label>
+                  <Input
+                    id="acerto_data"
+                    type="date"
+                    value={acertoData}
+                    onChange={(e) => setAcertoData(e.target.value)}
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Saem do salário os adiantamentos pegos até {formatDate(corte)}. O que
+                    ele pegar depois fica para o salário do mês seguinte.
+                  </p>
+                </div>
+
+                {mesJaPago && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    O salário de {mesSalarioLabel} já foi pago em{" "}
+                    {formatDate(mesJaPago.settled_on)} (
+                    {formatBRL(Number(mesJaPago.amount_paid))}).
+                  </p>
+                )}
+                {salarioMensal <= 0 && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    Falta o salário mensal no cadastro dele — toque em Editar na ficha.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="space-y-1">
+                <Label htmlFor="acerto_data" className="text-[11px]">
+                  Acertar tudo até o dia
+                </Label>
+                <Input
+                  id="acerto_data"
+                  type="date"
+                  value={acertoData}
+                  onChange={(e) => setAcertoData(e.target.value)}
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Diária ou serviço lançado depois dessa data continua em aberto para a
+                  próxima semana.
+                </p>
+              </div>
+            )}
 
             {podeAcertar && (
               <div className="text-[11px] text-slate-600 dark:text-slate-300 tabular-nums space-y-0.5">
+                {doAcerto.salario > 0 && (
+                  <p>salário · {formatBRL(doAcerto.salario)}</p>
+                )}
                 {doAcerto.dias > 0 && (
                   <p>
                     {doAcerto.dias} {doAcerto.dias === 1 ? "diária" : "diárias"} ·{" "}
@@ -458,8 +594,14 @@ export function AcertoDialog({
               disabled={isPending || !podeAcertar || doAcerto.aPagar < 0}
             >
               {podeAcertar
-                ? `Registrar acerto de ${formatBRL(doAcerto.aPagar)}`
-                : "Nada em aberto para acertar"}
+                ? clt
+                  ? `Pagar saldo de ${formatBRL(doAcerto.aPagar)}`
+                  : `Registrar acerto de ${formatBRL(doAcerto.aPagar)}`
+                : clt
+                  ? mesJaPago
+                    ? "Salário desse mês já pago"
+                    : "Falta o salário no cadastro"
+                  : "Nada em aberto para acertar"}
             </Button>
           </div>
 
@@ -467,17 +609,29 @@ export function AcertoDialog({
           {meusAcertos.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Acertos anteriores
+                {clt ? "Pagamentos anteriores" : "Acertos anteriores"}
               </p>
               <ul className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 max-h-56 overflow-y-auto">
                 {meusAcertos.map((a) => (
                   <li key={a.id} className="flex items-center gap-2.5 px-3 py-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-100 tabular-nums">
-                        {formatDate(a.settled_on)}
+                        {a.reference_month ? (
+                          <>
+                            Salário de{" "}
+                            <span className="capitalize">{mesDoAcerto(a.reference_month)}</span>
+                          </>
+                        ) : (
+                          formatDate(a.settled_on)
+                        )}
                       </p>
                       <p className="text-[11px] text-slate-400 tabular-nums">
-                        a receber {formatBRL(Number(a.days_total))}
+                        {a.reference_month
+                          ? `pago em ${formatDate(a.settled_on)} · salário ${formatBRL(Number(a.salary_total ?? 0))}`
+                          : `a receber ${formatBRL(Number(a.days_total))}`}
+                        {a.reference_month &&
+                          Number(a.days_total) > Number(a.salary_total ?? 0) &&
+                          ` + ${formatBRL(Number(a.days_total) - Number(a.salary_total ?? 0))}`}
                         {Number(a.advance_total) > 0 &&
                           ` · adiantado −${formatBRL(Number(a.advance_total))}`}
                       </p>
@@ -509,6 +663,12 @@ export function AcertoDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** "setembro de 2026" a partir do reference_month (YYYY-MM-01). */
+function mesDoAcerto(referenceMonth: string): string {
+  const [ano, mes] = referenceMonth.split("-").map(Number);
+  return monthLabel(ano, mes - 1);
 }
 
 function Linha({

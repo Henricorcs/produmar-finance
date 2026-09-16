@@ -1653,14 +1653,16 @@ export interface SupplyFenceRunView extends SupplyFenceRun {
 
 /**
  * Como o colaborador ganha (migration 069). O DIARISTA ganha por dia marcado
- * no calendário; o EMPREITEIRO ganha por serviço fechado no setor da obra.
+ * no calendário; o EMPREITEIRO ganha por serviço fechado no setor da obra; o
+ * CLT ganha um salário por mês, com adiantamento no meio e o saldo no fim (098).
  * Quem já estava cadastrado antes da 069 é diarista — era o único tipo.
  */
-export type WorkerType = "diarista" | "empreiteiro";
+export type WorkerType = "diarista" | "empreiteiro" | "clt";
 
 export const WORKER_TYPE_LABEL: Record<WorkerType, string> = {
   diarista: "Diarista",
   empreiteiro: "Empreiteiro",
+  clt: "CLT",
 };
 
 /**
@@ -1724,6 +1726,8 @@ export interface Diarista {
   meter_rate?: number;
   /** Preço combinado da obra inteira, a empreita. 0 = não combinado (070). */
   job_rate?: number;
+  /** Salário do mês — só do CLT. 0 = não informado (migration 098). */
+  monthly_salary?: number;
   notes: string | null;
   active: boolean;
   created_by: string | null;
@@ -1769,6 +1773,15 @@ export interface DiaristaResumo extends Diarista {
    */
   balance?: number;
   last_settled_on?: string | null;
+
+  // ── Salário do CLT (migration 098) ──
+  /**
+   * O salário do próximo mês a fechar: um salário para o CLT ativo, 0 para os
+   * outros. Já está somado em `pending_value` e em `balance`.
+   */
+  salary_pending?: number;
+  /** Último mês de salário pago (primeiro dia do mês, YYYY-MM-01). */
+  last_reference_month?: string | null;
 }
 
 /**
@@ -1800,6 +1813,13 @@ export interface DiaristaAcerto {
   advance_total: number;
   /** O que saiu de dinheiro na hora (days_total − advance_total). */
   amount_paid: number;
+  /**
+   * CLT: de qual mês é o salário pago, sempre no dia 1 (YYYY-MM-01). Nulo nos
+   * acertos de diária e serviço (migration 098).
+   */
+  reference_month?: string | null;
+  /** CLT: o salário do mês, congelado no pagamento. Já está dentro de days_total. */
+  salary_total?: number;
   notes: string | null;
   created_by: string | null;
   created_at: string;

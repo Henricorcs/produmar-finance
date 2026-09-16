@@ -32,6 +32,33 @@ export function monthCells(year: number, month: number): (string | null)[] {
   return cells;
 }
 
+/** O mês do salário do CLT ("2026-09"), do jeito que o pagamento é pedido (098). */
+export function monthKey(year: number, month: number): string {
+  return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+/**
+ * O mês que o pagamento do CLT já abre escolhido: o seguinte ao último salário
+ * pago. Quem ainda não recebeu nenhum pelo sistema abre no mês passado até o
+ * dia 15 — é quando se paga o salário do mês que acabou — e no mês corrente
+ * depois disso.
+ *
+ * `ultimoPago` é o reference_month do acerto (YYYY-MM-01).
+ */
+export function mesDoProximoSalario(
+  ultimoPago: string | null | undefined,
+  hoje: Date = new Date()
+): { year: number; month: number } {
+  if (ultimoPago) {
+    const [ano, mes] = ultimoPago.split("-").map(Number);
+    // `mes` vem de 1 a 12: como índice do Date (0 a 11), ele já é o mês seguinte
+    const d = new Date(ano, mes, 1);
+    return { year: d.getFullYear(), month: d.getMonth() };
+  }
+  const d = new Date(hoje.getFullYear(), hoje.getMonth() - (hoje.getDate() <= 15 ? 1 : 0), 1);
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
+
 /** Primeiro e último dia do mês, em YYYY-MM-DD. */
 export function monthRange(year: number, month: number): { from: string; to: string } {
   return {

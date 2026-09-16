@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn, formatBRL, formatDate, getInitials, servicoConta } from "@/lib/utils";
-import { monthLabel, monthRange } from "./diarista-shared";
+import { monthKey, monthLabel, monthRange } from "./diarista-shared";
 import { DiaristaDialog } from "./diarista-dialog";
 import { DiaristaDetailDialog } from "./diarista-detail-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
@@ -57,6 +57,11 @@ type Tab = "pessoas" | "dias" | "servicos";
  * "R$ 120,00/dia" para o diarista.
  */
 function precoCombinado(d: DiaristaResumo): string {
+  // o CLT ganha o salário do mês (098)
+  if (d.worker_type === "clt") {
+    const v = Number(d.monthly_salary ?? 0);
+    return v > 0 ? `${formatBRL(v)}/mês` : "salário não informado";
+  }
   const modo = d.payment_mode ?? "diaria";
   if (modo === "metro") {
     const v = Number(d.meter_rate ?? 0);
@@ -71,13 +76,14 @@ function precoCombinado(d: DiaristaResumo): string {
 }
 
 /**
- * A tela do chefe: quem são os colaboradores — diaristas e empreiteiros —,
+ * A tela do chefe: quem são os colaboradores — diaristas, empreiteiros e CLT —,
  * quanto cada um ganha, para onde vai o PIX, e o fechamento do mês com o
  * relatório para pagar.
  *
  * O diarista vem por dia: quem marca o dia é o técnico, na tela dele. O
  * empreiteiro vem por serviço: quem lança o serviço é o chefe, no setor da
- * obra. As duas coisas caem aqui, viram conta e são pagas no mesmo acerto.
+ * obra. O CLT ganha o salário do mês, com adiantamento no meio e o saldo no
+ * fim. Tudo cai aqui, vira conta e é pago pelo mesmo acerto.
  */
 export function DiaristasPageClient({
   diaristas,
@@ -94,7 +100,7 @@ export function DiaristasPageClient({
   const [tab, setTab] = useState<Tab>("pessoas");
   const [search, setSearch] = useState("");
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
-  /** Filtro por tipo: "" = todos, "diarista", "empreiteiro". */
+  /** Filtro por tipo: "" = todos, "diarista", "empreiteiro", "clt". */
   const [tipoFiltro, setTipoFiltro] = useState<"" | WorkerType>("");
 
   const [cadastroOpen, setCadastroOpen] = useState(false);
@@ -212,7 +218,32 @@ export function DiaristasPageClient({
     (s, v) => s + Number(v.total_value),
     0
   );
-  const totalMes = totalDiariasMes + totalServicosMes;
+  /**
+   * O salário de cada CLT no mês da tela (098). Mês já pago mostra o salário
+   * congelado no pagamento; mês em aberto, o do cadastro — só para quem está
+   * ativo e já estava cadastrado naquele mês.
+   */
+  const salariosDoMes = useMemo(() => {
+    const chave = monthKey(year, month);
+    const map = new Map<string, { valor: number; pago: boolean }>();
+    for (const d of diaristas) {
+      if (d.worker_type !== "clt") continue;
+      const pago = acertos.find(
+        (a) => a.diarista_id === d.id && a.reference_month?.slice(0, 7) === chave
+      );
+      if (pago) {
+        map.set(d.id, { valor: Number(pago.salary_total ?? 0), pago: true });
+        continue;
+      }
+      if (!d.active || d.created_at.slice(0, 7) > chave) continue;
+      const valor = Number(d.monthly_salary ?? 0);
+      if (valor > 0) map.set(d.id, { valor, pago: false });
+    }
+    return map;
+  }, [diaristas, acertos, year, month]);
+  const totalSalariosMes = [...salariosDoMes.values()].reduce((s, v) => s + v.valor, 0);
+
+  const totalMes = totalDiariasMes + totalServicosMes + totalSalariosMes;
   const meiasDoMes = diasDoMes.filter((d) => d.half_day).length;
   const ativos = diaristas.filter((d) => d.active);
 
@@ -241,8 +272,8 @@ export function DiaristasPageClient({
   const detalhe = diaristas.find((d) => d.id === detalheId) ?? null;
   const acertoDiarista = diaristas.find((d) => d.id === acertoId) ?? null;
   const arquivados = diaristas.length - ativos.length;
-  /** Sem nenhum empreiteiro cadastrado, o filtro por tipo só ocupa espaço. */
-  const temEmpreiteiro = diaristas.some((d) => d.worker_type === "empreiteiro");
+  /** Com um tipo só cadastrado, o filtro por tipo só ocupa espaço. */
+  const tiposCadastrados = new Set(diaristas.map((d) => d.worker_type ?? "diarista"));
 
   /** Sai da ficha e abre a conta — os dois diálogos juntos se atropelam. */
   function abrirAcerto(id: string) {
@@ -277,7 +308,7 @@ export function DiaristasPageClient({
             Colaboradores
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
-            Diaristas e empreiteiros — e quanto cada um tem a receber
+            Diaristas, empreiteiros e CLT — e quanto cada um tem a receber
           </p>
         </div>
         <Button onClick={novoDiarista} className="flex-shrink-0">
@@ -325,11 +356,17 @@ export function DiaristasPageClient({
           <Numero label="a pagar no mês" value={formatBRL(totalMes)} destaque />
         </div>
 
-        {/* De onde vem o "a pagar": as duas metades, quando as duas existem */}
-        {totalDiariasMes > 0 && totalServicosMes > 0 && (
+        {/* De onde vem o "a pagar": as partes, quando existe mais de uma */}
+        {[totalDiariasMes, totalServicosMes, totalSalariosMes].filter((v) => v > 0)
+          .length > 1 && (
           <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center tabular-nums">
-            {formatBRL(totalDiariasMes)} em diárias + {formatBRL(totalServicosMes)} em
-            serviços
+            {[
+              totalDiariasMes > 0 ? `${formatBRL(totalDiariasMes)} em diárias` : null,
+              totalServicosMes > 0 ? `${formatBRL(totalServicosMes)} em serviços` : null,
+              totalSalariosMes > 0 ? `${formatBRL(totalSalariosMes)} em salários` : null,
+            ]
+              .filter(Boolean)
+              .join(" + ")}
           </p>
         )}
 
@@ -390,16 +427,19 @@ export function DiaristasPageClient({
             />
           </div>
 
-          {/* Filtro por tipo — só aparece quando existem os dois */}
-          {temEmpreiteiro && (
+          {/* Filtro por tipo — só aparece quando há mais de um tipo cadastrado */}
+          {tiposCadastrados.size > 1 && (
             <div className="flex gap-1.5">
               {(
                 [
                   { v: "" as const, label: "Todos" },
                   { v: "diarista" as const, label: "Diaristas" },
                   { v: "empreiteiro" as const, label: "Empreiteiros" },
+                  { v: "clt" as const, label: "CLT" },
                 ] as const
-              ).map((t) => (
+              )
+                .filter((t) => t.v === "" || tiposCadastrados.has(t.v))
+                .map((t) => (
                 <button
                   key={t.v}
                   type="button"
@@ -439,7 +479,7 @@ export function DiaristasPageClient({
               }
               dica={
                 diaristas.length === 0
-                  ? "Cadastre quem trabalha na obra — diarista ou empreiteiro —, com a profissão, a chave PIX e o preço combinado: a diária, o metro ou o valor da obra."
+                  ? "Cadastre quem trabalha com você — diarista, empreiteiro ou CLT —, com a profissão, a chave PIX e quanto ganha: a diária, o metro, o valor da obra ou o salário do mês."
                   : undefined
               }
               acao={
@@ -456,6 +496,8 @@ export function DiaristasPageClient({
                 const r = resumoDoMes.get(d.id);
                 const tipo = d.worker_type ?? "diarista";
                 const empreiteiro = tipo === "empreiteiro";
+                const clt = tipo === "clt";
+                const salario = salariosDoMes.get(d.id);
                 return (
                   <button
                     key={d.id}
@@ -473,7 +515,9 @@ export function DiaristasPageClient({
                         "w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-xs font-bold",
                         empreiteiro
                           ? "bg-teal-50 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300"
-                          : "bg-produmar-50 dark:bg-produmar-900/40 text-produmar-600 dark:text-produmar-300"
+                          : clt
+                            ? "bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+                            : "bg-produmar-50 dark:bg-produmar-900/40 text-produmar-600 dark:text-produmar-300"
                       )}
                     >
                       {getInitials(d.name)}
@@ -495,7 +539,9 @@ export function DiaristasPageClient({
                             "text-[10px] font-semibold px-1.5 py-px rounded-full",
                             empreiteiro
                               ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
-                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                              : clt
+                                ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+                                : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                           )}
                         >
                           {WORKER_TYPE_LABEL[tipo]}
@@ -516,10 +562,11 @@ export function DiaristasPageClient({
                     </span>
                     <span className="text-right flex-shrink-0">
                       <span className="block text-sm font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
-                        {formatBRL(r?.total ?? 0)}
+                        {formatBRL((r?.total ?? 0) + (salario?.valor ?? 0))}
                       </span>
                       <span className="block text-[11px] text-slate-400 tabular-nums">
                         {[
+                          salario ? (salario.pago ? "salário pago" : "salário") : null,
                           (r?.dias ?? 0) > 0
                             ? `${r?.dias} ${r?.dias === 1 ? "dia" : "dias"}`
                             : null,
@@ -528,7 +575,7 @@ export function DiaristasPageClient({
                             : null,
                         ]
                           .filter(Boolean)
-                          .join(" · ") || "0 dias"}
+                          .join(" · ") || (clt ? "sem salário" : "0 dias")}
                       </span>
                     </span>
                   </button>

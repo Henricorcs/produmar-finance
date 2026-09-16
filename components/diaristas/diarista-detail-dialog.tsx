@@ -142,8 +142,11 @@ export function DiaristaDetailDialog({
 
   /** Como ele é pago e quanto vale essa forma — o preço combinado no cadastro. */
   const modoPagamento: PaymentMode = diarista?.payment_mode ?? "diaria";
-  const precoCombinado =
-    modoPagamento === "metro"
+  /** O CLT ganha o salário do mês: o preço dele é esse, não a diária (098). */
+  const clt = diarista?.worker_type === "clt";
+  const precoCombinado = clt
+    ? Number(diarista?.monthly_salary ?? 0)
+    : modoPagamento === "metro"
       ? Number(diarista?.meter_rate ?? 0)
       : modoPagamento === "obra"
         ? Number(diarista?.job_rate ?? 0)
@@ -225,17 +228,19 @@ export function DiaristaDetailDialog({
               <div className="flex items-center gap-2.5 px-3 py-2.5">
                 <Wallet className="w-4 h-4 text-slate-400 flex-shrink-0" />
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {PAYMENT_MODE_RATE_LABEL[modoPagamento]}
+                  {clt ? "Salário mensal" : PAYMENT_MODE_RATE_LABEL[modoPagamento]}
                 </span>
                 <span className="ml-auto text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
                   {precoCombinado > 0
                     ? `${formatBRL(precoCombinado)}${modoPagamento === "metro" ? "/m" : ""}`
-                    : "não combinado"}
+                    : clt
+                      ? "não informado"
+                      : "não combinado"}
                 </span>
               </div>
 
               {/* A diária continua aparecendo à parte quando ele também vem por dia */}
-              {modoPagamento !== "diaria" && Number(diarista.daily_rate) > 0 && (
+              {(modoPagamento !== "diaria" || clt) && Number(diarista.daily_rate) > 0 && (
                 <div className="flex items-center gap-2.5 px-3 py-2.5">
                   <Wallet className="w-4 h-4 text-slate-400 flex-shrink-0" />
                   <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -287,7 +292,7 @@ export function DiaristaDetailDialog({
               <div className="flex items-center gap-2">
                 <HandCoins className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
                 <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                  Adiantamento e acerto
+                  {clt ? "Adiantamento e salário" : "Adiantamento e acerto"}
                 </span>
                 <span className="ml-auto text-[11px] text-emerald-700/70 dark:text-emerald-400/70">
                   tocar para abrir
@@ -296,9 +301,13 @@ export function DiaristaDetailDialog({
 
               {/* De onde vem o "a receber": dia trabalhado e serviço fechado */}
               {(Number(diarista.pending_days ?? 0) > 0 ||
-                Number(diarista.pending_services ?? 0) > 0) && (
+                Number(diarista.pending_services ?? 0) > 0 ||
+                Number(diarista.salary_pending ?? 0) > 0) && (
                 <p className="mt-1 text-[11px] text-emerald-700/80 dark:text-emerald-400/80 tabular-nums">
                   {[
+                    Number(diarista.salary_pending ?? 0) > 0
+                      ? `salário do mês · ${formatBRL(Number(diarista.salary_pending))}`
+                      : null,
                     Number(diarista.pending_days ?? 0) > 0
                       ? `${diarista.pending_days} ${Number(diarista.pending_days) === 1 ? "diária" : "diárias"} · ${formatBRL(Number(diarista.pending_days_value ?? 0))}`
                       : null,
