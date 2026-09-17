@@ -9,6 +9,7 @@ import {
   HardHat,
   Plus,
   Search,
+  UserCheck,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import { DiaristaDetailDialog } from "./diarista-detail-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
 import { RelatorioDialog } from "./relatorio-dialog";
 import { AcertoDialog } from "./acerto-dialog";
+import { EncarregadosDialog } from "./encarregados-dialog";
 import type { DiaristaObra } from "./lancar-dia-dialog";
 import type {
   Diarista,
@@ -27,6 +29,8 @@ import type {
   DiaristaAdiantamento,
   DiaristaDia,
   DiaristaResumo,
+  DiaristaTecnico,
+  EncarregadoDeObra,
   SupplyObraSector,
   SupplyObraServicoView,
   WorkerType,
@@ -47,6 +51,10 @@ interface Props {
    * Eles são lançados em Obras; aqui entram na conta de quem os fez.
    */
   servicos?: SupplyObraServicoView[];
+  /** Quem cuida de quem: colaborador × encarregado de obra (099). */
+  vinculos?: DiaristaTecnico[];
+  /** Os usuários com o papel de encarregado de obra, para escolher. */
+  encarregados?: EncarregadoDeObra[];
 }
 
 type Tab = "pessoas" | "dias" | "servicos";
@@ -93,6 +101,8 @@ export function DiaristasPageClient({
   adiantamentos = [],
   acertos = [],
   servicos = [],
+  vinculos = [],
+  encarregados = [],
 }: Props) {
   const hoje = new Date();
   const [year, setYear] = useState(hoje.getFullYear());
@@ -110,6 +120,8 @@ export function DiaristasPageClient({
   const [relatorioOpen, setRelatorioOpen] = useState(false);
   /** Diarista com a conta aberta — o acerto vive fora da ficha, ver onAcerto. */
   const [acertoId, setAcertoId] = useState<string | null>(null);
+  /** Colaborador com a lista de encarregados de obra aberta. */
+  const [liberarId, setLiberarId] = useState<string | null>(null);
 
   const { from, to } = monthRange(year, month);
 
@@ -118,6 +130,18 @@ export function DiaristasPageClient({
     [diaristas]
   );
   const obraNome = useMemo(() => new Map(obras.map((o) => [o.id, o.name])), [obras]);
+
+  /** Os encarregados de obra de cada colaborador, na ordem da lista de usuários. */
+  const encarregadosPorDiarista = useMemo(() => {
+    const porId = new Map(encarregados.map((e) => [e.id, e]));
+    const map = new Map<string, EncarregadoDeObra[]>();
+    for (const v of vinculos) {
+      const e = porId.get(v.tecnico_id);
+      if (!e) continue; // o usuário deixou de ser encarregado de obra
+      map.set(v.diarista_id, [...(map.get(v.diarista_id) ?? []), e]);
+    }
+    return map;
+  }, [vinculos, encarregados]);
 
   /** Os dias lançados no mês que está na tela. */
   const diasDoMes = useMemo(
@@ -271,6 +295,7 @@ export function DiaristasPageClient({
 
   const detalhe = diaristas.find((d) => d.id === detalheId) ?? null;
   const acertoDiarista = diaristas.find((d) => d.id === acertoId) ?? null;
+  const liberarDiarista = diaristas.find((d) => d.id === liberarId) ?? null;
   const arquivados = diaristas.length - ativos.length;
   /** Com um tipo só cadastrado, o filtro por tipo só ocupa espaço. */
   const tiposCadastrados = new Set(diaristas.map((d) => d.worker_type ?? "diarista"));
@@ -498,87 +523,113 @@ export function DiaristasPageClient({
                 const empreiteiro = tipo === "empreiteiro";
                 const clt = tipo === "clt";
                 const salario = salariosDoMes.get(d.id);
+                const cuidam = encarregadosPorDiarista.get(d.id) ?? [];
                 return (
-                  <button
+                  <div
                     key={d.id}
-                    type="button"
-                    onClick={() => setDetalheId(d.id)}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl border bg-white dark:bg-slate-900 p-3 text-left transition-colors active:scale-[0.99]",
+                      "flex items-stretch rounded-xl border bg-white dark:bg-slate-900 overflow-hidden transition-colors",
                       d.active
                         ? "border-produmar-100/60 dark:border-slate-800 hover:border-produmar-200 dark:hover:border-slate-700"
                         : "border-dashed border-slate-200 dark:border-slate-700 opacity-70"
                     )}
                   >
-                    <span
+                    <button
+                      type="button"
+                      onClick={() => setDetalheId(d.id)}
+                      className="flex-1 min-w-0 flex items-center gap-3 p-3 text-left active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+                    >
+                      <span
+                        className={cn(
+                          "w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-xs font-bold",
+                          empreiteiro
+                            ? "bg-teal-50 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300"
+                            : clt
+                              ? "bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+                              : "bg-produmar-50 dark:bg-produmar-900/40 text-produmar-600 dark:text-produmar-300"
+                        )}
+                      >
+                        {getInitials(d.name)}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                          {d.name}
+                          {!d.active && (
+                            <span className="ml-1.5 text-[10px] font-medium text-slate-400">
+                              arquivado
+                            </span>
+                          )}
+                        </span>
+                        {/* Quem ele é: o tipo e a profissão, que é o que o chefe
+                            procura quando precisa de "um pedreiro" */}
+                        <span className="flex items-center gap-1 flex-wrap">
+                          <span
+                            className={cn(
+                              "text-[10px] font-semibold px-1.5 py-px rounded-full",
+                              empreiteiro
+                                ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
+                                : clt
+                                  ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+                                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                            )}
+                          >
+                            {WORKER_TYPE_LABEL[tipo]}
+                          </span>
+                          {d.profession && (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                              {d.profession}
+                            </span>
+                          )}
+                        </span>
+                        {/* o preço combinado, do jeito que foi combinado: dizer
+                            só "R$ X/dia" escondia o valor do metro de quem é
+                            pago no metro, que é o número que o chefe procura */}
+                        <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                          {precoCombinado(d)}
+                          {d.pix_key ? ` · PIX ${d.pix_key}` : ""}
+                        </span>
+                      </span>
+                      <span className="text-right flex-shrink-0">
+                        <span className="block text-sm font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
+                          {formatBRL((r?.total ?? 0) + (salario?.valor ?? 0))}
+                        </span>
+                        <span className="block text-[11px] text-slate-400 tabular-nums">
+                          {[
+                            salario ? (salario.pago ? "salário pago" : "salário") : null,
+                            (r?.dias ?? 0) > 0
+                              ? `${r?.dias} ${r?.dias === 1 ? "dia" : "dias"}`
+                              : null,
+                            (r?.servicos ?? 0) > 0
+                              ? `${r?.servicos} ${r?.servicos === 1 ? "serviço" : "serviços"}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || (clt ? "sem salário" : "0 dias")}
+                        </span>
+                      </span>
+                    </button>
+                    {/* Quem pode ver e marcar os dias dele na tela do
+                        encarregado de obra (099) */}
+                    <button
+                      type="button"
+                      onClick={() => setLiberarId(d.id)}
+                      title="Encarregados de obra que podem lançar para ele"
+                      aria-label={`Encarregados de obra de ${d.name}`}
                       className={cn(
-                        "w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-xs font-bold",
-                        empreiteiro
-                          ? "bg-teal-50 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300"
-                          : clt
-                            ? "bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
-                            : "bg-produmar-50 dark:bg-produmar-900/40 text-produmar-600 dark:text-produmar-300"
+                        "w-16 flex-shrink-0 flex flex-col items-center justify-center gap-1 px-1 border-l transition-colors",
+                        cuidam.length > 0
+                          ? "border-produmar-100/60 dark:border-slate-800 text-produmar-600 dark:text-produmar-400 bg-produmar-50/40 dark:bg-produmar-900/10 hover:bg-produmar-50 dark:hover:bg-slate-800"
+                          : "border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
                       )}
                     >
-                      {getInitials(d.name)}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-                        {d.name}
-                        {!d.active && (
-                          <span className="ml-1.5 text-[10px] font-medium text-slate-400">
-                            arquivado
-                          </span>
-                        )}
+                      <UserCheck className="w-4 h-4" />
+                      <span className="block max-w-full text-[10px] font-semibold leading-tight truncate">
+                        {cuidam.length === 0
+                          ? "Liberar"
+                          : `${primeiroNome(cuidam[0])}${cuidam.length > 1 ? ` +${cuidam.length - 1}` : ""}`}
                       </span>
-                      {/* Quem ele é: o tipo e a profissão, que é o que o chefe
-                          procura quando precisa de "um pedreiro" */}
-                      <span className="flex items-center gap-1 flex-wrap">
-                        <span
-                          className={cn(
-                            "text-[10px] font-semibold px-1.5 py-px rounded-full",
-                            empreiteiro
-                              ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
-                              : clt
-                                ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
-                                : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                          )}
-                        >
-                          {WORKER_TYPE_LABEL[tipo]}
-                        </span>
-                        {d.profession && (
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                            {d.profession}
-                          </span>
-                        )}
-                      </span>
-                      {/* o preço combinado, do jeito que foi combinado: dizer
-                          só "R$ X/dia" escondia o valor do metro de quem é
-                          pago no metro, que é o número que o chefe procura */}
-                      <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                        {precoCombinado(d)}
-                        {d.pix_key ? ` · PIX ${d.pix_key}` : ""}
-                      </span>
-                    </span>
-                    <span className="text-right flex-shrink-0">
-                      <span className="block text-sm font-semibold text-produmar-700 dark:text-produmar-400 tabular-nums">
-                        {formatBRL((r?.total ?? 0) + (salario?.valor ?? 0))}
-                      </span>
-                      <span className="block text-[11px] text-slate-400 tabular-nums">
-                        {[
-                          salario ? (salario.pago ? "salário pago" : "salário") : null,
-                          (r?.dias ?? 0) > 0
-                            ? `${r?.dias} ${r?.dias === 1 ? "dia" : "dias"}`
-                            : null,
-                          (r?.servicos ?? 0) > 0
-                            ? `${r?.servicos} ${r?.servicos === 1 ? "serviço" : "serviços"}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || (clt ? "sem salário" : "0 dias")}
-                      </span>
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -592,7 +643,7 @@ export function DiaristasPageClient({
             <Vazio
               icon={CalendarDays}
               texto="Nenhuma diária lançada neste mês."
-              dica="Quem marca os dias é o técnico, na tela dele — mas você também marca, abrindo o colaborador."
+              dica="Quem marca os dias é o encarregado de obra, na tela dele — mas você também marca, abrindo o colaborador."
             />
           ) : (
             <ul className="rounded-xl border border-produmar-100/60 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
@@ -773,6 +824,14 @@ export function DiaristasPageClient({
         servicos={servicos}
       />
 
+      <EncarregadosDialog
+        open={!!liberarDiarista}
+        onClose={() => setLiberarId(null)}
+        diarista={liberarDiarista}
+        encarregados={encarregados}
+        liberadoPara={(encarregadosPorDiarista.get(liberarId ?? "") ?? []).map((e) => e.id)}
+      />
+
       <DiaDetailDialog
         open={!!detalheDia}
         onClose={() => setDetalheDia(null)}
@@ -794,6 +853,11 @@ export function DiaristasPageClient({
       />
     </div>
   );
+}
+
+/** "JOÃO DA SILVA" → "JOÃO": cabe no botão estreito ao lado do cartão. */
+function primeiroNome(e: EncarregadoDeObra): string {
+  return (e.full_name || e.email).trim().split(/[s@]+/)[0];
 }
 
 function Numero({

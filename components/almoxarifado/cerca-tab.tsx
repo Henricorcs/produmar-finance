@@ -194,8 +194,8 @@ export function CercaTab({ runs, obras, sectors, onNew, onOpen, onRates }: TabPr
             Nenhum metro de cerca lançado.
           </p>
           <p className="text-[11px] text-slate-400 dark:text-slate-500 max-w-sm mx-auto">
-            Quem lança é o técnico, na tela dele — ele informa só o metro, por setor. Você
-            cadastra o preço por metro e o valor sai sozinho.
+            Quem lança é o encarregado de obra, na tela dele — ele informa só o metro, por
+            setor. Você cadastra o preço por metro e o valor sai sozinho.
           </p>
           <Button size="sm" onClick={() => onNew(obraId || null)}>
             <Plus className="w-4 h-4" /> Lançar metros
@@ -482,8 +482,8 @@ export function FenceRateDialog({ open, onClose, obras, sectors, presetObraId }:
           </Button>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            O preço vale para todo metro já lançado nesta obra — o técnico nunca vê valor
-            nenhum na tela dele.
+            O preço vale para todo metro já lançado nesta obra — o encarregado de obra nunca
+            vê valor nenhum na tela dele.
           </p>
         </div>
       </DialogContent>

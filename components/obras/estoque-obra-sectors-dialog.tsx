@@ -317,7 +317,7 @@ export function SupplyObraSectorsDialog({
           )}
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            O setor é o que o técnico escolhe em &quot;Setor aplicado&quot;. O serviço diz
+            O setor é o que o encarregado de obra escolhe em &quot;Setor aplicado&quot;. O serviço diz
             o que foi feito ali e quanto se paga a quem fez — por empreita ou por metro
             —, e esse valor cai na conta do colaborador.
           </p>

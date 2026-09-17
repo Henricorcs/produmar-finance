@@ -378,7 +378,7 @@ export function MaterialObraDialog({
 
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               Isto dá baixa no estoque na hora e entra no custo desta obra — não é
-              recado esperando conferência, como o do técnico.
+              recado esperando conferência, como o do encarregado de obra.
             </p>
 
             <DialogFooter>

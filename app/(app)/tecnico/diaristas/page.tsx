@@ -16,8 +16,10 @@ export default async function TecnicoDiaristasPage() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
 
-  // Mesma porta da tela de material: só o técnico (e o admin, para conferir).
+  // Mesma porta da tela de material: só o encarregado de obra (papel
+  // 'tecnico') e o admin, para conferir.
   if (profile?.role !== "tecnico" && profile?.role !== "admin") redirect("/inicio");
+  const encarregado = profile.role === "tecnico";
 
   // O calendário só volta alguns meses: ninguém marca hoje um dia do ano
   // passado, e carregar a vida inteira no celular dele é peso à toa.
@@ -25,7 +27,7 @@ export default async function TecnicoDiaristasPage() {
     new Date(new Date().getFullYear(), new Date().getMonth() - 6, 1)
   );
 
-  const [diaristasRes, diasRes, obrasRes, sectorsRes] = await Promise.all([
+  const [diaristasRes, diasRes, obrasRes, sectorsRes, vinculosRes] = await Promise.all([
     // só quem está ativo: o técnico escolhe da lista, nunca cadastra
     // (migration 059 — sem ela a tela avisa que não há ninguém cadastrado)
     supabase
@@ -44,15 +46,35 @@ export default async function TecnicoDiaristasPage() {
       .select("*")
       .eq("active", true)
       .order("name", { ascending: true }),
+    // a turma dele: os colaboradores que o chefe liberou (migration 099)
+    encarregado
+      ? supabase.from("diarista_tecnicos").select("diarista_id").eq("tecnico_id", profile.id)
+      : null,
   ]);
+
+  // SÓ A TURMA DELE. O admin vê todo mundo. Enquanto a 099 não roda a tabela
+  // não existe e ninguém tem como ser liberado: a tela segue mostrando todos,
+  // como antes, em vez de ficar vazia sem explicação.
+  const semTabela =
+    vinculosRes?.error?.code === "42P01" || vinculosRes?.error?.code === "PGRST205";
+  const filtrar = encarregado && !semTabela;
+  const daTurma = new Set(
+    ((vinculosRes?.data as { diarista_id: string }[] | null) ?? []).map((v) => v.diarista_id)
+  );
+
+  const todos = (diaristasRes.data as Diarista[]) ?? [];
+  const diaristas = filtrar ? todos.filter((d) => daTurma.has(d.id)) : todos;
+  const todosOsDias = (diasRes.data as DiaristaDia[]) ?? [];
+  const dias = filtrar ? todosOsDias.filter((d) => daTurma.has(d.diarista_id)) : todosOsDias;
 
   return (
     <TecnicoDiaristasClient
-      diaristas={(diaristasRes.data as Diarista[]) ?? []}
-      dias={(diasRes.data as DiaristaDia[]) ?? []}
+      diaristas={diaristas}
+      dias={dias}
       obras={(obrasRes.data as DiaristaObra[]) ?? []}
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
       meId={profile.id}
+      soDaTurma={filtrar}
     />
   );
 }

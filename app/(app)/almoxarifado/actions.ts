@@ -37,7 +37,7 @@ function supplyError(error: { code?: string; message: string }): string {
   if (error.message.includes("photo_path"))
     return "Rode a migration 050 no Supabase para usar as fotos";
   if (error.message.includes("supply_requests"))
-    return "Rode a migration 052 no Supabase para receber os envios do técnico";
+    return "Rode a migration 052 no Supabase para receber os envios do encarregado de obra";
   if (error.message.includes("supply_obra_despesas"))
     return "Rode a migration 067 no Supabase para lançar despesas na obra";
   if (error.message.includes("supply_locais") || error.message.includes("local_id"))

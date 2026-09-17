@@ -213,7 +213,7 @@ export function SupplyRequestDialog({
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={photoUrl}
-              alt="Foto do técnico"
+              alt="Foto do aviso"
               className="w-full h-40 object-cover rounded-xl border border-slate-200 dark:border-slate-700 mb-4"
             />
           )}
@@ -242,8 +242,8 @@ export function SupplyRequestDialog({
               {typed && (
                 <p className="text-[11px] text-slate-400 dark:text-slate-500">
                   {selected
-                    ? `O técnico escreveu "${typed}" — já casou com o cadastro.`
-                    : `O técnico escreveu "${typed}", mas esse material não está no cadastro.`}
+                    ? `Quem avisou escreveu "${typed}" — já casou com o cadastro.`
+                    : `Quem avisou escreveu "${typed}", mas esse material não está no cadastro.`}
                 </p>
               )}
 

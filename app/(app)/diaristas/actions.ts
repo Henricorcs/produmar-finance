@@ -63,6 +63,14 @@ function diaristaError(error: { code?: string; message: string }): string {
   if (error.code === "23514" && error.message.includes("worker_type"))
     return "Rode a migration 098 no Supabase para cadastrar funcionário CLT";
 
+  // A ligação colaborador × encarregado de obra nasce na 099. O PostgREST
+  // responde PGRST205 quando a tabela não está no cache dele.
+  if (
+    (error.code === "42P01" || error.code === "PGRST205") &&
+    error.message.includes("diarista_tecnicos")
+  )
+    return "Rode a migration 099 no Supabase para liberar colaborador por encarregado de obra";
+
   // O banco recusou por permissão: o RLS de adiantamento e acerto só deixa
   // gravar quem manda no dinheiro (admin, financeiro, ou operador com o
   // módulo liberado). Não tem nada a ver com migration.
@@ -242,6 +250,66 @@ export async function deleteDiarista(id: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// QUEM CUIDA DE QUEM (migration 099)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Diz quais encarregados de obra podem ver e lançar dia para o colaborador.
+ * A lista que chega é a lista INTEIRA: quem não veio nela deixa de ver a
+ * pessoa. Mexe só na diferença — não apaga e regrava quem já estava.
+ */
+export async function setDiaristaTecnicos(diaristaId: string, tecnicoIds: string[]) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!diaristaId) return { error: "Colaborador não informado" };
+
+  const querem = Array.from(new Set((tecnicoIds ?? []).filter(Boolean)));
+
+  const { data: atuais, error: lerErr } = await supabase
+    .from("diarista_tecnicos")
+    .select("tecnico_id")
+    .eq("diarista_id", diaristaId);
+  if (lerErr) return { error: diaristaError(lerErr) };
+
+  const tinham = new Set((atuais ?? []).map((r) => r.tecnico_id as string));
+  const sair = Array.from(tinham).filter((id) => !querem.includes(id));
+  const entrar = querem.filter((id) => !tinham.has(id));
+
+  if (sair.length > 0) {
+    const { error } = await supabase
+      .from("diarista_tecnicos")
+      .delete()
+      .eq("diarista_id", diaristaId)
+      .in("tecnico_id", sair);
+    if (error) return { error: vinculoError(error) };
+  }
+
+  if (entrar.length > 0) {
+    const { error } = await supabase.from("diarista_tecnicos").insert(
+      entrar.map((tecnicoId) => ({
+        diarista_id: diaristaId,
+        tecnico_id: tecnicoId,
+        created_by: user.id,
+      }))
+    );
+    if (error) return { error: vinculoError(error) };
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/** O "não" do RLS aqui é de cadastro, não de dinheiro — a mensagem geral fala de acerto. */
+function vinculoError(error: { code?: string; message: string }): string {
+  if (error.code === "42501" || /row.level security/i.test(error.message))
+    return "Seu usuário não tem permissão para liberar colaborador. Isso é de quem cuida do cadastro de colaboradores.";
+  return diaristaError(error);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // O CALENDÁRIO (o técnico marca, o chefe corrige)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -316,6 +384,13 @@ export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
     created_by: user.id,
   });
 
+  // Quem manda no módulo nunca é barrado aqui: o "não" do RLS neste insert é o
+  // encarregado de obra lançando para alguém que não é da turma dele (099).
+  if (error && (error.code === "42501" || /row.level security/i.test(error.message)))
+    return {
+      error:
+        "Este colaborador não está liberado para você. Peça ao chefe para liberar em Colaboradores.",
+    };
   if (error) return { error: diaristaError(error) };
   revalidate();
   return { ok: true };

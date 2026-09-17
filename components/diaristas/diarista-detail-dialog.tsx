@@ -522,7 +522,7 @@ export function DiaristaDetailDialog({
             </div>
 
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              Arquivar tira da lista do técnico e guarda o histórico. Apagar leva os
+              Arquivar tira da lista do encarregado de obra e guarda o histórico. Apagar leva os
               dias lançados junto; os serviços ficam nas obras, sem dono.
             </p>
           </div>

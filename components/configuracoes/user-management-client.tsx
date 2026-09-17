@@ -40,7 +40,7 @@ const ROLES: { value: UserRole; label: string; desc: string }[] = [
   { value: "encarregado", label: "Encarregado", desc: "Painel de OS + os módulos liberados" },
   { value: "visualizador",label: "Visualizador",desc: "Somente leitura"                },
   { value: "vaqueiro",    label: "Vaqueiro",    desc: "Só o nascimento de bezerro"     },
-  { value: "tecnico",     label: "Técnico",     desc: "Só avisar o material que usou"  },
+  { value: "tecnico",     label: "Encarregado de obra", desc: "Material, cerca e os colaboradores liberados" },
 ];
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -204,7 +204,7 @@ export function UserManagementClient({ users, currentUserId }: Props) {
           const isTecnico = u.role === "tecnico";
           const isFinanceiro = u.role === "financeiro";
           /**
-           * VER COMO ELE: o admin abre a tela do operador (ou do técnico) para
+           * VER COMO ELE: o admin abre a tela do operador (ou do encarregado de obra) para
            * conferir se a OS chegou, sem precisar da senha da pessoa. É só
            * leitura — a tela abre com uma faixa avisando e não aceita toque.
            */

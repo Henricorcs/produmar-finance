@@ -8,7 +8,7 @@ import type { AlertType, UserRole } from "@/lib/types";
 /** Perfis que chegaram por migration recente — se ela não rodou, o enum user_role não tem o valor. */
 const ROLE_MIGRATION: Partial<Record<UserRole, { migration: string; label: string }>> = {
   vaqueiro: { migration: "048", label: "Vaqueiro" },
-  tecnico: { migration: "052", label: "Técnico" },
+  tecnico: { migration: "052", label: "Encarregado de obra" },
   encarregado: { migration: "079", label: "Encarregado" },
 };
 

@@ -14,7 +14,10 @@ import type { Diarista, DiaristaDia, SupplyObraSector } from "@/lib/types";
 import { useAtualizarAoVoltar } from "./use-atualizar-ao-voltar";
 
 interface Props {
-  /** Só os diaristas ativos: o técnico escolhe, nunca cadastra. */
+  /**
+   * Só os ativos da turma dele (os que o chefe liberou, 099): o encarregado de
+   * obra escolhe, nunca cadastra.
+   */
   diaristas: Diarista[];
   /** Dias já lançados (de todo mundo) — é o que já está verde no calendário. */
   dias: DiaristaDia[];
@@ -22,18 +25,28 @@ interface Props {
   sectors: SupplyObraSector[];
   /** Quem está usando a tela: ele só apaga o dia que ele mesmo marcou. */
   meId: string;
+  /** A lista veio filtrada pela turma — muda o aviso de lista vazia. */
+  soDaTurma?: boolean;
 }
 
 /** Nenhum dia marcado — a mesma referência sempre, para o calendário não redesenhar à toa. */
 const NENHUM = new Set<string>();
 
 /**
- * A tela do técnico para dizer QUEM veio trabalhar. Mesma ideia da tela do
+ * A tela do encarregado de obra (o antigo técnico) para dizer QUEM veio
+ * trabalhar. Mesma ideia da tela do
  * material: ele informa, não cadastra. Toca no diarista e toca no dia que ela
  * veio — o dia fica azul e já abre a tela para escrever o que foi feito ali.
  * Tocou noutro dia, abre de novo: um dia, uma descrição.
  */
-export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }: Props) {
+export function TecnicoDiaristasClient({
+  diaristas,
+  dias,
+  obras,
+  sectors,
+  meId,
+  soDaTurma = false,
+}: Props) {
   // colaborador, obra e setor vêm de novo quando ele volta para a tela
   useAtualizarAoVoltar();
 
@@ -111,10 +124,14 @@ export function TecnicoDiaristasClient({ diaristas, dias, obras, sectors, meId }
             <CardContent className="py-10 text-center space-y-1">
               <Users className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600" />
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Nenhum colaborador cadastrado ainda.
+                {soDaTurma
+                  ? "Nenhum colaborador liberado para você."
+                  : "Nenhum colaborador cadastrado ainda."}
               </p>
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Quem cadastra é o chefe — peça para ele incluir a pessoa.
+                {soDaTurma
+                  ? "Quem libera é o chefe, em Colaboradores — peça para ele liberar a sua turma."
+                  : "Quem cadastra é o chefe — peça para ele incluir a pessoa."}
               </p>
             </CardContent>
           </Card>

@@ -11,6 +11,11 @@ export type UserRole =
    */
   | "encarregado"
   | "vaqueiro"
+  /**
+   * Na tela: ENCARREGADO DE OBRA (o nome mudou, o valor no banco não). Avisa da
+   * obra o material que gastou, os dias dos colaboradores liberados para ele e
+   * os metros de cerca — ver as migrations 052 e 099.
+   */
   | "tecnico";
 export type TransactionType = "entrada" | "saida";
 export type TransactionStatus = "pendente" | "pago" | "recebido" | "vencido" | "cancelado";
@@ -1782,6 +1787,22 @@ export interface DiaristaResumo extends Diarista {
   salary_pending?: number;
   /** Último mês de salário pago (primeiro dia do mês, YYYY-MM-01). */
   last_reference_month?: string | null;
+}
+
+/**
+ * Quem cuida de quem (migration 099): o colaborador liberado para um
+ * encarregado de obra. Só quem está aqui aparece na tela dele.
+ */
+export interface DiaristaTecnico {
+  diarista_id: string;
+  tecnico_id: string;
+}
+
+/** O encarregado de obra (papel `tecnico`) do jeito que o chefe escolhe na lista. */
+export interface EncarregadoDeObra {
+  id: string;
+  full_name: string | null;
+  email: string;
 }
 
 /**

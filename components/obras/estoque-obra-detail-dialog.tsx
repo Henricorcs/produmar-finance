@@ -486,7 +486,7 @@ export function SupplyObraDetailDialog({
             <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
               O material usado e a despesa — compra direta, combustível, frete — são
               lançados aqui; o material também pode vir do Estoque ou do recado do
-              técnico. A diária sai em Colaboradores, escolhendo esta obra, e o serviço
+              encarregado de obra. A diária sai em Colaboradores, escolhendo esta obra, e o serviço
               por empreita ou por metro é combinado no setor.
             </p>
           </div>
@@ -860,7 +860,7 @@ export function SupplyObraDetailDialog({
               </div>
             ) : (
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Nenhum setor ainda — é o que o técnico escolhe em &quot;Setor aplicado&quot;,
+                Nenhum setor ainda — é o que o encarregado de obra escolhe em &quot;Setor aplicado&quot;,
                 e é onde se define o serviço feito e quanto se paga por ele.
               </p>
             )}

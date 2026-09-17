@@ -25,18 +25,19 @@ export default async function TecnicoPage({
   const profile = await getProfile();
   if (!profile) redirect("/login");
 
-  // Tela fechada: só o técnico (e o admin, para conferir/testar).
+  // Tela fechada: só o encarregado de obra — papel 'tecnico' — (e o admin,
+  // para conferir/testar).
   if (profile?.role !== "tecnico" && profile?.role !== "admin") redirect("/inicio");
 
-  // VER COMO O TÉCNICO: o admin abre a tela de um técnico para conferir. Só
+  // VER COMO O ENCARREGADO DE OBRA: o admin abre a tela de um deles para conferir. Só
   // leitura — a faixa do topo desliga o toque no que vem abaixo.
   const vendoOutro =
     profile.role === "admin" && !!searchParams.ver && searchParams.ver !== profile.id;
   const alvoId = vendoOutro ? (searchParams.ver as string) : profile.id;
 
   // o nome de quem está sendo olhado (a RLS de profiles só deixa o admin ver os
-  // outros pelo service-role; sem a chave, mostra "técnico" e segue)
-  let nomeDoAlvo = "técnico";
+  // outros pelo service-role; sem a chave, mostra "encarregado de obra" e segue)
+  let nomeDoAlvo = "encarregado de obra";
   if (vendoOutro) {
     try {
       const admin = createAdminClient();
@@ -45,9 +46,9 @@ export default async function TecnicoPage({
         .select("full_name, email")
         .eq("id", alvoId)
         .maybeSingle<{ full_name: string | null; email: string }>();
-      nomeDoAlvo = data?.full_name || data?.email || "técnico";
+      nomeDoAlvo = data?.full_name || data?.email || "encarregado de obra";
     } catch {
-      nomeDoAlvo = "técnico";
+      nomeDoAlvo = "encarregado de obra";
     }
   }
 

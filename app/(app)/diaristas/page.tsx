@@ -1,10 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { DiaristasPageClient } from "@/components/diaristas/diaristas-page-client";
 import type {
   DiaristaAcerto,
   DiaristaAdiantamento,
   DiaristaDia,
   DiaristaResumo,
+  DiaristaTecnico,
+  EncarregadoDeObra,
   SupplyObraSector,
   SupplyObraServicoView,
 } from "@/lib/types";
@@ -23,6 +26,8 @@ export default async function DiaristasPage() {
     valesRes,
     acertosRes,
     servicosRes,
+    vinculosRes,
+    encarregados,
   ] = await Promise.all([
     // cadastro + quanto cada um já trabalhou (migration 059 — sem ela a tela
     // abre vazia com o aviso, em vez de quebrar)
@@ -53,6 +58,10 @@ export default async function DiaristasPage() {
       .select("*")
       .order("service_date", { ascending: false })
       .limit(1000),
+    // quem cuida de quem (migration 099 — sem ela volta vazio, e liberar
+    // alguém avisa para rodar a migration)
+    supabase.from("diarista_tecnicos").select("diarista_id, tecnico_id"),
+    listarEncarregadosDeObra(supabase),
   ]);
 
   return (
@@ -64,6 +73,38 @@ export default async function DiaristasPage() {
       adiantamentos={(valesRes.data as DiaristaAdiantamento[]) ?? []}
       acertos={(acertosRes.data as DiaristaAcerto[]) ?? []}
       servicos={(servicosRes.data as SupplyObraServicoView[]) ?? []}
+      vinculos={(vinculosRes.data as DiaristaTecnico[]) ?? []}
+      encarregados={encarregados}
     />
   );
+}
+
+/**
+ * Os usuários com o papel de encarregado de obra (`tecnico` no banco), para o
+ * chefe escolher quem cuida de cada colaborador.
+ *
+ * A RLS de profiles só deixa o admin ver os outros usuários: o service-role
+ * abre a lista para o financeiro e para quem tem o módulo. Sem a chave, tenta
+ * com o login de quem abriu — o admin enxerga do mesmo jeito.
+ */
+async function listarEncarregadosDeObra(
+  supabase: ReturnType<typeof createClient>
+): Promise<EncarregadoDeObra[]> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("role", "tecnico")
+      .order("full_name", { ascending: true });
+    if (!error) return (data as EncarregadoDeObra[]) ?? [];
+  } catch {
+    // sem a service key: cai no login de quem abriu
+  }
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, full_name, email")
+    .eq("role", "tecnico")
+    .order("full_name", { ascending: true });
+  return (data as EncarregadoDeObra[]) ?? [];
 }

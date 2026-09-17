@@ -840,7 +840,7 @@ function PendentesTab({
       <EmptyState
         icon={ClipboardCheck}
         text="Nada esperando baixa."
-        hint="O material que o técnico e o operador avisarem pelo celular aparece aqui — mais antigo primeiro."
+        hint="O material que o encarregado de obra e o operador avisarem pelo celular aparece aqui — mais antigo primeiro."
       />
     );
   }
