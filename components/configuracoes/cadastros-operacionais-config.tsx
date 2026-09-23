@@ -531,9 +531,10 @@ function ContactsList({ contacts }: { contacts: Contact[] }) {
   const [name, setName]           = useState("");
   const [docNumber, setDocNumber] = useState("");
   const [phone, setPhone]         = useState("");
+  const [email, setEmail]         = useState("");
 
   function reset() {
-    setName(""); setDocNumber(""); setPhone("");
+    setName(""); setDocNumber(""); setPhone(""); setEmail("");
     setEditingId(null); setShowForm(false);
   }
 
@@ -542,15 +543,16 @@ function ContactsList({ contacts }: { contacts: Contact[] }) {
     setName(c.name);
     setDocNumber(c.document ?? "");
     setPhone(c.phone ?? "");
+    setEmail(c.email ?? "");
     setShowForm(true);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (editingId) {
-      await updateContact(editingId, { name, document: docNumber, phone });
+      await updateContact(editingId, { name, document: docNumber, phone, email });
     } else {
-      await createContact({ name, document: docNumber, phone });
+      await createContact({ name, document: docNumber, phone, email });
     }
     reset();
   }
@@ -577,9 +579,9 @@ function ContactsList({ contacts }: { contacts: Contact[] }) {
               <p className="text-sm font-medium truncate text-slate-800 dark:text-slate-200">
                 {c.name}
               </p>
-              {(c.document || c.phone) && (
+              {(c.document || c.phone || c.email) && (
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
-                  {[c.document, c.phone].filter(Boolean).join(" · ")}
+                  {[c.document, c.phone, c.email].filter(Boolean).join(" · ")}
                 </p>
               )}
             </div>
@@ -623,6 +625,13 @@ function ContactsList({ contacts }: { contacts: Contact[] }) {
               className="h-9 text-sm"
             />
           </div>
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="e-mail (opcional — a Cora avisa o cliente do boleto por aqui)"
+            className="h-9 text-sm"
+          />
           <div className="flex gap-2">
             <button type="button" onClick={reset} className="flex-1 h-9 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50">
               <X className="w-3 h-3 inline mr-1" /> Cancelar

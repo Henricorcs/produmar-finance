@@ -179,6 +179,8 @@ export interface ContactInput {
   name: string;
   document?: string | null;
   phone?: string | null;
+  /** Opcional — a Cora usa pra notificar o cliente automaticamente do boleto. */
+  email?: string | null;
 }
 
 export async function createContact(input: ContactInput) {
@@ -197,6 +199,7 @@ export async function createContact(input: ContactInput) {
       name,
       document: clean(input.document),
       phone: clean(input.phone),
+      email: clean(input.email),
       is_customer: true,
     })
     .select("*")
@@ -219,6 +222,7 @@ export async function updateContact(id: string, input: ContactInput) {
       name,
       document: clean(input.document),
       phone: clean(input.phone),
+      email: clean(input.email),
     })
     .eq("id", id);
 

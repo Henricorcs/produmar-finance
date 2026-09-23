@@ -10,6 +10,8 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Paperclip,
+  FileText,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
@@ -18,12 +20,13 @@ import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { MonthNav } from "@/components/ui/month-nav";
 import { FilterTabs } from "@/components/ui/filter-tabs";
 import { TransactionDialog } from "./transaction-dialog";
-import { deleteTransaction, markTransactionPaid } from "@/app/(app)/contas/actions";
+import { deleteTransaction, gerarBoletoCora, markTransactionPaid } from "@/app/(app)/contas/actions";
 import { formatBRL, formatDate } from "@/lib/utils";
-import type { Category, CostCenter, Obra, Transaction, TransactionAttachment } from "@/lib/types";
+import type { Category, Contact, CostCenter, Obra, Transaction, TransactionAttachment } from "@/lib/types";
 
 type TransactionWithCategory = Transaction & {
   categories: { name: string; color: string } | null;
+  contacts?: { name: string; document: string | null; email: string | null } | null;
   transaction_attachments?: TransactionAttachment[];
 };
 
@@ -32,6 +35,7 @@ interface Props {
   categories: Category[];
   costCenters: CostCenter[];
   obras?: Obra[];
+  contacts?: Contact[];
   month: string;
   initialFilter?: string;
 }
@@ -51,6 +55,7 @@ export function ContasPageClient({
   categories,
   costCenters,
   obras = [],
+  contacts = [],
   month,
   initialFilter = "",
 }: Props) {
@@ -122,6 +127,11 @@ export function ContasPageClient({
     await markTransactionPaid(t.id, t.type);
   }
 
+  async function handleGerarBoleto(id: string) {
+    const r = await gerarBoletoCora(id);
+    if (r && "error" in r) alert(r.error);
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
@@ -170,6 +180,7 @@ export function ContasPageClient({
                 onEdit={openEdit}
                 onDelete={handleDelete}
                 onMarkPaid={handleMarkPaid}
+                onGerarBoleto={handleGerarBoleto}
               />
             ))}
           </div>
@@ -183,6 +194,7 @@ export function ContasPageClient({
         categories={categories}
         costCenters={costCenters}
         obras={obras}
+        contacts={contacts}
       />
     </div>
   );
@@ -193,18 +205,32 @@ function TransactionRow({
   onEdit,
   onDelete,
   onMarkPaid,
+  onGerarBoleto,
 }: {
   transaction: TransactionWithCategory;
   onEdit: (t: TransactionWithCategory) => void;
   onDelete: (id: string) => void;
   onMarkPaid: (t: Transaction) => void;
+  onGerarBoleto: (id: string) => void;
 }) {
+  const [gerandoBoleto, setGerandoBoleto] = useState(false);
   const canMarkPaid = t.status === "pendente" || t.status === "vencido";
   const markLabel = t.type === "entrada" ? "Marcar como recebido" : "Marcar como pago";
   const attachmentCount = t.transaction_attachments?.length ?? 0;
+  const podeGerarBoleto = t.type === "entrada" && !!t.contact_id && !t.cora_invoice_id;
+
+  async function gerarBoleto() {
+    setGerandoBoleto(true);
+    try {
+      await onGerarBoleto(t.id);
+    } finally {
+      setGerandoBoleto(false);
+    }
+  }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/60 transition-colors group">
+    <div className="flex flex-col gap-2 px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/60 transition-colors group">
+      <div className="flex items-center gap-3">
       {/* Type stripe */}
       <div
         className={`w-1 h-10 rounded-full flex-shrink-0 ${
@@ -235,6 +261,9 @@ function TransactionRow({
               {t.categories.name}
             </span>
           )}
+          {t.contacts && (
+            <span className="text-xs text-slate-400 dark:text-slate-500 truncate">{t.contacts.name}</span>
+          )}
           <span className="text-xs text-slate-400 dark:text-slate-500">{formatDate(t.paid_date ?? t.due_date)}</span>
         </div>
       </div>
@@ -254,6 +283,16 @@ function TransactionRow({
 
       {/* Actions — always visible on mobile, hover-only on desktop */}
       <div className="flex items-center gap-1 sm:gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+        {podeGerarBoleto && (
+          <button
+            onClick={gerarBoleto}
+            disabled={gerandoBoleto}
+            title="Gerar boleto na Cora"
+            className="p-2.5 sm:p-1.5 rounded-lg text-slate-400 hover:text-produmar-600 hover:bg-produmar-50 transition-colors disabled:opacity-50"
+          >
+            <FileText className="w-4 h-4" />
+          </button>
+        )}
         {canMarkPaid && (
           <button
             onClick={() => onMarkPaid(t)}
@@ -278,6 +317,47 @@ function TransactionRow({
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
+      </div>
+
+      {t.cora_invoice_id && (
+        <div className="flex items-center gap-2 pl-4 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
+          <span className="px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-medium">
+            Boleto Cora: {t.cora_status ?? "—"}
+          </span>
+          {t.boleto_digitable_line && (
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(t.boleto_digitable_line!)}
+              className="flex items-center gap-1 hover:text-produmar-600"
+              title="Copiar linha digitável"
+            >
+              <Copy className="w-3 h-3" />
+              {t.boleto_digitable_line}
+            </button>
+          )}
+          {t.boleto_url && (
+            <a
+              href={t.boleto_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-produmar-600"
+            >
+              Ver PDF
+            </a>
+          )}
+          {t.pix_emv && (
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(t.pix_emv!)}
+              className="flex items-center gap-1 hover:text-produmar-600"
+              title="Copiar Pix copia-e-cola"
+            >
+              <Copy className="w-3 h-3" />
+              Pix copia-e-cola
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

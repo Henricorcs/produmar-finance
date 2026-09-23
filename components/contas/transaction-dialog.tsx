@@ -23,10 +23,12 @@ import {
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { QuickCreateCategoryDialog } from "./quick-create-category-dialog";
 import { QuickCreateCostCenterDialog } from "./quick-create-cost-center-dialog";
+import { QuickCreateContactDialog } from "@/components/obras/quick-create-contact-dialog";
 import { AttachmentUploader } from "./attachment-uploader";
 import { createTransaction, updateTransaction } from "@/app/(app)/contas/actions";
 import type {
   Category,
+  Contact,
   CostCenter,
   Obra,
   Transaction,
@@ -43,6 +45,7 @@ interface Props {
   categories: Category[];
   costCenters: CostCenter[];
   obras?: Obra[];
+  contacts?: Contact[];
 }
 
 // ── Um campo por tela ────────────────────────────────────────────────────────
@@ -67,6 +70,7 @@ type Passo =
   | "status"
   | "categoria"
   | "centro"
+  | "cliente"
   | "obra"
   | "notas"
   | "anexos"
@@ -102,6 +106,7 @@ export function TransactionDialog({
   categories,
   costCenters,
   obras = [],
+  contacts = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +117,7 @@ export function TransactionDialog({
   const [status, setStatus] = useState<TransactionStatus>(transaction?.status ?? "pendente");
   const [categoryId, setCategoryId] = useState<string>(transaction?.category_id ?? "");
   const [costCenterId, setCostCenterId] = useState<string>(transaction?.cost_center_id ?? "");
+  const [contactId, setContactId] = useState<string>(transaction?.contact_id ?? "");
   const [obraId, setObraId] = useState<string>(transaction?.obra_id ?? "");
   const [descricao, setDescricao] = useState<string>(transaction?.description ?? "");
   const [notas, setNotas] = useState<string>(transaction?.notes ?? "");
@@ -130,10 +136,12 @@ export function TransactionDialog({
   // Local lists so we can insert newly-created entities optimistically
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
   const [localCostCenters, setLocalCostCenters] = useState<CostCenter[]>(costCenters);
+  const [localContacts, setLocalContacts] = useState<Contact[]>(contacts);
 
   // Quick-create dialogs
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [ccDialogOpen, setCCDialogOpen] = useState(false);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
 
   // Attachments
   const [newFiles, setNewFiles] = useState<File[]>([]);
@@ -147,6 +155,7 @@ export function TransactionDialog({
     setStatus(transaction?.status ?? "pendente");
     setCategoryId(transaction?.category_id ?? "");
     setCostCenterId(transaction?.cost_center_id ?? "");
+    setContactId(transaction?.contact_id ?? "");
     setObraId(transaction?.obra_id ?? "");
     setDescricao(transaction?.description ?? "");
     setNotas(transaction?.notes ?? "");
@@ -165,6 +174,7 @@ export function TransactionDialog({
   // Sync local lists when the parent reloads data
   useEffect(() => setLocalCategories(categories), [categories]);
   useEffect(() => setLocalCostCenters(costCenters), [costCenters]);
+  useEffect(() => setLocalContacts(contacts), [contacts]);
 
   const filteredCategories = useMemo(
     () => localCategories.filter((c) => c.type === type),
@@ -246,6 +256,15 @@ export function TransactionDialog({
     setCostCenterId(cc.id);
   }
 
+  function handleContactCreated(contact: Contact) {
+    setLocalContacts((prev) =>
+      [...prev.filter((c) => c.id !== contact.id), contact].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+    );
+    setContactId(contact.id);
+  }
+
   function confirmar() {
     if (!type || !completo) return;
 
@@ -260,6 +279,7 @@ export function TransactionDialog({
     formData.set("status", status);
     formData.set("category_id", categoryId);
     formData.set("cost_center_id", costCenterId);
+    formData.set("contact_id", contactId);
     formData.set("obra_id", obraId);
     formData.set("notes", notas.trim().toUpperCase());
     newFiles.forEach((f) => formData.append("attachments", f));
@@ -277,6 +297,7 @@ export function TransactionDialog({
   const indice = CAMINHO.indexOf(passo);
   const nomeDaCategoria = localCategories.find((c) => c.id === categoryId)?.name;
   const nomeDoCentro = localCostCenters.find((c) => c.id === costCenterId)?.name;
+  const nomeDoCliente = localContacts.find((c) => c.id === contactId)?.name;
   const nomeDaObra = obras.find((o) => o.id === obraId)?.name;
   const anexos = existingAttachments.length + newFiles.length;
 
@@ -512,6 +533,28 @@ export function TransactionDialog({
               </PassoDaVez>
             )}
 
+            {/* ── CLIENTE ──────────────────────────────────────────────── */}
+            {passo === "cliente" && (
+              <PassoDaVez
+                titulo="Cliente"
+                dica="Opcional — obrigatório para gerar boleto pela Cora"
+              >
+                <SearchableSelect
+                  items={localContacts}
+                  value={contactId}
+                  onChange={setContactId}
+                  getId={(c) => c.id}
+                  getLabel={(c) => c.name}
+                  placeholder="Selecione um cliente..."
+                  searchPlaceholder="Buscar cliente..."
+                  emptyMessage="Nenhum cliente cadastrado"
+                  onCreateNew={() => setContactDialogOpen(true)}
+                  createNewLabel="Criar novo cliente"
+                  autoFocusSearch={false}
+                />
+              </PassoDaVez>
+            )}
+
             {/* ── OBRA ─────────────────────────────────────────────────── */}
             {passo === "obra" && (
               <PassoDaVez titulo="Obra" dica="Opcional — vincula o lançamento a uma obra">
@@ -620,6 +663,13 @@ export function TransactionDialog({
                     valor={nomeDoCentro ?? null}
                     onEditar={() => editar("centro")}
                   />
+                  {type === "entrada" && (
+                    <LinhaDaFicha
+                      rotulo="Cliente"
+                      valor={nomeDoCliente ?? null}
+                      onEditar={() => editar("cliente")}
+                    />
+                  )}
                   {obras.length > 0 && (
                     <LinhaDaFicha
                       rotulo="Obra"
@@ -696,6 +746,11 @@ export function TransactionDialog({
         open={ccDialogOpen}
         onClose={() => setCCDialogOpen(false)}
         onCreated={handleCostCenterCreated}
+      />
+      <QuickCreateContactDialog
+        open={contactDialogOpen}
+        onClose={() => setContactDialogOpen(false)}
+        onCreated={handleContactCreated}
       />
     </>
   );

@@ -72,6 +72,10 @@ export async function updateSession(request: NextRequest) {
     // middleware mandaria o PC do escritório para a tela de login, e o backup
     // guardaria uma página HTML no lugar das fotos.
     path.startsWith("/api/backup") ||
+    // Webhook da Cora: quem chama é o servidor deles, sem sessão nossa. A
+    // própria rota reconsulta o boleto na Cora antes de confiar em qualquer
+    // coisa — não depende do middleware para segurança.
+    path.startsWith("/api/webhooks/cora") ||
     path === "/";
 
   // Usuário não autenticado → login

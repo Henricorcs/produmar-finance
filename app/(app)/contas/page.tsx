@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ContasPageClient } from "@/components/contas/contas-page-client";
-import type { Category, CostCenter, Obra } from "@/lib/types";
+import type { Category, Contact, CostCenter, Obra } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +20,11 @@ export default async function ContasPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [transactionsRes, categoriesRes, costCentersRes, obrasRes] = await Promise.all([
+  const [transactionsRes, categoriesRes, costCentersRes, obrasRes, contactsRes] = await Promise.all([
     supabase
       .from("transactions")
       .select(
-        "*, categories(name, color), transaction_attachments(id, transaction_id, file_name, file_size, mime_type, storage_path, created_by, created_at)"
+        "*, categories(name, color), contacts(name, document, email), transaction_attachments(id, transaction_id, file_name, file_size, mime_type, storage_path, created_by, created_at)"
       )
       // Lançamentos de OS contam nas finanças, mas não aparecem na lista de Contas.
       .is("service_order_id", null)
@@ -34,6 +34,7 @@ export default async function ContasPage({
     supabase.from("categories").select("*").order("name"),
     supabase.from("cost_centers").select("*").eq("active", true).order("name"),
     supabase.from("obras").select("*").eq("active", true).order("name"),
+    supabase.from("contacts").select("*").eq("is_customer", true).order("name"),
   ]);
 
   return (
@@ -42,6 +43,7 @@ export default async function ContasPage({
       categories={(categoriesRes.data as Category[]) ?? []}
       costCenters={(costCentersRes.data as CostCenter[]) ?? []}
       obras={(obrasRes.data as Obra[]) ?? []}
+      contacts={(contactsRes.data as Contact[]) ?? []}
       month={month}
       initialFilter={searchParams.filter ?? ""}
     />

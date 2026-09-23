@@ -25,6 +25,7 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
   const [name, setName] = useState("");
   const [document, setDocument] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -33,6 +34,7 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
       setName("");
       setDocument("");
       setPhone("");
+      setEmail("");
       setError(null);
     }
   }, [open]);
@@ -45,7 +47,7 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
       return;
     }
     startTransition(async () => {
-      const r = await createContact({ name, document, phone });
+      const r = await createContact({ name, document, phone, email });
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao cadastrar cliente");
         return;
@@ -92,6 +94,18 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="opcional"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="ct_email">E-mail</Label>
+            <Input
+              id="ct_email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="opcional — a Cora avisa o cliente do boleto por aqui"
               autoComplete="off"
             />
           </div>

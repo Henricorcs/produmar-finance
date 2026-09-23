@@ -80,6 +80,17 @@ export interface Transaction {
   service_order_id: string | null;
   /** Obra vinculada (opcional) — soma no custo total da obra. */
   obra_id: string | null;
+  /** Boleto emitido pela Cora (migration 100) — null enquanto não foi gerado. */
+  cora_invoice_id?: string | null;
+  /** Status bruto devolvido pela Cora (OPEN/LATE/PAID/CANCELLED/DRAFT) — só depuração. */
+  cora_status?: string | null;
+  boleto_digitable_line?: string | null;
+  boleto_barcode?: string | null;
+  /** Link do PDF do boleto. */
+  boleto_url?: string | null;
+  boleto_our_number?: string | null;
+  /** Pix copia-e-cola do boleto, quando a Cora gera QR code junto. */
+  pix_emv?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
