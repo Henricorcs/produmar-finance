@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { requisitarCora } from "./http";
-import type { CoraInvoiceRequest, CoraInvoiceResponse } from "./types";
+import type { CoraInvoiceRequest, CoraInvoiceResponse, CoraStatementEntry, CoraStatementResponse } from "./types";
 
 type CoraEnv = "stage" | "production";
 
@@ -67,7 +67,8 @@ async function getAccessToken(): Promise<string> {
 async function chamar<T>(
   method: "GET" | "POST" | "DELETE",
   path: string,
-  body?: unknown
+  body?: unknown,
+  opts?: { hostname?: string }
 ): Promise<T> {
   const { cert, key } = credenciais();
   const token = await getAccessToken();
@@ -87,7 +88,7 @@ async function chamar<T>(
 
   const resposta = await requisitarCora({
     method,
-    hostname: hostname(),
+    hostname: opts?.hostname ?? hostname(),
     path,
     headers,
     body: bodyStr,
@@ -114,4 +115,54 @@ export async function consultarBoleto(coraInvoiceId: string): Promise<CoraInvoic
 
 export async function cancelarBoleto(coraInvoiceId: string): Promise<void> {
   await chamar<unknown>("DELETE", `/v2/invoices/${encodeURIComponent(coraInvoiceId)}`);
+}
+
+/**
+ * Host da API de Consulta de Extrato. A doc pública da Cora
+ * (developers.cora.com.br/reference/consulta-de-extrato) cita um base URL sem
+ * o prefixo "matls-clients" usado pelas chamadas de boleto — não dá pra saber
+ * se é mesmo um host separado sem mTLS ou se a doc está simplificada. Até
+ * validar em stage, assume o mesmo host mTLS de sempre (mais seguro: se
+ * estiver errado, a chamada falha com erro claro, não silenciosamente). Dá
+ * pra sobrescrever via env sem mexer em código caso a validação mostre outro
+ * host.
+ */
+function statementHostname(): string {
+  return process.env.CORA_STATEMENT_HOSTNAME || hostname();
+}
+
+interface BuscarExtratoParams {
+  /** AAAA-MM-DD. */
+  start: string;
+  /** AAAA-MM-DD. */
+  end: string;
+  page?: number;
+  perPage?: number;
+}
+
+async function buscarExtratoPagina(p: BuscarExtratoParams): Promise<CoraStatementResponse> {
+  const qs = new URLSearchParams({
+    start: p.start,
+    end: p.end,
+    page: String(p.page ?? 1),
+    perPage: String(p.perPage ?? 500),
+  });
+  return chamar<CoraStatementResponse>("GET", `/bank-statement/statement?${qs}`, undefined, {
+    hostname: statementHostname(),
+  });
+}
+
+/** Teto de páginas pra nunca entrar em loop infinito se a API se comportar de forma inesperada. */
+const TETO_DE_PAGINAS_DO_EXTRATO = 50;
+const ITENS_POR_PAGINA_DO_EXTRATO = 500;
+
+/** Busca todo o extrato do período, paginando internamente. */
+export async function buscarExtratoCompleto(start: string, end: string): Promise<CoraStatementEntry[]> {
+  const entradas: CoraStatementEntry[] = [];
+  for (let page = 1; page <= TETO_DE_PAGINAS_DO_EXTRATO; page++) {
+    const resposta = await buscarExtratoPagina({ start, end, page, perPage: ITENS_POR_PAGINA_DO_EXTRATO });
+    entradas.push(...resposta.entries);
+    if (resposta.entries.length < ITENS_POR_PAGINA_DO_EXTRATO) break;
+  }
+  return entradas;
 }

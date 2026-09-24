@@ -12,15 +12,21 @@ import {
   Paperclip,
   FileText,
   Copy,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { MonthNav } from "@/components/ui/month-nav";
 import { FilterTabs } from "@/components/ui/filter-tabs";
 import { TransactionDialog } from "./transaction-dialog";
-import { deleteTransaction, gerarBoletoCora, markTransactionPaid } from "@/app/(app)/contas/actions";
+import {
+  buscarMovimentacoesCora,
+  deleteTransaction,
+  gerarBoletoCora,
+  markTransactionPaid,
+} from "@/app/(app)/contas/actions";
 import { formatBRL, formatDate } from "@/lib/utils";
 import type { Category, Contact, CostCenter, Obra, Transaction, TransactionAttachment } from "@/lib/types";
 
@@ -65,6 +71,7 @@ export function ContasPageClient({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] =
     useState<TransactionWithCategory | null>(null);
+  const [buscandoExtrato, setBuscandoExtrato] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterValue>(
     (FILTER_TABS.some((f) => f.value === initialFilter) ? initialFilter : "") as FilterValue
   );
@@ -132,6 +139,23 @@ export function ContasPageClient({
     if (r && "error" in r) alert(r.error);
   }
 
+  async function handleBuscarExtrato() {
+    setBuscandoExtrato(true);
+    try {
+      const r = await buscarMovimentacoesCora();
+      if (r && "error" in r) {
+        alert(r.error);
+      } else if (r) {
+        alert(
+          `Extrato da Cora sincronizado: ${r.criadas} novo(s), ${r.vinculadas} vinculado(s) a lançamentos existentes.`
+        );
+        router.refresh();
+      }
+    } finally {
+      setBuscandoExtrato(false);
+    }
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
@@ -140,10 +164,16 @@ export function ContasPageClient({
           <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Lançamentos</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">A pagar e a receber</p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="w-4 h-4" />
-          Novo
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleBuscarExtrato} disabled={buscandoExtrato}>
+            <RefreshCw className={`w-4 h-4 ${buscandoExtrato ? "animate-spin" : ""}`} />
+            {buscandoExtrato ? "Buscando..." : "Buscar movimentações da Cora"}
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="w-4 h-4" />
+            Novo
+          </Button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -260,6 +290,11 @@ function TransactionRow({
             >
               {t.categories.name}
             </span>
+          )}
+          {!t.category_id && t.cora_entry_id && (
+            <Badge variant="warning" className="text-[10px] px-1.5 py-0.5 leading-none">
+              Sem plano de contas
+            </Badge>
           )}
           {t.contacts && (
             <span className="text-xs text-slate-400 dark:text-slate-500 truncate">{t.contacts.name}</span>

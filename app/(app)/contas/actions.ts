@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TransactionStatus, TransactionType } from "@/lib/types";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
 import { criarBoleto, cancelarBoleto } from "@/lib/cora/client";
+import { sincronizarExtratoCora } from "@/lib/cora/sync-extrato";
 import { validarCpfCnpj, tipoDocumento } from "@/lib/cpf-cnpj";
 
 interface TransactionPayload {
@@ -294,6 +295,23 @@ export async function gerarBoletoCora(id: string) {
 
   revalidate();
   return { ok: true };
+}
+
+/** Busca o extrato da conta Cora e lança/vincula em Contas o que ainda não estiver sincronizado. RLS (transactions_write) já restringe a admin/financeiro. */
+export async function buscarMovimentacoesCora() {
+  const supabase = createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  try {
+    const resultado = await sincronizarExtratoCora(supabase);
+    revalidate();
+    return { ok: true, ...resultado };
+  } catch (e) {
+    return { error: `Falha ao buscar extrato da Cora: ${(e as Error).message}` };
+  }
 }
 
 export async function markTransactionPaid(id: string, type: TransactionType) {

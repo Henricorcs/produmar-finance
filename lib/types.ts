@@ -91,6 +91,10 @@ export interface Transaction {
   boleto_our_number?: string | null;
   /** Pix copia-e-cola do boleto, quando a Cora gera QR code junto. */
   pix_emv?: string | null;
+  /** Movimentação do extrato da Cora que originou/confirmou este lançamento (migration 101). */
+  cora_entry_id?: string | null;
+  /** Tipo bruto da movimentação na Cora (TRANSFER/PIX/FEE/...) — só depuração. */
+  cora_transaction_type?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

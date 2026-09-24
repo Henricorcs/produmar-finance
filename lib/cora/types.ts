@@ -64,3 +64,49 @@ export interface CoraInvoiceResponse {
   payments?: CoraPayment[];
   pix?: { emv?: string };
 }
+
+/** Extrato bancário (Consulta de Extrato) — movimentações da conta, não só boletos. */
+
+export type CoraEntryType = "CREDIT" | "DEBIT" | "BLOCK" | "UNBLOCK";
+
+export type CoraStatementTransactionType =
+  | "TRANSFER"
+  | "PAYMENT"
+  | "PIX"
+  | "FEE"
+  | "JUD_BLOCKER"
+  | "BANK_DOMICILE"
+  | "CARD"
+  | "LIMIT_RESERVATION";
+
+export interface CoraCounterParty {
+  name?: string;
+  identity?: string;
+}
+
+export interface CoraStatementTransaction {
+  /** Prefixo trx_. */
+  id: string;
+  type: CoraStatementTransactionType;
+  description?: string;
+  counterParty?: CoraCounterParty;
+}
+
+export interface CoraStatementEntry {
+  /** Prefixo ent_ — único, usado pra dedupe. */
+  id: string;
+  type: CoraEntryType;
+  /** Em centavos. */
+  amount: number;
+  createdAt: string;
+  transaction: CoraStatementTransaction;
+}
+
+export interface CoraStatementResponse {
+  entries: CoraStatementEntry[];
+  // Nomes exatos de paginação a confirmar em stage — o código não depende deles
+  // além de parar quando a página vier mais curta que o perPage pedido.
+  page?: number;
+  perPage?: number;
+  totalPages?: number;
+}
