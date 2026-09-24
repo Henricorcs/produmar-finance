@@ -56,6 +56,8 @@ interface Props {
   getHint?: (item: MaterialPickerItem) => string;
   /** O título da caixa — cada tela pergunta do seu jeito. */
   titulo?: string;
+  /** Escolhe um e fecha (quem chama fecha no onToggle): o rodapé não conta marcados. */
+  umPorVez?: boolean;
 }
 
 /**
@@ -83,6 +85,7 @@ export function MaterialPickerDialog({
   onCadastrar,
   getHint,
   titulo = "Qual material você usou?",
+  umPorVez = false,
 }: Props) {
   const [busca, setBusca] = useState("");
   const campo = useRef<HTMLInputElement>(null);
@@ -252,7 +255,7 @@ export function MaterialPickerDialog({
             </Button>
           )}
           <Button type="button" className="flex-[2] h-12 font-semibold" onClick={onClose}>
-            {marcados > 0 ? `Pronto (${marcados})` : "Fechar"}
+            {marcados > 0 && !umPorVez ? `Pronto (${marcados})` : "Fechar"}
           </Button>
         </div>
       </DialogContent>

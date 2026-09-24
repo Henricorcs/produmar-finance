@@ -10,7 +10,6 @@ import {
   List,
   PackageOpen,
   Pencil,
-  Plus,
   Tractor,
   X,
 } from "lucide-react";
@@ -19,11 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { MaterialPickerDialog } from "./material-picker-dialog";
+import { LancadorDeMateriais, useLancadorDeMateriais } from "./lancador-de-materiais";
 import { useAtualizarAoVoltar } from "./use-atualizar-ao-voltar";
 import {
   cn,
-  formatBRLInput,
   formatDate,
   formatHourmeter,
   formatQty,
@@ -34,7 +32,7 @@ import {
   cancelSupplyUsageRequest,
   requestSupplyUsage,
 } from "@/app/(app)/tecnico/actions";
-import { PhotoField, formatQtyInput, parseQty } from "@/components/almoxarifado/supply-shared";
+import { PhotoField } from "@/components/almoxarifado/supply-shared";
 import { FUEL_TYPES } from "@/lib/types";
 import type {
   MachineTrackingType,
@@ -84,33 +82,6 @@ interface Props {
 }
 
 /**
- * Uma linha do envio: um material com a quantidade dele. Numa obra o técnico
- * gasta cano, emenda e cola na mesma ida — cada um vira uma linha destas.
- */
-interface Linha {
-  /** Chave de render: os materiais podem repetir e o índice muda ao remover. */
-  key: string;
-  itemId: string;
-  /** O material não estava na lista: o técnico escreve o nome. */
-  freeText: boolean;
-  itemText: string;
-  quantity: string;
-  /** Preço de UMA unidade, do jeito que ele digita ("1.250,00"). */
-  unitCost: string;
-}
-
-function novaLinha(): Linha {
-  return {
-    key: typeof crypto !== "undefined" ? crypto.randomUUID() : String(Math.random()),
-    itemId: "",
-    freeText: false,
-    itemText: "",
-    quantity: "",
-    unitCost: "",
-  };
-}
-
-/**
  * Tela única do técnico: "usei estes materiais aqui". Nada sai do estoque neste
  * momento — o envio é um recado que o chefe confere e transforma em saída na
  * aba "Pendentes" do Estoque.
@@ -132,10 +103,7 @@ export function TecnicoClient({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Começa vazia: em vez de uma caixa em branco esperando, o técnico toca em
-  // "Adicionar material" e escolhe da lista do estoque.
-  const [linhas, setLinhas] = useState<Linha[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const lancador = useLancadorDeMateriais({ items });
   /** O SETOR (Fazenda 01, Fazenda 02, Sítio) — escolhido antes da obra. */
   const [localId, setLocalId] = useState("");
   const [obraId, setObraId] = useState("");
@@ -155,7 +123,6 @@ export function TecnicoClient({
   const [fuelType, setFuelType] = useState("");
 
   const today = localDateISO();
-  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const sectorById = useMemo(() => new Map(sectors.map((s) => [s.id, s])), [sectors]);
 
   /** As obras daquele setor — é o que aparece depois de escolher a fazenda. */
@@ -195,56 +162,15 @@ export function TecnicoClient({
     setObraId("");
   }
 
-  function patchLinha(key: string, patch: Partial<Linha>) {
-    setLinhas((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  }
-
-  /**
-   * Tocou num material da lista: entra no envio; tocou de novo, sai. É o mesmo
-   * toque para as duas coisas, para ele poder corrigir sem fechar a caixa.
-   */
-  function alternarItem(item: TecnicoItem) {
-    setLinhas((prev) => {
-      const jaTem = prev.find((l) => l.itemId === item.id);
-      if (jaTem) return prev.filter((l) => l.key !== jaTem.key);
-      return [...prev, { ...novaLinha(), itemId: item.id }];
-    });
-  }
-
-  /** "Não achei na lista": entra uma linha para escrever o nome na mão. */
-  function adicionarEscrito() {
-    setLinhas((prev) => [...prev, { ...novaLinha(), freeText: true }]);
-  }
-
-  function removeLinha(key: string) {
-    setLinhas((prev) => prev.filter((l) => l.key !== key));
-  }
-
-  /** Os materiais do estoque já escolhidos — a caixa mostra marcados. */
-  const idsEscolhidos = useMemo(
-    () => linhas.filter((l) => l.itemId).map((l) => l.itemId),
-    [linhas]
-  );
-
-  /** Linhas que o técnico realmente preencheu (as em branco são ignoradas). */
-  const preenchidas = useMemo(
-    () => linhas.filter((l) => l.itemId || l.itemText.trim()),
-    [linhas]
-  );
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
 
+    const r = lancador.finalizar();
+    if ("error" in r) return setError(r.error);
+    const preenchidas = r.linhas;
     if (preenchidas.length === 0) return setError("Diga qual material você usou");
-    const semQtd = preenchidas.find((l) => parseQty(l.quantity) <= 0);
-    if (semQtd) {
-      const nome = itemById.get(semQtd.itemId)?.name ?? semQtd.itemText.trim() ?? "";
-      return setError(
-        nome ? `Informe quanto de ${nome} você usou` : "Informe a quantidade de cada material"
-      );
-    }
     if (!obraId && !destination.trim())
       return setError("Diga a obra ou onde você aplicou o material");
     if (usedMachine && !machineId) return setError("Diga qual máquina você usou");
@@ -261,9 +187,7 @@ export function TecnicoClient({
     if (usedMachine && fueled && !fuelType)
       return setError("Diga qual combustível você abasteceu");
 
-    const nomes = preenchidas.map(
-      (l) => itemById.get(l.itemId)?.name ?? l.itemText.trim().toUpperCase()
-    );
+    const nomes = preenchidas.map((l) => lancador.nomeDe(l));
 
     const fd = new FormData();
     fd.append(
@@ -303,7 +227,7 @@ export function TecnicoClient({
       // A obra, o setor e a máquina ficam: quem está numa obra manda vários
       // envios seguidos. Zeram os materiais, a observação, a foto e o que é do
       // momento (leitura do painel e abastecimento).
-      setLinhas([]);
+      lancador.limpar();
       setNotes("");
       setPhoto(null);
       setReadingStart("");
@@ -351,57 +275,20 @@ export function TecnicoClient({
         </div>
       )}
 
-      <MaterialPickerDialog
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        items={items}
-        escolhidos={idsEscolhidos}
-        onToggle={alternarItem}
-        onEscrever={adicionarEscrito}
-      />
-
       <Card>
         <CardHeader>
           <CardTitle className="text-base">O que você usou</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label>Materiais *</Label>
-                {preenchidas.length > 1 && (
-                  <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                    {preenchidas.length} materiais
-                  </span>
-                )}
-              </div>
-
-              {linhas.length === 0 && (
-                <p className="text-sm text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700 px-4">
-                  Toque no botão abaixo e escolha na lista o que você usou.
-                </p>
-              )}
-
-              {linhas.map((linha) => (
-                <MaterialLinha
-                  key={linha.key}
-                  linha={linha}
-                  nome={itemById.get(linha.itemId)?.name ?? ""}
-                  unit={itemById.get(linha.itemId)?.unit ?? ""}
-                  onChange={(patch) => patchLinha(linha.key, patch)}
-                  onRemove={() => removeLinha(linha.key)}
-                />
-              ))}
-
-              <button
-                type="button"
-                onClick={() => setPickerOpen(true)}
-                className="w-full flex items-center justify-center gap-2 min-h-[52px] rounded-lg border-2 border-dashed border-produmar-300 dark:border-produmar-700 text-base font-semibold text-produmar-600 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-                Adicionar material
-              </button>
-            </div>
+            <LancadorDeMateriais
+              lancador={lancador}
+              idPrefixo="tc"
+              permitirEscrever
+              comPreco
+              placeholderEscrito="ex: cano 50mm"
+              dicaEscrito="Escreva do jeito que você chama — o chefe acha no cadastro."
+            />
 
             {/* O SETOR: Fazenda 01, Fazenda 02, Sítio — o lugar grande, do
                 jeito que o pessoal fala. A obra acontece dentro de um deles. */}
@@ -783,98 +670,6 @@ function SimNao({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
           {op ? "Sim" : "Não"}
         </button>
       ))}
-    </div>
-  );
-}
-
-/**
- * Um material já escolhido: o nome de um lado, quanto usou do outro.
- *
- * A escolha acontece na caixa da lista — aqui ele só diz a quantidade e, se
- * precisar, tira da lista. O material escrito na mão continua editável, porque
- * esse nome não veio de cadastro nenhum.
- */
-function MaterialLinha({
-  linha,
-  nome,
-  unit,
-  onChange,
-  onRemove,
-}: {
-  linha: Linha;
-  nome: string;
-  unit: string;
-  onChange: (patch: Partial<Linha>) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          {linha.freeText ? (
-            <>
-              <Input
-                value={linha.itemText}
-                onChange={(e) => onChange({ itemText: upperKeepingCaret(e) })}
-                placeholder="ex: cano 50mm"
-                autoCapitalize="characters"
-                className="h-12 text-lg placeholder:text-base"
-                autoComplete="off"
-              />
-              <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                Escreva do jeito que você chama — o chefe acha no cadastro.
-              </p>
-            </>
-          ) : (
-            <p className="text-base font-semibold text-slate-800 dark:text-slate-100 break-words leading-snug">
-              {nome || "Material"}
-            </p>
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Tirar ${nome || "o material"} da lista`}
-          className="w-11 h-11 -mt-1 -mr-1 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors flex-shrink-0"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor={`tc_qty_${linha.key}`}>
-          Quantidade{unit ? ` (${unit})` : ""} *
-        </Label>
-        <Input
-          id={`tc_qty_${linha.key}`}
-          value={linha.quantity}
-          onChange={(e) => onChange({ quantity: formatQtyInput(e.target.value) })}
-          placeholder="0"
-          inputMode="decimal"
-          className="h-12 text-lg font-semibold tabular-nums"
-          autoComplete="off"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor={`tc_cost_${linha.key}`}>
-          Preço de {unit ? `1 ${unit}` : "cada um"} (R$)
-        </Label>
-        <Input
-          id={`tc_cost_${linha.key}`}
-          value={linha.unitCost}
-          onChange={(e) => onChange({ unitCost: formatBRLInput(e.target.value) })}
-          placeholder="0,00"
-          inputMode="decimal"
-          className="h-12 text-lg tabular-nums"
-          autoComplete="off"
-        />
-        {/* opcional de propósito: obrigar preço faz o pessoal parar de avisar */}
-        <p className="text-[11px] text-slate-400 dark:text-slate-500">
-          Só se você comprou. Material que já era da casa deixa em branco.
-        </p>
-      </div>
     </div>
   );
 }

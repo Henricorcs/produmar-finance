@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { PackageOpen, Plus, Trash2, X } from "lucide-react";
+import { PackageOpen, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MaterialPickerDialog } from "@/components/tecnico/material-picker-dialog";
+import {
+  LancadorDeMateriais,
+  useLancadorDeMateriais,
+} from "@/components/tecnico/lancador-de-materiais";
 import { ItemDialog } from "@/components/almoxarifado/item-dialog";
 import { formatQty, localDateISO, upperKeepingCaret } from "@/lib/utils";
 import { formatQtyInput, num, parseQty } from "@/components/almoxarifado/supply-shared";
@@ -49,30 +52,13 @@ interface Props {
   categories?: SupplyCategory[];
 }
 
-/** Uma linha do lançamento: um material e quanto dele foi usado. */
-interface Linha {
-  /** Chave de render: o índice muda quando se tira um material do meio. */
-  key: string;
-  itemId: string;
-  quantity: string;
-}
-
-function novaLinha(itemId: string): Linha {
-  return {
-    key: typeof crypto !== "undefined" ? crypto.randomUUID() : String(Math.random()),
-    itemId,
-    quantity: "",
-  };
-}
-
 /**
  * MATERIAL USADO NA OBRA, lançado pelo chefe.
  *
  * O técnico avisa o material na tela dele, mas nem sempre ele avisa — e aí não
- * havia por onde lançar sem sair de Obras. Aqui a escolha é a mesma que ele
- * faz: um botão abre a lista do estoque, a busca vai afinando, toca no que foi
- * usado (dá para tocar em vários) e cada um vira uma linha com a quantidade,
- * que dá para corrigir antes de salvar.
+ * havia por onde lançar sem sair de Obras. Aqui o lançamento é o mesmo que ele
+ * faz: um quadro só (material + quantidade), e cada material confirmado desce
+ * para a lista de cima, onde dá para corrigir ou tirar antes de salvar.
  *
  * A diferença é que aqui NÃO é recado: cada linha vira uma SAÍDA do estoque na
  * hora, atrelada a esta obra — quem está lançando é quem daria a baixa.
@@ -92,8 +78,6 @@ export function MaterialObraDialog({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [linhas, setLinhas] = useState<Linha[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [cadastroOpen, setCadastroOpen] = useState(false);
   const [person, setPerson] = useState("");
   const [destination, setDestination] = useState("");
@@ -104,19 +88,6 @@ export function MaterialObraDialog({
    * quem acabou de cadastrar acharia que se perdeu.
    */
   const [criados, setCriados] = useState<ItemDoEstoque[]>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    setLinhas([]);
-    setPickerOpen(false);
-    setCadastroOpen(false);
-    setCriados([]);
-    // quem toca a obra é quem costuma pegar o material — já vem preenchido
-    setPerson(obra.responsavel_name ?? "");
-    setDestination("");
-    setDate(localDateISO());
-    setError(null);
-  }, [open, obra.responsavel_name]);
 
   /** O estoque somado ao que acabou de nascer — o do servidor manda. */
   const todos = useMemo(() => {
@@ -133,7 +104,29 @@ export function MaterialObraDialog({
   }, [items, criados]);
 
   const itemById = useMemo(() => new Map(todos.map((i) => [i.id, i])), [todos]);
-  const escolhidos = useMemo(() => linhas.map((l) => l.itemId), [linhas]);
+
+  const lancador = useLancadorDeMateriais({
+    items: todos,
+    saldoDe: (id) => itemById.get(id)?.current_quantity ?? 0,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    lancador.limpar();
+    setCadastroOpen(false);
+    setCriados([]);
+    // quem toca a obra é quem costuma pegar o material — já vem preenchido
+    setPerson(obra.responsavel_name ?? "");
+    setDestination("");
+    setDate(localDateISO());
+    setError(null);
+  }, [open, obra.responsavel_name]);
+
+  const escolhidos = useMemo(
+    () =>
+      [...lancador.linhas.map((l) => l.itemId), lancador.quadro.itemId].filter(Boolean),
+    [lancador.linhas, lancador.quadro.itemId]
+  );
 
   /**
    * A lista que a caixa mostra: o que tem saldo, mais o que já foi escolhido e
@@ -157,16 +150,7 @@ export function MaterialObraDialog({
     [sectors, obra.id]
   );
 
-  /** Tocou no material: entra no lançamento; tocou de novo, sai. */
-  function alternarItem(item: { id: string }) {
-    setLinhas((prev) => {
-      const jaTem = prev.find((l) => l.itemId === item.id);
-      if (jaTem) return prev.filter((l) => l.key !== jaTem.key);
-      return [...prev, novaLinha(item.id)];
-    });
-  }
-
-  /** Cadastrou o material que faltava: ele já entra na lista, sem procurar. */
+  /** Cadastrou o material que faltava: ele já entra no quadro, sem procurar. */
   function itemCadastrado(
     itemId: string,
     criado: { name: string; unit: string; quantity: number }
@@ -180,41 +164,18 @@ export function MaterialObraDialog({
         current_quantity: criado.quantity,
       },
     ]);
-    setLinhas((prev) =>
-      prev.some((l) => l.itemId === itemId) ? prev : [...prev, novaLinha(itemId)]
-    );
-  }
-
-  function patchLinha(key: string, patch: Partial<Linha>) {
-    setLinhas((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  }
-
-  function removeLinha(key: string) {
-    setLinhas((prev) => prev.filter((l) => l.key !== key));
+    lancador.escolher(itemId);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
+    const r = lancador.finalizar();
+    if ("error" in r) return setError(r.error);
+    const linhas = r.linhas;
     if (linhas.length === 0) return setError("Escolha o material que foi usado");
     if (!person.trim()) return setError("Diga quem pegou o material");
-
-    for (const l of linhas) {
-      const item = itemById.get(l.itemId);
-      const qtd = parseQty(l.quantity);
-      if (qtd <= 0)
-        return setError(`Informe quanto de ${item?.name ?? "material"} foi usado`);
-      const saldo = item?.current_quantity ?? 0;
-      if (qtd > saldo)
-        return setError(
-          saldo <= 0
-            ? `${item?.name ?? "Material"} está zerado no estoque — dê entrada dele antes de baixar`
-            : `${item?.name ?? "Material"}: o estoque só tem ${formatQty(saldo)} ${
-                item?.unit ?? ""
-              }`.trim()
-        );
-    }
 
     startTransition(async () => {
       // uma saída por material — é assim que o Estoque e o extrato da obra
@@ -237,7 +198,7 @@ export function MaterialObraDialog({
         if (r && "error" in r) {
           // o que já entrou não pode entrar de novo: sai da lista, e o que
           // sobrou fica na tela para o chefe corrigir e tentar de novo
-          setLinhas(restantes);
+          lancador.setLinhas(restantes);
           const nome = itemById.get(l.itemId)?.name ?? "material";
           setError(
             lancados > 0
@@ -272,47 +233,17 @@ export function MaterialObraDialog({
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label>Materiais *</Label>
-                {linhas.length > 1 && (
-                  <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                    {linhas.length} materiais
-                  </span>
-                )}
-              </div>
-
-              {linhas.length === 0 && (
-                <p className="text-sm text-slate-400 dark:text-slate-500 py-3 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700 px-4">
-                  Toque no botão abaixo e escolha na lista o que foi usado.
-                </p>
-              )}
-
-              {linhas.map((linha) => {
-                const item = itemById.get(linha.itemId);
-                return (
-                  <MaterialLinha
-                    key={linha.key}
-                    campoId={`mo_qty_${linha.key}`}
-                    nome={item?.name ?? "Material"}
-                    unit={item?.unit ?? ""}
-                    saldo={item?.current_quantity ?? 0}
-                    quantity={linha.quantity}
-                    onChange={(quantity) => patchLinha(linha.key, { quantity })}
-                    onRemove={() => removeLinha(linha.key)}
-                  />
-                );
-              })}
-
-              <button
-                type="button"
-                onClick={() => setPickerOpen(true)}
-                className="w-full flex items-center justify-center gap-2 min-h-[48px] rounded-lg border-2 border-dashed border-produmar-300 dark:border-produmar-700 text-sm font-semibold text-produmar-600 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Adicionar material
-              </button>
-            </div>
+            <LancadorDeMateriais
+              lancador={lancador}
+              idPrefixo="mo"
+              itensParaEscolher={paraEscolher}
+              onCadastrar={() => setCadastroOpen(true)}
+              tituloPicker="Qual material foi usado?"
+              // o chefe VÊ saldo (o técnico não): é ele quem responde pelo estoque
+              getHint={(i) =>
+                `${formatQty(itemById.get(i.id)?.current_quantity ?? 0)} ${i.unit}`
+              }
+            />
 
             <div className="space-y-1.5">
               <Label htmlFor="mo_person">Quem pegou *</Label>
@@ -393,20 +324,6 @@ export function MaterialObraDialog({
         </DialogContent>
       </Dialog>
 
-      <MaterialPickerDialog
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        items={paraEscolher}
-        escolhidos={escolhidos}
-        onToggle={alternarItem}
-        titulo="Qual material foi usado?"
-        onCadastrar={() => setCadastroOpen(true)}
-        // o chefe VÊ saldo (o técnico não): é ele quem responde pelo estoque
-        getHint={(i) =>
-          `${formatQty(itemById.get(i.id)?.current_quantity ?? 0)} ${i.unit}`
-        }
-      />
-
       {/* O cadastro do Estoque, aberto por cima: o material que faltava nasce
           aqui mesmo e já entra na lista, sem ida e volta até o outro módulo */}
       <ItemDialog
@@ -417,74 +334,6 @@ export function MaterialObraDialog({
         onCreated={itemCadastrado}
       />
     </>
-  );
-}
-
-/**
- * Um material já escolhido: o nome de um lado, quanto usou do outro. A escolha
- * acontece na caixa da lista — aqui só se acerta a quantidade ou se tira da
- * lista, que é o que muda de uma obra para outra.
- */
-function MaterialLinha({
-  campoId,
-  nome,
-  unit,
-  saldo,
-  quantity,
-  onChange,
-  onRemove,
-}: {
-  campoId: string;
-  nome: string;
-  unit: string;
-  saldo: number;
-  quantity: string;
-  onChange: (quantity: string) => void;
-  onRemove: () => void;
-}) {
-  const passou = parseQty(quantity) > saldo;
-
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 break-words leading-snug">
-            {nome}
-          </p>
-          <p className="text-[11px] text-slate-400 tabular-nums">
-            Em estoque: {formatQty(saldo)} {unit}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Tirar ${nome} da lista`}
-          className="w-10 h-10 -mt-1 -mr-1 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors flex-shrink-0"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor={campoId}>Quantidade{unit ? ` (${unit})` : ""} *</Label>
-        <Input
-          id={campoId}
-          value={quantity}
-          onChange={(e) => onChange(formatQtyInput(e.target.value))}
-          placeholder="0"
-          inputMode="decimal"
-          className="tabular-nums text-lg font-semibold"
-          autoComplete="off"
-        />
-        {passou && (
-          <p className="text-[11px] text-red-600 dark:text-red-400 tabular-nums">
-            {saldo <= 0
-              ? "Este material está zerado no estoque — dê entrada dele antes de baixar."
-              : `Passou do saldo: o estoque só tem ${formatQty(saldo)} ${unit}.`}
-          </p>
-        )}
-      </div>
-    </div>
   );
 }
 
