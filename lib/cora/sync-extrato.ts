@@ -59,28 +59,41 @@ interface LancamentoParaGravar {
   cora_transaction_type: string;
 }
 
+/** A Cora às vezes manda no campo de mensagem só zeros/números (ex: TED recebida) — isso não é texto útil. */
+function textoUtil(texto: string | undefined): string | null {
+  const limpo = texto?.replace(/\s+/g, " ").trim();
+  return limpo && /\p{L}/u.test(limpo) ? limpo : null;
+}
+
 function mapearEntry(entry: CoraStatementEntry): LancamentoParaGravar | null {
   if (entry.type !== "CREDIT" && entry.type !== "DEBIT") return null;
 
   const type: TransactionType = entry.type === "CREDIT" ? "entrada" : "saida";
   const contraparte = entry.transaction.counterParty;
-  const description = (
-    entry.transaction.description ||
-    contraparte?.name ||
-    "Movimentação Cora"
-  ).toUpperCase();
+  const nome = textoUtil(contraparte?.name);
+  const mensagem = textoUtil(entry.transaction.description);
 
-  const notesPartes = [`Importado do extrato Cora (${entry.transaction.type}).`];
-  if (contraparte?.name) {
-    notesPartes.push(`Contraparte: ${contraparte.name}${contraparte.identity ? ` (${contraparte.identity})` : ""}.`);
-  }
+  // Mesmo padrão dos lançamentos manuais: a descrição é quem pagou/recebeu e o
+  // motivo vai nas observações. Tarifa é exceção: a contraparte é sempre a
+  // própria Cora, então o que identifica é a mensagem.
+  const principal =
+    entry.transaction.type === "FEE" ? mensagem ?? nome : nome ?? mensagem;
+  const description = (principal ?? `Movimentação Cora (${entry.transaction.type})`).toUpperCase();
+
+  const notes = [
+    mensagem && mensagem.toUpperCase() !== description ? `${mensagem}.` : null,
+    `Importado do extrato Cora (${entry.transaction.type}).`,
+    contraparte?.identity ? `CPF/CNPJ: ${contraparte.identity}.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return {
     type,
     description,
     amount: entry.amount / 100,
     data: paraDataISO(entry.createdAt),
-    notes: notesPartes.join(" "),
+    notes,
     cora_entry_id: entry.id,
     cora_transaction_type: entry.transaction.type,
   };
