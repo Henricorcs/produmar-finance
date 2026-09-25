@@ -84,11 +84,18 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
 
-  /** As obras daquele setor — é o que aparece depois de escolher a fazenda. */
+  /**
+   * As obras que aparecem na lista. Sem setor escolhido, são TODAS — quem
+   * destina o material do almoxarifado manda para qualquer obra, inclusive as
+   * que ainda não têm setor no cadastro. O setor só serve de filtro.
+   */
   const obrasDoLocal = useMemo(
-    () => obras.filter((o) => o.local_id === localId),
+    () => (localId ? obras.filter((o) => o.local_id === localId) : obras),
     [obras, localId]
   );
+
+  /** O nome do setor de cada obra, para a lista geral mostrar onde ela fica. */
+  const nomeDoLocal = useMemo(() => new Map(locais.map((l) => [l.id, l.name])), [locais]);
 
   /** Quantas obras cada setor tem, para a lista já mostrar. */
   const obrasPorLocal = useMemo(() => {
@@ -106,11 +113,14 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
     [sectors, obraId]
   );
 
-  /** Trocar de setor zera a obra: cada obra fica num setor só. */
+  /** Trocar de setor zera a obra quando ela não é daquele setor. */
   function chooseLocal(id: string) {
     setLocalId(id);
-    setObraId("");
-    setDestination("");
+    const atual = obras.find((o) => o.id === obraId);
+    if (id && atual?.local_id !== id) {
+      setObraId("");
+      setDestination("");
+    }
   }
 
   function chooseObra(id: string) {
@@ -165,8 +175,8 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
       setPhoto(null);
       setSuccess(
         nomes.length === 1
-          ? `${nomes[0]} avisado! O escritório confere depois.`
-          : `${nomes.length} materiais avisados! O escritório confere depois.`
+          ? `${nomes[0]} enviado! O escritório confirma depois.`
+          : `${nomes.length} materiais enviados! O escritório confirma depois.`
       );
     });
   }
@@ -191,10 +201,10 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
         </div>
         <div className="min-w-0">
           <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            Material levado para a obra
+            Material para a obra
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            É só aviso — o escritório confere depois.
+            Destine para qualquer obra — o escritório confirma depois.
           </p>
         </div>
       </div>
@@ -208,7 +218,7 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">O que você levou</CardTitle>
+          <CardTitle className="text-base">O que vai para a obra</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -217,7 +227,7 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
               idPrefixo="om"
               permitirEscrever
               comPreco
-              tituloPicker="Qual material você levou?"
+              tituloPicker="Qual material vai para a obra?"
               placeholderEscrito="ex: carrada de areia"
               dicaEscrito="Escreva do jeito que você chama — o escritório acha no cadastro."
               // meia carrada, meio saco: a fração se escreve com vírgula
@@ -227,7 +237,7 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
             {/* O DIA: ele costuma lembrar do que descarregou ontem, e travar em
                 hoje faria a informação chegar errada no escritório */}
             <div className="space-y-1.5">
-              <Label htmlFor="om_date">Que dia você levou *</Label>
+              <Label htmlFor="om_date">Que dia saiu *</Label>
               <Input
                 id="om_date"
                 type="date"
@@ -237,9 +247,10 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
               />
             </div>
 
-            {/* O SETOR: Fazenda 01, Sítio — o lugar grande onde a obra fica */}
+            {/* O SETOR: Fazenda 01, Sítio — só um filtro para achar a obra mais
+                rápido; sem ele, a lista de obras mostra todas */}
             <div className="space-y-1.5">
-              <Label>Setor</Label>
+              <Label>Setor (opcional)</Label>
               <SearchableSelect
                 items={locais}
                 value={localId}
@@ -255,7 +266,7 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
                     </span>
                   </div>
                 )}
-                placeholder="Toque para escolher o setor..."
+                placeholder="Todos os setores"
                 searchPlaceholder="Buscar setor..."
                 emptyMessage="Nenhum setor cadastrado"
               />
@@ -270,32 +281,35 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
                 onChange={chooseObra}
                 getId={(o) => o.id}
                 getLabel={(o) => o.name}
-                renderItem={(o) => (
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="truncate">{o.name}</span>
-                    {o.client && (
-                      <span className="text-[10px] text-slate-400 flex-shrink-0 truncate max-w-[7rem]">
-                        {o.client}
-                      </span>
-                    )}
-                  </div>
-                )}
-                placeholder={
-                  localId ? "Toque para escolher a obra..." : "Escolha o setor primeiro"
-                }
+                renderItem={(o) => {
+                  // na lista geral o setor ajuda a separar obras de nome parecido
+                  const setor = !localId && o.local_id ? nomeDoLocal.get(o.local_id) : null;
+                  const extra = [setor, o.client].filter(Boolean).join(" · ");
+                  return (
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <span className="truncate">{o.name}</span>
+                      {extra && (
+                        <span className="text-[10px] text-slate-400 flex-shrink-0 truncate max-w-[9rem]">
+                          {extra}
+                        </span>
+                      )}
+                    </div>
+                  );
+                }}
+                placeholder="Toque para escolher a obra..."
                 searchPlaceholder="Buscar obra..."
-                emptyMessage="Nenhuma obra neste setor"
+                emptyMessage={localId ? "Nenhuma obra neste setor" : "Nenhuma obra cadastrada"}
               />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                {!localId
-                  ? "Escolha o setor acima para aparecerem as obras dele."
-                  : obrasDoLocal.length === 0
+                {obrasDoLocal.length === 0
+                  ? localId
                     ? "Este setor ainda não tem obra cadastrada — o escritório cadastra em Obras."
-                    : "A obra vale para todos os materiais deste aviso."}
+                    : "Nenhuma obra cadastrada ainda — o escritório cadastra em Obras."
+                  : "A obra vale para todos os materiais deste envio."}
               </p>
 
               {/* O chefe acabou de cadastrar? Busca a lista de novo, sem sair. */}
-              {!!localId && obrasDoLocal.length === 0 && (
+              {obrasDoLocal.length === 0 && (
                 <button
                   type="button"
                   onClick={() => router.refresh()}
@@ -355,7 +369,7 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
 
             <PhotoField
               label="Foto (opcional)"
-              hint="Foto do material descarregado na obra."
+              hint="Foto do material que saiu para a obra."
               file={photo}
               onChange={setPhoto}
             />
@@ -371,12 +385,12 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
               disabled={isPending}
               className="w-full h-14 text-base font-semibold"
             >
-              {isPending ? "Enviando..." : "Enviar aviso"}
+              {isPending ? "Enviando..." : "Enviar para confirmação"}
             </Button>
 
             <p className="text-[11px] text-center text-slate-400 dark:text-slate-500">
-              Nada sai do estoque agora: isto é o recado que o escritório confere e
-              formaliza depois.
+              Nada sai do estoque agora: o escritório confere e confirma a saída
+              depois, em Pendentes.
             </p>
           </form>
         </CardContent>
