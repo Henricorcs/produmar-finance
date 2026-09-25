@@ -92,7 +92,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     return (
       <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
         <Topbar profile={profile} notifications={[]} nota={nota} notaEm={notaEm} />
-        <TabsNav />
+        <TabsNav role={profile?.role} />
         <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-safe-nav">{children}</main>
       </div>
     );

@@ -18,7 +18,7 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-export function TabsNav() {
+export function TabsNav({ role }: { role?: string }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -42,7 +42,7 @@ export function TabsNav() {
     };
   }, [moreOpen]);
 
-  const currentModule = findModuleByPath(pathname);
+  const currentModule = findModuleByPath(pathname, role);
 
   // No hub (ou rota fora de módulo) não há barra — o próprio hub é a navegação.
   if (!currentModule) return null;

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Clock, PackageOpen, X } from "lucide-react";
+import { Check, Clock, PackageOpen, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +72,11 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
   const [isPending, startTransition] = useTransition();
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Depois do envio o formulário sai da frente e fica só a confirmação com o
+   * botão de NOVO LANÇAMENTO — o botão azul de enviar parado na tela fazia
+   * parecer que o envio não tinha ido.
+   */
   const [success, setSuccess] = useState<string | null>(null);
 
   const lancador = useLancadorDeMateriais({ items });
@@ -168,17 +173,27 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
         setError(r.error ?? "Erro ao enviar");
         return;
       }
-      // A obra, o setor e o ponto ficam: quem descarregou numa obra costuma
-      // mandar vários avisos seguidos. Zeram os materiais, a observação e a foto.
-      lancador.limpar();
-      setNotes("");
-      setPhoto(null);
       setSuccess(
         nomes.length === 1
           ? `${nomes[0]} enviado! O escritório confirma depois.`
           : `${nomes.length} materiais enviados! O escritório confirma depois.`
       );
+      // o formulário é comprido: sem isto a confirmação ficaria lá em cima, fora da vista
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
+  }
+
+  /**
+   * Volta para o formulário. A obra, o setor e o ponto ficam: quem manda
+   * material para uma obra costuma fazer vários envios seguidos. Zeram os
+   * materiais, a observação e a foto.
+   */
+  function novoLancamento() {
+    lancador.limpar();
+    setNotes("");
+    setPhoto(null);
+    setError(null);
+    setSuccess(null);
   }
 
   function handleCancel(r: SupplyRequestRow) {
@@ -209,13 +224,31 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
         </div>
       </div>
 
-      {success && (
-        <div className="flex items-start gap-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3">
-          <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{success}</p>
-        </div>
-      )}
-
+      {success ? (
+        <Card>
+          <CardContent className="pt-6 space-y-4 text-center">
+            <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+              <Check className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-base font-semibold text-emerald-700 dark:text-emerald-400">
+                {success}
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Já está na lista abaixo, esperando o escritório.
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={novoLancamento}
+              className="w-full h-14 text-base font-semibold"
+            >
+              <Plus className="w-5 h-5 mr-1.5" />
+              Novo lançamento
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">O que vai para a obra</CardTitle>
@@ -395,6 +428,7 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
           </form>
         </CardContent>
       </Card>
+      )}
 
       {/* O que ele já mandou e o escritório ainda não resolveu */}
       {pending.length > 0 && (

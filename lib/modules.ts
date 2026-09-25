@@ -179,11 +179,26 @@ export const APP_MODULES: AppModule[] = [
   },
 ];
 
+/**
+ * O módulo do jeito que ESTE papel enxerga. O operador não tem a aba de OS em
+ * Materiais e Serviços: a página /operacoes manda ele para o Painel de OS, e a
+ * aba só duplicava o painel que ele já tem no hub. Para ele o módulo abre
+ * direto no Estoque.
+ */
+function moduloDoPapel(m: AppModule, role?: string): AppModule {
+  if (role === "operador" && m.slug === "materiais-servicos") {
+    const tabs = m.tabs.filter((t) => t.href !== "/operacoes");
+    return { ...m, href: tabs[0]?.href ?? m.href, tabs };
+  }
+  return m;
+}
+
 /** Encontra o módulo dono da rota atual (para a nav contextual). */
-export function findModuleByPath(pathname: string): AppModule | undefined {
-  return APP_MODULES.find((m) =>
+export function findModuleByPath(pathname: string, role?: string): AppModule | undefined {
+  const m = APP_MODULES.find((m) =>
     m.tabs.some((t) => pathname === t.href || pathname.startsWith(t.href + "/"))
   );
+  return m ? moduloDoPapel(m, role) : undefined;
 }
 
 /**
@@ -203,7 +218,9 @@ export function modulesForProfile(
 
   if (role === "operador" || role === "encarregado" || role === "visualizador") {
     if (allowed.length === 0) return [];
-    return APP_MODULES.filter((m) => allowed.includes(m.slug));
+    return APP_MODULES.filter((m) => allowed.includes(m.slug)).map((m) =>
+      moduloDoPapel(m, role)
+    );
   }
 
   // financeiro (e demais): aberto por padrão
