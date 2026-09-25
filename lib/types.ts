@@ -182,6 +182,7 @@ export type MachineCategory =
   | "cacamba"
   | "trator"
   | "carregadeira"
+  | "retroescavadeira"
   | "maquina"
   | "outro";
 
@@ -191,6 +192,7 @@ export const MACHINE_CATEGORIES: { value: MachineCategory; label: string }[] = [
   { value: "cacamba",      label: "Caçamba" },
   { value: "trator",       label: "Trator" },
   { value: "carregadeira", label: "Carregadeira" },
+  { value: "retroescavadeira", label: "Retroescavadeira" },
   { value: "maquina",      label: "Máquina" },
   { value: "outro",        label: "Outro" },
 ];

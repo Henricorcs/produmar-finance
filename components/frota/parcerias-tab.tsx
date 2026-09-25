@@ -66,6 +66,9 @@ interface Props {
  * vieram (o que a gente passa a dever) e em verde as nossas que foram (o que a
  * gente pagou). Toque no dia para lançar ou corrigir.
  */
+/** Os tipos que sempre aparecem no filtro da troca. */
+const TIPOS_SEMPRE_NA_TROCA = ["cacamba", "carregadeira", "retroescavadeira", "caminhao"];
+
 export function ParceriasTab({
   parceiros,
   trocas,
@@ -197,9 +200,13 @@ export function ParceriasTab({
     [saldosDoParceiro, tipo]
   );
 
-  /** Os tipos que já tiveram troca — são eles que viram os chips do filtro. */
+  /**
+   * Os chips do filtro: os tipos que mais entram na troca aparecem sempre,
+   * mesmo antes do primeiro lançamento (senão ninguém acha a retroescavadeira
+   * até alguém lançar uma); os outros, só depois que tiveram troca.
+   */
   const tiposDoFiltro = useMemo(() => {
-    const usados = new Set<string>();
+    const usados = new Set<string>(TIPOS_SEMPRE_NA_TROCA);
     for (const s of saldosDoParceiro) usados.add(s.category);
     for (const t of doParceiroTodos) usados.add(t.category);
     return MACHINE_CATEGORIES.filter((c) => usados.has(c.value));
@@ -605,6 +612,7 @@ export function ParceriasTab({
         <TrocaDiaDialog
           dia={diaAberto}
           onClose={() => setDiaAberto(null)}
+          tipoPadrao={tipo === "todos" ? undefined : tipo}
           parceiro={parceiro}
           doDia={doDiaAberto}
           veiculosDoParceiro={veiculosDoParceiro}

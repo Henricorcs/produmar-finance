@@ -57,6 +57,8 @@ interface Props {
   minhasMaquinas: Machine[];
   /** Cadastrar um veículo do parceiro na hora, sem sair do dia. */
   onNovoVeiculo?: (category: string) => void;
+  /** O tipo escolhido no filtro da tela — o dia novo já abre nele. */
+  tipoPadrao?: string;
 }
 
 /**
@@ -80,6 +82,7 @@ export function TrocaDiaDialog({
   veiculosDoParceiro,
   minhasMaquinas,
   onNovoVeiculo,
+  tipoPadrao,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -104,13 +107,13 @@ export function TrocaDiaDialog({
   const ultimoDia = useRef<string | null>(null);
   const ultimaChave = useRef<string | null>(null);
 
-  // Um dia novo começa no tipo que já tem lançamento (ou na caçamba, que é o
-  // que mais roda).
+  // Um dia novo começa no tipo escolhido no filtro da tela; sem filtro, no que
+  // já tem lançamento (ou na caçamba, que é o que mais roda).
   useEffect(() => {
     if (!dia || ultimoDia.current === dia) return;
     ultimoDia.current = dia;
-    setCategory(doDia[0]?.category ?? "cacamba");
-  }, [dia, doDia]);
+    setCategory(tipoPadrao ?? doDia[0]?.category ?? "cacamba");
+  }, [dia, doDia, tipoPadrao]);
 
   // Ao abrir o dia (e ao trocar de tipo), tudo mostra o que já está lançado
   // daquele tipo — salvar CORRIGE o dia, não soma por cima.

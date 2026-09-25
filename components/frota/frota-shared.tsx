@@ -69,6 +69,7 @@ export const CATEGORY_CHIP: Record<string, string> = {
   cacamba: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
   trator: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
   carregadeira: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400",
+  retroescavadeira: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400",
   maquina: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400",
   outro: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
 };
