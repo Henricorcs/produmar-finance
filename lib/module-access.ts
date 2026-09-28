@@ -16,6 +16,7 @@ export const ASSIGNABLE_MODULE_SLUGS = [
   "animais",
   "alugueis",
   "devedores",
+  "prefeitura",
 ] as const;
 
 export type ModuleSlug = (typeof ASSIGNABLE_MODULE_SLUGS)[number];
@@ -51,6 +52,8 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   // Devedores: quem deve para a empresa. Era a aba /emprestimos dentro de
   // Finanças; virou módulo próprio, e a rota velha redireciona para cá.
   devedores: ["/devedores", "/emprestimos"],
+  // Prefeitura: notas emitidas por secretaria e a baixa (migration 102)
+  prefeitura: ["/prefeitura"],
 };
 
 /**

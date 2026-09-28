@@ -18,6 +18,7 @@ import {
   Tractor,
   Building2,
   Printer,
+  Landmark,
   type LucideIcon,
 } from "lucide-react";
 
@@ -166,6 +167,18 @@ export const APP_MODULES: AppModule[] = [
     accentIcon:
       "bg-red-50 text-red-600 dark:bg-red-900/40 dark:text-red-400",
     tabs: [{ href: "/devedores", label: "Devedores", short: "Devedores", icon: HandCoins }],
+  },
+  {
+    // As notas emitidas para a prefeitura, um controle por secretaria, com a
+    // data da baixa do pagamento. Era uma planilha — ver a migration 102.
+    slug: "prefeitura",
+    name: "Prefeitura",
+    description: "Notas emitidas para cada secretaria e o que já foi pago",
+    href: "/prefeitura",
+    icon: Landmark,
+    accentIcon:
+      "bg-cyan-50 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-400",
+    tabs: [{ href: "/prefeitura", label: "Prefeitura", short: "Prefeit.", icon: Landmark }],
   },
   {
     slug: "animais",

@@ -2530,3 +2530,30 @@ export interface UserNote {
   content: string;
   updated_at: string;
 }
+
+// ── Prefeitura: notas emitidas por secretaria e a baixa (migration 102) ─────
+
+export type PrefeituraSituacao = "pendente" | "pago" | "cancelada";
+
+export interface PrefeituraSecretaria {
+  id: string;
+  nome: string;
+  valor_contrato: number | null;
+  valor_padrao: number | null;
+  ordem: number;
+  ativa: boolean;
+  created_at: string;
+}
+
+export interface PrefeituraNota {
+  id: string;
+  secretaria_id: string;
+  numero: string;
+  data_emissao: string;
+  valor: number;
+  situacao: PrefeituraSituacao;
+  data_baixa: string | null;
+  observacao: string | null;
+  created_by: string | null;
+  created_at: string;
+}
