@@ -10,7 +10,9 @@
 -- De onde veio:
 --
 --   \\192.168.11.160\financeiro\CONTROLE DE NOTAS PREFEITURA 2026.xlsx,
---   aba INTERNET — 12 secretarias, 291 notas.
+--   aba INTERNET — as 8 primeiras secretarias, 220 notas. As 4 colunas
+--   "CONTR DE NOTAS INTERNET" (Assist. Social, Educação, Saúde e ADM) ficaram
+--   de fora por decisão do dono: o controle começa só com estas 8.
 --
 --   A DATA DA BAIXA saiu dos COMENTÁRIOS das células ("Pago em: 02/02/24"):
 --   na planilha o OK dizia que foi pago, e o comentário dizia quando.
@@ -20,7 +22,6 @@
 -- Erros de digitação da planilha que foram corrigidos na importação:
 --   • nota 20413: emissão 20/05/2005 → 20/05/2025 (as irmãs 20410..20412)
 --   • nota 852:   emissão 03/03/2023 → 03/03/2026 (as outras de 845..851)
---   • nota 6036:  emissão 31/11/2020 (não existe) → 03/11/2020 (6033..6035)
 --   • nota 21057: emissão "25/0725" → 25/07/2025
 --   • nota 17494: baixa "03/09" sem ano → 03/09/2024
 -- ============================================================================
@@ -40,17 +41,29 @@ update public.prefeitura_secretarias s
 set nome = v.novo
 from (values
   ('FUNDO MUNICIPAL DE ASSISTÊNCIA SOCIAL',          'FUNDO MUNICIPAL DE ASSISTÊNCIA SOCIAL - FMAS'),
-  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS',  'FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS'),
-  ('CONTR DE NOTAS INTERNET - ASSISTÊNCIA SOCIAL',   'CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL')
+  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS',  'FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS')
 ) as v(antigo, novo)
 where s.nome = v.antigo;
+
+-- ── As 4 colunas "CONTR DE NOTAS INTERNET" ficam de fora deste controle.
+--    Se uma versão anterior da 102/103 chegou a cadastrá-las, saem aqui — e
+--    as notas delas junto (eram só as importadas da planilha).
+delete from public.prefeitura_secretarias
+where grupo = 'INTERNET'
+  and nome in (
+    'CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL',
+    'CONTR DE NOTAS INTERNET - ASSISTÊNCIA SOCIAL',
+    'CONTR DE NOTAS INTERNET - EDUCAÇÃO',
+    'CONTR DE NOTAS INTERNET - SAÚDE',
+    'CONTR DE NOTAS INTERNET - ADM'
+  );
 
 update public.prefeitura_secretarias
 set valor_contrato = null
 where grupo = 'INTERNET'
   and valor_contrato in (330000, 30000, 60000, 75000);
 
--- ── As 12 secretarias da aba, com o valor de cada nota ─────────────────────
+-- ── As 8 secretarias do controle, com o valor de cada nota ─────────────────────
 insert into public.prefeitura_secretarias (grupo, nome, valor_padrao, ordem)
 select 'INTERNET', v.nome, v.valor_padrao, v.ordem
 from (values
@@ -61,11 +74,7 @@ from (values
   ('FUNDO MUNICIPAL DE ASSISTÊNCIA SOCIAL - FMAS',                2400.00,  5),
   ('SEC DE EDUCAÇÃO - QSE',                                       3000.00,  6),
   ('SEC DE EDUCAÇÃO REDE DE ENS FUND',                            6000.00,  7),
-  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS',  5991.67,  8),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL',                  3400.00,  9),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO',                          3400.00, 10),
-  ('CONTR DE NOTAS INTERNET - SAÚDE',                             3400.00, 11),
-  ('CONTR DE NOTAS INTERNET - ADM',                               6800.00, 12)
+  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS',  5991.67,  8)
 ) as v(nome, valor_padrao, ordem)
 where not exists (
   select 1 from public.prefeitura_secretarias s
@@ -83,11 +92,7 @@ from (values
   ('FUNDO MUNICIPAL DE ASSISTÊNCIA SOCIAL - FMAS',                2400.00,  5),
   ('SEC DE EDUCAÇÃO - QSE',                                       3000.00,  6),
   ('SEC DE EDUCAÇÃO REDE DE ENS FUND',                            6000.00,  7),
-  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS',  5991.67,  8),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL',                  3400.00,  9),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO',                          3400.00, 10),
-  ('CONTR DE NOTAS INTERNET - SAÚDE',                             3400.00, 11),
-  ('CONTR DE NOTAS INTERNET - ADM',                               6800.00, 12)
+  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS',  5991.67,  8)
 ) as v(nome, valor_padrao, ordem)
 where s.grupo = 'INTERNET' and s.nome = v.nome;
 
@@ -315,78 +320,7 @@ from (values
   ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS', '3359', '2026-06-18', 5991.67, 'pago', '2026-07-09', null),
   ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS', '4742', '2026-07-01', 5991.67, 'pago', '2026-09-17', null),
   ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS', '5829', '2026-08-03', 5991.67, 'pago', '2026-08-20', null),
-  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS', '7380', '2026-09-02', 5991.67, 'pago', '2026-09-15', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '13691', '2023-02-02', 3400.00, 'pago', '2023-05-15', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '14554', '2023-03-01', 3400.00, 'pago', '2023-07-19', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '15414', '2023-04-01', 3400.00, 'pago', '2023-08-15', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '16252', '2023-05-02', 3400.00, 'pago', '2023-09-14', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '17099', '2023-06-01', 3400.00, 'pago', '2023-10-06', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '18026', '2023-07-06', 3400.00, 'pago', '2023-12-14', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '18826', '2023-08-01', 3400.00, 'pago', '2024-01-02', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '19685', '2023-09-02', 3400.00, 'pago', '2024-03-06', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '20538', '2023-10-02', 3400.00, 'pago', '2024-03-22', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '21288', '2023-11-03', 3400.00, 'pago', '2024-05-06', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '22135', '2023-12-01', 3400.00, 'pago', '2024-06-03', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '22172', '2023-12-21', 3400.00, 'pago', '2024-07-11', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '24529', '2024-03-20', 3400.00, 'pago', '2024-09-06', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '24530', '2024-03-20', 3400.00, 'pago', '2024-09-17', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '26268', '2024-05-02', 3400.00, 'pago', '2024-11-08', null),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '6033', '2020-11-03', 3400.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '6187', '2020-12-02', 3400.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET ASSISTÊNCIA SOCIAL', '6208', '2020-12-08', 3400.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '13694', '2023-02-02', 3400.00, 'pago', '2023-05-15', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '14557', '2023-03-01', 3400.00, 'pago', '2023-07-19', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '15417', '2023-04-01', 3400.00, 'pago', '2023-08-15', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '16253', '2023-05-02', 3400.00, 'pago', '2023-09-14', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '17102', '2023-06-01', 3400.00, 'pago', '2023-10-06', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '18029', '2023-07-06', 3400.00, 'pago', '2023-12-14', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '18829', '2023-08-01', 3400.00, 'pago', '2024-01-02', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '19688', '2023-09-02', 3400.00, 'pago', '2024-03-06', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '20541', '2023-10-02', 3400.00, 'pago', '2024-03-22', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '21291', '2023-11-03', 3400.00, 'pago', '2024-05-06', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '22138', '2023-12-01', 3400.00, 'pago', '2024-06-03', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '22175', '2023-12-21', 3400.00, 'pago', '2024-07-11', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '24535', '2024-03-20', 3400.00, 'pago', '2024-09-06', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '24536', '2024-03-20', 3400.00, 'pago', '2024-09-17', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '26271', '2024-05-02', 3400.00, 'pago', '2024-11-08', null),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '6036', '2020-11-03', 3400.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO', '6211', '2020-12-08', 3400.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '13691', '2023-02-02', 3400.00, 'pago', '2023-05-15', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '14554', '2023-03-01', 3400.00, 'pago', '2023-07-19', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '15414', '2023-04-01', 3400.00, 'pago', '2023-08-15', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '16252', '2023-05-02', 3400.00, 'pago', '2023-09-14', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '17099', '2023-06-01', 3400.00, 'pago', '2023-10-06', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '18026', '2023-07-06', 3400.00, 'pago', '2023-12-14', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '18828', '2023-08-01', 3400.00, 'pago', '2024-01-02', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '19687', '2023-09-02', 3400.00, 'pago', '2024-03-06', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '20540', '2023-10-02', 3400.00, 'pago', '2024-03-22', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '21290', '2023-11-03', 3400.00, 'pago', '2024-05-06', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '22137', '2023-12-01', 3400.00, 'pago', '2024-06-03', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '22174', '2023-12-21', 3400.00, 'pago', '2024-07-11', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '24533', '2024-03-20', 3400.00, 'pago', '2024-09-06', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '24534', '2024-03-20', 3400.00, 'pago', '2024-09-17', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '26270', '2024-05-02', 3400.00, 'pago', '2024-11-08', null),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '6035', '2020-11-03', 3400.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '6189', '2020-12-02', 3400.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET - SAÚDE', '6210', '2020-12-08', 3400.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET - ADM', '13692', '2023-02-02', 6800.00, 'pago', '2023-05-15', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '14555', '2023-03-01', 6800.00, 'pago', '2023-07-19', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '15415', '2023-04-01', 6800.00, 'pago', '2023-08-15', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '16256', '2023-05-02', 6800.00, 'pago', '2023-09-14', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '17100', '2023-06-01', 6800.00, 'pago', '2023-10-06', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '18027', '2023-07-06', 6800.00, 'pago', '2023-12-14', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '18827', '2023-08-01', 6800.00, 'pago', '2024-01-02', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '19686', '2023-09-02', 6800.00, 'pago', '2024-03-06', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '20539', '2023-10-02', 6800.00, 'pago', '2024-03-22', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '21291', '2023-11-03', 6800.00, 'pago', '2024-05-06', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '22136', '2023-12-01', 6800.00, 'pago', '2024-06-03', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '22173', '2023-12-21', 6800.00, 'pago', '2024-07-11', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '24531', '2024-03-20', 6800.00, 'pago', '2024-09-06', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '24532', '2024-03-20', 6800.00, 'pago', '2024-09-17', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '26269', '2024-05-02', 6800.00, 'pago', '2024-11-08', null),
-  ('CONTR DE NOTAS INTERNET - ADM', '6034', '2020-11-03', 6800.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET - ADM', '6188', '2020-12-02', 6800.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)'),
-  ('CONTR DE NOTAS INTERNET - ADM', '6209', '2020-12-08', 6800.00, 'pendente', null, 'Sem OK na planilha (nota de 2020)')
+  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS INTERNET UBS', '7380', '2026-09-02', 5991.67, 'pago', '2026-09-15', null)
 ) as v(secretaria, numero, data_emissao, valor, situacao, data_baixa, observacao)
 join public.prefeitura_secretarias s
   on s.grupo = 'INTERNET' and s.nome = v.secretaria
@@ -398,7 +332,7 @@ where not exists (
 );
 
 -- ============================================================================
--- CONFERÊNCIA — deve dar 291 notas: 258 pagas e 33 pendentes (R$ 138.200,00)
+-- CONFERÊNCIA — deve dar 220 notas: 198 pagas e 22 pendentes (R$ 90.600,00)
 -- ============================================================================
 --   select situacao, count(*), sum(valor)
 --   from public.prefeitura_notas n
