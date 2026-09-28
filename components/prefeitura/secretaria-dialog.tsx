@@ -20,11 +20,22 @@ interface Props {
   onClose: () => void;
   secretaria: PrefeituraSecretaria | null;
   onArquivada: () => void;
+  /** Grupos que já existem (sugestões) e o da tela aberta (padrão da nova). */
+  grupos: string[];
+  grupoAtual: string;
 }
 
-export function SecretariaDialog({ open, onClose, secretaria, onArquivada }: Props) {
+export function SecretariaDialog({
+  open,
+  onClose,
+  secretaria,
+  onArquivada,
+  grupos,
+  grupoAtual,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
+  const [grupo, setGrupo] = useState("");
   const [nome, setNome] = useState("");
   const [contrato, setContrato] = useState("");
   const [padrao, setPadrao] = useState("");
@@ -32,15 +43,18 @@ export function SecretariaDialog({ open, onClose, secretaria, onArquivada }: Pro
   useEffect(() => {
     if (!open) return;
     setErro(null);
+    setGrupo(secretaria?.grupo ?? grupoAtual);
     setNome(secretaria?.nome ?? "");
     setContrato(secretaria?.valor_contrato ? formatBRLInput(Number(secretaria.valor_contrato)) : "");
     setPadrao(secretaria?.valor_padrao ? formatBRLInput(Number(secretaria.valor_padrao)) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, secretaria]);
 
   function salvar(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
       const r = await salvarSecretaria(secretaria?.id ?? null, {
+        grupo,
         nome,
         valor_contrato: parseMoney(contrato) || null,
         valor_padrao: parseMoney(padrao) || null,
@@ -76,6 +90,22 @@ export function SecretariaDialog({ open, onClose, secretaria, onArquivada }: Pro
           <DialogTitle>{secretaria ? "Editar secretaria" : "Nova secretaria"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={salvar} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="ps_grupo">Grupo (a aba da planilha)</Label>
+            <Input
+              id="ps_grupo"
+              value={grupo}
+              onChange={(e) => setGrupo(upperKeepingCaret(e))}
+              placeholder="ex: INTERNET"
+              list="ps_grupos"
+              autoComplete="off"
+            />
+            <datalist id="ps_grupos">
+              {grupos.map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="ps_nome">Nome</Label>
             <Input

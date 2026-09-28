@@ -76,29 +76,9 @@ comment on table public.prefeitura_notas is
   'Notas emitidas para a prefeitura, uma secretaria por controle, com a data da baixa do pagamento. Não mexe no caixa (migration 102).';
 
 -- ============================================================================
--- AS SECRETARIAS DA PLANILHA — só na primeira vez (tabela vazia)
--- ============================================================================
-insert into public.prefeitura_secretarias (nome, valor_contrato, valor_padrao, ordem)
-select v.nome, v.valor_contrato, v.valor_padrao, v.ordem
-from (values
-  ('SECRETARIA DE ADMINISTRAÇÃO',                   330000.00, 1200.00,  1),
-  ('SECRETARIA MUNICIPAL DE SAÚDE - FMS',             30000.00, 1200.00,  2),
-  ('FUNDO MUNICIPAL DE SAÚDE - FMS',                  60000.00, 1200.00,  3),
-  ('SECRETARIA MUNICIPAL DE ASSISTÊNCIA SOCIAL',      30000.00, 1200.00,  4),
-  ('FUNDO MUNICIPAL DE ASSISTÊNCIA SOCIAL',           60000.00, 1200.00,  5),
-  ('SEC DE EDUCAÇÃO - QSE',                           75000.00, 1200.00,  6),
-  ('SEC DE EDUCAÇÃO REDE DE ENS FUND',                    null, 1200.00,  7),
-  ('FUNDO MUNICIPAL DE SAÚDE - FMS CONTR DE NOTAS',       null, 5991.67,  8),
-  ('CONTR DE NOTAS INTERNET - ASSISTÊNCIA SOCIAL',        null, 3400.00,  9),
-  ('CONTR DE NOTAS INTERNET - EDUCAÇÃO',                  null, 3400.00, 10),
-  ('CONTR DE NOTAS INTERNET - SAÚDE',                     null, 3400.00, 11),
-  ('CONTR DE NOTAS INTERNET - ADM',                       null, 3400.00, 12)
-) as v(nome, valor_contrato, valor_padrao, ordem)
-where not exists (select 1 from public.prefeitura_secretarias);
-
--- ============================================================================
 -- DEPOIS DE RODAR
 -- ============================================================================
+--   As secretarias e as notas da planilha entram pela 103 (aba INTERNET).
 --   O módulo "Prefeitura" aparece no hub para o admin. Para liberar a outra
 --   pessoa, marque "Prefeitura" no cadastro do usuário (Configurações).
 -- ============================================================================

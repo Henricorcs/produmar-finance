@@ -98,6 +98,7 @@ export async function excluirNota(id: string): Promise<Resultado> {
 // ── Secretarias ───────────────────────────────────────────────────────────
 
 export type SecretariaInput = {
+  grupo: string;
   nome: string;
   valor_contrato: number | null;
   valor_padrao: number | null;
@@ -109,9 +110,11 @@ export async function salvarSecretaria(
 ): Promise<Resultado> {
   const nome = s.nome.trim().toUpperCase();
   if (!nome) return { error: "Informe o nome da secretaria." };
+  const grupo = s.grupo.trim().toUpperCase() || "INTERNET";
 
   const supabase = createClient();
   const linha = {
+    grupo,
     nome,
     valor_contrato: s.valor_contrato && s.valor_contrato > 0 ? s.valor_contrato : null,
     valor_padrao: s.valor_padrao && s.valor_padrao > 0 ? s.valor_padrao : null,

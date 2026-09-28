@@ -71,8 +71,17 @@ export function PrefeituraClient({ secretarias, notas }: Props) {
   const [secEditando, setSecEditando] = useState<PrefeituraSecretaria | null>(null);
   const [baixaAberta, setBaixaAberta] = useState(false);
 
-  const ativas = secretarias.filter((s) => s.ativa);
-  const secretaria = secretarias.find((s) => s.id === aba) ?? null;
+  // Cada aba da planilha (INTERNET, NF...) é um grupo, com as secretarias dela
+  const grupos = useMemo(
+    () => Array.from(new Set(secretarias.map((s) => s.grupo))),
+    [secretarias]
+  );
+  const [grupoEscolhido, setGrupo] = useState<string>("");
+  const grupo = grupos.includes(grupoEscolhido) ? grupoEscolhido : grupos[0] ?? "INTERNET";
+  const doGrupo = secretarias.filter((s) => s.grupo === grupo);
+
+  const ativas = doGrupo.filter((s) => s.ativa);
+  const secretaria = doGrupo.find((s) => s.id === aba) ?? null;
 
   const notasPorSecretaria = useMemo(() => {
     const m = new Map<string, PrefeituraNota[]>();
@@ -85,13 +94,17 @@ export function PrefeituraClient({ secretarias, notas }: Props) {
   }, [notas]);
 
   const notasDaAba = useMemo(() => {
-    const base = secretaria ? notasPorSecretaria.get(secretaria.id) ?? [] : notas;
+    // no resumo, as notas de todas as secretarias do grupo
+    const base = secretaria
+      ? notasPorSecretaria.get(secretaria.id) ?? []
+      : doGrupo.flatMap((s) => notasPorSecretaria.get(s.id) ?? []);
     // igual à planilha: a mais antiga em cima, a mais nova embaixo
     return [...base].sort(
       (a, b) =>
         a.data_emissao.localeCompare(b.data_emissao) || numeroDe(a) - numeroDe(b)
     );
-  }, [secretaria, notasPorSecretaria, notas]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secretaria, notasPorSecretaria, grupo, secretarias]);
 
   const totais = useMemo(() => somar(notasDaAba), [notasDaAba]);
 
@@ -165,7 +178,29 @@ export function PrefeituraClient({ secretarias, notas }: Props) {
         </div>
       </div>
 
-      {/* Os números da aba: do resumo = tudo; da secretaria = só dela */}
+      {/* O grupo — a aba da planilha. Só aparece quando há mais de um. */}
+      {grupos.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+          {grupos.map((g) => (
+            <button
+              key={g}
+              onClick={() => {
+                setGrupo(g);
+                trocarAba(RESUMO);
+              }}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg border whitespace-nowrap transition-colors ${
+                g === grupo
+                  ? "bg-produmar-600 border-produmar-600 text-white"
+                  : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-produmar-300"
+              }`}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Os números da aba: do resumo = o grupo todo; da secretaria = só dela */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Resumo label="Emitido" value={totais.emitido} tone="slate" />
         <Resumo label="Recebido" value={totais.recebido} tone="emerald" />
@@ -196,7 +231,7 @@ export function PrefeituraClient({ secretarias, notas }: Props) {
 
       {aba === RESUMO || !secretaria ? (
         <TabelaResumo
-          secretarias={secretarias}
+          secretarias={doGrupo}
           notasPorSecretaria={notasPorSecretaria}
           onAbrir={trocarAba}
           onEditar={editarSecretaria}
@@ -323,6 +358,8 @@ export function PrefeituraClient({ secretarias, notas }: Props) {
         onClose={() => setSecAberta(false)}
         secretaria={secEditando}
         onArquivada={() => trocarAba(RESUMO)}
+        grupos={grupos}
+        grupoAtual={grupo}
       />
       <BaixaDialog
         open={baixaAberta}

@@ -2537,6 +2537,8 @@ export type PrefeituraSituacao = "pendente" | "pago" | "cancelada";
 
 export interface PrefeituraSecretaria {
   id: string;
+  /** A aba da planilha: INTERNET, NF... (migration 103) */
+  grupo: string;
   nome: string;
   valor_contrato: number | null;
   valor_padrao: number | null;
