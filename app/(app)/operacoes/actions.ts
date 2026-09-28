@@ -725,7 +725,15 @@ export async function startServiceOrder(
   if (options.startTime?.trim()) patch.start_time = options.startTime.trim();
   if (options.origin?.trim()) patch.origin_address = options.origin.trim().toUpperCase();
 
-  const { error } = await supabase.from("service_orders").update(patch).eq("id", id);
+  const { data: gravadas, error } = await supabase
+    .from("service_orders")
+    .update(patch)
+    .eq("id", id)
+    .select("id");
+  // UPDATE barrado pela regra do banco não dá erro — só não grava (ver
+  // finalizeServiceOrder)
+  if (!error && (!gravadas || gravadas.length === 0))
+    return { error: "Seu perfil não tem permissão para iniciar esta OS. Avise o escritório." };
   if (error) {
     // Coluna origin_address ausente (migration 022): tenta sem ela.
     if (patch.origin_address) {
@@ -1341,12 +1349,18 @@ export async function finalizeServiceOrder(
     if (itErr) return { error: itErr.message };
   }
 
-  const { error } = await supabase
+  const { data: gravadas, error } = await supabase
     .from("service_orders")
     .update(patch)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) return { error: error.message };
+  // Quando a regra do banco barra um UPDATE ele não dá erro: só não muda
+  // nenhuma linha. Sem esta conferência a tela dizia "finalizada" e a OS
+  // continuava aberta — foi o que aconteceu com o encarregado (migration 106).
+  if (!gravadas || gravadas.length === 0)
+    return { error: "Seu perfil não tem permissão para finalizar esta OS. Avise o escritório." };
 
   // Autor do fechamento (best-effort): não quebra a finalização caso a coluna
   // finalized_by ainda não exista (migration 030 não aplicada no Supabase).
