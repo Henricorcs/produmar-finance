@@ -11,6 +11,7 @@ export default async function PrefeituraPage() {
     supabase
       .from("prefeitura_secretarias")
       .select("*")
+      .order("grupo")
       .order("ordem")
       .order("nome"),
     supabase

@@ -22,6 +22,8 @@ interface Props {
   secretarias: PrefeituraSecretaria[];
   secretariaInicial: string;
   numeroSugerido: string;
+  /** O próximo número de cada grupo, para quando trocar de secretaria. */
+  numeroPorGrupo: Record<string, string>;
 }
 
 const SITUACOES: { value: PrefeituraSituacao; label: string }[] = [
@@ -40,6 +42,7 @@ export function NotaDialog({
   secretarias,
   secretariaInicial,
   numeroSugerido,
+  numeroPorGrupo,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -82,9 +85,15 @@ export function NotaDialog({
   }, [open, nota]);
 
   function trocarSecretaria(id: string) {
+    const antes = secretarias.find((s) => s.id === secretariaId)?.grupo;
+    const depois = secretarias.find((s) => s.id === id)?.grupo;
     setSecretariaId(id);
-    // nota nova: o valor acompanha a secretaria escolhida
-    if (!nota) setValor(padraoDa(id));
+    // nota nova: o valor acompanha a secretaria escolhida, e o número o grupo
+    // dela — cada grupo tem a sua numeração
+    if (!nota) {
+      setValor(padraoDa(id));
+      if (depois && depois !== antes) setNumero(numeroPorGrupo[depois] ?? "");
+    }
   }
 
   function trocarSituacao(s: PrefeituraSituacao) {
@@ -120,11 +129,9 @@ export function NotaDialog({
     });
   }
 
-  // a secretaria da nota pode ter sido arquivada: continua aparecendo na lista
-  const opcoes =
-    nota && !secretarias.some((s) => s.id === nota.secretaria_id)
-      ? [{ id: nota.secretaria_id, nome: "(secretaria arquivada)" }, ...secretarias]
-      : secretarias;
+  // a lista vem separada por grupo (INTERNET, NF...); a secretaria da nota
+  // pode ter sido arquivada e continua aparecendo no topo
+  const grupos = Array.from(new Set(secretarias.map((s) => s.grupo)));
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -142,10 +149,19 @@ export function NotaDialog({
               onChange={(e) => trocarSecretaria(e.target.value)}
               className={CAMPO_SELECT}
             >
-              {opcoes.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nome}
-                </option>
+              {nota && !secretarias.some((s) => s.id === nota.secretaria_id) && (
+                <option value={nota.secretaria_id}>(secretaria arquivada)</option>
+              )}
+              {grupos.map((g) => (
+                <optgroup key={g} label={g}>
+                  {secretarias
+                    .filter((s) => s.grupo === g)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nome}
+                      </option>
+                    ))}
+                </optgroup>
               ))}
             </select>
           </div>
