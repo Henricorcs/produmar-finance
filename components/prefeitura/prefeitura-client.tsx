@@ -130,9 +130,14 @@ export function PrefeituraClient({ secretarias, notas }: Props) {
   const resultadoBusca = useMemo(() => {
     if (!buscaPorNumero) return [];
     const q = termo.replace(/\D/g, "");
+    const digitos = (n: PrefeituraNota) => n.numero.replace(/\D/g, "");
+    // o número exato primeiro ("36" acha a 36 antes da 4736), depois os que
+    // começam com ele, depois o resto — e, dentro de cada, a mais nova em cima
+    const peso = (n: PrefeituraNota) =>
+      digitos(n) === q ? 0 : digitos(n).startsWith(q) ? 1 : 2;
     return notas
-      .filter((n) => n.numero.replace(/\D/g, "").includes(q))
-      .sort((a, b) => b.data_emissao.localeCompare(a.data_emissao));
+      .filter((n) => digitos(n).includes(q))
+      .sort((a, b) => peso(a) - peso(b) || b.data_emissao.localeCompare(a.data_emissao));
   }, [notas, termo, buscaPorNumero]);
 
   const secretariasDoMenu = secretarias.filter((s) => {
