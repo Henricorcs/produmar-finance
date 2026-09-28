@@ -98,6 +98,12 @@ export async function updateSession(request: NextRequest) {
       return redirectTo("/vaqueiro");
     }
 
+    // Prefeitura: só o controle das notas da prefeitura. Fechado como o do
+    // vaqueiro — nada de hub, módulos ou configurações (migration 104).
+    if (role === "prefeitura" && !path.startsWith("/prefeitura") && !isPublicRoute) {
+      return redirectTo("/prefeitura");
+    }
+
     // Técnico: só a tela de "usei este material". Ele avisa o que gastou na
     // obra; o saldo só cai quando o chefe dá baixa. Nada de hub nem módulos.
     if (role === "tecnico" && !path.startsWith("/tecnico") && !isPublicRoute) {
@@ -172,6 +178,7 @@ export async function updateSession(request: NextRequest) {
       role !== "visualizador" &&
       role !== "vaqueiro" &&
       role !== "tecnico" &&
+      role !== "prefeitura" &&
       !isPublicRoute
     ) {
       const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;

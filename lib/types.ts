@@ -16,7 +16,9 @@ export type UserRole =
    * obra o material que gastou, os dias dos colaboradores liberados para ele e
    * os metros de cerca — ver as migrations 052 e 099.
    */
-  | "tecnico";
+  | "tecnico"
+  /** Só o controle de notas da prefeitura: lança e dá baixa (migration 104). */
+  | "prefeitura";
 export type TransactionType = "entrada" | "saida";
 export type TransactionStatus = "pendente" | "pago" | "recebido" | "vencido" | "cancelado";
 export type InvoiceSource = "xml" | "pdf" | "manual";

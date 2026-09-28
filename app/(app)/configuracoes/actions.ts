@@ -10,6 +10,7 @@ const ROLE_MIGRATION: Partial<Record<UserRole, { migration: string; label: strin
   vaqueiro: { migration: "048", label: "Vaqueiro" },
   tecnico: { migration: "052", label: "Encarregado de obra" },
   encarregado: { migration: "079", label: "Encarregado" },
+  prefeitura: { migration: "104", label: "Prefeitura" },
 };
 
 /**
@@ -144,9 +145,16 @@ export async function inviteUser(
   if (!email) return { error: "Email obrigatório" };
   if (!password || password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };
   if (
-    !["admin", "financeiro", "visualizador", "operador", "encarregado", "vaqueiro", "tecnico"].includes(
-      role
-    )
+    ![
+      "admin",
+      "financeiro",
+      "visualizador",
+      "operador",
+      "encarregado",
+      "vaqueiro",
+      "tecnico",
+      "prefeitura",
+    ].includes(role)
   )
     return { error: "Perfil de acesso inválido" };
 
@@ -217,9 +225,16 @@ export async function updateUserRole(
   if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
 
   if (
-    !["admin", "financeiro", "visualizador", "operador", "encarregado", "vaqueiro", "tecnico"].includes(
-      role
-    )
+    ![
+      "admin",
+      "financeiro",
+      "visualizador",
+      "operador",
+      "encarregado",
+      "vaqueiro",
+      "tecnico",
+      "prefeitura",
+    ].includes(role)
   )
     return { error: "Perfil de acesso inválido" };
 

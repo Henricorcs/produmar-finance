@@ -53,6 +53,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const isOperador     = profile?.role === "operador" || profile?.role === "encarregado";
   const isVaqueiro     = profile?.role === "vaqueiro";
   const isTecnico      = profile?.role === "tecnico";
+  const isPrefeitura   = profile?.role === "prefeitura";
+
+  // Prefeitura: a tela das notas e mais nada — sem nav de módulos, mas na
+  // largura cheia, porque a tela é uma tabela (migration 104).
+  if (isPrefeitura) {
+    return (
+      <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
+        <Topbar profile={profile} notifications={[]} nota={nota} notaEm={notaEm} />
+        <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
+      </div>
+    );
+  }
 
   // Layout simplificado para visualizador — sem nav, sem notificações
   if (isVisualizador) {

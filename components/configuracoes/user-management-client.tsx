@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Smartphone, UserCog } from "lucide-react";
+import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Landmark, Smartphone, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,7 @@ const ROLES: { value: UserRole; label: string; desc: string }[] = [
   { value: "visualizador",label: "Visualizador",desc: "Somente leitura"                },
   { value: "vaqueiro",    label: "Vaqueiro",    desc: "Só o nascimento de bezerro"     },
   { value: "tecnico",     label: "Encarregado de obra", desc: "Material, cerca e os colaboradores liberados" },
+  { value: "prefeitura",  label: "Prefeitura",  desc: "Só as notas da prefeitura: lança e dá baixa" },
 ];
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -51,6 +52,7 @@ const ROLE_BADGE: Record<UserRole, string> = {
   visualizador: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400",
   vaqueiro:     "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400",
   tecnico:      "bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-400",
+  prefeitura:   "bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-400",
 };
 
 const ROLE_ICON: Record<UserRole, React.ComponentType<{ className?: string }>> = {
@@ -61,6 +63,7 @@ const ROLE_ICON: Record<UserRole, React.ComponentType<{ className?: string }>> =
   visualizador: Eye,
   vaqueiro:     Beef,
   tecnico:      PackageOpen,
+  prefeitura:   Landmark,
 };
 
 interface Props {
