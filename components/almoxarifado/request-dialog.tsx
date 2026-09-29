@@ -84,6 +84,12 @@ export function SupplyRequestDialog({
   const [destination, setDestination] = useState("");
   const [person, setPerson] = useState("");
   const [date, setDate] = useState(localDateISO());
+  /**
+   * Quanto entra no estoque antes da baixa, quando o saldo não cobre. `null` =
+   * o chefe não mexeu: vale exatamente o que falta, que é o caso comum (o
+   * material foi comprado na rua e foi direto para a obra).
+   */
+  const [entrada, setEntrada] = useState<string | null>(null);
 
   /** O que o técnico escreveu na mão, quando não escolheu da lista. */
   const typed = request?.item_text?.trim().toUpperCase() ?? null;
@@ -113,6 +119,7 @@ export function SupplyRequestDialog({
     );
     setPerson(request.sent_by_name ?? "");
     setDate(request.used_date || localDateISO());
+    setEntrada(null);
     setError(null);
   }, [open, request, items, typed]);
 
@@ -162,7 +169,10 @@ export function SupplyRequestDialog({
   const qty = parseQty(quantity);
   /** O preço de uma unidade que veio junto com o aviso (0 = não informou). */
   const custoInformado = num(request.unit_cost);
-  const falta = selected ? qty - available : 0;
+  const falta = selected ? Math.round((qty - available) * 1000) / 1000 : 0;
+  const entradaTexto = entrada ?? (falta > 0 ? String(falta).replace(".", ",") : "");
+  /** O que de fato entra — só conta quando o saldo não cobre a baixa. */
+  const entradaQty = falta > 0 ? parseQty(entradaTexto) : 0;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -170,9 +180,9 @@ export function SupplyRequestDialog({
 
     if (!itemId) return setError("Escolha o material do cadastro");
     if (qty <= 0) return setError("Informe a quantidade");
-    if (qty > available)
+    if (qty > available + entradaQty)
       return setError(
-        `Saldo insuficiente (disponível: ${formatQty(available)} ${selected?.unit ?? ""})`
+        `Saldo insuficiente: tem ${formatQty(available)} ${selected?.unit ?? ""} — adicione ao estoque pelo menos ${formatQty(falta)} para dar baixa`
       );
 
     startTransition(async () => {
@@ -184,6 +194,8 @@ export function SupplyRequestDialog({
         person,
         movement_date: date,
         notes: request!.notes,
+        entrada_quantity: entradaQty || null,
+        entrada_unit_cost: custoInformado || null,
       });
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao dar baixa");
@@ -291,6 +303,37 @@ export function SupplyRequestDialog({
                 </p>
               )}
 
+              {/* Material comprado direto para a obra nunca passou pelo
+                  depósito, então o saldo não cobre e a baixa travava. A
+                  entrada do que falta vai junto, no mesmo toque. */}
+              {selected && falta > 0 && (
+                <div className="rounded-lg border border-dashed border-produmar-200 dark:border-slate-700 bg-produmar-50/40 dark:bg-slate-800/40 px-3 py-2.5 space-y-1.5">
+                  <Label
+                    htmlFor="sr_entrada"
+                    className="flex items-center gap-1.5 text-[12px] font-semibold text-produmar-700 dark:text-produmar-400"
+                  >
+                    <PackagePlus className="w-3.5 h-3.5" />
+                    Adicionar ao estoque ({selected.unit})
+                  </Label>
+                  <Input
+                    id="sr_entrada"
+                    value={entradaTexto}
+                    onChange={(e) => setEntrada(formatQtyInput(e.target.value))}
+                    placeholder={String(falta).replace(".", ",")}
+                    inputMode="decimal"
+                    className="tabular-nums font-semibold"
+                    autoComplete="off"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {entradaQty >= falta
+                      ? `Entra ${formatQty(entradaQty)} ${selected.unit} no estoque${
+                          custoInformado > 0 ? ` a ${formatBRL(custoInformado)} cada` : ""
+                        } e sai ${formatQty(qty)} para a obra.`
+                      : `Precisa entrar pelo menos ${formatQty(falta)} ${selected.unit} para dar baixa.`}
+                  </p>
+                </div>
+              )}
+
               {/* O preço que veio da rua (082). Quem comprou é quem sabe: sem
                   isso o escritório perguntava depois e ouvia "uns cento e
                   pouco". Aparece mesmo com o material já cadastrado, porque é
@@ -379,7 +422,11 @@ export function SupplyRequestDialog({
                 Cancelar
               </Button>
               <Button type="submit" disabled={isPending}>
-                {isPending ? "Dando baixa..." : "Dar baixa"}
+                {isPending
+                  ? "Dando baixa..."
+                  : entradaQty > 0
+                    ? "Dar entrada e baixa"
+                    : "Dar baixa"}
               </Button>
             </DialogFooter>
           </form>

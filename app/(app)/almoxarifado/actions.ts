@@ -852,12 +852,23 @@ export interface ApproveSupplyRequestInput {
   person?: string | null;
   movement_date?: string | null;
   notes?: string | null;
+  /**
+   * O que entra no estoque ANTES da baixa — para o material que foi comprado
+   * na rua e nunca passou pelo depósito. Zero/vazio = sem entrada.
+   */
+  entrada_quantity?: number | null;
+  /** Custo de uma unidade da entrada (o preço que quem levou informou). */
+  entrada_unit_cost?: number | null;
 }
 
 /**
  * Dá baixa no que o técnico avisou: nasce a saída em supply_movements (com a
  * mesma checagem de saldo do lançamento normal) e o recado morre. A foto que
  * ele mandou passa a ser o comprovante da saída.
+ *
+ * Com `entrada_quantity`, lança antes a entrada do que faltava — sem isso o
+ * material comprado direto para a obra batia em "saldo insuficiente" e a baixa
+ * não saía. Se a saída falhar, a entrada é desfeita para o saldo não inchar.
  */
 export async function approveSupplyRequest(
   requestId: string,
@@ -873,6 +884,21 @@ export async function approveSupplyRequest(
   if (reqErr) return { error: supplyError(reqErr) };
   if (!req) return { error: "Envio não encontrado — talvez já tenha sido resolvido" };
 
+  let entradaId: string | null = null;
+  if (normQty(input.entrada_quantity) > 0) {
+    const entrada = await createSupplyMovement({
+      item_id: input.item_id,
+      type: "entrada",
+      quantity: normQty(input.entrada_quantity),
+      unit_cost: input.entrada_unit_cost,
+      person: input.person,
+      movement_date: input.movement_date,
+      notes: "ENTRADA NA BAIXA DO AVISO",
+    });
+    if ("error" in entrada) return entrada;
+    entradaId = entrada.movementId;
+  }
+
   const mov = await createSupplyMovement({
     item_id: input.item_id,
     type: "saida",
@@ -883,7 +909,10 @@ export async function approveSupplyRequest(
     movement_date: input.movement_date,
     notes: input.notes,
   });
-  if ("error" in mov) return mov;
+  if ("error" in mov) {
+    if (entradaId) await supabase.from("supply_movements").delete().eq("id", entradaId);
+    return mov;
+  }
 
   // a foto continua no storage: agora ela é o comprovante do lançamento
   if (req.photo_path && mov.movementId) {
