@@ -22,6 +22,7 @@ import {
   formatDate,
   daysUntil,
   formatBRLInput,
+  localDateISO,
 } from "@/lib/utils";
 import { LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
 import type { LoanWithDetails } from "@/app/(app)/devedores/page";
@@ -38,7 +39,8 @@ function parseBRL(value: string): number {
   const n = parseFloat(value.replace(/\./g, "").replace(",", "."));
   return isNaN(n) ? 0 : n;
 }
-const todayStr = () => new Date().toISOString().split("T")[0];
+/** Hoje no calendário daqui — o toISOString virava amanhã depois das 21h. */
+const todayStr = () => localDateISO();
 
 export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -199,17 +201,20 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
                       </div>
                       {inst.paid ? (
                         <Badge variant="success">Paga</Badge>
-                      ) : overdue ? (
-                        <Badge variant="danger">Atrasada</Badge>
                       ) : (
-                        <button
-                          onClick={() => handleAddPayment(inst.id, Number(inst.amount))}
-                          disabled={isPending}
-                          className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 disabled:opacity-50"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Marcar paga
-                        </button>
+                        // Atrasada também se dá baixa: antes a etiqueta tomava o
+                        // lugar do botão e a parcela vencida não tinha como ser paga
+                        <div className="flex flex-col items-end gap-1">
+                          {overdue && <Badge variant="danger">Atrasada</Badge>}
+                          <button
+                            onClick={() => handleAddPayment(inst.id, Number(inst.amount))}
+                            disabled={isPending}
+                            className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 disabled:opacity-50 min-h-[32px]"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Marcar paga
+                          </button>
+                        </div>
                       )}
                     </div>
                   );
