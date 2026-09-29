@@ -17,7 +17,14 @@ import {
   useLancadorDeMateriais,
 } from "@/components/tecnico/lancador-de-materiais";
 import { ItemDialog } from "@/components/almoxarifado/item-dialog";
-import { formatQty, localDateISO, upperKeepingCaret } from "@/lib/utils";
+import {
+  formatBRL,
+  formatBRLInput,
+  formatQty,
+  localDateISO,
+  parseMoney,
+  upperKeepingCaret,
+} from "@/lib/utils";
 import { formatQtyInput, num, parseQty } from "@/components/almoxarifado/supply-shared";
 import {
   createSupplyMovement,
@@ -365,9 +372,15 @@ export function CorrigirMaterialDialog({
   const [person, setPerson] = useState("");
   const [destination, setDestination] = useState("");
   const [date, setDate] = useState(localDateISO());
+  /** `null` = não mexeu no preço: o lançamento fica como estava. */
+  const [preco, setPreco] = useState<string | null>(null);
+
+  /** O preço de uma unidade que a obra está pagando hoje neste lançamento. */
+  const precoAtual = num(linha.quantity) > 0 ? num(linha.value) / num(linha.quantity) : 0;
 
   useEffect(() => {
     if (!open) return;
+    setPreco(null);
     setQuantity(String(num(linha.quantity)).replace(".", ","));
     setPerson(linha.person ?? "");
     setDestination(linha.detail ?? "");
@@ -381,6 +394,7 @@ export function CorrigirMaterialDialog({
 
     const qtd = parseQty(quantity);
     if (qtd <= 0) return setError("Informe quanto foi usado");
+    const novoPreco = preco === null ? undefined : parseMoney(preco) || null;
 
     startTransition(async () => {
       const r = await updateSupplyMovement(linha.id, {
@@ -388,6 +402,7 @@ export function CorrigirMaterialDialog({
         person,
         destination,
         movement_date: date,
+        unit_cost: novoPreco,
       });
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao corrigir");
@@ -448,6 +463,32 @@ export function CorrigirMaterialDialog({
             <p className="text-[11px] text-slate-400 tabular-nums">
               Estava {formatQty(num(linha.quantity))} {linha.unit ?? ""}. Diminuir devolve
               o material ao estoque; aumentar tira mais de lá.
+            </p>
+          </div>
+
+          {/* O valor na obra vinha sempre do custo médio do material, sem
+              onde corrigir. Agora o lançamento pode ter o preço dele. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="cm_preco">
+              Preço por {linha.unit ?? "unidade"} (R$)
+            </Label>
+            <Input
+              id="cm_preco"
+              value={preco ?? (precoAtual > 0 ? formatBRLInput(precoAtual) : "")}
+              onChange={(e) => setPreco(formatBRLInput(e.target.value))}
+              placeholder="0,00"
+              inputMode="decimal"
+              className="tabular-nums"
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-slate-400 tabular-nums">
+              {(() => {
+                const qtd = parseQty(quantity);
+                const p = preco === null ? precoAtual : parseMoney(preco);
+                if (preco !== null && !p)
+                  return "Em branco, volta a valer o custo médio do material.";
+                return `Total na obra: ${formatBRL(qtd * p)}. Muda só este lançamento.`;
+              })()}
             </p>
           </div>
 

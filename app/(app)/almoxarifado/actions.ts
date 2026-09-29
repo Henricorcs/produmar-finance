@@ -384,6 +384,11 @@ export async function updateSupplyMovement(
     destination?: string | null;
     movement_date?: string | null;
     notes?: string | null;
+    /**
+     * Preço de uma unidade DESTE lançamento (migration 107). Não veio = fica
+     * como está; `null` = volta a valer o custo médio do item.
+     */
+    unit_cost?: number | null;
   }
 ) {
   const supabase = createClient();
@@ -427,6 +432,9 @@ export async function updateSupplyMovement(
       // a observação só muda se veio: quem corrige a quantidade na obra não
       // manda esse campo, e apagar o que estava escrito seria perder recado
       ...(input.notes === undefined ? {} : { notes: clean(input.notes) }),
+      ...(input.unit_cost === undefined
+        ? {}
+        : { unit_cost: input.unit_cost && input.unit_cost > 0 ? normMoney(input.unit_cost) : null }),
     })
     .eq("id", id);
 
