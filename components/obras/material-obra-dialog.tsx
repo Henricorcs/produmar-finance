@@ -372,15 +372,20 @@ export function CorrigirMaterialDialog({
   const [person, setPerson] = useState("");
   const [destination, setDestination] = useState("");
   const [date, setDate] = useState(localDateISO());
-  /** `null` = não mexeu no preço: o lançamento fica como estava. */
-  const [preco, setPreco] = useState<string | null>(null);
+  /**
+   * O que o chefe digitou: o preço de uma unidade OU o valor total — o outro
+   * sai da conta. `null` = não mexeu no valor: o lançamento fica como estava.
+   */
+  const [editado, setEditado] = useState<{ campo: "preco" | "total"; texto: string } | null>(
+    null
+  );
 
   /** O preço de uma unidade que a obra está pagando hoje neste lançamento. */
   const precoAtual = num(linha.quantity) > 0 ? num(linha.value) / num(linha.quantity) : 0;
 
   useEffect(() => {
     if (!open) return;
-    setPreco(null);
+    setEditado(null);
     setQuantity(String(num(linha.quantity)).replace(".", ","));
     setPerson(linha.person ?? "");
     setDestination(linha.detail ?? "");
@@ -388,13 +393,27 @@ export function CorrigirMaterialDialog({
     setError(null);
   }, [open, linha]);
 
+  /**
+   * Preço e total andam juntos. Quem sabe o total da nota digita o total e o
+   * preço sai dele (arredondado em centavos, que é como o banco guarda).
+   */
+  const valores = (() => {
+    const qtd = parseQty(quantity);
+    if (!editado) return { preco: precoAtual, total: qtd * precoAtual };
+    const v = parseMoney(editado.texto);
+    if (editado.campo === "preco") return { preco: v, total: qtd * v };
+    const unit = qtd > 0 ? Math.round((v / qtd) * 100) / 100 : 0;
+    return { preco: unit, total: v };
+  })();
+  const totalGravado = Math.round(parseQty(quantity) * valores.preco * 100) / 100;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
     const qtd = parseQty(quantity);
     if (qtd <= 0) return setError("Informe quanto foi usado");
-    const novoPreco = preco === null ? undefined : parseMoney(preco) || null;
+    const novoPreco = editado === null ? undefined : valores.preco || null;
 
     startTransition(async () => {
       const r = await updateSupplyMovement(linha.id, {
@@ -469,26 +488,55 @@ export function CorrigirMaterialDialog({
           {/* O valor na obra vinha sempre do custo médio do material, sem
               onde corrigir. Agora o lançamento pode ter o preço dele. */}
           <div className="space-y-1.5">
-            <Label htmlFor="cm_preco">
-              Preço por {linha.unit ?? "unidade"} (R$)
-            </Label>
-            <Input
-              id="cm_preco"
-              value={preco ?? (precoAtual > 0 ? formatBRLInput(precoAtual) : "")}
-              onChange={(e) => setPreco(formatBRLInput(e.target.value))}
-              placeholder="0,00"
-              inputMode="decimal"
-              className="tabular-nums"
-              autoComplete="off"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="cm_preco">Preço por {linha.unit ?? "un"} (R$)</Label>
+                <Input
+                  id="cm_preco"
+                  value={
+                    editado?.campo === "preco"
+                      ? editado.texto
+                      : valores.preco > 0
+                        ? formatBRLInput(valores.preco)
+                        : ""
+                  }
+                  onChange={(e) =>
+                    setEditado({ campo: "preco", texto: formatBRLInput(e.target.value) })
+                  }
+                  placeholder="0,00"
+                  inputMode="decimal"
+                  className="tabular-nums"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cm_total">Valor total (R$)</Label>
+                <Input
+                  id="cm_total"
+                  value={
+                    editado?.campo === "total"
+                      ? editado.texto
+                      : valores.total > 0
+                        ? formatBRLInput(valores.total)
+                        : ""
+                  }
+                  onChange={(e) =>
+                    setEditado({ campo: "total", texto: formatBRLInput(e.target.value) })
+                  }
+                  placeholder="0,00"
+                  inputMode="decimal"
+                  className="tabular-nums font-semibold"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
             <p className="text-[11px] text-slate-400 tabular-nums">
-              {(() => {
-                const qtd = parseQty(quantity);
-                const p = preco === null ? precoAtual : parseMoney(preco);
-                if (preco !== null && !p)
-                  return "Em branco, volta a valer o custo médio do material.";
-                return `Total na obra: ${formatBRL(qtd * p)}. Muda só este lançamento.`;
-              })()}
+              {editado && !parseMoney(editado.texto)
+                ? "Em branco, volta a valer o custo médio do material."
+                : editado?.campo === "total" &&
+                    Math.abs(totalGravado - valores.total) >= 0.005
+                  ? `Não divide exato: fica ${formatBRL(valores.preco)} cada, ${formatBRL(totalGravado)} no total.`
+                  : "Digite o preço ou o total — o outro se ajusta. Muda só este lançamento."}
             </p>
           </div>
 
