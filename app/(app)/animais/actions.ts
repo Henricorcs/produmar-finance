@@ -2018,3 +2018,378 @@ export async function deleteAnimalLoteMovimento(id: string) {
   revalidate();
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROTOCOLOS DE MEDICAMENTO (migration 108)
+// ─────────────────────────────────────────────────────────────────────────────
+// Medicamento (com a regra de dose) → protocolo (quais e em que dia) →
+// programação (o protocolo num grupo de animais, a partir de uma data). Cada
+// etapa marcada como aplicada vira tratamento na ficha de cada animal.
+
+function protocolosError(error: { code?: string; message: string }): string {
+  if (error.code === "23505") return "Já existe um medicamento com esse nome nesse tipo de animal";
+  if (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    error.message.includes("animal_medicamentos") ||
+    error.message.includes("animal_protocolo") ||
+    error.message.includes("protocolo_aplicacao_id")
+  )
+    return "Rode a migration 108 no Supabase para usar os protocolos de medicamento";
+  return error.message;
+}
+
+export interface MedicamentoInput {
+  species: AnimalSpecies;
+  name: string;
+  default_dose_ml?: number | null;
+  dose_ml_per_weight?: number | null;
+  dose_weight_kg?: number | null;
+  notes?: string | null;
+}
+
+function medicamentoFields(input: MedicamentoInput) {
+  const perWeight = normDose(input.dose_ml_per_weight);
+  const weightKg = normDose(input.dose_weight_kg);
+  return {
+    species: normSpecies(input.species),
+    name: clean(input.name),
+    default_dose_ml: normDose(input.default_dose_ml),
+    // a dose por peso só vale com os dois lados preenchidos ("X ml a cada Y kg")
+    dose_ml_per_weight: perWeight && weightKg ? perWeight : null,
+    dose_weight_kg: perWeight && weightKg ? weightKg : null,
+    notes: clean(input.notes),
+  };
+}
+
+export async function createMedicamento(input: MedicamentoInput) {
+  const supabase = createClient();
+  const fields = medicamentoFields(input);
+  if (!fields.name) return { error: "Informe o nome do medicamento" };
+  if (!fields.default_dose_ml && !fields.dose_ml_per_weight)
+    return { error: "Informe a dose: fixa em ml ou ml a cada tantos kg" };
+
+  const { data, error } = await supabase
+    .from("animal_medicamentos")
+    .insert(fields)
+    .select("id")
+    .single();
+  if (error || !data) return { error: error ? protocolosError(error) : "Erro ao cadastrar" };
+  revalidate();
+  return { ok: true, id: data.id as string };
+}
+
+export async function updateMedicamento(id: string, input: MedicamentoInput) {
+  const supabase = createClient();
+  const fields = medicamentoFields(input);
+  if (!fields.name) return { error: "Informe o nome do medicamento" };
+  if (!fields.default_dose_ml && !fields.dose_ml_per_weight)
+    return { error: "Informe a dose: fixa em ml ou ml a cada tantos kg" };
+
+  const { error } = await supabase.from("animal_medicamentos").update(fields).eq("id", id);
+  if (error) return { error: protocolosError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Tira do cadastro. Sai também dos protocolos-modelo (cascade), mas as
+ * programações em andamento guardam a fotografia e seguem calculando.
+ */
+export async function deleteMedicamento(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_medicamentos").delete().eq("id", id);
+  if (error) return { error: protocolosError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+export interface ProtocoloInput {
+  species: AnimalSpecies;
+  name: string;
+  notes?: string | null;
+  itens: { medicamento_id: string; dia: number }[];
+}
+
+/** Grava o modelo. Os itens são trocados inteiros — é uma lista curta. */
+export async function saveProtocolo(id: string | null, input: ProtocoloInput) {
+  const supabase = createClient();
+  const name = clean(input.name);
+  if (!name) return { error: "Dê um nome ao protocolo" };
+
+  const itens = (input.itens ?? [])
+    .filter((i) => i.medicamento_id)
+    .map((i) => ({ medicamento_id: i.medicamento_id, dia: Math.max(0, Math.floor(i.dia || 0)) }));
+  if (itens.length === 0) return { error: "Escolha pelo menos um medicamento" };
+
+  const repetidos = new Set<string>();
+  for (const i of itens) {
+    const k = `${i.dia}|${i.medicamento_id}`;
+    if (repetidos.has(k)) return { error: "O mesmo medicamento está duas vezes no mesmo dia" };
+    repetidos.add(k);
+  }
+
+  const row = { species: normSpecies(input.species), name, notes: clean(input.notes) };
+  let protocoloId = id;
+  if (protocoloId) {
+    const { error } = await supabase.from("animal_protocolos").update(row).eq("id", protocoloId);
+    if (error) return { error: protocolosError(error) };
+    const { error: delErr } = await supabase
+      .from("animal_protocolo_itens")
+      .delete()
+      .eq("protocolo_id", protocoloId);
+    if (delErr) return { error: protocolosError(delErr) };
+  } else {
+    const { data, error } = await supabase
+      .from("animal_protocolos")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error || !data) return { error: error ? protocolosError(error) : "Erro ao salvar" };
+    protocoloId = data.id as string;
+  }
+
+  const { error: itensErr } = await supabase.from("animal_protocolo_itens").insert(
+    itens.map((i, idx) => ({ ...i, protocolo_id: protocoloId, sort_order: idx }))
+  );
+  if (itensErr) return { error: protocolosError(itensErr) };
+
+  revalidate();
+  return { ok: true, id: protocoloId };
+}
+
+/** Apaga o modelo. As programações feitas com ele continuam (fotografia). */
+export async function deleteProtocolo(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_protocolos").delete().eq("id", id);
+  if (error) return { error: protocolosError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Programa o protocolo num grupo de animais a partir de `start_date`. Guarda a
+ * fotografia dos itens com a regra de dose de cada medicamento — é ela que
+ * calcula as etapas daqui pra frente, mesmo que o cadastro mude.
+ */
+export async function createProtocoloAplicacao(input: {
+  protocolo_id: string;
+  start_date: string;
+  animais: { animal_id: string; weight_kg?: number | null }[];
+  notes?: string | null;
+}) {
+  const supabase = createClient();
+  if (!input.protocolo_id) return { error: "Escolha o protocolo" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start_date ?? ""))
+    return { error: "Informe a data de início" };
+
+  const animais = Array.from(
+    new Map(
+      (input.animais ?? []).filter((a) => a.animal_id).map((a) => [a.animal_id, a])
+    ).values()
+  );
+  if (animais.length === 0) return { error: "Escolha os animais" };
+
+  const { data: protocolo, error: pErr } = await supabase
+    .from("animal_protocolos")
+    .select("id, name, species")
+    .eq("id", input.protocolo_id)
+    .maybeSingle();
+  if (pErr) return { error: protocolosError(pErr) };
+  if (!protocolo) return { error: "Protocolo não encontrado" };
+
+  const { data: itens, error: iErr } = await supabase
+    .from("animal_protocolo_itens")
+    .select("dia, sort_order, medicamento_id")
+    .eq("protocolo_id", protocolo.id)
+    .order("dia", { ascending: true })
+    .order("sort_order", { ascending: true });
+  if (iErr) return { error: protocolosError(iErr) };
+  if (!itens || itens.length === 0) return { error: "Esse protocolo não tem medicamentos" };
+
+  const { data: meds, error: mErr } = await supabase
+    .from("animal_medicamentos")
+    .select("id, name, default_dose_ml, dose_ml_per_weight, dose_weight_kg")
+    .in("id", Array.from(new Set(itens.map((i) => i.medicamento_id as string))));
+  if (mErr) return { error: protocolosError(mErr) };
+  const medById = new Map((meds ?? []).map((m) => [m.id as string, m]));
+
+  const foto = itens.map((i) => {
+    const m = medById.get(i.medicamento_id as string);
+    return {
+      dia: i.dia as number,
+      medicamento_id: i.medicamento_id as string,
+      name: (m?.name as string) ?? "MEDICAMENTO",
+      default_dose_ml: (m?.default_dose_ml as number | null) ?? null,
+      dose_ml_per_weight: (m?.dose_ml_per_weight as number | null) ?? null,
+      dose_weight_kg: (m?.dose_weight_kg as number | null) ?? null,
+    };
+  });
+
+  const { data: aplicacao, error: aErr } = await supabase
+    .from("animal_protocolo_aplicacoes")
+    .insert({
+      protocolo_id: protocolo.id,
+      name: protocolo.name,
+      species: protocolo.species,
+      start_date: input.start_date,
+      itens: foto,
+      notes: clean(input.notes),
+    })
+    .select("id")
+    .single();
+  if (aErr || !aplicacao) return { error: aErr ? protocolosError(aErr) : "Erro ao programar" };
+
+  const { error: anErr } = await supabase.from("animal_protocolo_aplicacao_animais").insert(
+    animais.map((a) => ({
+      aplicacao_id: aplicacao.id,
+      animal_id: a.animal_id,
+      weight_kg: a.weight_kg && a.weight_kg > 0 ? money(a.weight_kg) : null,
+    }))
+  );
+  if (anErr) {
+    await supabase.from("animal_protocolo_aplicacoes").delete().eq("id", aplicacao.id);
+    return { error: protocolosError(anErr) };
+  }
+
+  revalidate();
+  return { ok: true, id: aplicacao.id as string };
+}
+
+/**
+ * Cancela a programação. As doses já aplicadas FICAM na ficha de cada animal —
+ * foram dadas de verdade; só perdem o vínculo com a programação.
+ */
+export async function deleteProtocoloAplicacao(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_protocolo_aplicacoes").delete().eq("id", id);
+  if (error) return { error: protocolosError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Marca uma etapa como aplicada: cada dose de cada animal vira um tratamento
+ * na ficha dele, com o dia da próxima etapa como "próxima aplicação". O peso
+ * usado fica na programação (é o ponto de partida da etapa seguinte) e, se foi
+ * pesado no curral, vira pesagem do animal.
+ */
+export async function aplicarEtapaProtocolo(input: {
+  aplicacao_id: string;
+  dia: number;
+  applied_at: string;
+  animais: {
+    animal_id: string;
+    weight_kg?: number | null;
+    /** true quando o peso foi digitado na hora (pesado no curral). */
+    pesado?: boolean;
+    doses: { medicamento_id: string; dose_ml?: number | null }[];
+  }[];
+}) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.applied_at ?? ""))
+    return { error: "Informe o dia da aplicação" };
+
+  const { data: aplicacao, error: aErr } = await supabase
+    .from("animal_protocolo_aplicacoes")
+    .select("id, name, start_date, itens")
+    .eq("id", input.aplicacao_id)
+    .maybeSingle();
+  if (aErr) return { error: protocolosError(aErr) };
+  if (!aplicacao) return { error: "Programação não encontrada" };
+
+  const { count } = await supabase
+    .from("animal_treatments")
+    .select("id", { count: "exact", head: true })
+    .eq("protocolo_aplicacao_id", aplicacao.id)
+    .eq("protocolo_dia", input.dia);
+  if (count && count > 0) return { error: "Essa etapa já foi marcada como aplicada" };
+
+  const itens = (aplicacao.itens ?? []) as { dia: number; medicamento_id: string; name: string }[];
+  const daEtapa = new Map(
+    itens.filter((i) => i.dia === input.dia).map((i) => [i.medicamento_id, i])
+  );
+  if (daEtapa.size === 0) return { error: "Essa etapa não existe na programação" };
+
+  // a próxima etapa vira "próxima aplicação" na ficha
+  const proximoDia = itens
+    .map((i) => i.dia)
+    .filter((d) => d > input.dia)
+    .sort((a, b) => a - b)[0];
+  const next_application =
+    proximoDia != null ? addDaysISO(aplicacao.start_date as string, proximoDia) : null;
+
+  const descricao = `PROTOCOLO ${aplicacao.name} · ${
+    input.dia === 0 ? "INÍCIO" : `DIA ${input.dia}`
+  }`;
+  const linhas = [];
+  for (const a of input.animais ?? []) {
+    for (const d of a.doses ?? []) {
+      const item = daEtapa.get(d.medicamento_id);
+      if (!item) continue;
+      const ml = d.dose_ml && d.dose_ml > 0 ? Math.round(d.dose_ml * 10) / 10 : null;
+      linhas.push({
+        animal_id: a.animal_id,
+        description: descricao,
+        medicine: item.name,
+        dose: ml ? `${String(ml).replace(".", ",")} ML` : null,
+        applied_at: input.applied_at,
+        next_application,
+        protocolo_aplicacao_id: aplicacao.id,
+        protocolo_dia: input.dia,
+        created_by: user.id,
+      });
+    }
+  }
+  if (linhas.length === 0) return { error: "Marque pelo menos um animal" };
+
+  const { error: tErr } = await supabase.from("animal_treatments").insert(linhas);
+  if (tErr) return { error: protocolosError(tErr) };
+
+  // o peso usado segue para a próxima etapa; pesado no curral vira pesagem
+  let warning: string | undefined;
+  for (const a of input.animais ?? []) {
+    if (!a.weight_kg || a.weight_kg <= 0) continue;
+    await supabase
+      .from("animal_protocolo_aplicacao_animais")
+      .update({ weight_kg: money(a.weight_kg) })
+      .eq("aplicacao_id", aplicacao.id)
+      .eq("animal_id", a.animal_id);
+    if (a.pesado) {
+      const w = await saveWeight(supabase, {
+        animal_id: a.animal_id,
+        weight: money(a.weight_kg),
+        weighed_at: input.applied_at,
+        notes: `PROTOCOLO ${aplicacao.name}`,
+        created_by: user.id,
+      });
+      if (w.error) warning = `Etapa registrada, mas algum peso não: ${w.error}`;
+    }
+  }
+
+  revalidate();
+  return { ok: true, warning };
+}
+
+/** Desfaz a etapa marcada por engano: os tratamentos dela saem das fichas. */
+export async function desfazerEtapaProtocolo(aplicacaoId: string, dia: number) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("animal_treatments")
+    .delete()
+    .eq("protocolo_aplicacao_id", aplicacaoId)
+    .eq("protocolo_dia", dia);
+  if (error) return { error: protocolosError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Data + N dias, em YYYY-MM-DD (sem fuso: a data é do calendário). */
+function addDaysISO(dateISO: string, days: number): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}

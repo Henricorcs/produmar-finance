@@ -7,6 +7,7 @@ import {
   Baby,
   Beef,
   ChevronRight,
+  ClipboardList,
   HandCoins,
   LayoutGrid,
   Plus,
@@ -47,6 +48,7 @@ import { RebanhoGrid } from "./rebanho-grid";
 import { WeightDialog } from "./weight-dialog";
 import { AnimalFinanceiroTab } from "./animal-financeiro-tab";
 import { LotesTab } from "./lotes-tab";
+import { ProtocolosTab, type EtapaFeita } from "./protocolos-tab";
 import {
   SPECIES_META,
   SPECIES_OPTIONS,
@@ -77,6 +79,11 @@ import type {
   AnimalFinanceiroLinha,
   AnimalLoteMovimento,
   AnimalLoteResumo,
+  AnimalMedicamento,
+  AnimalProtocolo,
+  AnimalProtocoloAplicacao,
+  AnimalProtocoloAplicacaoAnimal,
+  AnimalProtocoloItem,
   AnimalSpecies,
   AnimalTreatment,
   AnimalVaccination,
@@ -122,11 +129,19 @@ interface Props {
   movimentos?: AnimalLoteMovimento[];
   /** O que a cria de cada bicho toma ao nascer (migration 095). */
   protocolo?: ProtocoloNascimentoItem[];
+  /** Protocolos de medicamento em etapas (migration 108). */
+  medicamentos?: AnimalMedicamento[];
+  protocolos?: AnimalProtocolo[];
+  protocoloItens?: AnimalProtocoloItem[];
+  aplicacoes?: AnimalProtocoloAplicacao[];
+  aplicacaoAnimais?: AnimalProtocoloAplicacaoAnimal[];
+  etapasFeitas?: EtapaFeita[];
 }
 
 type Tab =
   | "rebanho"
   | "vacinacao"
+  | "protocolos"
   | "nascimentos"
   | "saidas"
   | "tanques"
@@ -188,6 +203,12 @@ export function AnimaisPageClient({
   lotes = [],
   movimentos = [],
   protocolo = [],
+  medicamentos = [],
+  protocolos = [],
+  protocoloItens = [],
+  aplicacoes = [],
+  aplicacaoAnimais = [],
+  etapasFeitas = [],
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -683,6 +704,23 @@ export function AnimaisPageClient({
     });
   }
 
+  /** Etapas de protocolo com data de hoje ou já passada, ainda não aplicadas. */
+  const etapasPendentes = useMemo(() => {
+    const hoje = localDateISO();
+    const feitas = new Set(
+      etapasFeitas.map((f) => `${f.protocolo_aplicacao_id}|${f.protocolo_dia}`)
+    );
+    let n = 0;
+    for (const ap of aplicacoes) {
+      for (const dia of new Set((ap.itens ?? []).map((i) => i.dia))) {
+        const [y, m, d] = ap.start_date.split("-").map(Number);
+        const data = new Date(Date.UTC(y, m - 1, d + dia)).toISOString().slice(0, 10);
+        if (data <= hoje && !feitas.has(`${ap.id}|${dia}`)) n++;
+      }
+    }
+    return n;
+  }, [aplicacoes, etapasFeitas]);
+
   const tabs: {
     value: Tab;
     label: string;
@@ -707,6 +745,14 @@ export function AnimaisPageClient({
       // só conta o que foi marcado na mão — sem alarme automático
       count: pendingCount,
       alert: pendingCount > 0,
+    },
+    {
+      value: "protocolos",
+      label: "Protocolos",
+      icon: ClipboardList,
+      // etapas vencidas ou de hoje que ainda não foram aplicadas
+      count: etapasPendentes,
+      alert: etapasPendentes > 0,
     },
     { value: "saidas", label: "Saídas", icon: HandCoins },
     { value: "tanques", label: "Tanques", icon: Layers },
@@ -789,8 +835,8 @@ export function AnimaisPageClient({
         </Button>
       </div>
 
-      {/* Abas — 5 no celular, cabendo na largura da tela */}
-      <div className="grid grid-cols-5 gap-1 sm:flex sm:gap-1.5">
+      {/* Abas — 4 por linha no celular, cabendo na largura da tela */}
+      <div className="grid grid-cols-4 gap-1 sm:flex sm:gap-1.5">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = tab === t.value;
@@ -1298,6 +1344,19 @@ export function AnimaisPageClient({
       )}
 
       {/* ── Aba: Saídas — quem foi vendido ou morreu ─────────────────────── */}
+      {tab === "protocolos" && (
+        <ProtocolosTab
+          animals={allAnimals}
+          breeds={breeds}
+          medicamentos={medicamentos}
+          protocolos={protocolos}
+          protocoloItens={protocoloItens}
+          aplicacoes={aplicacoes}
+          aplicacaoAnimais={aplicacaoAnimais}
+          etapasFeitas={etapasFeitas}
+        />
+      )}
+
       {tab === "saidas" && (
         <>
           {exits.length === 0 ? (

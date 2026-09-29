@@ -8,6 +8,11 @@ import type {
   AnimalDespesa,
   AnimalFinanceiroLinha,
   AnimalLoteMovimento,
+  AnimalMedicamento,
+  AnimalProtocolo,
+  AnimalProtocoloAplicacao,
+  AnimalProtocoloAplicacaoAnimal,
+  AnimalProtocoloItem,
   AnimalLoteResumo,
   AnimalTanque,
   AnimalTreatment,
@@ -18,6 +23,7 @@ import type {
   AnimalWithInfo,
 } from "@/lib/types";
 import type { VaccinationRow } from "@/components/animais/animais-page-client";
+import type { EtapaFeita } from "@/components/animais/protocolos-tab";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +47,12 @@ export default async function AnimaisPage() {
     lotesRes,
     movimentosRes,
     protocoloRes,
+    medicamentosRes,
+    protocolosRes,
+    protocoloItensRes,
+    aplicacoesRes,
+    aplicacaoAnimaisRes,
+    etapasFeitasRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -115,6 +127,26 @@ export default async function AnimaisPage() {
       .select("*")
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true }),
+    // protocolos de medicamento em etapas (migration 108 — sem ela a aba
+    // Protocolos abre vazia e o resto da tela segue igual)
+    supabase.from("animal_medicamentos").select("*").order("name", { ascending: true }),
+    supabase.from("animal_protocolos").select("*").order("name", { ascending: true }),
+    supabase
+      .from("animal_protocolo_itens")
+      .select("*")
+      .order("dia", { ascending: true })
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("animal_protocolo_aplicacoes")
+      .select("*")
+      .order("start_date", { ascending: false })
+      .limit(300),
+    supabase.from("animal_protocolo_aplicacao_animais").select("*").limit(20000),
+    supabase
+      .from("animal_treatments")
+      .select("animal_id, medicine, dose, applied_at, protocolo_aplicacao_id, protocolo_dia")
+      .not("protocolo_aplicacao_id", "is", null)
+      .limit(20000),
   ]);
 
   return (
@@ -135,6 +167,12 @@ export default async function AnimaisPage() {
       lotes={(lotesRes.data as AnimalLoteResumo[]) ?? []}
       movimentos={(movimentosRes.data as AnimalLoteMovimento[]) ?? []}
       protocolo={(protocoloRes.data as ProtocoloNascimentoItem[]) ?? []}
+      medicamentos={(medicamentosRes.data as AnimalMedicamento[]) ?? []}
+      protocolos={(protocolosRes.data as AnimalProtocolo[]) ?? []}
+      protocoloItens={(protocoloItensRes.data as AnimalProtocoloItem[]) ?? []}
+      aplicacoes={(aplicacoesRes.data as AnimalProtocoloAplicacao[]) ?? []}
+      aplicacaoAnimais={(aplicacaoAnimaisRes.data as AnimalProtocoloAplicacaoAnimal[]) ?? []}
+      etapasFeitas={(etapasFeitasRes.data as EtapaFeita[]) ?? []}
     />
   );
 }

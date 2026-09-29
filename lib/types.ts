@@ -915,6 +915,66 @@ export interface ProtocoloItemAplicado {
   dose: string | null;
 }
 
+// ── Protocolos de medicamento (migration 108) ────────────────────────────────
+
+/** Medicamento do rebanho, com a regra de dose da bula (fixa ou por peso). */
+export interface AnimalMedicamento {
+  id: string;
+  species: AnimalSpecies;
+  name: string;
+  default_dose_ml: number | null;
+  dose_ml_per_weight: number | null;
+  dose_weight_kg: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+/** O modelo: quais medicamentos e em que dia depois do início. */
+export interface AnimalProtocolo {
+  id: string;
+  species: AnimalSpecies;
+  name: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface AnimalProtocoloItem {
+  id: string;
+  protocolo_id: string;
+  medicamento_id: string;
+  /** Dia contado do início: 0 = no dia, 30 = um mês depois. */
+  dia: number;
+  sort_order: number;
+}
+
+/** A fotografia de um item, guardada na programação. */
+export interface AnimalProtocoloItemFoto {
+  dia: number;
+  medicamento_id: string;
+  name: string;
+  default_dose_ml: number | null;
+  dose_ml_per_weight: number | null;
+  dose_weight_kg: number | null;
+}
+
+/** O protocolo aplicado num grupo de animais a partir de uma data. */
+export interface AnimalProtocoloAplicacao {
+  id: string;
+  protocolo_id: string | null;
+  name: string;
+  species: AnimalSpecies;
+  start_date: string;
+  itens: AnimalProtocoloItemFoto[];
+  notes: string | null;
+  created_at: string;
+}
+
+export interface AnimalProtocoloAplicacaoAnimal {
+  aplicacao_id: string;
+  animal_id: string;
+  weight_kg: number | null;
+}
+
 /** Tratamento — o remédio usado aparece na tela ao passar o mouse. */
 export interface AnimalTreatment {
   id: string;
@@ -928,6 +988,9 @@ export interface AnimalTreatment {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  /** A programação de protocolo que gerou a dose (migration 108). */
+  protocolo_aplicacao_id?: string | null;
+  protocolo_dia?: number | null;
 }
 
 /** Vacina cadastrada — recurrence_months null/0 = dose única. */
