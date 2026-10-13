@@ -144,7 +144,7 @@ export default async function AnimaisPage() {
     supabase.from("animal_protocolo_aplicacao_animais").select("*").limit(20000),
     supabase
       .from("animal_treatments")
-      .select("animal_id, medicine, dose, applied_at, protocolo_aplicacao_id, protocolo_dia")
+      .select("id, animal_id, medicine, dose, applied_at, protocolo_aplicacao_id, protocolo_dia")
       .not("protocolo_aplicacao_id", "is", null)
       .limit(20000),
   ]);

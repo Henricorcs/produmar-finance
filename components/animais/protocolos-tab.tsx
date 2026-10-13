@@ -30,6 +30,7 @@ import { cn, formatDate, localDateISO } from "@/lib/utils";
 import {
   aplicarEtapaProtocolo,
   aplicarProtocoloNoAnimal,
+  aplicarProtocoloSemNumero,
   createProtocoloAplicacao,
   deleteProtocoloAplicacao,
   desfazerEtapaProtocolo,
@@ -41,6 +42,7 @@ import {
   ICON_BUTTON,
   SPECIES_META,
   STICKY_FOOTER,
+  SexPicker,
   categoryLabel,
   categoryPlural,
   formatDecimalInput,
@@ -65,12 +67,15 @@ import type {
   AnimalProtocoloAplicacaoAnimal,
   AnimalProtocoloItem,
   AnimalProtocoloItemFoto,
+  AnimalSex,
   AnimalSpecies,
   AnimalWithInfo,
 } from "@/lib/types";
 
 /** Uma dose de protocolo já registrada (tratamento com a etapa). */
 export interface EtapaFeita {
+  /** O tratamento na ficha do animal. */
+  id: string;
   animal_id: string;
   medicine: string | null;
   dose: string | null;
@@ -613,6 +618,10 @@ function ProgramarDialog({
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
   /** O animal aberto no "um por um". */
   const [animalId, setAnimalId] = useState<string | null>(null);
+  /** "Animal sem número" aberto: identificação provisória + sexo. */
+  const [semNum, setSemNum] = useState(false);
+  const [ident, setIdent] = useState("");
+  const [sexo, setSexo] = useState<AnimalSex>("femea");
   const [peso, setPeso] = useState("");
   /** O último aplicado, para o aviso "aplicado — escolha o próximo". */
   const [ultimo, setUltimo] = useState<{ tag: string; animalId: string; aplicacaoId: string } | null>(
@@ -716,12 +725,25 @@ function ProgramarDialog({
 
   function abrirAnimal(id: string) {
     setAnimalId(id);
+    setSemNum(false);
+    setPeso("");
+    setError(null);
+  }
+
+  /** Animal sem brinco no curral: aplica agora com uma identificação provisória. */
+  function abrirSemNumero() {
+    setAnimalId(null);
+    setSemNum(true);
+    setIdent("");
+    setSexo("femea");
     setPeso("");
     setError(null);
   }
 
   function escolherOutro() {
     setAnimalId(null);
+    setSemNum(false);
+    setIdent("");
     setPeso("");
     setBusca("");
     setError(null);
@@ -745,7 +767,36 @@ function ProgramarDialog({
     }
   }
 
+  function aplicarSemNumero() {
+    if (!protocolo) return;
+    setError(null);
+    if (!ident.trim()) return setError("Escreva uma identificação (ex.: MALHADA DO CHIFRE TORTO)");
+    if (faltaPeso) return setError("Digite o peso do animal para calcular a dose");
+    startTransition(async () => {
+      const r = await aplicarProtocoloSemNumero({
+        protocolo_id: protocolo.id,
+        start_date: inicio,
+        identificacao: ident,
+        sex: sexo,
+        weight_kg: pesoHoje > 0 ? pesoHoje : null,
+        doses: itensAgora.map(({ item }, idx) => ({
+          medicamento_id: item.medicamento_id,
+          dose_ml: dosesAgora[idx],
+        })),
+      });
+      if (r && "error" in r) return setError(r.error ?? "Erro ao aplicar");
+      if (r && "warning" in r && r.warning) alert(r.warning);
+      const apId = r && "aplicacao_id" in r ? (r.aplicacao_id as string) : "";
+      const novoId = r && "animal_id" in r ? (r.animal_id as string) : "";
+      const tag = r && "tag" in r ? (r.tag as string) : ident.toUpperCase();
+      setLocais((prev) => new Map(prev).set(`${protocolo.id}|${inicio}|${novoId}`, apId));
+      setUltimo({ tag, animalId: novoId, aplicacaoId: apId });
+      escolherOutro();
+    });
+  }
+
   function aplicarNoAnimal() {
+    if (semNum) return aplicarSemNumero();
     if (!protocolo || !animal) return;
     setError(null);
     if (faltaPeso) return setError("Digite o peso do animal para calcular a dose");
@@ -792,7 +843,7 @@ function ProgramarDialog({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (modo === "um") {
-      if (animal) aplicarNoAnimal();
+      if (animal || semNum) aplicarNoAnimal();
       return;
     }
     setError(null);
@@ -826,7 +877,7 @@ function ProgramarDialog({
 
         <form onSubmit={submit} className="space-y-4">
           {/* ── O animal escolhido: peso, ml e "Aplicar protocolo" ── */}
-          {umPorUm && protocolo && animal ? (
+          {umPorUm && protocolo && (animal || semNum) ? (
             <div className="space-y-3">
               <button
                 type="button"
@@ -838,6 +889,31 @@ function ProgramarDialog({
                 Escolher outro animal
               </button>
 
+              {!animal ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20 px-4 py-3 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      Animal sem número
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Entra no rebanho como <strong>S/N</strong> e já toma o protocolo. Quando
+                      ganhar o brinco, dê o número no relatório (lápis) ou na ficha dele.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="prog_ident">Identificação</Label>
+                    <Input
+                      id="prog_ident"
+                      value={ident}
+                      onChange={(e) => setIdent(e.target.value)}
+                      placeholder="ex.: MALHADA DO CHIFRE TORTO"
+                      className="h-11 sm:h-10 uppercase"
+                      autoFocus
+                    />
+                  </div>
+                  <SexPicker value={sexo} onChange={setSexo} />
+                </div>
+              ) : (
               <div className="rounded-xl border border-produmar-200 bg-produmar-50/60 dark:border-slate-700 dark:bg-slate-800/60 px-4 py-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -859,8 +935,9 @@ function ProgramarDialog({
                   </p>
                 </div>
               </div>
+              )}
 
-              {jaAplicadoNele ? (
+              {animal && jaAplicadoNele ? (
                 <div className="space-y-2">
                   <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-400">
                     <Check className="w-4 h-4 inline -mt-0.5 mr-1" />
@@ -1116,6 +1193,16 @@ function ProgramarDialog({
                       </div>
                     </div>
 
+                    {umPorUm && (
+                      <button
+                        type="button"
+                        onClick={abrirSemNumero}
+                        className="w-full min-h-[44px] flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-amber-300 text-[13px] font-semibold text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/20"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Animal sem número
+                      </button>
+                    )}
                     {doTipo.length === 0 ? (
                       <p className="text-xs text-slate-400 py-3 text-center">
                         Nenhum {SPECIES_META[protocolo.species].label.toLowerCase()} no rebanho.
@@ -1183,7 +1270,7 @@ function ProgramarDialog({
           )}
 
           <DialogFooter className={STICKY_FOOTER}>
-            {umPorUm && animal ? (
+            {umPorUm && (animal || semNum) ? (
               <>
                 <Button
                   type="button"

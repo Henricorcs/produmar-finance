@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Printer, Search } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { Pencil, Printer, Search, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,11 +12,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatDate, localDateISO } from "@/lib/utils";
-import { FOOTER_CANCEL, FOOTER_SUBMIT, STICKY_FOOTER, formatMl } from "./animal-shared";
+import { cn, formatDate, localDateISO } from "@/lib/utils";
+import {
+  editarAplicacaoAnimal,
+  excluirAplicacaoAnimal,
+  numerarAnimal,
+} from "@/app/(app)/animais/actions";
+import {
+  FOOTER_CANCEL,
+  FOOTER_SUBMIT,
+  ICON_BUTTON,
+  STICKY_FOOTER,
+  formatDecimalInput,
+  formatMl,
+  parseDecimal,
+} from "./animal-shared";
 import { Chip, diaLabel } from "./protocolos-cadastro";
 import type { EtapaFeita } from "./protocolos-tab";
-import type { AnimalProtocolo, AnimalProtocoloAplicacao, AnimalWithInfo } from "@/lib/types";
+import type {
+  AnimalProtocolo,
+  AnimalProtocoloAplicacao,
+  AnimalSpecies,
+  AnimalWithInfo,
+} from "@/lib/types";
 
 /** "9,1 ML" → 9.1 (a dose fica gravada como texto na ficha). */
 function mlDe(dose: string | null): number {
@@ -34,11 +52,18 @@ function diasAtras(n: number): string {
 /** Um animal numa etapa: o nº, o dia em que tomou e as doses de cada remédio. */
 interface Linha {
   key: string;
+  aplicacaoId: string;
+  species: AnimalSpecies | null;
   animalId: string;
   tag: string;
   data: string;
   dia: number;
-  doses: { medicine: string; dose: string | null }[];
+  doses: { id: string; medicine: string; dose: string | null }[];
+}
+
+/** Quem foi aplicado sem número fica com o nº começando por "S/N". */
+export function semNumero(tag: string): boolean {
+  return tag.toUpperCase().startsWith("S/N");
 }
 
 interface Grupo {
@@ -74,6 +99,7 @@ export function RelatorioProtocolosDialog({
   const [de, setDe] = useState(diasAtras(30));
   const [ate, setAte] = useState(localDateISO());
   const [busca, setBusca] = useState("");
+  const [editando, setEditando] = useState<(Linha & { protoNome?: string }) | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -81,6 +107,7 @@ export function RelatorioProtocolosDialog({
     setDe(diasAtras(30));
     setAte(localDateISO());
     setBusca("");
+    setEditando(null);
   }, [open]);
 
   const animalById = useMemo(() => new Map(animals.map((a) => [a.id, a])), [animals]);
@@ -96,6 +123,8 @@ export function RelatorioProtocolosDialog({
       if (!l) {
         l = {
           key,
+          aplicacaoId: f.protocolo_aplicacao_id,
+          species: ap?.species ?? null,
           animalId: f.animal_id,
           tag: animalById.get(f.animal_id)?.tag ?? "?",
           data: f.applied_at,
@@ -106,7 +135,7 @@ export function RelatorioProtocolosDialog({
         };
         m.set(key, l);
       }
-      l.doses.push({ medicine: f.medicine ?? "?", dose: f.dose });
+      l.doses.push({ id: f.id, medicine: f.medicine ?? "?", dose: f.dose });
     }
     return Array.from(m.values());
   }, [etapasFeitas, apById, animalById]);
@@ -158,6 +187,7 @@ export function RelatorioProtocolosDialog({
   }, [todas, protocoloKey, de, ate, busca]);
 
   const totalAnimais = new Set(grupos.flatMap((g) => g.linhas.map((l) => l.animalId))).size;
+  const qtdSemNumero = new Set(todas.filter((l) => semNumero(l.tag)).map((l) => l.animalId)).size;
   const totalLinhas = grupos.reduce((s, g) => s + g.linhas.length, 0);
   const periodo = `${de ? formatDate(de) : "início"} a ${ate ? formatDate(ate) : "hoje"}`;
 
@@ -285,6 +315,20 @@ export function RelatorioProtocolosDialog({
             </strong>{" "}
             · {totalLinhas} {totalLinhas === 1 ? "aplicação" : "aplicações"}
           </p>
+          {qtdSemNumero > 0 && busca.trim().toUpperCase() !== "S/N" && (
+            <button
+              type="button"
+              onClick={() => {
+                setBusca("S/N");
+                setDe("");
+                setAte(localDateISO());
+              }}
+              className="w-full text-left text-[12px] text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400"
+            >
+              {qtdSemNumero} {qtdSemNumero === 1 ? "animal está" : "animais estão"} sem número —
+              toque para ver e dar o nº no lápis.
+            </button>
+          )}
 
           {grupos.length === 0 ? (
             <p className="text-sm text-slate-400 py-6 text-center">
@@ -320,12 +364,20 @@ export function RelatorioProtocolosDialog({
                           <th className="text-left px-2 py-1.5">Nº</th>
                           <th className="text-left px-2 py-1.5">Data</th>
                           <th className="text-left px-2 py-1.5">Doses</th>
+                          <th className="w-11"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {g.linhas.map((l) => (
                           <tr key={l.key} className="border-t border-slate-100 dark:border-slate-800 align-top">
-                            <td className="px-2 py-1.5 font-bold tabular-nums">{l.tag}</td>
+                            <td className="px-2 py-1.5 font-bold tabular-nums">
+                              {l.tag}
+                              {semNumero(l.tag) && (
+                                <span className="block text-[9px] font-semibold text-amber-600">
+                                  sem número
+                                </span>
+                              )}
+                            </td>
                             <td className="px-2 py-1.5 whitespace-nowrap">
                               <span className="tabular-nums">{formatDate(l.data)}</span>
                               <span className="block text-[10px] text-slate-400">{diaLabel(l.dia)}</span>
@@ -339,6 +391,17 @@ export function RelatorioProtocolosDialog({
                                   </strong>
                                 </span>
                               ))}
+                            </td>
+                            <td className="py-0.5 pr-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setEditando(l)}
+                                aria-label={`Editar a aplicação do ${l.tag}`}
+                                title="Editar ou excluir"
+                                className={cn(ICON_BUTTON, "text-slate-400 hover:text-produmar-600")}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -362,6 +425,205 @@ export function RelatorioProtocolosDialog({
             >
               <Printer className="w-4 h-4" />
               Imprimir
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+      {editando && (
+        <EditarAplicacaoDialog
+          key={editando.key}
+          linha={editando}
+          nome={todas.find((t) => t.key === editando.key)?.protoNome ?? ""}
+          animals={animals}
+          onClose={() => setEditando(null)}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+// ── Editar / excluir a aplicação de um animal ────────────────────────────────
+
+/**
+ * Conserta o que foi lançado errado: a data, os ml de cada remédio, o animal
+ * (lançou no 002 mas era o 020) — ou exclui a aplicação. Para quem entrou sem
+ * número, é aqui que ele ganha o nº do brinco.
+ */
+function EditarAplicacaoDialog({
+  linha,
+  nome,
+  animals,
+  onClose,
+}: {
+  linha: Linha;
+  nome: string;
+  animals: AnimalWithInfo[];
+  onClose: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [tag, setTag] = useState(linha.tag);
+  const [data, setData] = useState(linha.data);
+  const [mls, setMls] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      linha.doses.map((d) => [d.id, d.dose ? String(mlDe(d.dose)).replace(".", ",") : ""])
+    )
+  );
+
+  const provisorio = semNumero(linha.tag);
+  const tagLimpo = tag.trim().toUpperCase();
+  const mudouTag = tagLimpo !== "" && tagLimpo !== linha.tag.toUpperCase();
+  /** O animal do nº digitado, no mesmo tipo de bicho. */
+  const outro = mudouTag
+    ? animals.find(
+        (a) =>
+          a.tag.toUpperCase() === tagLimpo &&
+          a.id !== linha.animalId &&
+          (!linha.species || a.species === linha.species)
+      ) ?? null
+    : null;
+  /** S/N que ganha um número que ainda não existe: só renomeia o animal. */
+  const vaiNumerar = mudouTag && !outro && provisorio;
+  const naoAchou = mudouTag && !outro && !provisorio;
+
+  function salvar() {
+    setError(null);
+    if (naoAchou) return setError(`Não achei o ${tagLimpo} no rebanho`);
+    startTransition(async () => {
+      if (vaiNumerar) {
+        const n = await numerarAnimal(linha.animalId, tagLimpo);
+        if (n && "error" in n) return setError(n.error ?? "Erro ao dar o número");
+      }
+      const r = await editarAplicacaoAnimal({
+        aplicacao_id: linha.aplicacaoId,
+        dia: linha.dia,
+        animal_id: linha.animalId,
+        novo_animal_id: outro?.id ?? null,
+        applied_at: data,
+        doses: linha.doses.map((d) => ({
+          id: d.id,
+          dose_ml: mls[d.id] ? parseDecimal(mls[d.id]) : null,
+        })),
+      });
+      if (r && "error" in r) return setError(r.error ?? "Erro ao salvar");
+      onClose();
+    });
+  }
+
+  function excluir() {
+    if (
+      !confirm(
+        `Excluir a aplicação do ${linha.tag} (${diaLabel(linha.dia)} de ${formatDate(linha.data)})? As doses saem da ficha dele.`
+      )
+    )
+      return;
+    startTransition(async () => {
+      const r = await excluirAplicacaoAnimal(linha.aplicacaoId, linha.dia, linha.animalId);
+      if (r && "error" in r) return setError(r.error ?? "Erro ao excluir");
+      onClose();
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="dark:text-slate-100 pr-8">Editar aplicação</DialogTitle>
+          <p className="text-[11px] text-slate-400">
+            {nome} · {diaLabel(linha.dia)}
+          </p>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="ed_tag">{provisorio ? "Número do animal (brinco)" : "Animal"}</Label>
+            <Input
+              id="ed_tag"
+              value={tag}
+              onChange={(e) => setTag(e.target.value)}
+              placeholder="Nº do animal"
+              className="h-11 sm:h-10 uppercase font-semibold"
+            />
+            <p
+              className={cn(
+                "text-[11px]",
+                naoAchou ? "text-red-600" : mudouTag ? "text-produmar-700 dark:text-produmar-300" : "text-slate-400"
+              )}
+            >
+              {provisorio && !mudouTag
+                ? "Entrou sem número. Ganhou brinco? Digite o nº aqui — a ficha e as doses vão com ele."
+                : outro
+                  ? `As doses passam do ${linha.tag} para o ${outro.tag}.`
+                  : vaiNumerar
+                    ? `Este animal passa a ser o nº ${tagLimpo}.`
+                    : naoAchou
+                      ? `Não achei o ${tagLimpo} no rebanho.`
+                      : "Lançou no animal errado? Digite o nº do animal certo."}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="ed_data">Aplicado em</Label>
+            <Input
+              id="ed_data"
+              type="date"
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+              className="h-11 sm:h-10"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Doses (ml)</Label>
+            <div className="space-y-1.5">
+              {linha.doses.map((d) => (
+                <div key={d.id} className="flex items-center gap-2">
+                  <span className="flex-1 min-w-0 truncate text-sm text-slate-700 dark:text-slate-200">
+                    {d.medicine}
+                  </span>
+                  <Input
+                    value={mls[d.id] ?? ""}
+                    onChange={(e) =>
+                      setMls((p) => ({ ...p, [d.id]: formatDecimalInput(e.target.value) }))
+                    }
+                    inputMode="decimal"
+                    semDitado
+                    aria-label={`ml de ${d.medicine}`}
+                    className="h-10 w-24 tabular-nums text-right"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={excluir}
+            disabled={isPending}
+            className="flex items-center gap-1.5 text-[13px] font-medium text-red-600 hover:underline disabled:opacity-50"
+          >
+            <Trash2 className="w-4 h-4" />
+            Excluir esta aplicação (lançada errado)
+          </button>
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+              {error}
+            </p>
+          )}
+
+          <DialogFooter className={STICKY_FOOTER}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+              className={FOOTER_CANCEL}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={salvar} disabled={isPending} className={FOOTER_SUBMIT}>
+              {isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </div>

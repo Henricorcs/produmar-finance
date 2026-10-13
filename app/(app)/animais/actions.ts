@@ -2515,6 +2515,7 @@ export async function desfazerProtocoloNoAnimal(aplicacaoId: string, animalId: s
   if (count === 0) {
     await supabase.from("animal_protocolo_aplicacoes").delete().eq("id", aplicacaoId);
   }
+  await apagarSemNumeroSobrando(supabase, animalId);
 
   revalidate();
   return { ok: true };
@@ -2536,6 +2537,245 @@ export async function desfazerEtapaProtocolo(aplicacaoId: string, dia: number, a
   if (error) return { error: protocolosError(error) };
   revalidate();
   return { ok: true };
+}
+
+/** O começo do nº de quem foi aplicado sem número ("S/N MALHADA"). */
+const SEM_NUMERO = "S/N";
+
+/**
+ * Animal sem número no curral: para não perder o momento, ele entra no
+ * rebanho com uma identificação provisória ("S/N MALHADA DO CHIFRE TORTO") e
+ * já toma o protocolo. Quando ganhar o brinco, é só dar o número — a ficha e
+ * as doses seguem com ele.
+ */
+export async function aplicarProtocoloSemNumero(input: {
+  protocolo_id: string;
+  start_date: string;
+  identificacao: string;
+  sex: AnimalSex;
+  weight_kg?: number | null;
+  doses: { medicamento_id: string; dose_ml?: number | null }[];
+}) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const ident = clean(input.identificacao);
+  if (!ident) return { error: "Escreva uma identificação (ex.: MALHADA DO CHIFRE TORTO)" };
+  const tag = ident.startsWith(SEM_NUMERO) ? ident : `${SEM_NUMERO} ${ident}`;
+
+  const { data: protocolo, error: pErr } = await supabase
+    .from("animal_protocolos")
+    .select("species, name")
+    .eq("id", input.protocolo_id)
+    .maybeSingle();
+  if (pErr) return { error: protocolosError(pErr) };
+  if (!protocolo) return { error: "Protocolo não encontrado" };
+
+  const weight = input.weight_kg && input.weight_kg > 0 ? money(input.weight_kg) : 0;
+  const { data: animal, error: aErr } = await supabase
+    .from("animals")
+    .insert({
+      tag,
+      sex: input.sex,
+      species: protocolo.species,
+      weight,
+      notes: `SEM NÚMERO — entrou pelo protocolo ${protocolo.name}. Trocar pelo nº do brinco.`,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (aErr || !animal)
+    return {
+      error:
+        aErr?.code === "23505"
+          ? "Já existe um animal com essa identificação — escreva outra"
+          : aErr
+            ? dupTagError(aErr, protocolo.species as AnimalSpecies)
+            : "Erro ao cadastrar o animal",
+    };
+
+  const r = await aplicarProtocoloNoAnimal({
+    protocolo_id: input.protocolo_id,
+    start_date: input.start_date,
+    animal: {
+      animal_id: animal.id as string,
+      weight_kg: weight || null,
+      pesado: weight > 0,
+      doses: input.doses,
+    },
+  });
+  if (r && "error" in r) {
+    // não deixa o animal solto no rebanho se a aplicação não entrou
+    await supabase.from("animals").delete().eq("id", animal.id);
+    return { error: r.error };
+  }
+  return { ...r, animal_id: animal.id as string, tag };
+}
+
+/** Dá o número (brinco) a um animal — usado para o "S/N" que ganhou número. */
+export async function numerarAnimal(animalId: string, tag: string) {
+  const supabase = createClient();
+  const novo = clean(tag);
+  if (!novo) return { error: "Informe o número" };
+  const { data: animal } = await supabase
+    .from("animals")
+    .select("species")
+    .eq("id", animalId)
+    .maybeSingle();
+  const { error } = await supabase.from("animals").update({ tag: novo }).eq("id", animalId);
+  if (error) return { error: dupTagError(error, (animal?.species as AnimalSpecies) ?? null) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Corrige a aplicação de um animal numa etapa: a data, os ml de cada remédio
+ * e, se foi lançada no animal errado, passa para o animal certo.
+ */
+export async function editarAplicacaoAnimal(input: {
+  aplicacao_id: string;
+  dia: number;
+  animal_id: string;
+  /** O animal certo, quando foi lançado no nº errado. */
+  novo_animal_id?: string | null;
+  applied_at: string;
+  doses: { id: string; dose_ml: number | null }[];
+}) {
+  const supabase = createClient();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.applied_at ?? ""))
+    return { error: "Informe o dia da aplicação" };
+
+  const { data: atuais, error: tErr } = await supabase
+    .from("animal_treatments")
+    .select("id")
+    .eq("protocolo_aplicacao_id", input.aplicacao_id)
+    .eq("protocolo_dia", input.dia)
+    .eq("animal_id", input.animal_id);
+  if (tErr) return { error: protocolosError(tErr) };
+  const ids = new Set((atuais ?? []).map((t) => t.id as string));
+  if (ids.size === 0) return { error: "Essa aplicação não existe mais" };
+
+  const novo = input.novo_animal_id && input.novo_animal_id !== input.animal_id ? input.novo_animal_id : null;
+  if (novo) {
+    const { count } = await supabase
+      .from("animal_treatments")
+      .select("id", { count: "exact", head: true })
+      .eq("protocolo_aplicacao_id", input.aplicacao_id)
+      .eq("protocolo_dia", input.dia)
+      .eq("animal_id", novo);
+    if (count && count > 0) return { error: "O outro animal já tem essa etapa aplicada" };
+  }
+
+  for (const d of input.doses ?? []) {
+    if (!ids.has(d.id)) continue;
+    const ml = d.dose_ml && d.dose_ml > 0 ? Math.round(d.dose_ml * 10) / 10 : null;
+    const { error } = await supabase
+      .from("animal_treatments")
+      .update({
+        applied_at: input.applied_at,
+        dose: ml ? `${String(ml).replace(".", ",")} ML` : null,
+        ...(novo ? { animal_id: novo } : {}),
+      })
+      .eq("id", d.id);
+    if (error) return { error: protocolosError(error) };
+  }
+  // doses que não vieram na lista também mudam de data/animal
+  const resto = Array.from(ids).filter((id) => !(input.doses ?? []).some((d) => d.id === id));
+  if (resto.length > 0) {
+    const { error } = await supabase
+      .from("animal_treatments")
+      .update({ applied_at: input.applied_at, ...(novo ? { animal_id: novo } : {}) })
+      .in("id", resto);
+    if (error) return { error: protocolosError(error) };
+  }
+
+  if (novo) {
+    const { data: antigo } = await supabase
+      .from("animal_protocolo_aplicacao_animais")
+      .select("weight_kg")
+      .eq("aplicacao_id", input.aplicacao_id)
+      .eq("animal_id", input.animal_id)
+      .maybeSingle();
+    const { error: upErr } = await supabase
+      .from("animal_protocolo_aplicacao_animais")
+      .upsert(
+        { aplicacao_id: input.aplicacao_id, animal_id: novo, weight_kg: antigo?.weight_kg ?? null },
+        { onConflict: "aplicacao_id,animal_id" }
+      );
+    if (upErr) return { error: protocolosError(upErr) };
+    await tirarDaLevaSeVazio(supabase, input.aplicacao_id, input.animal_id);
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Exclui a aplicação lançada errado: as doses daquela etapa saem da ficha do
+ * animal. Se ele não tomou mais nada dessa programação, sai dela também (não
+ * fica cobrando o reforço).
+ */
+export async function excluirAplicacaoAnimal(aplicacaoId: string, dia: number, animalId: string) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("animal_treatments")
+    .delete()
+    .eq("protocolo_aplicacao_id", aplicacaoId)
+    .eq("protocolo_dia", dia)
+    .eq("animal_id", animalId);
+  if (error) return { error: protocolosError(error) };
+  await tirarDaLevaSeVazio(supabase, aplicacaoId, animalId);
+  revalidate();
+  return { ok: true };
+}
+
+/** Tira o animal da programação quando não sobrou dose dele nela; leva vazia some. */
+async function tirarDaLevaSeVazio(
+  supabase: ReturnType<typeof createClient>,
+  aplicacaoId: string,
+  animalId: string
+) {
+  const { count } = await supabase
+    .from("animal_treatments")
+    .select("id", { count: "exact", head: true })
+    .eq("protocolo_aplicacao_id", aplicacaoId)
+    .eq("animal_id", animalId);
+  if (count && count > 0) return;
+  await supabase
+    .from("animal_protocolo_aplicacao_animais")
+    .delete()
+    .eq("aplicacao_id", aplicacaoId)
+    .eq("animal_id", animalId);
+  const { count: restam } = await supabase
+    .from("animal_protocolo_aplicacao_animais")
+    .select("animal_id", { count: "exact", head: true })
+    .eq("aplicacao_id", aplicacaoId);
+  if (restam === 0) await supabase.from("animal_protocolo_aplicacoes").delete().eq("id", aplicacaoId);
+  await apagarSemNumeroSobrando(supabase, animalId);
+}
+
+/**
+ * O "S/N" só existia por causa do protocolo: se a aplicação dele foi desfeita
+ * (ou passou para o animal certo) e não sobrou nenhuma dose, ele sai do rebanho.
+ */
+async function apagarSemNumeroSobrando(
+  supabase: ReturnType<typeof createClient>,
+  animalId: string
+) {
+  const { data: animal } = await supabase
+    .from("animals")
+    .select("tag")
+    .eq("id", animalId)
+    .maybeSingle();
+  if (!animal || !String(animal.tag).startsWith(SEM_NUMERO)) return;
+  const { count } = await supabase
+    .from("animal_treatments")
+    .select("id", { count: "exact", head: true })
+    .eq("animal_id", animalId);
+  if (count === 0) await supabase.from("animals").delete().eq("id", animalId);
 }
 
 /** Data + N dias, em YYYY-MM-DD (sem fuso: a data é do calendário). */
