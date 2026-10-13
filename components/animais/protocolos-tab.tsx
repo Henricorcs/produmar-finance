@@ -6,6 +6,7 @@ import {
   CalendarClock,
   Check,
   ClipboardList,
+  FileText,
   Pencil,
   Pill,
   Plus,
@@ -54,6 +55,7 @@ import {
   ProtocoloModeloDialog,
   diaLabel,
 } from "./protocolos-cadastro";
+import { RelatorioProtocolosDialog } from "./protocolos-relatorio";
 import type {
   AnimalBreed,
   AnimalCategory,
@@ -132,6 +134,7 @@ export function ProtocolosTab({
   const [programarOpen, setProgramarOpen] = useState(false);
   const [programarPreset, setProgramarPreset] = useState<string | null>(null);
   const [etapa, setEtapa] = useState<{ aplicacaoId: string; dia: number } | null>(null);
+  const [relatorioOpen, setRelatorioOpen] = useState(false);
 
   const hoje = localDateISO();
 
@@ -271,6 +274,12 @@ export function ProtocolosTab({
           Remédios
         </Button>
       </div>
+      {etapasFeitas.length > 0 && (
+        <Button variant="outline" className="h-11 w-full" onClick={() => setRelatorioOpen(true)}>
+          <FileText className="w-4 h-4" />
+          Relatório dos aplicados
+        </Button>
+      )}
 
       {/* Primeiro uso: os três passos */}
       {protocolos.length === 0 && (
@@ -415,6 +424,14 @@ export function ProtocolosTab({
         breeds={breeds}
         aplicacoes={aplicacoes}
         etapasFeitas={etapasFeitas}
+      />
+      <RelatorioProtocolosDialog
+        open={relatorioOpen}
+        onClose={() => setRelatorioOpen(false)}
+        protocolos={protocolos}
+        aplicacoes={aplicacoes}
+        etapasFeitas={etapasFeitas}
+        animals={animals}
       />
       {etapaAberta && etapa && (
         <EtapaDialog
