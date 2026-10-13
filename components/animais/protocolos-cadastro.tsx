@@ -530,8 +530,11 @@ export function ProtocoloModeloDialog({
                           value={l.dia}
                           onChange={(e) => mudar(l.key, "dia", e.target.value.replace(/\D/g, ""))}
                           inputMode="numeric"
+                          maxLength={3}
+                          semDitado
+                          placeholder="0"
                           aria-label="Dia contado do início"
-                          className="h-11 w-14 tabular-nums text-center sm:h-10"
+                          className="h-11 w-16 px-1 tabular-nums text-center font-semibold sm:h-10"
                         />
                       </div>
                       <select
