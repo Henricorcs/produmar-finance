@@ -707,19 +707,23 @@ export function AnimaisPageClient({
   /** Etapas de protocolo com data de hoje ou já passada, ainda não aplicadas. */
   const etapasPendentes = useMemo(() => {
     const hoje = localDateISO();
+    // quem já tomou cada etapa (`aplicação|dia|animal`): a etapa pode ser
+    // aplicada aos poucos, e só sai da conta quando a leva inteira tomou
     const feitas = new Set(
-      etapasFeitas.map((f) => `${f.protocolo_aplicacao_id}|${f.protocolo_dia}`)
+      etapasFeitas.map((f) => `${f.protocolo_aplicacao_id}|${f.protocolo_dia}|${f.animal_id}`)
     );
+    const ativos = new Set(allAnimals.filter((a) => a.active !== false).map((a) => a.id));
     let n = 0;
     for (const ap of aplicacoes) {
+      const doGrupo = aplicacaoAnimais.filter((x) => x.aplicacao_id === ap.id && ativos.has(x.animal_id));
       for (const dia of new Set((ap.itens ?? []).map((i) => i.dia))) {
         const [y, m, d] = ap.start_date.split("-").map(Number);
         const data = new Date(Date.UTC(y, m - 1, d + dia)).toISOString().slice(0, 10);
-        if (data <= hoje && !feitas.has(`${ap.id}|${dia}`)) n++;
+        if (data <= hoje && doGrupo.some((x) => !feitas.has(`${ap.id}|${dia}|${x.animal_id}`))) n++;
       }
     }
     return n;
-  }, [aplicacoes, etapasFeitas]);
+  }, [aplicacoes, aplicacaoAnimais, etapasFeitas, allAnimals]);
 
   const tabs: {
     value: Tab;

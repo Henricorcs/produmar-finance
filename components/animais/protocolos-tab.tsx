@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
+  ArrowLeft,
   CalendarClock,
   Check,
   ClipboardList,
@@ -10,6 +11,7 @@ import {
   Plus,
   Printer,
   Search,
+  Syringe,
   Trash2,
   Undo2,
 } from "lucide-react";
@@ -26,9 +28,11 @@ import { Label } from "@/components/ui/label";
 import { cn, formatDate, localDateISO } from "@/lib/utils";
 import {
   aplicarEtapaProtocolo,
+  aplicarProtocoloNoAnimal,
   createProtocoloAplicacao,
   deleteProtocoloAplicacao,
   desfazerEtapaProtocolo,
+  desfazerProtocoloNoAnimal,
 } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
@@ -36,6 +40,7 @@ import {
   ICON_BUTTON,
   SPECIES_META,
   STICKY_FOOTER,
+  categoryLabel,
   categoryPlural,
   formatDecimalInput,
   formatMl,
@@ -152,17 +157,31 @@ export function ProtocolosTab({
     return m;
   }, [aplicacaoAnimais]);
 
-  /** Programações com as etapas e a situação de cada uma. */
+  const animalById = useMemo(() => new Map(animals.map((a) => [a.id, a])), [animals]);
+
+  /**
+   * Programações com as etapas e a situação de cada uma. A etapa pode ser
+   * aplicada aos poucos (um animal por vez no curral): só fica "aplicada"
+   * quando todos os animais da leva que ainda estão no rebanho tomaram.
+   */
   const programacoes = useMemo(() => {
     return aplicacoes
       .map((ap) => {
+        const doGrupo = animaisPorAplicacao.get(ap.id) ?? [];
         const etapas = etapasDe(ap.itens ?? []).map((dia) => {
           const data = addDays(ap.start_date, dia);
           const feitas = feitasPorEtapa.get(`${ap.id}|${dia}`) ?? [];
+          const tomaram = new Set(feitas.map((f) => f.animal_id));
+          const faltam = doGrupo.filter((x) => {
+            const a = animalById.get(x.animal_id);
+            return !tomaram.has(x.animal_id) && !!a && a.active !== false;
+          }).length;
           return {
             dia,
             data,
-            feita: feitas.length > 0,
+            feita: tomaram.size > 0 && faltam === 0,
+            aplicados: tomaram.size,
+            faltam,
             aplicadaEm: feitas[0]?.applied_at ?? null,
             itens: (ap.itens ?? []).filter((i) => i.dia === dia),
           };
@@ -181,7 +200,7 @@ export function ProtocolosTab({
         if (a.proxima && b.proxima) return a.proxima.data.localeCompare(b.proxima.data);
         return b.ap.start_date.localeCompare(a.ap.start_date);
       });
-  }, [aplicacoes, feitasPorEtapa, animaisPorAplicacao]);
+  }, [aplicacoes, feitasPorEtapa, animaisPorAplicacao, animalById]);
 
   const emAndamento = programacoes.filter((p) => p.proxima);
   const concluidas = programacoes.filter((p) => !p.proxima);
@@ -226,8 +245,8 @@ export function ProtocolosTab({
           className="h-11"
           disabled={protocolos.length === 0}
         >
-          <CalendarClock className="w-4 h-4" />
-          Programar
+          <Syringe className="w-4 h-4" />
+          Aplicar
         </Button>
         <Button
           variant="outline"
@@ -267,8 +286,9 @@ export function ProtocolosTab({
               se dá daqui a 30 dias.
             </li>
             <li>
-              Em <strong>Programar</strong>, escolha os animais e a data. Cada etapa vira a
-              lista do curral com o nº, o peso e os ml de cada animal.
+              Em <strong>Aplicar</strong>, escolha o protocolo e toque no nº do animal: aparece o
+              peso e os ml de cada remédio. Aplicou, volta para escolher o próximo — e o
+              reforço já fica programado.
             </li>
           </ol>
         </div>
@@ -322,15 +342,15 @@ export function ProtocolosTab({
                 </div>
               </div>
               <button
-                aria-label={`Programar ${p.name}`}
-                title="Programar"
+                aria-label={`Aplicar ${p.name}`}
+                title="Aplicar"
                 onClick={() => {
                   setProgramarPreset(p.id);
                   setProgramarOpen(true);
                 }}
                 className={cn(ICON_BUTTON, "text-produmar-600 hover:bg-produmar-50 dark:hover:bg-slate-800")}
               >
-                <CalendarClock className="w-4 h-4" />
+                <Syringe className="w-4 h-4" />
               </button>
               <button
                 aria-label={`Editar ${p.name}`}
@@ -393,6 +413,8 @@ export function ProtocolosTab({
         medicamentos={medicamentos}
         animals={animals}
         breeds={breeds}
+        aplicacoes={aplicacoes}
+        etapasFeitas={etapasFeitas}
       />
       {etapaAberta && etapa && (
         <EtapaDialog
@@ -419,7 +441,15 @@ function ProgramacaoCard({
 }: {
   prog: {
     ap: AnimalProtocoloAplicacao;
-    etapas: { dia: number; data: string; feita: boolean; aplicadaEm: string | null; itens: AnimalProtocoloItemFoto[] }[];
+    etapas: {
+      dia: number;
+      data: string;
+      feita: boolean;
+      aplicados: number;
+      faltam: number;
+      aplicadaEm: string | null;
+      itens: AnimalProtocoloItemFoto[];
+    }[];
     animais: number;
   };
   hoje: string;
@@ -499,6 +529,11 @@ function ProgramacaoCard({
                           ? "hoje"
                           : "programada"}
                   </span>
+                  {!e.feita && e.aplicados > 0 && (
+                    <span className="ml-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                      · {e.aplicados} de {e.aplicados + e.faltam} aplicados
+                    </span>
+                  )}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                   {e.itens.map((i) => i.name).join(", ")}
@@ -513,10 +548,20 @@ function ProgramacaoCard({
   );
 }
 
-// ── Programar: protocolo + data + animais ────────────────────────────────────
+// ── Aplicar / programar: protocolo + data + animais ──────────────────────────
 
 type CatFiltro = "todos" | AnimalCategory;
 
+/**
+ * Duas formas de usar:
+ *
+ * - UM POR UM (o curral): escolhe o protocolo e o dia, toca no nº do animal,
+ *   confere o peso e os ml, "Aplicar protocolo" — e volta para a grade para
+ *   escolher o próximo. Quem já tomou fica verde. As próximas etapas (o
+ *   reforço) ficam programadas sozinhas.
+ * - PROGRAMAR GRUPO: marca vários e só programa, para aplicar depois pela
+ *   lista do curral.
+ */
 function ProgramarDialog({
   open,
   onClose,
@@ -526,6 +571,8 @@ function ProgramarDialog({
   medicamentos,
   animals,
   breeds,
+  aplicacoes,
+  etapasFeitas,
 }: {
   open: boolean;
   onClose: () => void;
@@ -535,24 +582,42 @@ function ProgramarDialog({
   medicamentos: AnimalMedicamento[];
   animals: AnimalWithInfo[];
   breeds: AnimalBreed[];
+  aplicacoes: AnimalProtocoloAplicacao[];
+  etapasFeitas: EtapaFeita[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [modo, setModo] = useState<"um" | "grupo">("um");
   const [protocoloId, setProtocoloId] = useState("");
   const [inicio, setInicio] = useState(localDateISO());
   const [cat, setCat] = useState<CatFiltro>("todos");
   const [breedId, setBreedId] = useState("");
   const [busca, setBusca] = useState("");
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
+  /** O animal aberto no "um por um". */
+  const [animalId, setAnimalId] = useState<string | null>(null);
+  const [peso, setPeso] = useState("");
+  /** O último aplicado, para o aviso "aplicado — escolha o próximo". */
+  const [ultimo, setUltimo] = useState<{ tag: string; animalId: string; aplicacaoId: string } | null>(
+    null
+  );
+  /** Aplicados nesta tela (`protocolo|dia|animal` → programação), antes de a página recarregar. */
+  const [locais, setLocais] = useState<Map<string, string>>(new Map());
+  const buscaRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    setModo("um");
     setProtocoloId(presetProtocoloId ?? (protocolos.length === 1 ? protocolos[0].id : ""));
     setInicio(localDateISO());
     setCat("todos");
     setBreedId("");
     setBusca("");
     setMarcados(new Set());
+    setAnimalId(null);
+    setPeso("");
+    setUltimo(null);
+    setLocais(new Map());
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, presetProtocoloId]);
@@ -591,6 +656,38 @@ function ProgramarDialog({
   });
   const semPeso = doTipo.filter((a) => marcados.has(a.id) && !(Number(a.weight) > 0)).length;
 
+  const dias = etapasDe(itens);
+  const primeiroDia = dias[0] ?? 0;
+  const itensAgora = itens
+    .filter((i) => i.dia === primeiroDia)
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((i) => ({ item: i, med: medById.get(i.medicamento_id) }));
+
+  /** Quem já tomou a primeira etapa deste protocolo neste dia: animal → programação. */
+  const aplicados = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!protocolo) return m;
+    for (const ap of aplicacoes) {
+      if (ap.protocolo_id !== protocolo.id || ap.start_date !== inicio) continue;
+      const primeiro = Math.min(...(ap.itens ?? []).map((i) => i.dia));
+      for (const f of etapasFeitas) {
+        if (f.protocolo_aplicacao_id === ap.id && f.protocolo_dia === primeiro)
+          m.set(f.animal_id, ap.id);
+      }
+    }
+    locais.forEach((apId, k) => {
+      const [p, d, a] = k.split("|");
+      if (p === protocolo.id && d === inicio) m.set(a, apId);
+    });
+    return m;
+  }, [protocolo, inicio, aplicacoes, etapasFeitas, locais]);
+
+  const animal = animalId ? doTipo.find((a) => a.id === animalId) ?? null : null;
+  const pesoBase = Number(animal?.weight ?? 0) || 0;
+  const pesoHoje = peso !== "" ? parseDecimal(peso) : pesoBase;
+  const dosesAgora = itensAgora.map(({ med }) => (med ? suggestedDoseMl(med, pesoHoje) : null));
+  const faltaPeso = dosesAgora.some((d) => d == null);
+
   function alternar(id: string) {
     setMarcados((prev) => {
       const n = new Set(prev);
@@ -600,8 +697,87 @@ function ProgramarDialog({
     });
   }
 
+  function abrirAnimal(id: string) {
+    setAnimalId(id);
+    setPeso("");
+    setError(null);
+  }
+
+  function escolherOutro() {
+    setAnimalId(null);
+    setPeso("");
+    setBusca("");
+    setError(null);
+    // volta para o campo do nº, pronto para o próximo
+    setTimeout(() => buscaRef.current?.focus(), 50);
+  }
+
+  /** Enter no campo do nº: se achou um só (ou o nº exato), já abre. */
+  function buscaEnter(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const q = busca.trim().toUpperCase();
+    const alvo =
+      visiveis.find((a) => a.tag.toUpperCase() === q) ??
+      (visiveis.length === 1 ? visiveis[0] : null);
+    if (!alvo) return;
+    if (modo === "um") abrirAnimal(alvo.id);
+    else {
+      alternar(alvo.id);
+      setBusca("");
+    }
+  }
+
+  function aplicarNoAnimal() {
+    if (!protocolo || !animal) return;
+    setError(null);
+    if (faltaPeso) return setError("Digite o peso do animal para calcular a dose");
+    const pesado = peso !== "" && parseDecimal(peso) > 0;
+    startTransition(async () => {
+      const r = await aplicarProtocoloNoAnimal({
+        protocolo_id: protocolo.id,
+        start_date: inicio,
+        animal: {
+          animal_id: animal.id,
+          weight_kg: pesoHoje > 0 ? pesoHoje : null,
+          pesado,
+          doses: itensAgora.map(({ item }, idx) => ({
+            medicamento_id: item.medicamento_id,
+            dose_ml: dosesAgora[idx],
+          })),
+        },
+      });
+      if (r && "error" in r) return setError(r.error ?? "Erro ao aplicar");
+      if (r && "warning" in r && r.warning) alert(r.warning);
+      const apId = r && "aplicacao_id" in r ? (r.aplicacao_id as string) : "";
+      setLocais((prev) => new Map(prev).set(`${protocolo.id}|${inicio}|${animal.id}`, apId));
+      setUltimo({ tag: animal.tag, animalId: animal.id, aplicacaoId: apId });
+      escolherOutro();
+    });
+  }
+
+  function desfazerAnimal(alvo: { animalId: string; aplicacaoId: string; tag: string }) {
+    if (!protocolo) return;
+    if (!confirm(`Desfazer o protocolo no ${alvo.tag}? As doses saem da ficha dele.`)) return;
+    startTransition(async () => {
+      const r = await desfazerProtocoloNoAnimal(alvo.aplicacaoId, alvo.animalId);
+      if (r && "error" in r) return setError(r.error ?? "Erro ao desfazer");
+      setLocais((prev) => {
+        const n = new Map(prev);
+        n.delete(`${protocolo.id}|${inicio}|${alvo.animalId}`);
+        return n;
+      });
+      if (ultimo?.animalId === alvo.animalId) setUltimo(null);
+      if (animalId === alvo.animalId) escolherOutro();
+    });
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (modo === "um") {
+      if (animal) aplicarNoAnimal();
+      return;
+    }
     setError(null);
     if (!protocolo) return setError("Escolha o protocolo");
     if (marcados.size === 0) return setError("Escolha os animais");
@@ -618,171 +794,368 @@ function ProgramarDialog({
     });
   }
 
+  const umPorUm = modo === "um";
+  const jaAplicadoNele = animal ? aplicados.get(animal.id) ?? null : null;
+  const qtdAplicados = doTipo.filter((a) => aplicados.has(a.id)).length;
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">Programar protocolo</DialogTitle>
+          <DialogTitle className="dark:text-slate-100">
+            {umPorUm ? "Aplicar protocolo" : "Programar protocolo"}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Protocolo</Label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {protocolos.map((p) => (
-                <Chip
-                  key={p.id}
-                  active={p.id === protocoloId}
-                  onClick={() => {
-                    setProtocoloId(p.id);
-                    setMarcados(new Set());
-                    setBreedId("");
-                  }}
-                  className="text-left leading-tight"
-                >
-                  {p.name}
-                  <span className="block text-[10px] opacity-70">
-                    {SPECIES_META[p.species].label}
-                  </span>
-                </Chip>
-              ))}
-            </div>
-          </div>
+          {/* ── O animal escolhido: peso, ml e "Aplicar protocolo" ── */}
+          {umPorUm && protocolo && animal ? (
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={escolherOutro}
+                disabled={isPending}
+                className="flex items-center gap-1 text-sm font-medium text-produmar-600 dark:text-produmar-400"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Escolher outro animal
+              </button>
 
-          {protocolo && (
-            <>
-              <div className="space-y-1.5">
-                <Label htmlFor="prog_inicio">Começa em</Label>
-                <Input
-                  id="prog_inicio"
-                  type="date"
-                  value={inicio}
-                  onChange={(e) => setInicio(e.target.value)}
-                  className="h-11 sm:h-10"
-                />
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
-                  {etapasDe(itens).map((dia) => (
-                    <p key={dia}>
-                      <span className="font-semibold text-produmar-700 dark:text-produmar-300">
-                        {diaLabel(dia)} · {inicio ? formatDate(addDays(inicio, dia)) : "—"}:
-                      </span>{" "}
-                      {itens
-                        .filter((i) => i.dia === dia)
-                        .map((i) => medById.get(i.medicamento_id)?.name ?? "?")
-                        .join(", ")}
-                    </p>
-                  ))}
+              <div className="rounded-xl border border-produmar-200 bg-produmar-50/60 dark:border-slate-700 dark:bg-slate-800/60 px-4 py-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Animal
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums text-slate-900 dark:text-slate-100 leading-tight">
+                    {animal.tag}
+                  </p>
+                  <p className="text-[12px] text-slate-500 dark:text-slate-400 truncate">
+                    {categoryLabel(animal.category, animal.sex, animal.species)}
+                    {animal.breed_name ? ` · ${animal.breed_name}` : ""}
+                    {pesoBase > 0 ? ` · ${formatWeight(pesoBase)}` : " · sem peso"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{protocolo.name}</p>
+                  <p className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">
+                    {formatDate(addDays(inicio, primeiroDia))}
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label>
-                    Animais{" "}
-                    <span className="text-produmar-600 dark:text-produmar-400">
-                      ({marcados.size} de {doTipo.length})
-                    </span>
-                  </Label>
-                  <div className="flex gap-3 text-[11px] font-medium">
-                    <button
-                      type="button"
-                      className="text-produmar-600 dark:text-produmar-400 hover:underline"
-                      onClick={() =>
-                        setMarcados((prev) => {
-                          const n = new Set(prev);
-                          visiveis.forEach((a) => n.add(a.id));
-                          return n;
-                        })
-                      }
-                    >
-                      Marcar {visiveis.length === doTipo.length ? "todos" : "os filtrados"}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-slate-500 hover:underline"
-                      onClick={() => setMarcados(new Set())}
-                    >
-                      Limpar
-                    </button>
-                  </div>
+              {jaAplicadoNele ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-400">
+                    <Check className="w-4 h-4 inline -mt-0.5 mr-1" />
+                    Esse animal já tomou o protocolo neste dia.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() =>
+                      desfazerAnimal({ animalId: animal.id, aplicacaoId: jaAplicadoNele, tag: animal.tag })
+                    }
+                    className="flex items-center gap-1 text-[13px] font-medium text-red-600 hover:underline"
+                  >
+                    <Undo2 className="w-4 h-4" />
+                    Desfazer neste animal
+                  </button>
                 </div>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="prog_peso">Peso hoje (kg)</Label>
+                    <Input
+                      id="prog_peso"
+                      value={peso}
+                      onChange={(e) => setPeso(formatDecimalInput(e.target.value))}
+                      placeholder={pesoBase > 0 ? String(pesoBase).replace(".", ",") : "Digite o peso"}
+                      inputMode="decimal"
+                      className="h-11 sm:h-10 tabular-nums"
+                    />
+                    <p className="text-[11px] text-slate-400">
+                      {usaPeso
+                        ? "Pesou no curral? Digite e a dose se refaz — o peso fica registrado."
+                        : "Opcional — as doses deste protocolo não dependem do peso."}
+                    </p>
+                  </div>
 
-                <div className="grid grid-cols-4 gap-1">
-                  {(["todos", "vaca", "boi", "bezerro"] as CatFiltro[]).map((c) => (
-                    <Chip key={c} active={cat === c} onClick={() => setCat(c)} className="px-1 text-[11px]">
-                      {c === "todos" ? "Todos" : categoryPlural(c, species)}
+                  <div className="space-y-1.5">
+                    <Label>Aplicar agora</Label>
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                      {itensAgora.map(({ item, med }, idx) => (
+                        <div key={item.id} className="flex items-center gap-2 px-3 py-2.5">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                              {med?.name ?? "?"}
+                            </p>
+                            <p className="text-[11px] text-slate-400">
+                              {med?.dose_ml_per_weight && med?.dose_weight_kg
+                                ? `${formatMl(Number(med.dose_ml_per_weight))} a cada ${Number(med.dose_weight_kg)} kg`
+                                : "dose fixa"}
+                            </p>
+                          </div>
+                          <p
+                            className={cn(
+                              "text-xl font-bold tabular-nums whitespace-nowrap",
+                              dosesAgora[idx] == null
+                                ? "text-amber-600 text-sm"
+                                : "text-produmar-700 dark:text-produmar-300"
+                            )}
+                          >
+                            {dosesAgora[idx] == null ? "falta o peso" : formatMl(dosesAgora[idx])}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {dias.length > 1 && (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
+                      <p className="font-semibold">Fica programado:</p>
+                      {dias.slice(1).map((dia) => (
+                        <p key={dia}>
+                          <span className="font-semibold text-produmar-700 dark:text-produmar-300">
+                            {diaLabel(dia)} · {formatDate(addDays(inicio, dia))}:
+                          </span>{" "}
+                          {itens
+                            .filter((i) => i.dia === dia)
+                            .map((i) => medById.get(i.medicamento_id)?.name ?? "?")
+                            .join(", ")}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
+                {(
+                  [
+                    ["um", "Aplicar um por um"],
+                    ["grupo", "Programar grupo"],
+                  ] as const
+                ).map(([v, l]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => {
+                      setModo(v);
+                      setError(null);
+                    }}
+                    className={cn(
+                      "min-h-[40px] rounded-lg text-[13px] font-semibold transition-colors",
+                      modo === v
+                        ? "bg-white text-produmar-700 shadow-sm dark:bg-slate-900 dark:text-produmar-300"
+                        : "text-slate-500"
+                    )}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Protocolo</Label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {protocolos.map((p) => (
+                    <Chip
+                      key={p.id}
+                      active={p.id === protocoloId}
+                      onClick={() => {
+                        setProtocoloId(p.id);
+                        setMarcados(new Set());
+                        setBreedId("");
+                        setUltimo(null);
+                      }}
+                      className="text-left leading-tight"
+                    >
+                      {p.name}
+                      <span className="block text-[10px] opacity-70">
+                        {SPECIES_META[p.species].label}
+                      </span>
                     </Chip>
                   ))}
                 </div>
-                <div className="flex gap-1.5">
-                  {racas.length > 0 && (
-                    <select
-                      value={breedId}
-                      onChange={(e) => setBreedId(e.target.value)}
-                      aria-label="Raça"
-                      className="h-10 flex-1 min-w-0 rounded-md border border-slate-200 bg-white px-2 text-sm uppercase dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                    >
-                      <option value="">Todas as raças</option>
-                      {racas.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <div className="relative flex-1">
-                    <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      value={busca}
-                      onChange={(e) => setBusca(e.target.value)}
-                      placeholder="Nº do animal"
-                      className="h-10 pl-8"
-                      inputMode="search"
-                    />
-                  </div>
-                </div>
-
-                {doTipo.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-3 text-center">
-                    Nenhum {SPECIES_META[protocolo.species].label.toLowerCase()} no rebanho.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-1 max-h-64 overflow-y-auto p-0.5">
-                    {visiveis.map((a) => {
-                      const on = marcados.has(a.id);
-                      return (
-                        <button
-                          key={a.id}
-                          type="button"
-                          onClick={() => alternar(a.id)}
-                          className={cn(
-                            "min-h-[44px] rounded-lg border text-center leading-tight px-0.5 transition-colors",
-                            on
-                              ? "bg-produmar-600 border-produmar-600 text-white"
-                              : "bg-white border-slate-200 text-slate-700 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
-                          )}
-                        >
-                          <span className="block text-sm font-bold tabular-nums">{a.tag}</span>
-                          <span
-                            className={cn(
-                              "block text-[10px] tabular-nums",
-                              on ? "text-white/80" : "text-slate-400"
-                            )}
-                          >
-                            {Number(a.weight) > 0 ? formatWeight(Number(a.weight)) : "sem peso"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {usaPeso && semPeso > 0 && (
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                    {semPeso} {semPeso === 1 ? "animal está" : "animais estão"} sem peso — dá
-                    para digitar o peso na lista do curral, na hora de aplicar.
-                  </p>
-                )}
               </div>
+
+              {protocolo && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="prog_inicio">{umPorUm ? "Dia da aplicação" : "Começa em"}</Label>
+                    <Input
+                      id="prog_inicio"
+                      type="date"
+                      value={inicio}
+                      onChange={(e) => {
+                        setInicio(e.target.value);
+                        setUltimo(null);
+                      }}
+                      className="h-11 sm:h-10"
+                    />
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
+                      {dias.map((dia) => (
+                        <p key={dia}>
+                          <span className="font-semibold text-produmar-700 dark:text-produmar-300">
+                            {diaLabel(dia)} · {inicio ? formatDate(addDays(inicio, dia)) : "—"}:
+                          </span>{" "}
+                          {itens
+                            .filter((i) => i.dia === dia)
+                            .map((i) => medById.get(i.medicamento_id)?.name ?? "?")
+                            .join(", ")}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+
+                  {umPorUm && ultimo && (
+                    <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-400">
+                      <Check className="w-4 h-4 flex-shrink-0" />
+                      <p className="flex-1 min-w-0">
+                        <strong>{ultimo.tag}</strong> aplicado. Escolha o próximo animal.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => desfazerAnimal(ultimo)}
+                        className="text-[12px] font-medium text-slate-500 hover:text-red-600 underline"
+                      >
+                        Desfazer
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label>
+                        {umPorUm ? "Toque no nº do animal" : "Animais"}{" "}
+                        <span className="text-produmar-600 dark:text-produmar-400">
+                          ({umPorUm ? qtdAplicados : marcados.size} de {doTipo.length})
+                        </span>
+                      </Label>
+                      {!umPorUm && (
+                        <div className="flex gap-3 text-[11px] font-medium">
+                          <button
+                            type="button"
+                            className="text-produmar-600 dark:text-produmar-400 hover:underline"
+                            onClick={() =>
+                              setMarcados((prev) => {
+                                const n = new Set(prev);
+                                visiveis.forEach((a) => n.add(a.id));
+                                return n;
+                              })
+                            }
+                          >
+                            Marcar {visiveis.length === doTipo.length ? "todos" : "os filtrados"}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-slate-500 hover:underline"
+                            onClick={() => setMarcados(new Set())}
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1">
+                      {(["todos", "vaca", "boi", "bezerro"] as CatFiltro[]).map((c) => (
+                        <Chip key={c} active={cat === c} onClick={() => setCat(c)} className="px-1 text-[11px]">
+                          {c === "todos" ? "Todos" : categoryPlural(c, species)}
+                        </Chip>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      {racas.length > 0 && (
+                        <select
+                          value={breedId}
+                          onChange={(e) => setBreedId(e.target.value)}
+                          aria-label="Raça"
+                          className="h-10 flex-1 min-w-0 rounded-md border border-slate-200 bg-white px-2 text-sm uppercase dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                        >
+                          <option value="">Todas as raças</option>
+                          {racas.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 z-[1]" />
+                        <Input
+                          ref={buscaRef}
+                          value={busca}
+                          onChange={(e) => setBusca(e.target.value)}
+                          onKeyDown={buscaEnter}
+                          placeholder="Nº do animal"
+                          className="h-10 pl-8"
+                          inputMode="search"
+                          enterKeyHint="go"
+                        />
+                      </div>
+                    </div>
+
+                    {doTipo.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-3 text-center">
+                        Nenhum {SPECIES_META[protocolo.species].label.toLowerCase()} no rebanho.
+                      </p>
+                    ) : visiveis.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-3 text-center">
+                        Nenhum animal com esse nº.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-4 sm:grid-cols-5 gap-1 max-h-64 overflow-y-auto p-0.5">
+                        {visiveis.map((a) => {
+                          const feito = umPorUm && aplicados.has(a.id);
+                          const on = !umPorUm && marcados.has(a.id);
+                          return (
+                            <button
+                              key={a.id}
+                              type="button"
+                              onClick={() => (umPorUm ? abrirAnimal(a.id) : alternar(a.id))}
+                              className={cn(
+                                "relative min-h-[44px] rounded-lg border text-center leading-tight px-0.5 transition-colors active:scale-[0.97]",
+                                on
+                                  ? "bg-produmar-600 border-produmar-600 text-white"
+                                  : feito
+                                    ? "bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-300"
+                                    : "bg-white border-slate-200 text-slate-700 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
+                              )}
+                            >
+                              {feito && (
+                                <Check className="w-3 h-3 absolute top-0.5 right-0.5 text-emerald-600" />
+                              )}
+                              <span className="block text-sm font-bold tabular-nums">{a.tag}</span>
+                              <span
+                                className={cn(
+                                  "block text-[10px] tabular-nums",
+                                  on ? "text-white/80" : feito ? "text-emerald-600" : "text-slate-400"
+                                )}
+                              >
+                                {feito
+                                  ? "aplicado"
+                                  : Number(a.weight) > 0
+                                    ? formatWeight(Number(a.weight))
+                                    : "sem peso"}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {!umPorUm && usaPeso && semPeso > 0 && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                        {semPeso} {semPeso === 1 ? "animal está" : "animais estão"} sem peso — dá
+                        para digitar o peso na lista do curral, na hora de aplicar.
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
 
@@ -793,22 +1166,58 @@ function ProgramarDialog({
           )}
 
           <DialogFooter className={STICKY_FOOTER}>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isPending}
-              className={FOOTER_CANCEL}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={isPending || !protocolo || marcados.size === 0}
-              className={FOOTER_SUBMIT}
-            >
-              {isPending ? "Programando..." : `Programar ${marcados.size || ""}`.trim()}
-            </Button>
+            {umPorUm && animal ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={escolherOutro}
+                  disabled={isPending}
+                  className={FOOTER_CANCEL}
+                >
+                  Voltar
+                </Button>
+                {!jaAplicadoNele && (
+                  <Button
+                    type="submit"
+                    disabled={isPending || faltaPeso}
+                    className={FOOTER_SUBMIT}
+                  >
+                    <Syringe className="w-4 h-4" />
+                    {isPending ? "Aplicando..." : "Aplicar protocolo"}
+                  </Button>
+                )}
+              </>
+            ) : umPorUm ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={isPending}
+                className="flex-1"
+              >
+                {qtdAplicados > 0 ? "Concluir" : "Fechar"}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={isPending}
+                  className={FOOTER_CANCEL}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isPending || !protocolo || marcados.size === 0}
+                  className={FOOTER_SUBMIT}
+                >
+                  {isPending ? "Programando..." : `Programar ${marcados.size || ""}`.trim()}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -846,17 +1255,21 @@ function EtapaDialog({
   const [aplicadoEm, setAplicadoEm] = useState(localDateISO());
   /** Peso digitado na hora, por animal. */
   const [pesos, setPesos] = useState<Record<string, string>>({});
-  const [fora, setFora] = useState<Set<string>>(new Set());
+  const [busca, setBusca] = useState("");
+  /** O animal que acabou de ser aplicado sozinho, para o aviso. */
+  const [ultimo, setUltimo] = useState<string | null>(null);
 
   const itens = (aplicacao.itens ?? []).filter((i) => i.dia === dia);
   const data = addDays(aplicacao.start_date, dia);
-  const feita = feitas.length > 0;
+  /** Quem já tomou esta etapa — dá para aplicar aos poucos, um por vez. */
+  const tomaram = useMemo(() => new Set(feitas.map((f) => f.animal_id)), [feitas]);
 
   useEffect(() => {
     if (!open) return;
     setAplicadoEm(data <= localDateISO() ? localDateISO() : data);
     setPesos({});
-    setFora(new Set());
+    setBusca("");
+    setUltimo(null);
     setError(null);
   }, [open, aplicacao.id, dia, data]);
 
@@ -878,13 +1291,19 @@ function EtapaDialog({
             peso,
             pesado: digitado != null && digitado !== "" && parseDecimal(digitado) > 0,
             doses: itens.map((i) => doseDe(i, peso)),
+            feito: tomaram.has(x.animal_id),
           };
         })
         .sort((a, b) => a.tag.localeCompare(b.tag, "pt-BR", { numeric: true })),
-    [animaisDaAplicacao, animalById, pesos, itens]
+    [animaisDaAplicacao, animalById, pesos, itens, tomaram]
   );
 
-  const ativas = linhas.filter((l) => !fora.has(l.id) && !l.saiu);
+  const pendentes = linhas.filter((l) => !l.saiu && !l.feito);
+  const feita = tomaram.size > 0 && pendentes.length === 0;
+  const q = busca.trim().toUpperCase();
+  const linhasVisiveis = q ? linhas.filter((l) => l.tag.toUpperCase().includes(q)) : linhas;
+
+  const ativas = pendentes;
   const totais = itens.map((_, idx) =>
     ativas.reduce((s, l) => s + (l.doses[idx] ?? 0), 0)
   );
@@ -926,17 +1345,28 @@ function EtapaDialog({
     w.document.close();
   }
 
-  function aplicar() {
+  /**
+   * Sem argumento, marca todos os que estão com o ✓. Com uma linha, aplica só
+   * naquele animal e a lista fica aberta para escolher o próximo.
+   */
+  function aplicar(so?: (typeof linhas)[number]) {
     setError(null);
-    if (ativas.length === 0) return setError("Nenhum animal marcado");
-    if (faltaDose)
-      return setError("Tem animal sem peso: digite o peso dele ou desmarque para aplicar depois");
+    const alvo = so ? [so] : ativas;
+    if (alvo.length === 0) return setError("Nenhum animal marcado");
+    if (!so && alvo.length > 1 && !confirm(`Marcar a etapa como aplicada nos ${alvo.length} animais que faltam?`))
+      return;
+    if (alvo.some((l) => l.doses.some((d) => d == null)))
+      return setError(
+        so
+          ? `O ${so.tag} está sem peso: digite o peso dele para calcular a dose`
+          : "Tem animal sem peso: digite o peso dele ou desmarque para aplicar depois"
+      );
     startTransition(async () => {
       const r = await aplicarEtapaProtocolo({
         aplicacao_id: aplicacao.id,
         dia,
         applied_at: aplicadoEm,
-        animais: ativas.map((l) => ({
+        animais: alvo.map((l) => ({
           animal_id: l.id,
           weight_kg: l.peso > 0 ? l.peso : null,
           pesado: l.pesado,
@@ -945,7 +1375,18 @@ function EtapaDialog({
       });
       if (r && "error" in r) return setError(r.error ?? "Erro ao registrar");
       if (r && "warning" in r && r.warning) alert(r.warning);
-      onClose();
+      if (!so) return onClose();
+      setUltimo(so.tag);
+      setBusca("");
+    });
+  }
+
+  function desfazerAnimal(l: (typeof linhas)[number]) {
+    if (!confirm(`Desfazer esta etapa no ${l.tag}? As doses saem da ficha dele.`)) return;
+    startTransition(async () => {
+      const r = await desfazerEtapaProtocolo(aplicacao.id, dia, l.id);
+      if (r && "error" in r) return setError(r.error ?? "Erro ao desfazer");
+      if (ultimo === l.tag) setUltimo(null);
     });
   }
 
@@ -1023,11 +1464,37 @@ function EtapaDialog({
           </div>
         ) : (
           <div className="space-y-3">
+            {ultimo && (
+              <p className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-400">
+                <Check className="w-4 h-4 flex-shrink-0" />
+                <span>
+                  <strong>{ultimo}</strong> aplicado. Escolha o próximo animal.
+                </span>
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 z-[1]" />
+                <Input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Nº do animal"
+                  className="h-10 pl-8"
+                  inputMode="search"
+                />
+              </div>
+              <p className="text-[12px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                <strong className="text-emerald-600 dark:text-emerald-400">
+                  {linhas.filter((l) => l.feito).length}
+                </strong>{" "}
+                de {linhas.filter((l) => l.feito || !l.saiu).length} aplicados
+              </p>
+            </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 max-h-[50vh] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800 text-[11px] text-slate-500 sticky top-0 z-[1]">
                   <tr>
-                    <th className="w-8 px-1 py-1.5"></th>
+                    <th className="w-[76px] px-1 py-1.5"></th>
                     <th className="text-left px-1.5 py-1.5">Nº</th>
                     <th className="text-left px-1.5 py-1.5">Peso (kg)</th>
                     {itens.map((i) => (
@@ -1038,32 +1505,46 @@ function EtapaDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {linhas.map((l) => {
-                    const off = fora.has(l.id) || l.saiu;
+                  {linhasVisiveis.length === 0 && (
+                    <tr>
+                      <td colSpan={3 + itens.length} className="px-2 py-3 text-center text-xs text-slate-400">
+                        Nenhum animal com esse nº nesta programação.
+                      </td>
+                    </tr>
+                  )}
+                  {linhasVisiveis.map((l) => {
+                    const off = l.saiu || l.feito;
                     return (
                       <tr
                         key={l.id}
                         className={cn(
                           "border-t border-slate-100 dark:border-slate-800",
-                          off && "opacity-40"
+                          l.feito && "bg-emerald-50/60 dark:bg-emerald-950/20",
+                          l.saiu && "opacity-40"
                         )}
                       >
-                        <td className="px-1 py-1 text-center">
-                          <input
-                            type="checkbox"
-                            checked={!off}
-                            disabled={l.saiu}
-                            onChange={() =>
-                              setFora((prev) => {
-                                const n = new Set(prev);
-                                if (n.has(l.id)) n.delete(l.id);
-                                else n.add(l.id);
-                                return n;
-                              })
-                            }
-                            aria-label={`Aplicar no ${l.tag}`}
-                            className="w-5 h-5 accent-produmar-600"
-                          />
+                        <td className="px-1 py-1">
+                          {l.feito ? (
+                            <button
+                              type="button"
+                              onClick={() => desfazerAnimal(l)}
+                              disabled={isPending}
+                              title="Desfazer neste animal"
+                              className="w-full h-9 rounded-md flex items-center justify-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400"
+                            >
+                              <Check className="w-4 h-4" />
+                              feito
+                            </button>
+                          ) : l.saiu ? null : (
+                            <button
+                              type="button"
+                              onClick={() => aplicar(l)}
+                              disabled={isPending}
+                              className="w-full h-9 rounded-md bg-produmar-600 text-white text-[11px] font-semibold active:scale-[0.97] disabled:opacity-50"
+                            >
+                              Aplicar
+                            </button>
+                          )}
                         </td>
                         <td className="px-1.5 py-1 font-bold tabular-nums whitespace-nowrap">
                           {l.tag}
@@ -1072,26 +1553,37 @@ function EtapaDialog({
                           )}
                         </td>
                         <td className="px-1.5 py-1">
-                          <Input
-                            value={pesos[l.id] ?? ""}
-                            onChange={(e) =>
-                              setPesos((p) => ({ ...p, [l.id]: formatDecimalInput(e.target.value) }))
-                            }
-                            placeholder={l.base > 0 ? String(l.base).replace(".", ",") : "peso"}
-                            inputMode="decimal"
-                            aria-label={`Peso do ${l.tag}`}
-                            className="h-9 w-20 tabular-nums px-2"
-                          />
+                          {off ? (
+                            <span className="text-[12px] tabular-nums text-slate-500">
+                              {l.peso > 0 ? String(l.peso).replace(".", ",") : "—"}
+                            </span>
+                          ) : (
+                            <Input
+                              value={pesos[l.id] ?? ""}
+                              onChange={(e) =>
+                                setPesos((p) => ({ ...p, [l.id]: formatDecimalInput(e.target.value) }))
+                              }
+                              placeholder={l.base > 0 ? String(l.base).replace(".", ",") : "peso"}
+                              inputMode="decimal"
+                              aria-label={`Peso do ${l.tag}`}
+                              semDitado
+                              className="h-9 w-20 tabular-nums px-2"
+                            />
+                          )}
                         </td>
                         {l.doses.map((d, idx) => (
                           <td
                             key={idx}
                             className={cn(
                               "px-1.5 py-1 text-right font-semibold tabular-nums whitespace-nowrap",
-                              d == null ? "text-amber-600" : "text-produmar-700 dark:text-produmar-300"
+                              l.feito
+                                ? "text-emerald-700/70 dark:text-emerald-400/70"
+                                : d == null
+                                  ? "text-amber-600"
+                                  : "text-produmar-700 dark:text-produmar-300"
                             )}
                           >
-                            {d == null ? "sem peso" : formatMl(d)}
+                            {l.feito ? "✓" : d == null ? "sem peso" : formatMl(d)}
                           </td>
                         ))}
                       </tr>
@@ -1102,7 +1594,7 @@ function EtapaDialog({
                   <tr>
                     <td></td>
                     <td colSpan={2} className="px-1.5 py-1.5 font-semibold">
-                      Total · {ativas.length} animais
+                      Falta · {ativas.length} animais
                     </td>
                     {totais.map((t, idx) => (
                       <td key={idx} className="px-1.5 py-1.5 text-right font-bold tabular-nums">
@@ -1118,12 +1610,13 @@ function EtapaDialog({
               {itens
                 .map((i) => `${i.name}: ${i.dose_ml_per_weight && i.dose_weight_kg ? `${formatMl(Number(i.dose_ml_per_weight))} a cada ${Number(i.dose_weight_kg)} kg` : formatMl(Number(i.default_dose_ml))}`)
                 .join(" · ")}
-              . Pesou no curral? Digite o peso e a dose se refaz — o peso fica registrado.
+              . Toque em <strong>Aplicar</strong> no animal que tomou e siga para o próximo.
+              Pesou no curral? Digite o peso antes e a dose se refaz — o peso fica registrado.
             </p>
             {faltaDose && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                Animal sem peso fica sem a dose que depende do peso. Digite o peso dele ou
-                desmarque.
+                Animal sem peso fica sem a dose que depende do peso. Digite o peso dele antes de
+                aplicar.
               </p>
             )}
 
@@ -1162,12 +1655,12 @@ function EtapaDialog({
               </Button>
               <Button
                 type="button"
-                onClick={aplicar}
+                onClick={() => aplicar()}
                 disabled={isPending || ativas.length === 0}
                 className={FOOTER_SUBMIT}
               >
                 <Check className="w-4 h-4" />
-                {isPending ? "Registrando..." : "Marcar aplicado"}
+                {isPending ? "Registrando..." : `Aplicar em todos (${ativas.length})`}
               </Button>
             </DialogFooter>
           </div>

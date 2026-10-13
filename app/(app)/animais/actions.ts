@@ -2168,32 +2168,20 @@ export async function deleteProtocolo(id: string) {
 }
 
 /**
- * Programa o protocolo num grupo de animais a partir de `start_date`. Guarda a
+ * Cria a programação (a "leva") do protocolo a partir de `start_date`. Guarda a
  * fotografia dos itens com a regra de dose de cada medicamento — é ela que
  * calcula as etapas daqui pra frente, mesmo que o cadastro mude.
  */
-export async function createProtocoloAplicacao(input: {
-  protocolo_id: string;
-  start_date: string;
-  animais: { animal_id: string; weight_kg?: number | null }[];
-  notes?: string | null;
-}) {
-  const supabase = createClient();
-  if (!input.protocolo_id) return { error: "Escolha o protocolo" };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start_date ?? ""))
-    return { error: "Informe a data de início" };
-
-  const animais = Array.from(
-    new Map(
-      (input.animais ?? []).filter((a) => a.animal_id).map((a) => [a.animal_id, a])
-    ).values()
-  );
-  if (animais.length === 0) return { error: "Escolha os animais" };
-
+async function novaProgramacao(
+  supabase: ReturnType<typeof createClient>,
+  protocoloId: string,
+  startDate: string,
+  notes?: string | null
+): Promise<{ id: string } | { error: string }> {
   const { data: protocolo, error: pErr } = await supabase
     .from("animal_protocolos")
     .select("id, name, species")
-    .eq("id", input.protocolo_id)
+    .eq("id", protocoloId)
     .maybeSingle();
   if (pErr) return { error: protocolosError(pErr) };
   if (!protocolo) return { error: "Protocolo não encontrado" };
@@ -2232,13 +2220,42 @@ export async function createProtocoloAplicacao(input: {
       protocolo_id: protocolo.id,
       name: protocolo.name,
       species: protocolo.species,
-      start_date: input.start_date,
+      start_date: startDate,
       itens: foto,
-      notes: clean(input.notes),
+      notes: clean(notes),
     })
     .select("id")
     .single();
   if (aErr || !aplicacao) return { error: aErr ? protocolosError(aErr) : "Erro ao programar" };
+  return { id: aplicacao.id as string };
+}
+
+/** Programa o protocolo num grupo de animais a partir de `start_date`. */
+export async function createProtocoloAplicacao(input: {
+  protocolo_id: string;
+  start_date: string;
+  animais: { animal_id: string; weight_kg?: number | null }[];
+  notes?: string | null;
+}) {
+  const supabase = createClient();
+  if (!input.protocolo_id) return { error: "Escolha o protocolo" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start_date ?? ""))
+    return { error: "Informe a data de início" };
+
+  const animais = Array.from(
+    new Map(
+      (input.animais ?? []).filter((a) => a.animal_id).map((a) => [a.animal_id, a])
+    ).values()
+  );
+  if (animais.length === 0) return { error: "Escolha os animais" };
+
+  const aplicacao = await novaProgramacao(
+    supabase,
+    input.protocolo_id,
+    input.start_date,
+    input.notes
+  );
+  if ("error" in aplicacao) return { error: aplicacao.error };
 
   const { error: anErr } = await supabase.from("animal_protocolo_aplicacao_animais").insert(
     animais.map((a) => ({
@@ -2268,29 +2285,45 @@ export async function deleteProtocoloAplicacao(id: string) {
   return { ok: true };
 }
 
+interface EtapaAnimalInput {
+  animal_id: string;
+  weight_kg?: number | null;
+  /** true quando o peso foi digitado na hora (pesado no curral). */
+  pesado?: boolean;
+  doses: { medicamento_id: string; dose_ml?: number | null }[];
+}
+
 /**
  * Marca uma etapa como aplicada: cada dose de cada animal vira um tratamento
  * na ficha dele, com o dia da próxima etapa como "próxima aplicação". O peso
  * usado fica na programação (é o ponto de partida da etapa seguinte) e, se foi
  * pesado no curral, vira pesagem do animal.
+ *
+ * Dá para marcar aos poucos — um animal de cada vez no curral. Quem já tomou
+ * a etapa fica de fora (não dobra a dose).
  */
 export async function aplicarEtapaProtocolo(input: {
   aplicacao_id: string;
   dia: number;
   applied_at: string;
-  animais: {
-    animal_id: string;
-    weight_kg?: number | null;
-    /** true quando o peso foi digitado na hora (pesado no curral). */
-    pesado?: boolean;
-    doses: { medicamento_id: string; dose_ml?: number | null }[];
-  }[];
+  animais: EtapaAnimalInput[];
 }) {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
+  const r = await registrarEtapa(supabase, user.id, input);
+  if ("error" in r) return { error: r.error };
+  revalidate();
+  return { ok: true, warning: r.warning };
+}
+
+async function registrarEtapa(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  input: { aplicacao_id: string; dia: number; applied_at: string; animais: EtapaAnimalInput[] }
+): Promise<{ ok: true; warning?: string } | { error: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.applied_at ?? ""))
     return { error: "Informe o dia da aplicação" };
 
@@ -2302,12 +2335,22 @@ export async function aplicarEtapaProtocolo(input: {
   if (aErr) return { error: protocolosError(aErr) };
   if (!aplicacao) return { error: "Programação não encontrada" };
 
-  const { count } = await supabase
+  // quem já tomou esta etapa não toma de novo
+  const { data: jaFeitas, error: fErr } = await supabase
     .from("animal_treatments")
-    .select("id", { count: "exact", head: true })
+    .select("animal_id")
     .eq("protocolo_aplicacao_id", aplicacao.id)
     .eq("protocolo_dia", input.dia);
-  if (count && count > 0) return { error: "Essa etapa já foi marcada como aplicada" };
+  if (fErr) return { error: protocolosError(fErr) };
+  const jaTomou = new Set((jaFeitas ?? []).map((t) => t.animal_id as string));
+  const animais = (input.animais ?? []).filter((a) => !jaTomou.has(a.animal_id));
+  if (animais.length === 0)
+    return {
+      error:
+        (input.animais ?? []).length === 1
+          ? "Esse animal já recebeu essa etapa"
+          : "Esses animais já receberam essa etapa",
+    };
 
   const itens = (aplicacao.itens ?? []) as { dia: number; medicamento_id: string; name: string }[];
   const daEtapa = new Map(
@@ -2327,7 +2370,7 @@ export async function aplicarEtapaProtocolo(input: {
     input.dia === 0 ? "INÍCIO" : `DIA ${input.dia}`
   }`;
   const linhas = [];
-  for (const a of input.animais ?? []) {
+  for (const a of animais) {
     for (const d of a.doses ?? []) {
       const item = daEtapa.get(d.medicamento_id);
       if (!item) continue;
@@ -2341,7 +2384,7 @@ export async function aplicarEtapaProtocolo(input: {
         next_application,
         protocolo_aplicacao_id: aplicacao.id,
         protocolo_dia: input.dia,
-        created_by: user.id,
+        created_by: userId,
       });
     }
   }
@@ -2352,7 +2395,7 @@ export async function aplicarEtapaProtocolo(input: {
 
   // o peso usado segue para a próxima etapa; pesado no curral vira pesagem
   let warning: string | undefined;
-  for (const a of input.animais ?? []) {
+  for (const a of animais) {
     if (!a.weight_kg || a.weight_kg <= 0) continue;
     await supabase
       .from("animal_protocolo_aplicacao_animais")
@@ -2365,24 +2408,131 @@ export async function aplicarEtapaProtocolo(input: {
         weight: money(a.weight_kg),
         weighed_at: input.applied_at,
         notes: `PROTOCOLO ${aplicacao.name}`,
-        created_by: user.id,
+        created_by: userId,
       });
       if (w.error) warning = `Etapa registrada, mas algum peso não: ${w.error}`;
     }
   }
 
-  revalidate();
   return { ok: true, warning };
 }
 
-/** Desfaz a etapa marcada por engano: os tratamentos dela saem das fichas. */
-export async function desfazerEtapaProtocolo(aplicacaoId: string, dia: number) {
+/**
+ * O curral um animal por vez: escolheu o nº, aplica a primeira etapa do
+ * protocolo NELE e já deixa as próximas programadas. Os animais aplicados no
+ * mesmo dia com o mesmo protocolo entram na mesma programação (a "leva") — é
+ * ela que aparece em "Em andamento" com a data do reforço.
+ */
+export async function aplicarProtocoloNoAnimal(input: {
+  protocolo_id: string;
+  /** O dia da aplicação — é o início da leva. */
+  start_date: string;
+  animal: EtapaAnimalInput;
+}) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!input.protocolo_id) return { error: "Escolha o protocolo" };
+  if (!input.animal?.animal_id) return { error: "Escolha o animal" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start_date ?? ""))
+    return { error: "Informe o dia da aplicação" };
+
+  // a leva do dia: reaproveita a programação desse protocolo com essa data
+  const { data: existente, error: eErr } = await supabase
+    .from("animal_protocolo_aplicacoes")
+    .select("id, itens")
+    .eq("protocolo_id", input.protocolo_id)
+    .eq("start_date", input.start_date)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (eErr) return { error: protocolosError(eErr) };
+
+  let aplicacaoId = existente?.id as string | undefined;
+  let itens = (existente?.itens ?? []) as { dia: number }[];
+  if (!aplicacaoId) {
+    const nova = await novaProgramacao(supabase, input.protocolo_id, input.start_date);
+    if ("error" in nova) return { error: nova.error };
+    aplicacaoId = nova.id;
+    const { data } = await supabase
+      .from("animal_protocolo_aplicacoes")
+      .select("itens")
+      .eq("id", aplicacaoId)
+      .maybeSingle();
+    itens = (data?.itens ?? []) as { dia: number }[];
+  }
+
+  const peso = input.animal.weight_kg && input.animal.weight_kg > 0 ? money(input.animal.weight_kg) : null;
+  const { error: anErr } = await supabase
+    .from("animal_protocolo_aplicacao_animais")
+    .upsert(
+      { aplicacao_id: aplicacaoId, animal_id: input.animal.animal_id, weight_kg: peso },
+      { onConflict: "aplicacao_id,animal_id" }
+    );
+  if (anErr) return { error: protocolosError(anErr) };
+
+  const primeiroDia = Math.min(...itens.map((i) => i.dia));
+  if (!Number.isFinite(primeiroDia)) return { error: "Esse protocolo não tem medicamentos" };
+
+  const r = await registrarEtapa(supabase, user.id, {
+    aplicacao_id: aplicacaoId,
+    dia: primeiroDia,
+    applied_at: addDaysISO(input.start_date, primeiroDia),
+    animais: [input.animal],
+  });
+  if ("error" in r) return { error: r.error };
+
+  revalidate();
+  return { ok: true, aplicacao_id: aplicacaoId, warning: r.warning };
+}
+
+/**
+ * Desfaz o "aplicar" de um animal só (tocou no nº errado): as doses dele saem
+ * da ficha e ele sai da leva. Se a leva ficar vazia, some também.
+ */
+export async function desfazerProtocoloNoAnimal(aplicacaoId: string, animalId: string) {
   const supabase = createClient();
   const { error } = await supabase
     .from("animal_treatments")
     .delete()
     .eq("protocolo_aplicacao_id", aplicacaoId)
+    .eq("animal_id", animalId);
+  if (error) return { error: protocolosError(error) };
+
+  const { error: anErr } = await supabase
+    .from("animal_protocolo_aplicacao_animais")
+    .delete()
+    .eq("aplicacao_id", aplicacaoId)
+    .eq("animal_id", animalId);
+  if (anErr) return { error: protocolosError(anErr) };
+
+  const { count } = await supabase
+    .from("animal_protocolo_aplicacao_animais")
+    .select("animal_id", { count: "exact", head: true })
+    .eq("aplicacao_id", aplicacaoId);
+  if (count === 0) {
+    await supabase.from("animal_protocolo_aplicacoes").delete().eq("id", aplicacaoId);
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Desfaz a etapa marcada por engano: os tratamentos dela saem das fichas. Com
+ * `animalId`, desfaz só a daquele animal.
+ */
+export async function desfazerEtapaProtocolo(aplicacaoId: string, dia: number, animalId?: string) {
+  const supabase = createClient();
+  let q = supabase
+    .from("animal_treatments")
+    .delete()
+    .eq("protocolo_aplicacao_id", aplicacaoId)
     .eq("protocolo_dia", dia);
+  if (animalId) q = q.eq("animal_id", animalId);
+  const { error } = await q;
   if (error) return { error: protocolosError(error) };
   revalidate();
   return { ok: true };
