@@ -19,6 +19,7 @@ import type {
   AnimalVaccine,
   AnimalVaccinePending,
   AnimalVenda,
+  AnimalPesoFoto,
   AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
@@ -53,6 +54,7 @@ export default async function AnimaisPage() {
     aplicacoesRes,
     aplicacaoAnimaisRes,
     etapasFeitasRes,
+    pesosFotoRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -147,6 +149,13 @@ export default async function AnimaisPage() {
       .select("id, animal_id, medicine, dose, applied_at, protocolo_aplicacao_id, protocolo_dia")
       .not("protocolo_aplicacao_id", "is", null)
       .limit(20000),
+    // peso estimado pela foto e a comparação com a balança (migration 109 —
+    // sem ela a Pesagem abre igual, só sem o histórico da foto)
+    supabase
+      .from("animal_pesos_foto")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(2000),
   ]);
 
   return (
@@ -173,6 +182,7 @@ export default async function AnimaisPage() {
       aplicacoes={(aplicacoesRes.data as AnimalProtocoloAplicacao[]) ?? []}
       aplicacaoAnimais={(aplicacaoAnimaisRes.data as AnimalProtocoloAplicacaoAnimal[]) ?? []}
       etapasFeitas={(etapasFeitasRes.data as EtapaFeita[]) ?? []}
+      pesosFoto={(pesosFotoRes.data as AnimalPesoFoto[]) ?? []}
     />
   );
 }

@@ -1048,6 +1048,29 @@ export interface AnimalWeight {
   created_at: string;
 }
 
+/**
+ * Peso estimado pela IA a partir de uma foto (migration 109). NÃO é pesagem:
+ * não entra em animal_weights nem calcula dose. `real_kg` é a balança no mesmo
+ * dia — é com ele que a tela mede quanto a foto erra.
+ */
+export interface AnimalPesoFoto {
+  id: string;
+  animal_id: string;
+  taken_at: string;
+  estimado_kg: number;
+  min_kg: number | null;
+  max_kg: number | null;
+  confianca: "baixa" | "media" | "alta" | null;
+  observacao: string | null;
+  modelo: string | null;
+  /** Última pesagem de balança conhecida na hora da foto. */
+  ultimo_peso_kg: number | null;
+  /** Balança no mesmo dia (null = só estimativa). */
+  real_kg: number | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // FICHA DE RECEITAS E DESPESAS COM ANIMAIS (migration 072)
 // ═══════════════════════════════════════════════════════════════════════════

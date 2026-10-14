@@ -91,6 +91,7 @@ import type {
   AnimalTanque,
   AnimalVaccinePending,
   AnimalVenda,
+  AnimalPesoFoto,
   AnimalWeight,
   AnimalWithInfo,
 } from "@/lib/types";
@@ -136,6 +137,8 @@ interface Props {
   aplicacoes?: AnimalProtocoloAplicacao[];
   aplicacaoAnimais?: AnimalProtocoloAplicacaoAnimal[];
   etapasFeitas?: EtapaFeita[];
+  /** Peso estimado pela foto (migration 109). */
+  pesosFoto?: AnimalPesoFoto[];
 }
 
 type Tab =
@@ -209,6 +212,7 @@ export function AnimaisPageClient({
   aplicacoes = [],
   aplicacaoAnimais = [],
   etapasFeitas = [],
+  pesosFoto = [],
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -1496,6 +1500,7 @@ export function AnimaisPageClient({
         onClose={() => setWeightOpen(false)}
         animals={animals}
         weights={weights}
+        pesosFoto={pesosFoto}
         presetAnimalId={weightPresetId}
       />
       <TreatmentDialog
