@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Layers, Plus, Settings2 } from "lucide-react";
+import { Layers, Plus, Settings2, Split } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatBRL, formatDate, formatQty } from "@/lib/utils";
 import {
@@ -74,6 +74,8 @@ export function LotesTab({
   const [detalhe, setDetalhe] = useState<AnimalLoteResumo | null>(null);
   const [vendaLote, setVendaLote] = useState<AnimalLoteResumo | null>(null);
   const [despesaLote, setDespesaLote] = useState<AnimalLoteResumo | null>(null);
+  /** A nota de ração que serve a todos os tanques — entra dividida. */
+  const [notaDividida, setNotaDividida] = useState(false);
   /** Lançamento aberto para conserto — veio da lista de dentro do tanque. */
   const [editVenda, setEditVenda] = useState<AnimalVenda | null>(null);
   const [editDespesa, setEditDespesa] = useState<AnimalDespesa | null>(null);
@@ -167,6 +169,16 @@ export function LotesTab({
         <Button variant="outline" className="h-11" onClick={() => setTanquesOpen(true)}>
           <Settings2 className="w-4 h-4" />
           {localLabel(filtro === "todos" ? "piscicultura" : filtro)}s
+        </Button>
+        {/* A nota de ração (ou qualquer gasto) que serve a todos os tanques:
+            entra uma vez só e se divide pelo peixe vivo de cada um */}
+        <Button
+          variant="outline"
+          className="h-11 col-span-2 border-cyan-200 text-cyan-800 dark:border-cyan-900/50 dark:text-cyan-300"
+          onClick={() => setNotaDividida(true)}
+        >
+          <Split className="w-4 h-4" />
+          Despesa dividida entre os {localLabel(filtro === "todos" ? "piscicultura" : filtro).toLowerCase()}s
         </Button>
       </div>
 
@@ -324,6 +336,16 @@ export function LotesTab({
         despesa={null}
         presetSpecies={despesaLote ? speciesOf(despesaLote.species) : null}
         presetLoteId={despesaLote?.id ?? null}
+        lotes={lotes}
+        animals={animals}
+      />
+
+      <AnimalDespesaDialog
+        open={notaDividida}
+        onClose={() => setNotaDividida(false)}
+        despesa={null}
+        presetSpecies={filtro === "todos" ? "piscicultura" : filtro}
+        presetDividir
         lotes={lotes}
         animals={animals}
       />

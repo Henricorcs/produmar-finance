@@ -1487,6 +1487,77 @@ export async function deleteAnimalDespesa(id: string) {
   return { ok: true };
 }
 
+/**
+ * NOTA DIVIDIDA ENTRE OS TANQUES (migration 111).
+ *
+ * A nota de ração é uma só, mas a ração vai para todos os tanques com peixe.
+ * Ela vira uma despesa em cada ciclo, com a parte dele — a tela já fez a
+ * conta (pelo peixe vivo ou em partes iguais) e manda as partes prontas. As
+ * partes levam o mesmo `rateio_id`: é o que deixa apagar a nota inteira.
+ */
+export async function createAnimalDespesaDividida(
+  input: AnimalDespesaInput,
+  partes: { lote_id: string; amount: number; quantity?: number | null }[]
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const falta = despesaInvalida(input);
+  if (falta) return { error: falta };
+
+  const validas = partes.filter((p) => p.lote_id && money(p.amount) > 0);
+  if (validas.length < 2) return { error: "Escolha pelo menos dois tanques para dividir" };
+
+  // A soma das partes tem de fechar com a nota: a tela arredonda os centavos
+  // no último tanque, então qualquer diferença aqui é erro, não arredondamento.
+  const total = despesaRow(input).amount;
+  const soma = validas.reduce((s, p) => s + money(p.amount), 0);
+  if (Math.abs(soma - total) >= 0.01) {
+    return { error: "A soma das partes não fecha com o valor da nota — confira a divisão" };
+  }
+
+  const rateioId = randomUUID();
+  const base = despesaRow(input);
+  const local = input.species === "aves" ? "GALPÕES" : "TANQUES";
+  const marca = `NOTA DE ${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} DIVIDIDA EM ${validas.length} ${local}`;
+  const linhas = validas.map((p) => ({
+    ...base,
+    lote_id: p.lote_id,
+    animal_id: null,
+    amount: money(p.amount),
+    quantity: p.quantity != null ? qtd(p.quantity) : base.quantity,
+    notes: base.notes ? `${base.notes} · ${marca}` : marca,
+    created_by: user.id,
+  }));
+
+  let { error } = await supabase
+    .from("animal_despesas")
+    .insert(linhas.map((l) => ({ ...l, rateio_id: rateioId })));
+
+  // Sem a 111 a coluna não existe: a divisão sai igual, só sem o vínculo que
+  // deixa apagar a nota inteira de uma vez.
+  if (error && /rateio_id/.test(error.message)) {
+    ({ error } = await supabase.from("animal_despesas").insert(linhas));
+  }
+
+  if (error) return { error: despesaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Apaga a nota dividida inteira — a parte de todos os tanques. */
+export async function deleteAnimalDespesaDividida(rateioId: string) {
+  if (!rateioId) return { error: "Nota não encontrada" };
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_despesas").delete().eq("rateio_id", rateioId);
+  if (error) return { error: despesaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // VENDA DE LOTE (migration 088) — o peixe e a ave, que não têm brinco
 // ─────────────────────────────────────────────────────────────────────────────

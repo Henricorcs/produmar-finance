@@ -1145,6 +1145,8 @@ export interface AnimalDespesa {
   notes: string | null;
   /** De qual ciclo é o gasto (089). Em branco, vale para a espécie e só entra no geral. */
   lote_id?: string | null;
+  /** Parte de uma nota dividida entre tanques (111) — as partes têm o mesmo id. */
+  rateio_id?: string | null;
   created_by: string | null;
   created_at: string;
 }
