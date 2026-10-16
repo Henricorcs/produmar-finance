@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import {
   AlertTriangle,
   Baby,
+  Camera,
   ChevronRight,
   HandCoins,
   ImageIcon,
@@ -697,6 +698,15 @@ export function AnimalDetailDialog({
                 >
                   <Stethoscope className="w-4 h-4" />
                   Tratamento
+                </Button>
+                {/* Abre a mesma Pesagem — o botão da câmera fica logo no topo */}
+                <Button
+                  variant="outline"
+                  className="h-12 sm:h-10 col-span-2"
+                  onClick={() => onWeigh(animal)}
+                >
+                  <Camera className="w-4 h-4" />
+                  Peso pela foto
                 </Button>
                 {animal.sex === "femea" && (
                   <Button

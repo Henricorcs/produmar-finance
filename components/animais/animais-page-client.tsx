@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Plus,
   Printer,
+  Camera,
   Search,
   Settings2,
   Pencil,
@@ -1014,6 +1015,17 @@ export function AnimaisPageClient({
               >
                 <Printer className="w-4 h-4" />
                 Imprimir
+              </button>
+
+              {/* Atalho para a Pesagem com a câmera: escolhe o animal e
+                  toca em "Estimar pela foto" — sem precisar abrir a ficha */}
+              <button
+                type="button"
+                onClick={() => openWeight(null)}
+                className="flex items-center justify-center gap-1.5 h-11 px-3 rounded-xl border border-produmar-200 bg-white text-xs font-semibold text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
+              >
+                <Camera className="w-4 h-4" />
+                Peso pela foto
               </button>
 
               {/* Só aparece quando existe pendência marcada na mão */}
