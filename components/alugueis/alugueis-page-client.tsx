@@ -9,6 +9,7 @@ import {
   FileSignature,
   FileText,
   HandCoins,
+  Landmark,
   Plus,
   Printer,
   Search,
@@ -25,9 +26,11 @@ import { ImovelDialog } from "./imovel-dialog";
 import { ContratoDialog } from "./contrato-dialog";
 import { BaixaDialog } from "./baixa-dialog";
 import { ModeloDialog } from "./modelo-dialog";
+import { CompraVendaDialog } from "./compra-venda-dialog";
 import { CodigoDoImovel } from "./alugueis-shared";
 import {
   rentalKindLabel,
+  type PropertySaleContract,
   type RentalContractTemplate,
   type RentalContractView,
   type RentalPayment,
@@ -40,15 +43,19 @@ interface Props {
   /** As baixas do mês da tela. */
   payments: RentalPayment[];
   template: RentalContractTemplate | null;
+  /** Contratos de compra e venda em que a PRODUMAR compra (migration 110). */
+  compras?: PropertySaleContract[];
+  compraVendaPendente?: boolean;
   month: string;
   migrationPendente?: boolean;
 }
 
-type Aba = "mes" | "imoveis";
+type Aba = "mes" | "imoveis" | "compra";
 
 const ABAS = [
   { value: "mes" as const, label: "Aluguéis do mês" },
   { value: "imoveis" as const, label: "Imóveis" },
+  { value: "compra" as const, label: "Compra e venda" },
 ];
 
 /**
@@ -63,6 +70,8 @@ export function AlugueisPageClient({
   contracts,
   payments,
   template,
+  compras = [],
+  compraVendaPendente = false,
   month,
   migrationPendente = false,
 }: Props) {
@@ -80,6 +89,8 @@ export function AlugueisPageClient({
   const [presetPropertyId, setPresetPropertyId] = useState<string | null>(null);
   const [baixa, setBaixa] = useState<CobrancaDoMes | null>(null);
   const [modeloOpen, setModeloOpen] = useState(false);
+  const [compraOpen, setCompraOpen] = useState(false);
+  const [editCompra, setEditCompra] = useState<PropertySaleContract | null>(null);
 
   const [year, monthNum] = month.split("-").map(Number);
   const mesLabel = new Date(year, monthNum - 1, 1).toLocaleDateString("pt-BR", {
@@ -303,7 +314,7 @@ export function AlugueisPageClient({
             na linha para dar baixa quando o inquilino pagar.
           </p>
         </>
-      ) : (
+      ) : aba === "imoveis" ? (
         <>
           {imoveisVisiveis.length === 0 ? (
             <div className="text-center py-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
@@ -417,6 +428,16 @@ export function AlugueisPageClient({
             Modelo do contrato
           </button>
         </>
+      ) : (
+        <ComprasLista
+          compras={compras}
+          busca={search}
+          pendente={compraVendaPendente}
+          onAbrir={(c) => {
+            setEditCompra(c);
+            setCompraOpen(true);
+          }}
+        />
       )}
 
       <ImovelDialog
@@ -437,6 +458,137 @@ export function AlugueisPageClient({
         onClose={() => setModeloOpen(false)}
         template={template}
       />
+      <CompraVendaDialog
+        open={compraOpen}
+        onClose={() => setCompraOpen(false)}
+        contrato={editCompra}
+      />
     </div>
+  );
+}
+
+/**
+ * Aba COMPRA E VENDA: os contratos em que a PRODUMAR compra um imóvel. Cada
+ * um sai impresso pronto; o "em branco" sai só com as linhas, para preencher
+ * à caneta na hora.
+ */
+function ComprasLista({
+  compras,
+  busca,
+  pendente,
+  onAbrir,
+}: {
+  compras: PropertySaleContract[];
+  busca: string;
+  pendente: boolean;
+  onAbrir: (c: PropertySaleContract | null) => void;
+}) {
+  const q = busca.trim().toUpperCase();
+  const visiveis = q
+    ? compras.filter(
+        (c) =>
+          (c.seller_name ?? "").toUpperCase().includes(q) ||
+          (c.property_address ?? "").toUpperCase().includes(q) ||
+          (c.property_registration ?? "").toUpperCase().includes(q)
+      )
+    : compras;
+
+  return (
+    <>
+      {pendente && (
+        <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            Rode a migration 110 no Supabase para guardar os contratos de compra e venda. O
+            contrato em branco já pode ser impresso.
+          </span>
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => onAbrir(null)}>
+          <Plus className="w-4 h-4" />
+          Novo contrato de compra e venda
+        </Button>
+        <a
+          href="/imprimir/compra-venda/em-branco"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 h-10 px-3 rounded-md border border-produmar-200 text-sm font-medium text-produmar-700 dark:border-slate-700 dark:text-produmar-400"
+        >
+          <Printer className="w-4 h-4" />
+          Imprimir em branco
+        </a>
+      </div>
+
+      {visiveis.length === 0 ? (
+        <div className="text-center py-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+          <Landmark className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 px-6">
+            {compras.length === 0
+              ? "Nenhum contrato de compra e venda ainda. A PRODUMAR entra sempre como compradora — preencha o vendedor e o imóvel."
+              : "Nenhum contrato com esse filtro."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {visiveis.map((c) => (
+            <div
+              key={c.id}
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                    VENDEDOR
+                  </p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                    {c.seller_name || "A preencher"}
+                  </p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                    {[c.property_kind, c.property_address].filter(Boolean).join(" · ") ||
+                      "Imóvel sem endereço"}
+                  </p>
+                </div>
+                {Number(c.price) > 0 && (
+                  <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100 flex-shrink-0">
+                    {formatBRL(Number(c.price))}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {c.signed_at ? `Assinatura em ${formatDate(c.signed_at)}` : "Sem data de assinatura"}
+                {c.property_registration ? ` · matrícula ${c.property_registration}` : ""}
+              </p>
+              <div className="flex items-center gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => onAbrir(c)}
+                  className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                >
+                  <FileSignature className="w-3 h-3" />
+                  Editar
+                </button>
+                <a
+                  href={`/imprimir/compra-venda/${c.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                >
+                  <Printer className="w-3 h-3" />
+                  Imprimir
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[11px] text-slate-400 dark:text-slate-500">
+        Contrato particular com testemunhas: vale entre as partes e permite cobrar na
+        Justiça. A propriedade só passa para a PRODUMAR com a escritura pública e o
+        registro no cartório de imóveis.
+      </p>
+    </>
   );
 }

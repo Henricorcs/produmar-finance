@@ -2511,6 +2511,56 @@ export interface RentalContractTemplate {
   updated_at: string;
 }
 
+/**
+ * Contrato de compra e venda de imóvel (migration 110). A compradora é sempre
+ * a PRODUMAR — a qualificação dela vem do modelo do contrato de aluguel.
+ * Tudo do vendedor é opcional: o que ficar em branco sai como linha para
+ * completar à caneta.
+ */
+export interface PropertySaleContract {
+  id: string;
+
+  seller_name: string | null;
+  seller_nationality: string | null;
+  seller_marital_status: string | null;
+  seller_property_regime: string | null;
+  seller_profession: string | null;
+  seller_rg: string | null;
+  seller_document: string | null;
+  seller_address: string | null;
+  seller_phone: string | null;
+  seller_email: string | null;
+
+  spouse_name: string | null;
+  spouse_nationality: string | null;
+  spouse_profession: string | null;
+  spouse_rg: string | null;
+  spouse_document: string | null;
+
+  property_kind: string | null;
+  property_address: string | null;
+  property_area: string | null;
+  property_description: string | null;
+  property_registration: string | null;
+  property_registry_office: string | null;
+  property_iptu_code: string | null;
+
+  price: number;
+  payment_terms: string | null;
+
+  possession_date: string | null;
+  deed_days: number | null;
+  penalty_percent: number | null;
+
+  forum_city: string | null;
+  signed_at: string | null;
+  notes: string | null;
+
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ALUGUEL DE IMPRESSORAS (migration 096)
 // ─────────────────────────────────────────────────────────────────────────────

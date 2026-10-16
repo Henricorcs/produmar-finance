@@ -460,7 +460,10 @@ export function valorPorExtenso(valor: number): string {
   const centavos = Math.round((v - inteiro) * 100);
 
   const partes: string[] = [];
-  if (inteiro) partes.push(`${numeroPorExtenso(inteiro)} ${inteiro === 1 ? "real" : "reais"}`);
+  // milhão redondo pede o "de": "um milhão de reais", não "um milhão reais"
+  const de = inteiro >= 1_000_000 && inteiro % 1_000_000 === 0 ? " de" : "";
+  if (inteiro)
+    partes.push(`${numeroPorExtenso(inteiro)}${de} ${inteiro === 1 ? "real" : "reais"}`);
   if (centavos)
     partes.push(`${numeroPorExtenso(centavos)} ${centavos === 1 ? "centavo" : "centavos"}`);
 

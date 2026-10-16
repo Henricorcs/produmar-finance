@@ -387,3 +387,135 @@ export async function salvarModeloContrato(id: string | null, body: string, name
   revalidate();
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTRATO DE COMPRA E VENDA DE IMÓVEL (migration 110)
+// ─────────────────────────────────────────────────────────────────────────────
+// A compradora é sempre a PRODUMAR, então aqui só se guarda o vendedor, o
+// imóvel e as condições. Quase tudo é opcional de propósito: o que ficar em
+// branco sai no papel como linha para completar à caneta.
+
+export interface PropertySaleContractInput {
+  seller_name?: string | null;
+  seller_nationality?: string | null;
+  seller_marital_status?: string | null;
+  seller_property_regime?: string | null;
+  seller_profession?: string | null;
+  seller_rg?: string | null;
+  seller_document?: string | null;
+  seller_address?: string | null;
+  seller_phone?: string | null;
+  seller_email?: string | null;
+
+  spouse_name?: string | null;
+  spouse_nationality?: string | null;
+  spouse_profession?: string | null;
+  spouse_rg?: string | null;
+  spouse_document?: string | null;
+
+  property_kind?: string | null;
+  property_address?: string | null;
+  property_area?: string | null;
+  property_description?: string | null;
+  property_registration?: string | null;
+  property_registry_office?: string | null;
+  property_iptu_code?: string | null;
+
+  price?: number | null;
+  payment_terms?: string | null;
+
+  possession_date?: string | null;
+  deed_days?: number | null;
+  penalty_percent?: number | null;
+
+  forum_city?: string | null;
+  signed_at?: string | null;
+  notes?: string | null;
+}
+
+/** A tabela vem da migration 110 — sem ela o erro do Postgres não diz nada. */
+function compraVendaError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.message.includes("property_sale_contracts"))
+    return "Rode a migration 110 no Supabase para guardar o contrato de compra e venda";
+  return error.message;
+}
+
+function saleRow(input: PropertySaleContractInput) {
+  return {
+    seller_name: clean(input.seller_name),
+    seller_nationality: clean(input.seller_nationality),
+    seller_marital_status: clean(input.seller_marital_status),
+    seller_property_regime: clean(input.seller_property_regime),
+    seller_profession: clean(input.seller_profession),
+    seller_rg: clean(input.seller_rg),
+    seller_document: raw(input.seller_document),
+    seller_address: clean(input.seller_address),
+    seller_phone: raw(input.seller_phone),
+    seller_email: raw(input.seller_email),
+
+    spouse_name: clean(input.spouse_name),
+    spouse_nationality: clean(input.spouse_nationality),
+    spouse_profession: clean(input.spouse_profession),
+    spouse_rg: clean(input.spouse_rg),
+    spouse_document: raw(input.spouse_document),
+
+    property_kind: clean(input.property_kind),
+    property_address: clean(input.property_address),
+    property_area: raw(input.property_area),
+    // texto corrido do contrato: fica como foi escrito, sem caixa alta
+    property_description: raw(input.property_description),
+    property_registration: clean(input.property_registration),
+    property_registry_office: raw(input.property_registry_office),
+    property_iptu_code: clean(input.property_iptu_code),
+
+    price: money(input.price),
+    payment_terms: raw(input.payment_terms),
+
+    possession_date: input.possession_date?.trim() || null,
+    deed_days: inteiro(input.deed_days),
+    penalty_percent: percent(input.penalty_percent),
+
+    forum_city: raw(input.forum_city),
+    signed_at: input.signed_at?.trim() || null,
+    notes: raw(input.notes),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function salvarContratoCompraVenda(
+  id: string | null,
+  input: PropertySaleContractInput
+): Promise<{ error: string } | { ok: true; id: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (id) {
+    const { error } = await supabase
+      .from("property_sale_contracts")
+      .update(saleRow(input))
+      .eq("id", id);
+    if (error) return { error: compraVendaError(error) };
+    revalidate();
+    return { ok: true, id };
+  }
+
+  const { data, error } = await supabase
+    .from("property_sale_contracts")
+    .insert({ ...saleRow(input), created_by: user.id })
+    .select("id")
+    .single();
+  if (error || !data) return { error: compraVendaError(error ?? { message: "Erro ao salvar" }) };
+  revalidate();
+  return { ok: true, id: data.id as string };
+}
+
+export async function apagarContratoCompraVenda(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("property_sale_contracts").delete().eq("id", id);
+  if (error) return { error: compraVendaError(error) };
+  revalidate();
+  return { ok: true };
+}
