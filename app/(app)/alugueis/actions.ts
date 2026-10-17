@@ -404,6 +404,12 @@ export interface PropertySaleContractInput {
   seller_rg?: string | null;
   seller_document?: string | null;
   seller_address?: string | null;
+  seller_street?: string | null;
+  seller_number?: string | null;
+  seller_complement?: string | null;
+  seller_district?: string | null;
+  seller_city?: string | null;
+  seller_zip?: string | null;
   seller_phone?: string | null;
   seller_email?: string | null;
 
@@ -415,6 +421,12 @@ export interface PropertySaleContractInput {
 
   property_kind?: string | null;
   property_address?: string | null;
+  property_street?: string | null;
+  property_number?: string | null;
+  property_complement?: string | null;
+  property_district?: string | null;
+  property_city?: string | null;
+  property_zip?: string | null;
   property_area?: string | null;
   property_description?: string | null;
   property_registration?: string | null;
@@ -435,6 +447,9 @@ export interface PropertySaleContractInput {
 
 /** A tabela vem da migration 110 — sem ela o erro do Postgres não diz nada. */
 function compraVendaError(error: { code?: string; message: string }): string {
+  // as partes do endereço (rua, número, bairro...) são da 112
+  if (/(seller|property)_(street|number|complement|district|city|zip)/.test(error.message))
+    return "Rode a migration 112 no Supabase para guardar o endereço em partes";
   if (error.code === "42P01" || error.message.includes("property_sale_contracts"))
     return "Rode a migration 110 no Supabase para guardar o contrato de compra e venda";
   return error.message;
@@ -450,6 +465,12 @@ function saleRow(input: PropertySaleContractInput) {
     seller_rg: clean(input.seller_rg),
     seller_document: raw(input.seller_document),
     seller_address: clean(input.seller_address),
+    seller_street: clean(input.seller_street),
+    seller_number: clean(input.seller_number),
+    seller_complement: clean(input.seller_complement),
+    seller_district: clean(input.seller_district),
+    seller_city: clean(input.seller_city),
+    seller_zip: raw(input.seller_zip),
     seller_phone: raw(input.seller_phone),
     seller_email: raw(input.seller_email),
 
@@ -461,6 +482,12 @@ function saleRow(input: PropertySaleContractInput) {
 
     property_kind: clean(input.property_kind),
     property_address: clean(input.property_address),
+    property_street: clean(input.property_street),
+    property_number: clean(input.property_number),
+    property_complement: clean(input.property_complement),
+    property_district: clean(input.property_district),
+    property_city: clean(input.property_city),
+    property_zip: raw(input.property_zip),
     property_area: raw(input.property_area),
     // texto corrido do contrato: fica como foi escrito, sem caixa alta
     property_description: raw(input.property_description),

@@ -66,6 +66,72 @@ function v(s?: string | null, linha = LINHA_EM_BRANCO): string {
   return t ? t : linha;
 }
 
+/** As partes de um endereço, como a tela pergunta (migration 112). */
+export interface EnderecoEmPartes {
+  rua?: string | null;
+  numero?: string | null;
+  complemento?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  cep?: string | null;
+}
+
+export function enderecoDoVendedor(c: PropertySaleContract): EnderecoEmPartes {
+  return {
+    rua: c.seller_street,
+    numero: c.seller_number,
+    complemento: c.seller_complement,
+    bairro: c.seller_district,
+    cidade: c.seller_city,
+    cep: c.seller_zip,
+  };
+}
+
+export function enderecoDoImovel(c: PropertySaleContract): EnderecoEmPartes {
+  return {
+    rua: c.property_street,
+    numero: c.property_number,
+    complemento: c.property_complement,
+    bairro: c.property_district,
+    cidade: c.property_city,
+    cep: c.property_zip,
+  };
+}
+
+/**
+ * O endereço do jeito que entra no contrato: "RUA DAS FLORES, nº 120, bairro
+ * CENTRO, SÃO MATEUS DO MARANHÃO/MA, CEP 65470-000". Cada pedaço em branco vira
+ * a sua própria linha para a caneta — o complemento, que nem todo endereço
+ * tem, simplesmente some. Sem parte nenhuma preenchida vale o texto corrido dos
+ * contratos salvos antes da 112.
+ */
+export function enderecoPorExtenso(e: EnderecoEmPartes, legado?: string | null): string {
+  const algum = [e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.cep].some((p) => p?.trim());
+  if (!algum && legado?.trim()) return legado.trim();
+  return [
+    v(e.rua),
+    `nº ${v(e.numero, "_______")}`,
+    e.complemento?.trim() || null,
+    `bairro ${v(e.bairro)}`,
+    v(e.cidade),
+    `CEP ${v(e.cep, "___________")}`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** Endereço curto para a lista da tela — só o que foi preenchido. */
+export function enderecoCurto(e: EnderecoEmPartes, legado?: string | null): string {
+  const curto = [
+    e.rua?.trim(),
+    e.numero?.trim() ? `nº ${e.numero.trim()}` : null,
+    e.bairro?.trim(),
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return curto || legado?.trim() || "";
+}
+
 function reais(valor: number): string {
   return (Number(valor) || 0).toLocaleString("pt-BR", {
     minimumFractionDigits: 2,
@@ -112,7 +178,7 @@ function qualificacaoDoVendedor(c: PropertySaleContract): string {
     `profissão ${v(c.seller_profession?.toLowerCase())}`,
     `portador(a) da cédula de identidade RG nº ${v(c.seller_rg)}`,
     `inscrito(a) no CPF/CNPJ sob o nº ${v(c.seller_document)}`,
-    `residente e domiciliado(a) na ${v(c.seller_address, LINHA_LONGA)}`,
+    `residente e domiciliado(a) na ${enderecoPorExtenso(enderecoDoVendedor(c), c.seller_address)}`,
   ];
   const contato = [
     c.seller_phone?.trim() ? `telefone ${c.seller_phone.trim()}` : null,
@@ -168,7 +234,7 @@ export function paragrafosDaCompraEVenda(
 
   // ── Objeto ────────────────────────────────────────────────────────────────
   p.push(
-    `${clausula("DO OBJETO")} O VENDEDOR, na qualidade de legítimo proprietário e possuidor, vende à COMPRADORA o imóvel do tipo ${v(c.property_kind)}, situado na ${v(c.property_address, LINHA_LONGA)}, com área de ${v(c.property_area)}, registrado sob a matrícula nº ${v(c.property_registration)} no ${v(c.property_registry_office, `Cartório de Registro de Imóveis de ${LINHA_EM_BRANCO}`)}, inscrito no cadastro imobiliário municipal (IPTU) sob o nº ${v(c.property_iptu_code)}.`
+    `${clausula("DO OBJETO")} O VENDEDOR, na qualidade de legítimo proprietário e possuidor, vende à COMPRADORA o imóvel do tipo ${v(c.property_kind)}, situado na ${enderecoPorExtenso(enderecoDoImovel(c), c.property_address)}, com área de ${v(c.property_area)}, registrado sob a matrícula nº ${v(c.property_registration)} no ${v(c.property_registry_office, `Cartório de Registro de Imóveis de ${LINHA_EM_BRANCO}`)}, inscrito no cadastro imobiliário municipal (IPTU) sob o nº ${v(c.property_iptu_code)}.`
   );
   p.push(
     `PARÁGRAFO ÚNICO: A venda compreende o terreno e todas as benfeitorias, acessões e instalações nele existentes, com as seguintes medidas, confrontações e características: ${v(c.property_description, LINHA_LONGA + LINHA_LONGA)}.`

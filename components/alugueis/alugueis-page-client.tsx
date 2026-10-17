@@ -22,6 +22,10 @@ import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
 import { COBRANCA_META, cobrancasDoMes, type CobrancaDoMes } from "@/lib/alugueis";
 import { enderecoCurto } from "@/lib/alugueis-contrato";
+import {
+  enderecoCurto as enderecoCurtoCompra,
+  enderecoDoImovel as enderecoDoImovelCompra,
+} from "@/lib/compra-venda-contrato";
 import { ImovelDialog } from "./imovel-dialog";
 import { ContratoDialog } from "./contrato-dialog";
 import { BaixaDialog } from "./baixa-dialog";
@@ -488,7 +492,7 @@ function ComprasLista({
     ? compras.filter(
         (c) =>
           (c.seller_name ?? "").toUpperCase().includes(q) ||
-          (c.property_address ?? "").toUpperCase().includes(q) ||
+          enderecoCompra(c).toUpperCase().includes(q) ||
           (c.property_registration ?? "").toUpperCase().includes(q)
       )
     : compras;
@@ -546,7 +550,7 @@ function ComprasLista({
                     {c.seller_name || "A preencher"}
                   </p>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                    {[c.property_kind, c.property_address].filter(Boolean).join(" · ") ||
+                    {[c.property_kind, enderecoCompra(c)].filter(Boolean).join(" · ") ||
                       "Imóvel sem endereço"}
                   </p>
                 </div>
@@ -591,4 +595,9 @@ function ComprasLista({
       </p>
     </>
   );
+}
+
+/** Endereço do imóvel comprado, curto, para a lista e para a busca. */
+function enderecoCompra(c: PropertySaleContract): string {
+  return enderecoCurtoCompra(enderecoDoImovelCompra(c), c.property_address);
 }

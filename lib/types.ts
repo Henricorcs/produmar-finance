@@ -2529,7 +2529,15 @@ export interface PropertySaleContract {
   seller_profession: string | null;
   seller_rg: string | null;
   seller_document: string | null;
+  /** Endereço em texto corrido — só nos contratos salvos antes da 112. */
   seller_address: string | null;
+  /** O endereço em partes (migration 112). */
+  seller_street?: string | null;
+  seller_number?: string | null;
+  seller_complement?: string | null;
+  seller_district?: string | null;
+  seller_city?: string | null;
+  seller_zip?: string | null;
   seller_phone: string | null;
   seller_email: string | null;
 
@@ -2540,7 +2548,15 @@ export interface PropertySaleContract {
   spouse_document: string | null;
 
   property_kind: string | null;
+  /** Endereço em texto corrido — só nos contratos salvos antes da 112. */
   property_address: string | null;
+  /** O endereço do imóvel em partes (migration 112). */
+  property_street?: string | null;
+  property_number?: string | null;
+  property_complement?: string | null;
+  property_district?: string | null;
+  property_city?: string | null;
+  property_zip?: string | null;
   property_area: string | null;
   property_description: string | null;
   property_registration: string | null;
