@@ -92,6 +92,22 @@ type Passo = PassoDef<Campo>;
 
 const temFiador = (d: Dados) => !!d.guarantor_name.trim();
 
+/** Nenhuma parte do endereço preenchida (rua, número, bairro...). */
+function semPartes(d: Dados, quem: "tenant" | "guarantor"): boolean {
+  return (["street", "number", "complement", "district", "city", "zip"] as const).every(
+    (k) => !d[`${quem}_${k}` as Campo].trim()
+  );
+}
+
+/**
+ * Contrato salvo antes da 113 tem o endereço num texto só. Ele continua
+ * valendo — a pergunta da rua lembra qual é, até alguém preencher as partes.
+ */
+function lembreteEndereco(antigo?: string | null, rua?: string | null): string | undefined {
+  if (!antigo?.trim() || rua?.trim()) return undefined;
+  return `Endereço que está no contrato hoje: ${antigo.trim()}. Ele continua valendo até você preencher as partes.`;
+}
+
 function dadosIniciais(c: RentalContractView | null, presetPropertyId?: string | null): Dados {
   const s = (v?: string | number | null) => (v === null || v === undefined ? "" : String(v));
   return {
@@ -102,8 +118,8 @@ function dadosIniciais(c: RentalContractView | null, presetPropertyId?: string |
     tenant_birthplace: s(c?.tenant_birthplace),
     tenant_marital_status: s(c?.tenant_marital_status),
     tenant_profession: s(c?.tenant_profession),
-    // contrato salvo antes da 113: o endereço corrido entra na rua, para não sumir
-    tenant_street: s(c?.tenant_street) || s(c?.tenant_address),
+    // contrato salvo antes da 113: o endereço corrido continua valendo (ver salvar)
+    tenant_street: s(c?.tenant_street),
     tenant_number: s(c?.tenant_number),
     tenant_complement: s(c?.tenant_complement),
     tenant_district: s(c?.tenant_district),
@@ -123,7 +139,7 @@ function dadosIniciais(c: RentalContractView | null, presetPropertyId?: string |
     guarantor_document: s(c?.guarantor_document),
     guarantor_rg: s(c?.guarantor_rg),
     guarantor_phone: s(c?.guarantor_phone),
-    guarantor_street: s(c?.guarantor_street) || s(c?.guarantor_address),
+    guarantor_street: s(c?.guarantor_street),
     guarantor_number: s(c?.guarantor_number),
     guarantor_complement: s(c?.guarantor_complement),
     guarantor_district: s(c?.guarantor_district),
@@ -214,7 +230,7 @@ export function ContratoDialog({
       { campo: "tenant_profession", secao: "O inquilino", pergunta: "Profissão do inquilino", tipo: "texto", placeholder: "ex: mecânico", maiusculo: true },
 
       // ── Onde o inquilino mora hoje ────────────────────────────────────────
-      { campo: "tenant_street", secao: "Onde o inquilino mora hoje", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true },
+      { campo: "tenant_street", secao: "Onde o inquilino mora hoje", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true, dica: lembreteEndereco(contrato?.tenant_address, contrato?.tenant_street) },
       { campo: "tenant_number", secao: "Onde o inquilino mora hoje", pergunta: "Número", tipo: "texto", placeholder: "ex: 120 ou S/N", maiusculo: true },
       { campo: "tenant_complement", secao: "Onde o inquilino mora hoje", pergunta: "Complemento", tipo: "texto", placeholder: "opcional — casa B, apto 3...", maiusculo: true },
       { campo: "tenant_district", secao: "Onde o inquilino mora hoje", pergunta: "Bairro", tipo: "texto", maiusculo: true },
@@ -249,7 +265,7 @@ export function ContratoDialog({
       { campo: "guarantor_document", secao: "O fiador", pergunta: "CPF do fiador", tipo: "documento", placeholder: "000.000.000-00", quando: temFiador },
       { campo: "guarantor_rg", secao: "O fiador", pergunta: "RG do fiador", tipo: "texto", placeholder: "número e órgão", maiusculo: true, quando: temFiador },
       { campo: "guarantor_phone", secao: "O fiador", pergunta: "Telefone do fiador", tipo: "telefone", placeholder: "opcional", quando: temFiador },
-      { campo: "guarantor_street", secao: "Onde o fiador mora", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true, quando: temFiador },
+      { campo: "guarantor_street", secao: "Onde o fiador mora", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true, quando: temFiador, dica: lembreteEndereco(contrato?.guarantor_address, contrato?.guarantor_street) },
       { campo: "guarantor_number", secao: "Onde o fiador mora", pergunta: "Número", tipo: "texto", placeholder: "ex: 120 ou S/N", maiusculo: true, quando: temFiador },
       { campo: "guarantor_complement", secao: "Onde o fiador mora", pergunta: "Complemento", tipo: "texto", placeholder: "opcional", maiusculo: true, quando: temFiador },
       { campo: "guarantor_district", secao: "Onde o fiador mora", pergunta: "Bairro", tipo: "texto", maiusculo: true, quando: temFiador },
@@ -261,7 +277,7 @@ export function ContratoDialog({
     ],
     // `nomeDoImovel` lê `properties`, que já está na lista
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [presetPropertyId, properties]
+    [presetPropertyId, properties, contrato]
   );
 
   const fluxo = usePassoAPasso(PASSOS, dados, open, !!contrato);
@@ -290,8 +306,10 @@ export function ContratoDialog({
       const input = {
         ...dados,
         // endereço corrido antigo: as partes passam a valer
-        tenant_address: null,
-        guarantor_address: null,
+        // endereço corrido antigo vale até alguém preencher as partes
+        tenant_address: semPartes(dados, "tenant") ? contrato?.tenant_address ?? null : null,
+        guarantor_address:
+          fiador && semPartes(dados, "guarantor") ? contrato?.guarantor_address ?? null : null,
         guarantor_document: fiador ? dados.guarantor_document : "",
         guarantor_rg: fiador ? dados.guarantor_rg : "",
         guarantor_phone: fiador ? dados.guarantor_phone : "",
@@ -384,14 +402,23 @@ export function ContratoDialog({
               dados={dados}
               onEditar={fluxo.editar}
               topo={
-                presetPropertyId ? (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Imóvel:{" "}
-                    <span className="font-semibold text-slate-700 dark:text-slate-200">
-                      {nomeDoImovel(presetPropertyId) || "—"}
-                    </span>
-                  </p>
-                ) : null
+                <>
+                  {presetPropertyId && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Imóvel:{" "}
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        {nomeDoImovel(presetPropertyId) || "—"}
+                      </span>
+                    </p>
+                  )}
+                  {/* contrato de antes da 113: o endereço antigo segue valendo */}
+                  {contrato?.tenant_address?.trim() && semPartes(dados, "tenant") && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400">
+                      Endereço do inquilino no contrato hoje: {contrato.tenant_address}. Ele continua
+                      valendo até você preencher rua, número e bairro.
+                    </p>
+                  )}
+                </>
               }
             />
 

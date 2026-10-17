@@ -101,6 +101,13 @@ type Dados = Record<Campo, string>;
 type Passo = PassoDef<Campo>;
 
 /** Estados civis em que o cônjuge assina junto. */
+/** Nenhuma parte do endereço preenchida — vale o endereço corrido de antes da 112. */
+function semPartes(d: Dados, quem: "seller" | "property"): boolean {
+  return (["street", "number", "complement", "district", "city", "zip"] as const).every(
+    (k) => !d[`${quem}_${k}` as Campo].trim()
+  );
+}
+
 function casado(d: Dados): boolean {
   return d.seller_marital_status === "CASADO" || d.seller_marital_status === "UNIÃO ESTÁVEL";
 }
@@ -200,8 +207,8 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
     seller_profession: s(c?.seller_profession),
     seller_marital_status: s(c?.seller_marital_status),
     seller_property_regime: s(c?.seller_property_regime),
-    // contrato salvo antes da 112: o endereço corrido entra na rua, para não sumir
-    seller_street: s(c?.seller_street) || s(c?.seller_address),
+    // contrato salvo antes da 112: o endereço corrido continua valendo (ver salvar)
+    seller_street: s(c?.seller_street),
     seller_number: s(c?.seller_number),
     seller_complement: s(c?.seller_complement),
     seller_district: s(c?.seller_district),
@@ -215,7 +222,7 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
     spouse_nationality: c ? s(c.spouse_nationality) : "BRASILEIRA",
     spouse_profession: s(c?.spouse_profession),
     property_kind: s(c?.property_kind),
-    property_street: s(c?.property_street) || s(c?.property_address),
+    property_street: s(c?.property_street),
     property_number: s(c?.property_number),
     property_complement: s(c?.property_complement),
     property_district: s(c?.property_district),
@@ -276,9 +283,9 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
     startTransition(async () => {
       const r = await salvarContratoCompraVenda(contrato?.id ?? null, {
         ...dados,
-        // endereço corrido antigo: as partes passam a valer
-        seller_address: null,
-        property_address: null,
+        // endereço corrido antigo vale até alguém preencher as partes
+        seller_address: semPartes(dados, "seller") ? contrato?.seller_address ?? null : null,
+        property_address: semPartes(dados, "property") ? contrato?.property_address ?? null : null,
         seller_property_regime: ehCasado ? dados.seller_property_regime : "",
         spouse_name: ehCasado ? dados.spouse_name : "",
         spouse_document: ehCasado ? dados.spouse_document : "",
