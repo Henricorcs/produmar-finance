@@ -2433,13 +2433,27 @@ export interface RentalContract {
   tenant_profession: string | null;
   tenant_phone: string | null;
   tenant_email: string | null;
+  /** Endereço corrido — só nos contratos salvos antes da 113. */
   tenant_address: string | null;
+  /** Onde o inquilino mora, em partes (migration 113). */
+  tenant_street?: string | null;
+  tenant_number?: string | null;
+  tenant_complement?: string | null;
+  tenant_district?: string | null;
+  tenant_city?: string | null;
+  tenant_zip?: string | null;
 
   guarantor_name: string | null;
   guarantor_document: string | null;
   guarantor_rg: string | null;
   guarantor_phone: string | null;
   guarantor_address: string | null;
+  guarantor_street?: string | null;
+  guarantor_number?: string | null;
+  guarantor_complement?: string | null;
+  guarantor_district?: string | null;
+  guarantor_city?: string | null;
+  guarantor_zip?: string | null;
 
   monthly_amount: number;
   /** Dia do mês em que vence. Num mês curto, cai no último dia. */

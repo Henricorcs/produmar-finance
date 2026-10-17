@@ -6,6 +6,7 @@ import {
   valorPorExtenso,
 } from "./utils";
 import { rentalKindLabel, type RentalContractView } from "./types";
+import { enderecoPorExtenso } from "./compra-venda-contrato";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // O CONTRATO PREENCHIDO
@@ -133,7 +134,18 @@ export function camposDoContrato(c: RentalContractView): Record<string, string> 
     INQUILINO_NATURALIDADE: c.tenant_birthplace ?? "",
     INQUILINO_ESTADO_CIVIL: c.tenant_marital_status ?? "",
     INQUILINO_PROFISSAO: c.tenant_profession ?? "",
-    INQUILINO_ENDERECO: c.tenant_address ?? "",
+    // em partes desde a 113; contrato antigo sai com o endereço corrido
+    INQUILINO_ENDERECO: enderecoPorExtenso(
+      {
+        rua: c.tenant_street,
+        numero: c.tenant_number,
+        complemento: c.tenant_complement,
+        bairro: c.tenant_district,
+        cidade: c.tenant_city,
+        cep: c.tenant_zip,
+      },
+      c.tenant_address
+    ),
     INQUILINO_TELEFONE: c.tenant_phone ?? "",
 
     IMOVEL_TIPO: rentalKindLabel(c.property_kind).toUpperCase(),
@@ -171,7 +183,20 @@ export function camposDoContrato(c: RentalContractView): Record<string, string> 
     FIADOR_NOME: c.guarantor_name ?? "",
     FIADOR_CPF: c.guarantor_document ?? "",
     FIADOR_RG: c.guarantor_rg ?? "",
-    FIADOR_ENDERECO: c.guarantor_address ?? "",
+    // sem fiador, o campo fica vazio (linha para a caneta), não um endereço em branco
+    FIADOR_ENDERECO: c.guarantor_name?.trim()
+      ? enderecoPorExtenso(
+          {
+            rua: c.guarantor_street,
+            numero: c.guarantor_number,
+            complemento: c.guarantor_complement,
+            bairro: c.guarantor_district,
+            cidade: c.guarantor_city,
+            cep: c.guarantor_zip,
+          },
+          c.guarantor_address
+        )
+      : c.guarantor_address ?? "",
     FIADOR_TELEFONE: c.guarantor_phone ?? "",
 
     CIDADE_FORO: c.forum_city ?? "São Mateus do Maranhão/MA",

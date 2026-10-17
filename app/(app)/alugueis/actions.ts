@@ -48,6 +48,9 @@ function inteiro(v?: number | null): number | null {
 
 /** Erro de tabela que ainda não existe → recado que diz o que fazer. */
 function aluguelError(error: { code?: string; message: string }): string {
+  // o endereço em partes do inquilino e do fiador é da 113
+  if (/(tenant|guarantor)_(street|number|complement|district|city|zip)/.test(error.message))
+    return "Rode a migration 113 no Supabase para guardar o endereço em partes";
   if (error.code === "42P01")
     return "Rode a migration 078 no Supabase para usar o módulo Aluguéis";
   if (error.code === "42703")
@@ -159,12 +162,24 @@ export interface RentalContractInput {
   tenant_phone?: string | null;
   tenant_email?: string | null;
   tenant_address?: string | null;
+  tenant_street?: string | null;
+  tenant_number?: string | null;
+  tenant_complement?: string | null;
+  tenant_district?: string | null;
+  tenant_city?: string | null;
+  tenant_zip?: string | null;
 
   guarantor_name?: string | null;
   guarantor_document?: string | null;
   guarantor_rg?: string | null;
   guarantor_phone?: string | null;
   guarantor_address?: string | null;
+  guarantor_street?: string | null;
+  guarantor_number?: string | null;
+  guarantor_complement?: string | null;
+  guarantor_district?: string | null;
+  guarantor_city?: string | null;
+  guarantor_zip?: string | null;
 
   monthly_amount: number;
   due_day: number;
@@ -200,12 +215,24 @@ function contractRow(input: RentalContractInput) {
     tenant_phone: raw(input.tenant_phone),
     tenant_email: raw(input.tenant_email),
     tenant_address: clean(input.tenant_address),
+    tenant_street: clean(input.tenant_street),
+    tenant_number: clean(input.tenant_number),
+    tenant_complement: clean(input.tenant_complement),
+    tenant_district: clean(input.tenant_district),
+    tenant_city: clean(input.tenant_city),
+    tenant_zip: raw(input.tenant_zip),
 
     guarantor_name: clean(input.guarantor_name),
     guarantor_document: raw(input.guarantor_document),
     guarantor_rg: clean(input.guarantor_rg),
     guarantor_phone: raw(input.guarantor_phone),
     guarantor_address: clean(input.guarantor_address),
+    guarantor_street: clean(input.guarantor_street),
+    guarantor_number: clean(input.guarantor_number),
+    guarantor_complement: clean(input.guarantor_complement),
+    guarantor_district: clean(input.guarantor_district),
+    guarantor_city: clean(input.guarantor_city),
+    guarantor_zip: raw(input.guarantor_zip),
 
     monthly_amount: money(input.monthly_amount),
     due_day: dia,

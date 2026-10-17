@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Landmark, Pencil, Trash2 } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { Landmark, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,13 +10,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  PerguntaDoPasso,
+  RevisaoDosPassos,
+  usePassoAPasso,
+  type PassoDef,
+} from "@/components/ui/passo-a-passo";
 import { actionError } from "@/lib/action-result";
 import {
   cn,
   formatBRLInput,
-  formatDate,
   localDateISO,
   parseMoney,
   primeiraMaiuscula,
@@ -95,32 +98,7 @@ type Campo =
 
 type Dados = Record<Campo, string>;
 
-type Tipo =
-  | "texto"
-  | "documento"
-  | "numero"
-  | "telefone"
-  | "email"
-  | "cep"
-  | "dinheiro"
-  | "percentual"
-  | "data"
-  | "longo"
-  | "opcoes";
-
-interface Passo {
-  campo: Campo;
-  secao: string;
-  pergunta: string;
-  tipo: Tipo;
-  placeholder?: string;
-  dica?: string;
-  opcoes?: string[];
-  /** Sai em CAIXA ALTA (só na tela — o servidor grava em caixa alta). */
-  maiusculo?: boolean;
-  /** O passo só aparece quando faz sentido (o cônjuge, o regime de bens). */
-  quando?: (d: Dados) => boolean;
-}
+type Passo = PassoDef<Campo>;
 
 /** Estados civis em que o cônjuge assina junto. */
 function casado(d: Dados): boolean {
@@ -204,28 +182,13 @@ const PASSOS: Passo[] = [
 
   // ── Prazos e assinatura ─────────────────────────────────────────────────
   { campo: "possession_date", secao: "Prazos e assinatura", pergunta: "Quando o imóvel será entregue?", tipo: "data", dica: "A data da entrega das chaves (a posse)." },
-  { campo: "deed_days", secao: "Prazos e assinatura", pergunta: "Prazo para passar a escritura (em dias)", tipo: "numero", dica: "Contado depois de pago o preço." },
+  { campo: "deed_days", secao: "Prazos e assinatura", pergunta: "Prazo para passar a escritura (em dias)", tipo: "numero", maxDigitos: 3, dica: "Contado depois de pago o preço.", mostrar: (v) => `${v} dias` },
   { campo: "penalty_percent", secao: "Prazos e assinatura", pergunta: "Multa para quem descumprir (% do preço)", tipo: "percentual" },
   { campo: "signed_at", secao: "Prazos e assinatura", pergunta: "Data da assinatura", tipo: "data" },
   { campo: "forum_city", secao: "Prazos e assinatura", pergunta: "Cidade do foro e da assinatura", tipo: "texto" },
   { campo: "notes", secao: "Prazos e assinatura", pergunta: "Alguma cláusula a mais?", tipo: "longo", placeholder: "opcional", dica: "Entra como uma cláusula a mais, antes do foro." },
 ];
 
-/** "65470000" → "65470-000". */
-function mascaraCep(s: string): string {
-  const d = s.replace(/\D/g, "").slice(0, 8);
-  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
-}
-
-/** O que a revisão mostra no lugar de cada resposta. */
-function valorNaRevisao(p: Passo, valor: string): string {
-  if (!valor.trim()) return "";
-  if (p.tipo === "data") return formatDate(valor);
-  if (p.tipo === "dinheiro") return `R$ ${valor}`;
-  if (p.tipo === "percentual") return `${valor}%`;
-  if (p.tipo === "numero" && p.campo === "deed_days") return `${valor} dias`;
-  return valor;
-}
 
 function dadosIniciais(c: PropertySaleContract | null): Dados {
   const s = (v?: string | number | null) => (v === null || v === undefined ? "" : String(v));
@@ -293,73 +256,18 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [dados, setDados] = useState<Dados>(() => dadosIniciais(null));
-  /** Índice do passo na lista VISÍVEL; -1 = a revisão. */
-  const [idx, setIdx] = useState(0);
-  /** Abriu o passo a partir da revisão: o "OK" volta para lá. */
-  const [daRevisao, setDaRevisao] = useState(false);
-  const campoRef = useRef<HTMLInputElement | null>(null);
-  const textoRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDados(dadosIniciais(contrato));
-    setIdx(contrato ? -1 : 0);
-    setDaRevisao(false);
     setErro(null);
   }, [open, contrato]);
 
-  /** Os passos que valem para estas respostas (o cônjuge só se for casado). */
-  const passos = useMemo(() => PASSOS.filter((p) => !p.quando || p.quando(dados)), [dados]);
-  const naRevisao = idx < 0 || idx >= passos.length;
-  const passo = naRevisao ? null : passos[idx];
-
-  // Foco no campo a cada pergunta: no computador o cursor já está lá; no
-  // iPhone o MESMO campo é reaproveitado entre as perguntas de texto, então o
-  // teclado não fecha ao tocar em "seguinte".
-  useEffect(() => {
-    if (!open || !passo) return;
-    const t = setTimeout(() => {
-      if (passo.tipo === "longo") textoRef.current?.focus();
-      else if (passo.tipo !== "opcoes" && passo.tipo !== "data") campoRef.current?.focus();
-    }, 50);
-    return () => clearTimeout(t);
-  }, [open, idx, passo]);
+  const fluxo = usePassoAPasso(PASSOS, dados, open, !!contrato);
+  const { passo, passos, idx } = fluxo;
 
   function mudar(campo: Campo, valor: string) {
     setDados((d) => ({ ...d, [campo]: valor }));
-  }
-
-  function avancar() {
-    if (daRevisao) {
-      setDaRevisao(false);
-      setIdx(-1);
-      return;
-    }
-    setIdx((i) => (i + 1 >= passos.length ? -1 : i + 1));
-  }
-
-  function voltar() {
-    if (daRevisao) {
-      setDaRevisao(false);
-      setIdx(-1);
-      return;
-    }
-    if (naRevisao) setIdx(passos.length - 1);
-    else setIdx((i) => Math.max(0, i - 1));
-  }
-
-  function escolherOpcao(campo: Campo, opcao: string) {
-    const novo = dados[campo] === opcao ? "" : opcao;
-    setDados((d) => ({ ...d, [campo]: novo }));
-    // escolheu: segue sozinho para a próxima pergunta
-    if (novo) setTimeout(avancar, 150);
-  }
-
-  function editarNaRevisao(campo: Campo) {
-    const i = passos.findIndex((p) => p.campo === campo);
-    if (i < 0) return;
-    setDaRevisao(true);
-    setIdx(i);
   }
 
   function salvar() {
@@ -409,8 +317,6 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
     });
   }
 
-  const ultimo = !naRevisao && idx === passos.length - 1;
-
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
@@ -419,102 +325,51 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
             <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
               <Landmark className="w-4 h-4" />
             </span>
-            {naRevisao ? "Revisar o contrato" : "Compra e venda"}
+            {fluxo.naRevisao ? "Revisar o contrato" : "Compra e venda"}
           </DialogTitle>
         </DialogHeader>
 
         {passo ? (
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              avancar();
-            }}
-          >
-            {/* Onde está: a seção e a barra de quanto falta */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
-                <span className="font-semibold tracking-wide">{passo.secao.toUpperCase()}</span>
-                <span className="tabular-nums">
-                  {idx + 1} de {passos.length}
-                </span>
-              </div>
-              <div className="h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-produmar-500 transition-all"
-                  style={{ width: `${((idx + 1) / passos.length) * 100}%` }}
-                />
-              </div>
-            </div>
-
-            <label
-              htmlFor="cv_campo"
-              className="block text-lg font-semibold leading-snug text-slate-800 dark:text-slate-100"
-            >
-              {passo.pergunta}
-            </label>
-
-            <CampoDoPasso
-              passo={passo}
-              valor={dados[passo.campo]}
-              onMudar={(v) => mudar(passo.campo, v)}
-              onEscolher={(o) => escolherOpcao(passo.campo, o)}
-              campoRef={campoRef}
-              textoRef={textoRef}
-              ultimo={ultimo}
-            />
-
-            {passo.campo === "price" && parseMoney(dados.price) > 0 && (
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                {primeiraMaiuscula(valorPorExtenso(parseMoney(dados.price)))} — é assim que sai no
-                contrato.
-              </p>
-            )}
-            {passo.dica && (
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">{passo.dica}</p>
-            )}
-
-            <div className="flex items-center gap-2 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={voltar}
-                disabled={!daRevisao && idx === 0}
-                className="h-11 px-3"
-                aria-label="Voltar"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <Button type="submit" className="h-11 flex-1">
-                {daRevisao
-                  ? "OK"
-                  : ultimo
-                    ? "Revisar"
-                    : dados[passo.campo].trim()
-                      ? "Próximo"
-                      : "Pular"}
-                {!daRevisao && <ChevronRight className="w-4 h-4" />}
-              </Button>
-            </div>
-
-            {!daRevisao && (
-              <button
-                type="button"
-                onClick={() => setIdx(-1)}
-                className="w-full text-center text-[11px] font-medium text-produmar-600 dark:text-produmar-400 underline underline-offset-2"
-              >
-                Ir para a revisão e salvar
-              </button>
-            )}
-
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              Nada é obrigatório: o que ficar em branco sai no papel como linha para completar à
-              caneta. A compradora é sempre a PRODUMAR, com os dados do contrato de aluguel.
-            </p>
-          </form>
+          <PerguntaDoPasso
+            passo={passo}
+            idx={idx}
+            total={passos.length}
+            valor={dados[passo.campo]}
+            onMudar={(v) => mudar(passo.campo, v)}
+            onAvancar={fluxo.avancar}
+            onVoltar={fluxo.voltar}
+            onRevisao={fluxo.irParaRevisao}
+            daRevisao={fluxo.daRevisao}
+            extra={
+              passo.campo === "price" && parseMoney(dados.price) > 0 ? (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {primeiraMaiuscula(valorPorExtenso(parseMoney(dados.price)))} — é assim que sai
+                  no contrato.
+                </p>
+              ) : null
+            }
+            rodape="Nada é obrigatório: o que ficar em branco sai no papel como linha para completar à caneta. A compradora é sempre a PRODUMAR, com os dados do contrato de aluguel."
+          />
         ) : (
           <div className="space-y-4">
-            <Revisao passos={passos} dados={dados} onEditar={editarNaRevisao} />
+            <RevisaoDosPassos
+              passos={passos}
+              dados={dados}
+              onEditar={fluxo.editar}
+              topo={
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/50">
+                  <p className="text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                    COMPRADORA
+                  </p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    PRODUMAR SERVIÇOS LTDA
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Os dados dela saem do contrato de aluguel (Modelo do contrato).
+                  </p>
+                </div>
+              }
+            />
 
             {erro && (
               <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
@@ -537,7 +392,7 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
               <Button
                 type="button"
                 variant="outline"
-                onClick={voltar}
+                onClick={fluxo.voltar}
                 disabled={isPending}
                 className={cn(FOOTER_CANCEL, "h-11 sm:h-10")}
               >
@@ -556,201 +411,5 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * O campo da pergunta da vez. As perguntas de texto usam SEMPRE o mesmo campo
- * (mesmo lugar na árvore): trocar de pergunta não derruba o foco, e o teclado
- * do iPhone continua aberto de uma resposta para a outra.
- */
-function CampoDoPasso({
-  passo,
-  valor,
-  onMudar,
-  onEscolher,
-  campoRef,
-  textoRef,
-  ultimo,
-}: {
-  passo: Passo;
-  valor: string;
-  onMudar: (v: string) => void;
-  onEscolher: (opcao: string) => void;
-  campoRef: React.MutableRefObject<HTMLInputElement | null>;
-  textoRef: React.MutableRefObject<HTMLTextAreaElement | null>;
-  ultimo: boolean;
-}) {
-  if (passo.tipo === "opcoes") {
-    return (
-      <div className="flex flex-wrap gap-2">
-        {passo.opcoes?.map((o) => (
-          <button
-            key={o}
-            type="button"
-            onClick={() => onEscolher(o)}
-            className={cn(
-              "min-h-[44px] px-4 rounded-xl border text-sm font-semibold transition-colors",
-              valor === o
-                ? "bg-produmar-600 border-produmar-600 text-white"
-                : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
-            )}
-          >
-            {o}
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  if (passo.tipo === "longo") {
-    return (
-      <Textarea
-        id="cv_campo"
-        ref={textoRef}
-        value={valor}
-        onChange={(e) => onMudar(e.target.value)}
-        placeholder={passo.placeholder}
-        rows={4}
-      />
-    );
-  }
-
-  if (passo.tipo === "data") {
-    return (
-      <Input
-        id="cv_campo"
-        type="date"
-        value={valor}
-        onChange={(e) => onMudar(e.target.value)}
-        className="h-12 text-base"
-      />
-    );
-  }
-
-  const inputMode =
-    passo.tipo === "documento" || passo.tipo === "numero" || passo.tipo === "cep"
-      ? "numeric"
-      : passo.tipo === "telefone"
-        ? "tel"
-        : passo.tipo === "dinheiro" || passo.tipo === "percentual"
-          ? "decimal"
-          : passo.tipo === "email"
-            ? "email"
-            : "text";
-
-  function formatar(bruto: string): string {
-    switch (passo.tipo) {
-      case "dinheiro":
-        return formatBRLInput(bruto);
-      case "cep":
-        return mascaraCep(bruto);
-      case "numero":
-        return bruto.replace(/\D/g, "").slice(0, 4);
-      case "percentual":
-        return bruto.replace(/[^\d,]/g, "").slice(0, 5);
-      default:
-        return bruto;
-    }
-  }
-
-  return (
-    <Input
-      id="cv_campo"
-      ref={campoRef}
-      value={valor}
-      onChange={(e) => onMudar(formatar(e.target.value))}
-      placeholder={passo.placeholder}
-      inputMode={inputMode}
-      enterKeyHint={ultimo ? "done" : "next"}
-      autoComplete="off"
-      autoCapitalize={passo.maiusculo ? "characters" : "off"}
-      className={cn(
-        "h-12 text-base",
-        passo.maiusculo && "uppercase placeholder:normal-case",
-        (passo.tipo === "dinheiro" || passo.tipo === "documento" || passo.tipo === "cep") &&
-          "tabular-nums font-semibold"
-      )}
-    />
-  );
-}
-
-/** Tudo o que foi respondido, por seção, com um toque para corrigir. */
-function Revisao({
-  passos,
-  dados,
-  onEditar,
-}: {
-  passos: Passo[];
-  dados: Dados;
-  onEditar: (campo: Campo) => void;
-}) {
-  const secoes: { titulo: string; itens: Passo[] }[] = [];
-  for (const p of passos) {
-    const ultima = secoes[secoes.length - 1];
-    if (ultima && ultima.titulo === p.secao) ultima.itens.push(p);
-    else secoes.push({ titulo: p.secao, itens: [p] });
-  }
-  const emBranco = passos.filter((p) => !dados[p.campo].trim()).length;
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/50">
-        <p className="text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-          COMPRADORA
-        </p>
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-          PRODUMAR SERVIÇOS LTDA
-        </p>
-        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-          Os dados dela saem do contrato de aluguel (Modelo do contrato).
-        </p>
-      </div>
-
-      {emBranco > 0 && (
-        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-          {emBranco} {emBranco === 1 ? "campo ficou" : "campos ficaram"} em branco — saem no papel
-          como linha para a caneta. Toque em qualquer item para corrigir.
-        </p>
-      )}
-
-      {secoes.map((s) => (
-        <div key={s.titulo} className="space-y-1">
-          <p className="text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-            {s.titulo.toUpperCase()}
-          </p>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-            {s.itens.map((p) => {
-              const valor = valorNaRevisao(p, dados[p.campo]);
-              return (
-                <button
-                  key={p.campo}
-                  type="button"
-                  onClick={() => onEditar(p.campo)}
-                  className="w-full flex items-start gap-2 px-3 py-2 text-left bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
-                >
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-[11px] text-slate-400 dark:text-slate-500">
-                      {p.pergunta}
-                    </span>
-                    <span
-                      className={cn(
-                        "block text-sm break-words",
-                        valor
-                          ? "text-slate-800 dark:text-slate-100"
-                          : "text-slate-300 dark:text-slate-600 italic"
-                      )}
-                    >
-                      {valor || "em branco"}
-                    </span>
-                  </span>
-                  <Pencil className="w-3.5 h-3.5 mt-1 flex-shrink-0 text-slate-300 dark:text-slate-600" />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
