@@ -82,7 +82,10 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
 
   doc.setFontSize(fonte);
 
-  for (const bruto of c.paragrafos) {
+  /** A altura do bloco de assinaturas: ele não se parte entre duas páginas. */
+  const alturaAssinaturas = c.assinaturas.length * linha * 4.5 + linha * 9;
+
+  for (const [i, bruto] of c.paragrafos.entries()) {
     if (bruto === c.marcaAssinaturas) {
       assinaturas();
       continue;
@@ -91,7 +94,8 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
 
     if (RE_DATA_LOCAL.test(texto)) {
       y += linha;
-      cabe(linha * 2);
+      // "Cidade, data" fica na mesma página das assinaturas que vêm logo depois
+      cabe(linha * 2 + (c.paragrafos[i + 1] === c.marcaAssinaturas ? alturaAssinaturas : 0));
       doc.setFont("times", "bold");
       doc.text(texto, meio, y, { align: "center" });
       y += linha * 2;
@@ -131,6 +135,7 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
   }
 
   function assinaturas() {
+    cabe(alturaAssinaturas);
     doc.setLineWidth(0.3);
     for (const a of c.assinaturas) {
       y += linha * 3;
