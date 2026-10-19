@@ -484,6 +484,7 @@ export interface PropertySaleContractInput {
   different_installment_number?: number | null;
   first_due_date?: string | null;
   payment_method?: string | null;
+  seller_bank_info?: string | null;
 
   possession_date?: string | null;
   deed_days?: number | null;
@@ -518,6 +519,8 @@ function compraVendaError(error: { code?: string; message: string }): string {
   if (/buyer_id|property_buyers/.test(error.message))
     return "Rode a migration 115 no Supabase para escolher quem compra o imóvel";
   // as partes do endereço (rua, número, bairro...) são da 112
+  if (/seller_bank_info/.test(error.message))
+    return "Rode a migration 119 no Supabase para guardar a chave PIX ou a conta do vendedor";
   if (/different_installment_number/.test(error.message))
     return "Rode a migration 118 no Supabase para escolher qual parcela é diferente";
   if (/payment_mode|down_payment|installment|first_due_date|payment_method/.test(error.message))
@@ -603,6 +606,8 @@ function saleRow(input: PropertySaleContractInput) {
         : null,
     first_due_date: comParcelas(input.payment_mode) ? input.first_due_date?.trim() || null : null,
     payment_method: input.payment_mode && input.payment_mode !== "outro" ? clean(input.payment_method) : null,
+    // chave PIX pode ser e-mail: fica como foi digitada
+    seller_bank_info: input.payment_mode && input.payment_mode !== "outro" ? raw(input.seller_bank_info) : null,
 
     possession_date: input.possession_date?.trim() || null,
     deed_days: inteiro(input.deed_days),

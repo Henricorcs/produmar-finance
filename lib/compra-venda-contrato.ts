@@ -890,6 +890,26 @@ function meioDePagamento(meio?: string | null): string {
 }
 
 /**
+ * Para onde pagar: ", para a chave X, de titularidade do VENDEDOR" (PIX) ou
+ * ", para a conta X, de titularidade da VENDEDORA" (transferência e o resto).
+ * Sem chave nem conta informada, nada.
+ */
+function destinoDoPagamento(c: PropertySaleContract): string {
+  const info = c.seller_bank_info?.trim();
+  if (!info) return "";
+  const V = papelDoVendedor(c.seller_gender);
+  const ehPix = destinoEhPix(c);
+  return `, para ${ehPix ? "a chave" : "a conta"} ${semPonto(info)}, de titularidade ${V.do}`;
+}
+
+/** PIX escolhido — ou, sem meio escolhido, o que foi digitado não tem cara de conta bancária. */
+function destinoEhPix(c: PropertySaleContract): boolean {
+  const meio = c.payment_method?.trim().toUpperCase() ?? "";
+  if (meio) return meio === "PIX";
+  return !/banco|ag[eêç.]|conta|c\/c|\bcc\b/i.test(c.seller_bank_info ?? "");
+}
+
+/**
  * A forma de pagamento por extenso, montada pelas respostas da tela:
  *
  *   "à vista, na assinatura deste contrato, por PIX"
@@ -907,13 +927,16 @@ export function formaDePagamento(c: PropertySaleContract): string | null {
 
   const obs = c.payment_terms?.trim() ? semPonto(c.payment_terms.trim()) : "";
   const meio = meioDePagamento(c.payment_method);
+  // para onde pagar (119): "por PIX, para a chave X, de titularidade do VENDEDOR"
+  const destino = destinoDoPagamento(c);
+  const comoPaga = meio || destino ? `${meio ? `por ${meio}` : destinoEhPix(c) ? "por PIX" : "por depósito ou transferência"}${destino}` : "";
   let texto: string;
 
   if (modo === "avista") {
     const quando = c.down_payment_date
       ? `em ${dataPorExtenso(c.down_payment_date)}`
       : "na assinatura deste contrato";
-    texto = juntar(["à vista", quando, meio ? `por ${meio}` : null]);
+    texto = juntar(["à vista", quando, comoPaga || null]);
   } else {
     const parcelas = parcelasDaCompra(c);
     const n = parcelas.length;
@@ -958,7 +981,7 @@ export function formaDePagamento(c: PropertySaleContract): string | null {
           ? `, vencendo em ${dataPorExtenso(c.first_due_date)}`
           : `, vencendo a primeira em ${dataPorExtenso(c.first_due_date)} e as demais no mesmo dia dos meses seguintes`
         : "";
-      textoParcelas = `${inicio}${quantas}${vencimento}${meio ? `, ${n === 1 ? "paga" : "pagas"} por ${meio}` : ""}`;
+      textoParcelas = `${inicio}${quantas}${vencimento}${comoPaga ? `, ${n === 1 ? "paga" : "pagas"} ${comoPaga}` : ""}`;
     }
 
     texto = [textoEntrada, textoParcelas].filter(Boolean).join(", e ");

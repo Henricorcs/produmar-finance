@@ -137,6 +137,7 @@ type Campo =
   | "first_installment_amount"
   | "first_due_date"
   | "payment_method"
+  | "seller_bank_info"
   | "possession_date"
   | "deed_days"
   | "penalty_percent"
@@ -257,6 +258,11 @@ function ResumoDasParcelas({ dados }: { dados: Dados }) {
       )}
     </div>
   );
+}
+
+/** Pagamento escolhido nos botões (à vista ou parcelado) — não a "outra forma". */
+function pagamentoEstruturado(d: Dados): boolean {
+  return !!d.payment_mode && d.payment_mode !== "outro";
 }
 
 /** Pagamento com parcelas: "entrada + parcelas" ou "parcelado". */
@@ -515,6 +521,33 @@ const PASSOS: Passo[] = [
     quando: (d) => !!d.payment_mode && d.payment_mode !== "outro",
   },
 
+  // para onde pagar: a pergunta muda conforme o meio escolhido
+  {
+    campo: "seller_bank_info",
+    secao: "Preço e pagamento",
+    pergunta: "Chave PIX do vendedor",
+    tipo: "texto",
+    placeholder: "CPF, telefone, e-mail ou chave aleatória",
+    dica: "Sai no contrato: \"pagas por PIX, para a chave ..., de titularidade do vendedor\".",
+    quando: (d) => pagamentoEstruturado(d) && d.payment_method.trim().toUpperCase() === "PIX",
+  },
+  {
+    campo: "seller_bank_info",
+    secao: "Preço e pagamento",
+    pergunta: "Banco, agência e conta do vendedor",
+    tipo: "texto",
+    placeholder: "ex: Banco do Brasil, ag. 1234-5, c/c 67890-1",
+    quando: (d) => pagamentoEstruturado(d) && d.payment_method.trim().toUpperCase() === "TRANSFERÊNCIA",
+  },
+  {
+    campo: "seller_bank_info",
+    secao: "Preço e pagamento",
+    pergunta: "Chave PIX ou conta do vendedor (para receber)",
+    tipo: "texto",
+    placeholder: "opcional",
+    quando: (d) => pagamentoEstruturado(d) && !d.payment_method.trim(),
+  },
+
   // texto livre: a "outra forma", ou uma observação
   {
     campo: "payment_terms",
@@ -606,6 +639,7 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
       c && Number(c.first_installment_amount) > 0 ? formatBRLInput(Number(c.first_installment_amount)) : "",
     first_due_date: s(c?.first_due_date),
     payment_method: s(c?.payment_method),
+    seller_bank_info: s(c?.seller_bank_info),
     possession_date: s(c?.possession_date),
     deed_days: c ? s(c.deed_days) : "30",
     penalty_percent: c ? s(c.penalty_percent).replace(".", ",") : "10",
@@ -976,6 +1010,7 @@ const NUMEROS_DO_CONTRATO = new Set<string>([
 ]);
 
 const SEM_CAIXA_ALTA = new Set<string>([
+  "seller_bank_info",
   "payment_mode",
   "down_payment_date",
   "first_due_date",
