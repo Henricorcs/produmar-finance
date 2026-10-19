@@ -144,7 +144,8 @@ export function camposDoContrato(c: RentalContractView): Record<string, string> 
         cidade: c.tenant_city,
         cep: c.tenant_zip,
       },
-      c.tenant_address
+      c.tenant_address,
+      false
     ),
     INQUILINO_TELEFONE: c.tenant_phone ?? "",
 
@@ -159,7 +160,12 @@ export function camposDoContrato(c: RentalContractView): Record<string, string> 
     IMOVEL_AGUA: c.property_water_code ?? "",
     IMOVEL_LUZ: c.property_power_code ?? "",
 
-    PRAZO_MESES: c.months ? numeroComExtenso(c.months) : "",
+    // sem o prazo digitado, sai da conta início → término (quando os dois existem)
+    PRAZO_MESES: c.months
+      ? numeroComExtenso(c.months)
+      : mesesEntre(c.start_date, c.end_date)
+        ? numeroComExtenso(mesesEntre(c.start_date, c.end_date))
+        : "",
     INICIO: c.start_date ? formatDate(c.start_date) : "",
     FIM: c.end_date ? formatDate(c.end_date) : "",
 
@@ -194,7 +200,8 @@ export function camposDoContrato(c: RentalContractView): Record<string, string> 
             cidade: c.guarantor_city,
             cep: c.guarantor_zip,
           },
-          c.guarantor_address
+          c.guarantor_address,
+          false
         )
       : c.guarantor_address ?? "",
     FIADOR_TELEFONE: c.guarantor_phone ?? "",
@@ -205,18 +212,92 @@ export function camposDoContrato(c: RentalContractView): Record<string, string> 
   };
 }
 
+const RE_CAMPO = /\{\{\s*([A-Z0-9_]+)\s*\}\}/g;
+
+/** Rótulo em caixa alta seguido de dois-pontos: "CLÁUSULA SEGUNDA:", "LOCATÁRIO:". */
+const RE_ROTULO_MODELO = /(^|\s)[A-ZÀ-Ý][A-ZÀ-Ý ]{3,}:/;
+
 /**
- * Troca cada {{CAMPO}} pelo dado do contrato. Campo vazio vira linha em branco
- * para preencher à caneta; campo que não existe fica como está, para quem
- * estiver editando o modelo perceber o erro de digitação.
+ * Tira do parágrafo os trechos que só existem por causa de um campo vazio.
+ *
+ * O modelo é um texto livre (dá para editar na tela), então não há marcação
+ * dizendo o que é opcional: quem decide é a pontuação. O parágrafo é cortado
+ * em trechos — cada um termina numa vírgula, ponto e vírgula ou ponto — e o
+ * trecho com campo vazio sai inteiro:
+ *
+ *   "MARIA, portador do RG n° {{RG}}, e CPF n° 123, naturalidade {{NAT}}, ..."
+ *   → "MARIA, CPF n° 123, ..."
+ *
+ * O PRIMEIRO trecho de cada frase nunca sai: é nele que estão o rótulo e o
+ * assunto ("CLÁUSULA SEGUNDA: O prazo da locação é de {{PRAZO}} meses").
+ * Campo vazio ali continua virando a linha para a caneta. Quando o trecho que
+ * sai fechava a frase, o ponto passa para o trecho de antes; e o "e" que
+ * ligava o trecho apagado ao seguinte ("e CPF n°") sai junto.
+ */
+function tirarTrechosVazios(paragrafo: string, vazio: (campo: string) => boolean): string {
+  const temVazio = [...paragrafo.matchAll(RE_CAMPO)].some((m) => vazio(m[1]));
+  if (!temVazio) return paragrafo;
+
+  const trechos = paragrafo.split(/(?<=[,;.])\s+/);
+  const saida: string[] = [];
+  let inicioDeFrase = true;
+  let anteriorSaiu = false;
+
+  for (const trecho of trechos) {
+    const fechaFrase = /[.;]$/.test(trecho);
+    // Trecho com rótulo ("CLÁUSULA PRIMEIRA:", "LOCATÁRIO:") ou com quebra de
+    // linha nunca sai — apagar ali levaria junto o começo de outra cláusula.
+    const temRotulo = RE_ROTULO_MODELO.test(trecho) || trecho.includes("\n");
+    const sai =
+      !inicioDeFrase &&
+      !temRotulo &&
+      [...trecho.matchAll(RE_CAMPO)].some((m) => vazio(m[1]));
+
+    if (sai) {
+      // o trecho apagado fechava a frase: o ponto fica no trecho de antes
+      if (fechaFrase && saida.length) {
+        saida[saida.length - 1] = saida[saida.length - 1].replace(/[,;.]?$/, trecho.slice(-1));
+      }
+      anteriorSaiu = true;
+    } else {
+      saida.push(anteriorSaiu ? trecho.replace(/^e\s+/i, "") : trecho);
+      anteriorSaiu = false;
+    }
+    inicioDeFrase = /\.$/.test(trecho);
+  }
+  return saida.join(" ");
+}
+
+/**
+ * Troca cada {{CAMPO}} pelo dado do contrato. Campo que não existe fica como
+ * está, para quem estiver editando o modelo perceber o erro de digitação.
+ *
+ * Campo vazio: o trecho da frase em que ele está sai do contrato (ver
+ * [tirarTrechosVazios]). Só no começo de uma frase, onde não dá para tirar
+ * sem estragar o texto, ele vira a linha para preencher à caneta.
  */
 export function preencherModelo(
   body: string,
   campos: Record<string, string>
 ): string {
-  return body.replace(/\{\{\s*([A-Z0-9_]+)\s*\}\}/g, (original, campo: string) => {
+  const vazio = (campo: string) => campo in campos && !campos[campo]?.trim();
+  const enxuto = body
+    .split(/(\n\s*\n)/)
+    .map((pedaco) => (/^\n\s*\n$/.test(pedaco) ? pedaco : tirarTrechosVazios(pedaco, vazio)))
+    .join("");
+  return enxuto.replace(RE_CAMPO, (original, campo: string) => {
     if (!(campo in campos)) return original;
     const valor = campos[campo]?.trim();
     return valor ? valor : LINHA_EM_BRANCO;
   });
+}
+
+/** Meses cheios entre o início e o término ("2026-01-10" → "2027-01-10" = 12). */
+function mesesEntre(inicio?: string | null, fim?: string | null): number {
+  if (!inicio || !fim) return 0;
+  const [ya, ma, da] = inicio.split("-").map(Number);
+  const [yb, mb, db] = fim.split("-").map(Number);
+  let meses = (yb - ya) * 12 + (mb - ma);
+  if (db < da) meses -= 1;
+  return meses > 0 ? meses : 0;
 }
