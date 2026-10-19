@@ -407,7 +407,7 @@ function CampoDoPasso<C extends string>({
         return bruto.replace(/\D/g, "").slice(0, passo.maxDigitos ?? 4);
       case "medida":
       case "area":
-        return bruto.replace(/[^d,]/g, "").slice(0, 9);
+        return bruto.replace(/[^\d,]/g, "").slice(0, 9);
       case "percentual":
         return bruto.replace(/[^\d,]/g, "").slice(0, 5);
       default:
