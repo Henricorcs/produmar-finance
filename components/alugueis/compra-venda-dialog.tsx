@@ -138,6 +138,10 @@ type Campo =
   | "first_due_date"
   | "payment_method"
   | "seller_bank_info"
+  /** Só na tela: a conta é do próprio vendedor? ("sim" / "nao"). */
+  | "conta_do_vendedor"
+  | "seller_bank_holder_name"
+  | "seller_bank_holder_document"
   | "possession_date"
   | "deed_days"
   | "penalty_percent"
@@ -263,6 +267,16 @@ function ResumoDasParcelas({ dados }: { dados: Dados }) {
 /** Pagamento escolhido nos botões (à vista ou parcelado) — não a "outra forma". */
 function pagamentoEstruturado(d: Dados): boolean {
   return !!d.payment_mode && d.payment_mode !== "outro";
+}
+
+/** Chave PIX ou conta preenchida (e a pergunta dela à mostra). */
+function comContaInformada(d: Dados): boolean {
+  return pagamentoEstruturado(d) && !!d.seller_bank_info.trim();
+}
+
+/** Respondeu que a conta é de outra pessoa. */
+function contaDeTerceiro(d: Dados): boolean {
+  return comContaInformada(d) && d.conta_do_vendedor === "nao";
 }
 
 /** Pagamento com parcelas: "entrada + parcelas" ou "parcelado". */
@@ -528,7 +542,7 @@ const PASSOS: Passo[] = [
     pergunta: "Chave PIX do vendedor",
     tipo: "texto",
     placeholder: "CPF, telefone, e-mail ou chave aleatória",
-    dica: "Sai no contrato: \"pagas por PIX, para a chave ..., de titularidade do vendedor\".",
+    dica: "Se a chave for de outra pessoa, a próxima pergunta pede o nome do titular.",
     quando: (d) => pagamentoEstruturado(d) && d.payment_method.trim().toUpperCase() === "PIX",
   },
   {
@@ -546,6 +560,37 @@ const PASSOS: Passo[] = [
     tipo: "texto",
     placeholder: "opcional",
     quando: (d) => pagamentoEstruturado(d) && !d.payment_method.trim(),
+  },
+
+  // às vezes o vendedor manda pagar na conta de outra pessoa
+  {
+    campo: "conta_do_vendedor",
+    secao: "Preço e pagamento",
+    pergunta: "Essa conta é do próprio vendedor?",
+    tipo: "opcoes",
+    opcoes: [
+      { valor: "sim", label: "Sim, é dele" },
+      { valor: "nao", label: "Não, é de outra pessoa" },
+    ],
+    quando: comContaInformada,
+  },
+  {
+    campo: "seller_bank_holder_name",
+    secao: "Preço e pagamento",
+    pergunta: "Nome do titular da conta",
+    tipo: "texto",
+    maiusculo: true,
+    placeholder: "nome de quem é a conta",
+    dica: "O contrato diz que a conta foi indicada pelo vendedor e que pagar nela vale como pagar a ele.",
+    quando: contaDeTerceiro,
+  },
+  {
+    campo: "seller_bank_holder_document",
+    secao: "Preço e pagamento",
+    pergunta: "CPF ou CNPJ do titular da conta",
+    tipo: "documento",
+    placeholder: "opcional",
+    quando: contaDeTerceiro,
   },
 
   // texto livre: a "outra forma", ou uma observação
@@ -640,6 +685,9 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
     first_due_date: s(c?.first_due_date),
     payment_method: s(c?.payment_method),
     seller_bank_info: s(c?.seller_bank_info),
+    conta_do_vendedor: c?.seller_bank_holder_name?.trim() ? "nao" : "sim",
+    seller_bank_holder_name: s(c?.seller_bank_holder_name),
+    seller_bank_holder_document: s(c?.seller_bank_holder_document),
     possession_date: s(c?.possession_date),
     deed_days: c ? s(c.deed_days) : "30",
     penalty_percent: c ? s(c.penalty_percent).replace(".", ",") : "10",
@@ -842,6 +890,9 @@ export function CompraVendaDialog({
         different_installment_number: comParcelaDiferente(dados)
           ? parseInt(dados.different_installment_number, 10) || 1
           : null,
+        // titular só quando a conta é de outra pessoa
+        seller_bank_holder_name: contaDeTerceiro(dados) ? dados.seller_bank_holder_name : "",
+        seller_bank_holder_document: contaDeTerceiro(dados) ? dados.seller_bank_holder_document : "",
         deed_days: parseInt(dados.deed_days, 10) || null,
         penalty_percent: parseMoney(dados.penalty_percent) || null,
       });
@@ -1011,6 +1062,8 @@ const NUMEROS_DO_CONTRATO = new Set<string>([
 
 const SEM_CAIXA_ALTA = new Set<string>([
   "seller_bank_info",
+  "conta_do_vendedor",
+  "seller_bank_holder_document",
   "payment_mode",
   "down_payment_date",
   "first_due_date",
@@ -1073,6 +1126,11 @@ function contratoDosDados(
   c.buyer_id = d.buyer_id === COMPRADOR_PRODUMAR ? null : d.buyer_id || null;
   c.price = parseMoney(d.price);
   delete alvo.parcelas_iguais;
+  delete alvo.conta_do_vendedor;
+  if (!contaDeTerceiro(d)) {
+    c.seller_bank_holder_name = null;
+    c.seller_bank_holder_document = null;
+  }
   const parcelas = camposDasParcelas(d);
   c.payment_mode = parcelas.payment_mode;
   c.down_payment = d.payment_mode === "entrada_parcelas" ? parcelas.down_payment || null : null;

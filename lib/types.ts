@@ -2651,6 +2651,9 @@ export interface PropertySaleContract {
   payment_method?: string | null;
   /** Para onde pagar: a chave PIX ou o banco/agência/conta do vendedor (119). */
   seller_bank_info?: string | null;
+  /** A conta é de outra pessoa (o vendedor indicou): nome e CPF/CNPJ do titular (120). */
+  seller_bank_holder_name?: string | null;
+  seller_bank_holder_document?: string | null;
 
   possession_date: string | null;
   deed_days: number | null;

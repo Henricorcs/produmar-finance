@@ -485,6 +485,8 @@ export interface PropertySaleContractInput {
   first_due_date?: string | null;
   payment_method?: string | null;
   seller_bank_info?: string | null;
+  seller_bank_holder_name?: string | null;
+  seller_bank_holder_document?: string | null;
 
   possession_date?: string | null;
   deed_days?: number | null;
@@ -519,6 +521,8 @@ function compraVendaError(error: { code?: string; message: string }): string {
   if (/buyer_id|property_buyers/.test(error.message))
     return "Rode a migration 115 no Supabase para escolher quem compra o imóvel";
   // as partes do endereço (rua, número, bairro...) são da 112
+  if (/seller_bank_holder/.test(error.message))
+    return "Rode a migration 120 no Supabase para guardar o titular da conta";
   if (/seller_bank_info/.test(error.message))
     return "Rode a migration 119 no Supabase para guardar a chave PIX ou a conta do vendedor";
   if (/different_installment_number/.test(error.message))
@@ -532,6 +536,16 @@ function compraVendaError(error: { code?: string; message: string }): string {
   if (error.code === "42P01" || error.message.includes("property_sale_contracts"))
     return "Rode a migration 110 no Supabase para guardar o contrato de compra e venda";
   return error.message;
+}
+
+/** Titular da conta quando não é o vendedor (120) — sem chave/conta, nada. */
+function titularDaConta(input: PropertySaleContractInput) {
+  const comConta = !!input.payment_mode && input.payment_mode !== "outro" && !!raw(input.seller_bank_info);
+  const nome = comConta ? clean(input.seller_bank_holder_name) : null;
+  return {
+    seller_bank_holder_name: nome,
+    seller_bank_holder_document: nome ? raw(input.seller_bank_holder_document) : null,
+  };
 }
 
 function saleRow(input: PropertySaleContractInput) {
@@ -608,6 +622,8 @@ function saleRow(input: PropertySaleContractInput) {
     payment_method: input.payment_mode && input.payment_mode !== "outro" ? clean(input.payment_method) : null,
     // chave PIX pode ser e-mail: fica como foi digitada
     seller_bank_info: input.payment_mode && input.payment_mode !== "outro" ? raw(input.seller_bank_info) : null,
+    // conta de outra pessoa: o titular só vale com a chave/conta preenchida
+    ...titularDaConta(input),
 
     possession_date: input.possession_date?.trim() || null,
     deed_days: inteiro(input.deed_days),

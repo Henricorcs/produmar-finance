@@ -566,7 +566,9 @@ export function paragrafosDaCompraEVenda(
     paragrafosDoPreco.push(`Os pagamentos serão feitos assim: ${linhasDaLista.join("; ")}.`);
   }
   paragrafosDoPreco.push(
-    `Cada pagamento será comprovado por recibo assinado ${V.pelo} ou pelo comprovante de transferência bancária para conta de sua titularidade, que valerão como quitação da respectiva parcela.`,
+    `Cada pagamento será comprovado por recibo assinado ${V.pelo} ou pelo comprovante de transferência bancária para ${
+      titularDeTerceiro(c) ? "a conta indicada nesta cláusula" : "conta de sua titularidade"
+    }, que valerão como quitação da respectiva parcela.`,
     `Com o pagamento integral do preço, ${V.o} dará ${C.aCrase} plena, geral, rasa e irrevogável quitação, para nada mais reclamar a qualquer título.`
   );
   paragrafosDoPreco.forEach((texto, i) => p.push(`PARÁGRAFO ${ORDINAIS_PARAGRAFO[i]}: ${texto}`));
@@ -892,14 +894,25 @@ function meioDePagamento(meio?: string | null): string {
 /**
  * Para onde pagar: ", para a chave X, de titularidade do VENDEDOR" (PIX) ou
  * ", para a conta X, de titularidade da VENDEDORA" (transferência e o resto).
- * Sem chave nem conta informada, nada.
+ * Conta de outra pessoa (120): ", para a chave X, de titularidade de FULANO,
+ * CPF nº Y, indicada pela VENDEDORA". Sem chave nem conta informada, nada.
  */
 function destinoDoPagamento(c: PropertySaleContract): string {
   const info = c.seller_bank_info?.trim();
   if (!info) return "";
   const V = papelDoVendedor(c.seller_gender);
   const ehPix = destinoEhPix(c);
-  return `, para ${ehPix ? "a chave" : "a conta"} ${semPonto(info)}, de titularidade ${V.do}`;
+  const onde = `, para ${ehPix ? "a chave" : "a conta"} ${semPonto(info)}`;
+  const titular = titularDeTerceiro(c);
+  if (!titular) return `${onde}, de titularidade ${V.do}`;
+  const doc = c.seller_bank_holder_document?.trim();
+  const rotulo = (doc?.replace(/\D/g, "").length ?? 0) > 11 ? "CNPJ" : "CPF";
+  return `${onde}, de titularidade de ${titular}${doc ? `, ${rotulo} nº ${doc}` : ""}, indicada ${V.pelo}`;
+}
+
+/** O titular da conta quando ela NÃO é do vendedor — senão, null. */
+function titularDeTerceiro(c: PropertySaleContract): string | null {
+  return (c.seller_bank_info?.trim() && c.seller_bank_holder_name?.trim()) || null;
 }
 
 /** PIX escolhido — ou, sem meio escolhido, o que foi digitado não tem cara de conta bancária. */
@@ -986,6 +999,12 @@ export function formaDePagamento(c: PropertySaleContract): string | null {
 
     texto = [textoEntrada, textoParcelas].filter(Boolean).join(", e ");
     if (!texto) return obs || null;
+  }
+
+  // conta de outra pessoa: o vendedor reconhece o depósito ali como pagamento a ele
+  if (titularDeTerceiro(c)) {
+    const V = papelDoVendedor(c.seller_gender);
+    texto += `; os valores depositados nessa conta valem como pagamento feito diretamente ${V.ao}, que dá a respectiva quitação`;
   }
 
   return obs ? `${texto}; ${obs}` : texto;
