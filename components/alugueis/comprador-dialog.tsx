@@ -154,7 +154,7 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
       },
       { campo: "document", secao: "Quem compra", pergunta: "CNPJ da empresa", tipo: "documento", placeholder: "00.000.000/0000-00", quando: pj },
       { campo: "document", secao: "Quem compra", pergunta: "CPF do comprador", tipo: "documento", placeholder: "000.000.000-00", quando: pf },
-      { campo: "rg", secao: "Quem compra", pergunta: "Número do RG do comprador", tipo: "texto", teclado: "numerico", placeholder: "ex: 123456789", quando: pf },
+      { campo: "rg", secao: "Quem compra", pergunta: "Número do RG do comprador", tipo: "texto", teclado: "numerico", teclasExtras: ["-", "X"], placeholder: "ex: 123456789", quando: pf },
       { campo: "rg_orgao", secao: "Quem compra", pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA", quando: pf },
       { campo: "nationality", secao: "Quem compra", pergunta: "Nacionalidade", tipo: "texto", maiusculo: true, quando: pf },
       { campo: "marital_status", secao: "Quem compra", pergunta: "Estado civil", tipo: "opcoes", opcoes: ESTADOS_CIVIS, quando: pf },
@@ -190,7 +190,7 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
         quando: pj,
       },
       { campo: "rep_document", secao: "Quem assina pela empresa", pergunta: "CPF de quem assina", tipo: "documento", placeholder: "000.000.000-00", quando: pj },
-      { campo: "rep_rg", secao: "Quem assina pela empresa", pergunta: "Número do RG de quem assina", tipo: "texto", teclado: "numerico", placeholder: "ex: 123456789", quando: pj },
+      { campo: "rep_rg", secao: "Quem assina pela empresa", pergunta: "Número do RG de quem assina", tipo: "texto", teclado: "numerico", teclasExtras: ["-", "X"], placeholder: "ex: 123456789", quando: pj },
       { campo: "rep_rg_orgao", secao: "Quem assina pela empresa", pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA", quando: pj },
     ],
     []

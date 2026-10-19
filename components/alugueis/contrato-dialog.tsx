@@ -232,7 +232,7 @@ export function ContratoDialog({
       // ── O inquilino ───────────────────────────────────────────────────────
       { campo: "tenant_name", secao: "O inquilino", pergunta: "Nome completo do inquilino", tipo: "texto", maiusculo: true, obrigatorio: true },
       { campo: "tenant_document", secao: "O inquilino", pergunta: "CPF ou CNPJ do inquilino", tipo: "documento", placeholder: "000.000.000-00" },
-      { campo: "tenant_rg", secao: "O inquilino", pergunta: "Número do RG do inquilino", tipo: "texto", teclado: "numerico", placeholder: "ex: 326785949" },
+      { campo: "tenant_rg", secao: "O inquilino", pergunta: "Número do RG do inquilino", tipo: "texto", teclado: "numerico", teclasExtras: ["-", "X"], placeholder: "ex: 326785949" },
       { campo: "tenant_rg_orgao", secao: "O inquilino", pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA" },
       { campo: "tenant_birthplace", secao: "O inquilino", pergunta: "Naturalidade", tipo: "texto", placeholder: "ex: VARGEM GRANDE/MA", maiusculo: true },
       { campo: "tenant_marital_status", secao: "O inquilino", pergunta: "Estado civil", tipo: "opcoes", opcoes: ESTADOS_CIVIS },
@@ -272,7 +272,7 @@ export function ContratoDialog({
       // ── O fiador (quando tem) ─────────────────────────────────────────────
       { campo: "guarantor_name", secao: "O fiador", pergunta: "Nome do fiador", tipo: "texto", maiusculo: true, placeholder: "não tem fiador? toque em Pular" },
       { campo: "guarantor_document", secao: "O fiador", pergunta: "CPF do fiador", tipo: "documento", placeholder: "000.000.000-00", quando: temFiador },
-      { campo: "guarantor_rg", secao: "O fiador", pergunta: "Número do RG do fiador", tipo: "texto", teclado: "numerico", placeholder: "ex: 123456789", quando: temFiador },
+      { campo: "guarantor_rg", secao: "O fiador", pergunta: "Número do RG do fiador", tipo: "texto", teclado: "numerico", teclasExtras: ["-", "X"], placeholder: "ex: 123456789", quando: temFiador },
       { campo: "guarantor_rg_orgao", secao: "O fiador", pergunta: "Órgão expedidor do RG do fiador", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA", quando: temFiador },
       { campo: "guarantor_phone", secao: "O fiador", pergunta: "Telefone do fiador", tipo: "telefone", placeholder: "opcional", quando: temFiador },
       { campo: "guarantor_street", secao: "Onde o fiador mora", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true, quando: temFiador, dica: lembreteEndereco(contrato?.guarantor_address, contrato?.guarantor_street) },

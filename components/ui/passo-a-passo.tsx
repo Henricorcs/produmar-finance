@@ -56,6 +56,11 @@ export interface PassoDef<C extends string> {
   teclado?: "numerico";
   /** Respostas prontas a um toque, embaixo do campo (ex.: "S/N"). */
   atalhos?: string[];
+  /**
+   * Teclas que o teclado numérico do iPhone não tem — o hífen e o X do dígito
+   * final do RG. Acrescentam no fim do que já foi digitado, sem fechar o teclado.
+   */
+  teclasExtras?: string[];
   /** Quantos dígitos cabem no campo de número. */
   maxDigitos?: number;
   /** Campo desenhado pela própria tela (ex.: a escolha do imóvel). */
@@ -267,6 +272,30 @@ export function PerguntaDoPasso<C extends string>({
         textoRef={textoRef}
         ultimo={ultimo}
       />
+
+      {/* O hífen e o X do dígito do RG. O toque não tira o foco do campo
+          (preventDefault no apertar), então o teclado continua aberto. */}
+      {passo.teclasExtras && passo.teclasExtras.length > 0 && (
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">Dígito no fim:</span>
+          {passo.teclasExtras.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onMudar(valor + t);
+                campoRef.current?.focus();
+              }}
+              aria-label={t === "-" ? "Acrescentar hífen" : `Acrescentar ${t}`}
+              className="min-w-[48px] min-h-[40px] px-3 rounded-xl border border-slate-200 bg-white text-base font-semibold text-slate-700 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
+            >
+              {t === "-" ? "–" : t}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Respostas prontas: "S/N" no número da casa, que o teclado numérico não tem */}
       {passo.atalhos && passo.atalhos.length > 0 && (
