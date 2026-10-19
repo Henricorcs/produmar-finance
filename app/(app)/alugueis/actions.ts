@@ -493,7 +493,7 @@ function genero(v?: string | null): "m" | "f" | null {
 
 /** A tabela vem da migration 110 — sem ela o erro do Postgres não diz nada. */
 function compraVendaError(error: { code?: string; message: string }): string {
-  if (/_gender|gender/.test(error.message))
+  if (/_gender\b|\bgender\b/.test(error.message))
     return "Rode a migration 116 no Supabase para guardar se é homem ou mulher";
   if (/buyer_id|property_buyers/.test(error.message))
     return "Rode a migration 115 no Supabase para escolher quem compra o imóvel";

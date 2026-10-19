@@ -159,8 +159,9 @@ export function papelDoVendedor(g: Genero): PapelDoVendedor {
 /** Quem assina pela empresa: o cargo diz se é homem ou mulher ("SÓCIA", "DIRETORA"). */
 function generoPeloCargo(cargo?: string | null): Genero {
   const c = cargo?.trim().toUpperCase() ?? "";
-  if (/S[ÓO]CIA|DIRETORA|PROCURADORA|ADMINISTRADORA|GERENTEs+GERALs+A/.test(c)) return "f";
-  if (/S[ÓO]CIO|DIRETOR|PROCURADOR|ADMINISTRADOR/.test(c)) return "m";
+  // sem o "\b" no fim, "DIRETORA" casaria com "DIRETOR" e "SÓCIA" com "SÓCIO"
+  if (/S[ÓO]CIA\b|DIRETORA\b|PROCURADORA\b|ADMINISTRADORA\b/.test(c)) return "f";
+  if (/S[ÓO]CIO\b|DIRETOR\b|PROCURADOR\b|ADMINISTRADOR\b/.test(c)) return "m";
   return null;
 }
 

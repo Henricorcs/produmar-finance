@@ -136,7 +136,7 @@ function semPartes(d: Dados, quem: "seller" | "property"): boolean {
 
 /** "12,5" → 12.5; vazio ou inválido → 0. */
 function numero(s: string): number {
-  const n = parseFloat(s.replace(/./g, "").replace(",", "."));
+  const n = parseFloat(s.replace(/\./g, "").replace(",", "."));
   return isNaN(n) ? 0 : n;
 }
 
