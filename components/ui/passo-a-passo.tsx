@@ -29,6 +29,7 @@ export type TipoPasso =
   | "cep"
   | "dinheiro"
   | "percentual"
+  | "medida"
   | "data"
   | "longo"
   | "opcoes"
@@ -82,6 +83,7 @@ function valorNaRevisao<C extends string>(p: PassoDef<C>, valor: string): string
   if (p.tipo === "data") return formatDate(valor);
   if (p.tipo === "dinheiro") return `R$ ${valor}`;
   if (p.tipo === "percentual") return `${valor}%`;
+  if (p.tipo === "medida") return `${valor} m`;
   return valor;
 }
 
@@ -353,7 +355,7 @@ function CampoDoPasso<C extends string>({
       ? "numeric"
       : passo.tipo === "telefone"
         ? "tel"
-        : passo.tipo === "dinheiro" || passo.tipo === "percentual"
+        : passo.tipo === "dinheiro" || passo.tipo === "percentual" || passo.tipo === "medida"
           ? "decimal"
           : passo.tipo === "email"
             ? "email"
@@ -367,6 +369,8 @@ function CampoDoPasso<C extends string>({
         return mascaraCep(bruto);
       case "numero":
         return bruto.replace(/\D/g, "").slice(0, passo.maxDigitos ?? 4);
+      case "medida":
+        return bruto.replace(/[^d,]/g, "").slice(0, 9);
       case "percentual":
         return bruto.replace(/[^\d,]/g, "").slice(0, 5);
       default:

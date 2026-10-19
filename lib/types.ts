@@ -2572,7 +2572,20 @@ export interface PropertySaleContract {
   property_city?: string | null;
   property_zip?: string | null;
   property_area: string | null;
+  /** Antes da 114 era tudo (medidas, divisas, benfeitorias); agora é "mais alguma característica". */
   property_description: string | null;
+  /** Medidas do terreno em metros, como foram digitadas ("12,50") — migration 114. */
+  property_front?: string | null;
+  property_back?: string | null;
+  property_right?: string | null;
+  property_left?: string | null;
+  /** Com quem o terreno faz divisa em cada lado. */
+  property_front_with?: string | null;
+  property_back_with?: string | null;
+  property_right_with?: string | null;
+  property_left_with?: string | null;
+  /** O que tem construído no terreno. */
+  property_improvements?: string | null;
   property_registration: string | null;
   property_registry_office: string | null;
   property_iptu_code: string | null;

@@ -236,9 +236,7 @@ export function paragrafosDaCompraEVenda(
   p.push(
     `${clausula("DO OBJETO")} O VENDEDOR, na qualidade de legítimo proprietário e possuidor, vende à COMPRADORA o imóvel do tipo ${v(c.property_kind)}, situado na ${enderecoPorExtenso(enderecoDoImovel(c), c.property_address)}, com área de ${v(c.property_area)}, registrado sob a matrícula nº ${v(c.property_registration)} no ${v(c.property_registry_office, `Cartório de Registro de Imóveis de ${LINHA_EM_BRANCO}`)}, inscrito no cadastro imobiliário municipal (IPTU) sob o nº ${v(c.property_iptu_code)}.`
   );
-  p.push(
-    `PARÁGRAFO ÚNICO: A venda compreende o terreno e todas as benfeitorias, acessões e instalações nele existentes, com as seguintes medidas, confrontações e características: ${v(c.property_description, LINHA_LONGA + LINHA_LONGA)}.`
-  );
+  p.push(medidasEDivisas(c));
 
   // ── Preço ─────────────────────────────────────────────────────────────────
   const valor =
@@ -329,6 +327,49 @@ export function paragrafosDaCompraEVenda(
 
   p.push(MARCA_ASSINATURAS);
   return p;
+}
+
+/** "12,5" → "12,5 m"; em branco, a linha curta para a caneta. */
+function metros(s?: string | null): string {
+  const t = s?.trim().replace(/\s*m(etros)?\.?$/i, "");
+  return t ? `${t} m` : "_______ m";
+}
+
+/**
+ * O parágrafo do terreno: as quatro medidas, com quem faz divisa em cada lado
+ * e o que tem construído (migration 114). Cada pedaço em branco vira a sua
+ * linha para a caneta. Contrato salvo antes da 114, sem nenhuma medida, sai
+ * com o texto corrido que tinha.
+ */
+function medidasEDivisas(c: PropertySaleContract): string {
+  const abertura =
+    "PARÁGRAFO ÚNICO: A venda compreende o terreno e todas as benfeitorias, acessões e instalações nele existentes";
+
+  const partes = [
+    c.property_front,
+    c.property_back,
+    c.property_right,
+    c.property_left,
+    c.property_front_with,
+    c.property_back_with,
+    c.property_right_with,
+    c.property_left_with,
+    c.property_improvements,
+  ];
+  const algum = partes.some((x) => x?.trim());
+  const extra = c.property_description?.trim().replace(/\s*\.\s*$/, "");
+
+  if (!algum && extra) {
+    return `${abertura}, com as seguintes medidas, confrontações e características: ${extra}.`;
+  }
+
+  const frases = [
+    `${abertura}.`,
+    `O terreno mede ${metros(c.property_front)} de frente, ${metros(c.property_back)} de fundos, ${metros(c.property_right)} do lado direito e ${metros(c.property_left)} do lado esquerdo, de quem da rua olha o imóvel, limitando-se pela frente com ${v(c.property_front_with)}, pelos fundos com ${v(c.property_back_with)}, pelo lado direito com ${v(c.property_right_with)} e pelo lado esquerdo com ${v(c.property_left_with)}.`,
+    `Benfeitorias: ${v(c.property_improvements?.replace(/\s*\.\s*$/, ""), LINHA_LONGA)}.`,
+  ];
+  if (extra) frases.push(`${primeiraMaiuscula(extra)}.`);
+  return frases.join(" ");
 }
 
 /** "10" → "dez"; "2,5" → "dois vírgula cinco" (a multa por extenso). */

@@ -456,6 +456,15 @@ export interface PropertySaleContractInput {
   property_zip?: string | null;
   property_area?: string | null;
   property_description?: string | null;
+  property_front?: string | null;
+  property_back?: string | null;
+  property_right?: string | null;
+  property_left?: string | null;
+  property_front_with?: string | null;
+  property_back_with?: string | null;
+  property_right_with?: string | null;
+  property_left_with?: string | null;
+  property_improvements?: string | null;
   property_registration?: string | null;
   property_registry_office?: string | null;
   property_iptu_code?: string | null;
@@ -475,6 +484,8 @@ export interface PropertySaleContractInput {
 /** A tabela vem da migration 110 — sem ela o erro do Postgres não diz nada. */
 function compraVendaError(error: { code?: string; message: string }): string {
   // as partes do endereço (rua, número, bairro...) são da 112
+  if (/property_(front|back|right|left|improvements)/.test(error.message))
+    return "Rode a migration 114 no Supabase para guardar as medidas e as divisas do imóvel";
   if (/(seller|property)_(street|number|complement|district|city|zip)/.test(error.message))
     return "Rode a migration 112 no Supabase para guardar o endereço em partes";
   if (error.code === "42P01" || error.message.includes("property_sale_contracts"))
@@ -518,6 +529,15 @@ function saleRow(input: PropertySaleContractInput) {
     property_area: raw(input.property_area),
     // texto corrido do contrato: fica como foi escrito, sem caixa alta
     property_description: raw(input.property_description),
+    property_front: raw(input.property_front),
+    property_back: raw(input.property_back),
+    property_right: raw(input.property_right),
+    property_left: raw(input.property_left),
+    property_front_with: clean(input.property_front_with),
+    property_back_with: clean(input.property_back_with),
+    property_right_with: clean(input.property_right_with),
+    property_left_with: clean(input.property_left_with),
+    property_improvements: raw(input.property_improvements),
     property_registration: clean(input.property_registration),
     property_registry_office: raw(input.property_registry_office),
     property_iptu_code: clean(input.property_iptu_code),

@@ -86,6 +86,15 @@ type Campo =
   | "property_registration"
   | "property_registry_office"
   | "property_iptu_code"
+  | "property_front"
+  | "property_back"
+  | "property_right"
+  | "property_left"
+  | "property_front_with"
+  | "property_back_with"
+  | "property_right_with"
+  | "property_left_with"
+  | "property_improvements"
   | "property_description"
   | "price"
   | "payment_terms"
@@ -167,13 +176,34 @@ const PASSOS: Passo[] = [
   { campo: "property_registration", secao: "O imóvel", pergunta: "Número da matrícula", tipo: "texto", maiusculo: true, dica: "Está na certidão do cartório de imóveis." },
   { campo: "property_registry_office", secao: "O imóvel", pergunta: "Cartório onde está registrado", tipo: "texto", placeholder: "Cartório de Registro de Imóveis de São Mateus do Maranhão/MA" },
   { campo: "property_iptu_code", secao: "O imóvel", pergunta: "Inscrição do IPTU", tipo: "texto", maiusculo: true, dica: "Está no carnê do IPTU." },
+
+  // ── Medidas do terreno (em metros, como estão na matrícula) ─────────────
+  { campo: "property_front", secao: "Medidas do terreno", pergunta: "Frente (metros)", tipo: "medida", placeholder: "ex: 12,00", dica: "Como está na matrícula." },
+  { campo: "property_back", secao: "Medidas do terreno", pergunta: "Fundos (metros)", tipo: "medida", placeholder: "ex: 12,00" },
+  { campo: "property_right", secao: "Medidas do terreno", pergunta: "Lado direito (metros)", tipo: "medida", placeholder: "ex: 30,00", dica: "Direito e esquerdo de quem está na rua olhando para o imóvel." },
+  { campo: "property_left", secao: "Medidas do terreno", pergunta: "Lado esquerdo (metros)", tipo: "medida", placeholder: "ex: 30,00" },
+
+  // ── Com quem o terreno faz divisa ───────────────────────────────────────
+  { campo: "property_front_with", secao: "Divisas do terreno", pergunta: "Na frente faz divisa com", tipo: "texto", placeholder: "ex: RUA DO ESPORTE", maiusculo: true, dica: "Na frente, quase sempre é a própria rua." },
+  { campo: "property_back_with", secao: "Divisas do terreno", pergunta: "Nos fundos faz divisa com", tipo: "texto", placeholder: "ex: TERRENO DE JOÃO DA SILVA", maiusculo: true },
+  { campo: "property_right_with", secao: "Divisas do terreno", pergunta: "Do lado direito faz divisa com", tipo: "texto", placeholder: "ex: CASA DE MARIA SOUSA", maiusculo: true },
+  { campo: "property_left_with", secao: "Divisas do terreno", pergunta: "Do lado esquerdo faz divisa com", tipo: "texto", placeholder: "ex: RUA SÃO JOSÉ", maiusculo: true },
+
+  // ── O que tem construído ────────────────────────────────────────────────
+  {
+    campo: "property_improvements",
+    secao: "Benfeitorias",
+    pergunta: "O que tem construído no terreno?",
+    tipo: "longo",
+    placeholder: "ex: casa de alvenaria, coberta de telha, com 3 quartos, sala, cozinha, banheiro e área de serviço",
+    dica: "Terreno vazio? Escreva \"terreno sem benfeitorias\" ou toque em Pular.",
+  },
   {
     campo: "property_description",
-    secao: "O imóvel",
-    pergunta: "Medidas, divisas e benfeitorias",
+    secao: "Benfeitorias",
+    pergunta: "Mais alguma característica do imóvel?",
     tipo: "longo",
-    placeholder: "ex: medindo 12 m de frente por 30 m de fundos, limitando-se ao norte com...",
-    dica: "Como está na matrícula: frente, fundos, laterais, com quem faz divisa e o que tem construído.",
+    placeholder: "opcional — poço, cerca, muro, árvores frutíferas...",
   },
 
   // ── Preço ───────────────────────────────────────────────────────────────
@@ -232,6 +262,15 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
     property_registration: s(c?.property_registration),
     property_registry_office: s(c?.property_registry_office),
     property_iptu_code: s(c?.property_iptu_code),
+    property_front: s(c?.property_front),
+    property_back: s(c?.property_back),
+    property_right: s(c?.property_right),
+    property_left: s(c?.property_left),
+    property_front_with: s(c?.property_front_with),
+    property_back_with: s(c?.property_back_with),
+    property_right_with: s(c?.property_right_with),
+    property_left_with: s(c?.property_left_with),
+    property_improvements: s(c?.property_improvements),
     property_description: s(c?.property_description),
     price: c && Number(c.price) > 0 ? formatBRLInput(Number(c.price)) : "",
     payment_terms: s(c?.payment_terms),
