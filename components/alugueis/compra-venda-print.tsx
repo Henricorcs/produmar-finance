@@ -5,7 +5,7 @@ import {
   ASSINA_PELA_PRODUMAR,
   MARCA_ASSINATURAS,
   paragrafosDaCompraEVenda,
-  temConjuge,
+  conjugeNoContrato,
 } from "@/lib/compra-venda-contrato";
 import type { PropertySaleContract } from "@/lib/types";
 
@@ -134,7 +134,7 @@ function Paragrafo({ texto }: { texto: string }) {
  * executivo.
  */
 function Assinaturas({ contrato }: { contrato: PropertySaleContract }) {
-  const conjuge = temConjuge(contrato);
+  const conjuge = conjugeNoContrato(contrato);
   return (
     <div className="avoid-break pt-10 space-y-10">
       <Linha

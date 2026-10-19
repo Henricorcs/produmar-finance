@@ -19,8 +19,8 @@ import type { PropertySaleContract } from "./types";
 //   • duas testemunhas, que fazem do contrato título executivo (art. 784, III,
 //     do Código de Processo Civil).
 //
-// Campo vazio não some: vira linha para completar à caneta — é o mesmo
-// combinado do contrato de aluguel.
+// Campo vazio: no contrato em branco vira linha para a caneta; no contrato
+// preenchido ele some e a frase se ajusta sem ele (ver "Modo", abaixo).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** O que sai no lugar do campo que ainda não foi preenchido. */
@@ -60,10 +60,44 @@ const ORDINAIS = [
 
 const ESTADOS_SEM_CONJUGE = ["SOLTEIRO", "SOLTEIRA", "DIVORCIADO", "DIVORCIADA", "VIÚVO", "VIÚVA"];
 
-/** Valor do campo, ou a linha para preencher à caneta. */
-function v(s?: string | null, linha = LINHA_EM_BRANCO): string {
-  const t = s?.trim();
-  return t ? t : linha;
+/**
+ * DUAS IMPRESSÕES, DOIS JEITOS DE TRATAR O CAMPO VAZIO:
+ *
+ *   • o contrato EM BRANCO (botão "Imprimir em branco") é feito para a caneta:
+ *     cada campo sai como linha para completar à mão;
+ *   • o contrato PREENCHIDO na tela sai só com o que foi preenchido — o que
+ *     ficou em branco some, e a frase se ajusta sem ele ("RUA DAS FLORES, nº
+ *     120, bairro CENTRO", sem o "CEP ____" pendurado no fim).
+ */
+interface Modo {
+  /** true = contrato em branco, com linha no lugar de cada campo vazio. */
+  linhas: boolean;
+}
+
+/**
+ * Um pedaço da frase: com valor, monta o texto; sem valor, vira a linha para
+ * a caneta (contrato em branco) ou some (contrato preenchido → null).
+ */
+function campo(
+  m: Modo,
+  valor: string | null | undefined,
+  montar: (t: string) => string,
+  linha = LINHA_EM_BRANCO
+): string | null {
+  const t = valor?.trim();
+  if (t) return montar(t);
+  return m.linhas ? montar(linha) : null;
+}
+
+/** Junta os pedaços que existem: "a, b, c". */
+function juntar(partes: (string | null | undefined)[], separador = ", "): string {
+  return partes.filter((p): p is string => !!p && !!p.trim()).join(separador);
+}
+
+/** "a", "a e b", "a, b e c". */
+function listaComE(partes: string[]): string {
+  if (partes.length <= 1) return partes[0] ?? "";
+  return `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}`;
 }
 
 /** As partes de um endereço, como a tela pergunta (migration 112). */
@@ -100,24 +134,28 @@ export function enderecoDoImovel(c: PropertySaleContract): EnderecoEmPartes {
 
 /**
  * O endereço do jeito que entra no contrato: "RUA DAS FLORES, nº 120, bairro
- * CENTRO, SÃO MATEUS DO MARANHÃO/MA, CEP 65470-000". Cada pedaço em branco vira
- * a sua própria linha para a caneta — o complemento, que nem todo endereço
- * tem, simplesmente some. Sem parte nenhuma preenchida vale o texto corrido dos
- * contratos salvos antes da 112.
+ * CENTRO, SÃO MATEUS DO MARANHÃO/MA, CEP 65470-000". Com `linhas`, cada pedaço
+ * em branco vira a sua linha para a caneta (é assim no contrato de aluguel);
+ * sem, o pedaço em branco some. O complemento, que nem todo endereço tem, some
+ * sempre. Sem parte nenhuma preenchida vale o texto corrido dos contratos
+ * salvos antes da 112 — e, sem ele também, volta vazio no modo sem linhas.
  */
-export function enderecoPorExtenso(e: EnderecoEmPartes, legado?: string | null): string {
+export function enderecoPorExtenso(
+  e: EnderecoEmPartes,
+  legado?: string | null,
+  linhas = true
+): string {
   const algum = [e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.cep].some((p) => p?.trim());
   if (!algum && legado?.trim()) return legado.trim();
-  return [
-    v(e.rua),
-    `nº ${v(e.numero, "_______")}`,
+  const m: Modo = { linhas };
+  return juntar([
+    campo(m, e.rua, (t) => t),
+    campo(m, e.numero, (t) => `nº ${t}`, "_______"),
     e.complemento?.trim() || null,
-    `bairro ${v(e.bairro)}`,
-    v(e.cidade),
-    `CEP ${v(e.cep, "___________")}`,
-  ]
-    .filter(Boolean)
-    .join(", ");
+    campo(m, e.bairro, (t) => `bairro ${t}`),
+    campo(m, e.cidade, (t) => t),
+    campo(m, e.cep, (t) => `CEP ${t}`, "___________"),
+  ]);
 }
 
 /** Endereço curto para a lista da tela — só o que foi preenchido. */
@@ -137,6 +175,11 @@ function reais(valor: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/** Tira o ponto final de quem digitou, para a frase não sair com dois. */
+function semPonto(s: string): string {
+  return s.replace(/\s*\.\s*$/, "");
 }
 
 /**
@@ -160,42 +203,57 @@ export function temConjuge(c: Pick<PropertySaleContract, "seller_marital_status"
   return !ESTADOS_SEM_CONJUGE.includes(estado);
 }
 
-/** "CASADO" → "casado(a) sob o regime da comunhão parcial de bens". */
-function estadoCivil(c: PropertySaleContract): string {
-  const estado = c.seller_marital_status?.trim();
-  if (!estado) return `estado civil ${LINHA_EM_BRANCO}`;
-  const e = estado.toLowerCase();
-  const casado = /casad|uni[ãa]o/.test(e);
-  if (!casado) return e;
-  return `${e}, sob o regime da ${v(c.seller_property_regime?.toLowerCase().replace(/^(o |a |de |da |do )/, ""))}`;
+/**
+ * O cônjuge sai no papel (qualificação e linha de assinatura)? No contrato em
+ * branco, sempre que pode haver cônjuge; no preenchido, só quando algum dado
+ * dele foi preenchido — o que ficou em branco não sai.
+ */
+export function conjugeNoContrato(c: PropertySaleContract): boolean {
+  if (!temConjuge(c)) return false;
+  if (c.id === "em-branco") return true;
+  return [c.spouse_name, c.spouse_document, c.spouse_rg, c.spouse_nationality, c.spouse_profession].some(
+    (x) => x?.trim()
+  );
 }
 
-function qualificacaoDoVendedor(c: PropertySaleContract): string {
-  const partes = [
-    v(c.seller_name),
-    `de nacionalidade ${v(c.seller_nationality?.toLowerCase())}`,
-    estadoCivil(c),
-    `profissão ${v(c.seller_profession?.toLowerCase())}`,
-    `portador(a) da cédula de identidade RG nº ${v(c.seller_rg)}`,
-    `inscrito(a) no CPF/CNPJ sob o nº ${v(c.seller_document)}`,
-    `residente e domiciliado(a) na ${enderecoPorExtenso(enderecoDoVendedor(c), c.seller_address)}`,
-  ];
-  const contato = [
+/** "CASADO" → "casado, sob o regime da comunhão parcial de bens". */
+function estadoCivil(m: Modo, c: PropertySaleContract): string | null {
+  const estado = c.seller_marital_status?.trim();
+  if (!estado) return m.linhas ? `estado civil ${LINHA_EM_BRANCO}` : null;
+  const e = estado.toLowerCase();
+  if (!/casad|uni[ãa]o/.test(e)) return e;
+  const regime = campo(
+    m,
+    c.seller_property_regime?.toLowerCase().replace(/^(o |a |de |da |do )/, ""),
+    (t) => `sob o regime da ${t}`
+  );
+  return juntar([e, regime]);
+}
+
+function qualificacaoDoVendedor(m: Modo, c: PropertySaleContract): string {
+  const endereco = enderecoPorExtenso(enderecoDoVendedor(c), c.seller_address, m.linhas);
+  return juntar([
+    campo(m, c.seller_name, (t) => t),
+    campo(m, c.seller_nationality, (t) => `de nacionalidade ${t.toLowerCase()}`),
+    estadoCivil(m, c),
+    campo(m, c.seller_profession, (t) => `profissão ${t.toLowerCase()}`),
+    campo(m, c.seller_rg, (t) => `portador(a) da cédula de identidade RG nº ${t}`),
+    campo(m, c.seller_document, (t) => `inscrito(a) no CPF/CNPJ sob o nº ${t}`),
+    endereco ? `residente e domiciliado(a) na ${endereco}` : null,
     c.seller_phone?.trim() ? `telefone ${c.seller_phone.trim()}` : null,
     c.seller_email?.trim() ? `e-mail ${c.seller_email.trim()}` : null,
-  ].filter(Boolean);
-  return `${partes.join(", ")}${contato.length ? `, ${contato.join(", ")}` : ""}`;
+  ]);
 }
 
-function qualificacaoDoConjuge(c: PropertySaleContract): string {
-  return [
-    v(c.spouse_name),
-    `de nacionalidade ${v(c.spouse_nationality?.toLowerCase())}`,
-    `profissão ${v(c.spouse_profession?.toLowerCase())}`,
-    `portador(a) da cédula de identidade RG nº ${v(c.spouse_rg)}`,
-    `inscrito(a) no CPF sob o nº ${v(c.spouse_document)}`,
+function qualificacaoDoConjuge(m: Modo, c: PropertySaleContract): string {
+  return juntar([
+    campo(m, c.spouse_name, (t) => t),
+    campo(m, c.spouse_nationality, (t) => `de nacionalidade ${t.toLowerCase()}`),
+    campo(m, c.spouse_profession, (t) => `profissão ${t.toLowerCase()}`),
+    campo(m, c.spouse_rg, (t) => `portador(a) da cédula de identidade RG nº ${t}`),
+    campo(m, c.spouse_document, (t) => `inscrito(a) no CPF sob o nº ${t}`),
     "residente e domiciliado(a) no mesmo endereço do VENDEDOR",
-  ].join(", ");
+  ]);
 }
 
 /**
@@ -206,7 +264,7 @@ export function paragrafosDaCompraEVenda(
   c: PropertySaleContract,
   modeloAluguel?: string | null
 ): string[] {
-  const conjuge = temConjuge(c);
+  const m: Modo = { linhas: c.id === "em-branco" };
   const compradora = qualificacaoDaCompradora(modeloAluguel);
   const preco = Number(c.price) || 0;
 
@@ -217,12 +275,16 @@ export function paragrafosDaCompraEVenda(
 
   p.push("CONTRATO PARTICULAR DE COMPRA E VENDA DE IMÓVEL");
 
-  p.push(`VENDEDOR: ${qualificacaoDoVendedor(c)}.`);
+  // sem nada do vendedor, fica ao menos o espaço para o nome dele
+  p.push(`VENDEDOR: ${qualificacaoDoVendedor(m, c) || LINHA_LONGA}.`);
 
-  if (conjuge) {
-    const rotulo = c.seller_marital_status?.trim() || c.spouse_name?.trim() ? "CÔNJUGE DO VENDEDOR" : "CÔNJUGE DO VENDEDOR (se houver)";
+  if (conjugeNoContrato(c)) {
+    const rotulo =
+      c.seller_marital_status?.trim() || c.spouse_name?.trim()
+        ? "CÔNJUGE DO VENDEDOR"
+        : "CÔNJUGE DO VENDEDOR (se houver)";
     p.push(
-      `${rotulo}: ${qualificacaoDoConjuge(c)}, que comparece a este ato para dar o seu consentimento à venda, na forma do artigo 1.647, inciso I, do Código Civil.`
+      `${rotulo}: ${qualificacaoDoConjuge(m, c)}, que comparece a este ato para dar o seu consentimento à venda, na forma do artigo 1.647, inciso I, do Código Civil.`
     );
   }
 
@@ -233,18 +295,47 @@ export function paragrafosDaCompraEVenda(
   );
 
   // ── Objeto ────────────────────────────────────────────────────────────────
+  const enderecoImovel = enderecoPorExtenso(enderecoDoImovel(c), c.property_address, m.linhas);
+  const matricula = c.property_registration?.trim();
+  const cartorio = c.property_registry_office?.trim();
+  const registro =
+    matricula || cartorio
+      ? juntar(
+          [
+            "registrado",
+            matricula ? `sob a matrícula nº ${matricula}` : null,
+            cartorio ? `no ${cartorio}` : null,
+          ],
+          " "
+        )
+      : m.linhas
+        ? `registrado sob a matrícula nº ${LINHA_EM_BRANCO} no Cartório de Registro de Imóveis de ${LINHA_EM_BRANCO}`
+        : null;
+  const detalhes = juntar([
+    campo(m, c.property_kind, (t) => `do tipo ${t}`),
+    enderecoImovel ? `situado na ${enderecoImovel}` : null,
+    campo(m, c.property_area, (t) => `com área de ${t}`),
+    registro,
+    campo(m, c.property_iptu_code, (t) => `inscrito no cadastro imobiliário municipal (IPTU) sob o nº ${t}`),
+  ]);
   p.push(
-    `${clausula("DO OBJETO")} O VENDEDOR, na qualidade de legítimo proprietário e possuidor, vende à COMPRADORA o imóvel do tipo ${v(c.property_kind)}, situado na ${enderecoPorExtenso(enderecoDoImovel(c), c.property_address)}, com área de ${v(c.property_area)}, registrado sob a matrícula nº ${v(c.property_registration)} no ${v(c.property_registry_office, `Cartório de Registro de Imóveis de ${LINHA_EM_BRANCO}`)}, inscrito no cadastro imobiliário municipal (IPTU) sob o nº ${v(c.property_iptu_code)}.`
+    `${clausula("DO OBJETO")} O VENDEDOR, na qualidade de legítimo proprietário e possuidor, vende à COMPRADORA o imóvel${detalhes ? ` ${detalhes}` : ""}.`
   );
-  p.push(medidasEDivisas(c));
+  p.push(medidasEDivisas(m, c));
 
   // ── Preço ─────────────────────────────────────────────────────────────────
   const valor =
     preco > 0
       ? `R$ ${reais(preco)} (${primeiraMaiuscula(valorPorExtenso(preco))})`
-      : `R$ ${LINHA_EM_BRANCO} (${LINHA_LONGA})`;
+      : m.linhas
+        ? `R$ ${LINHA_EM_BRANCO} (${LINHA_LONGA})`
+        : null;
+  const forma = campo(m, c.payment_terms ? semPonto(c.payment_terms) : null, (t) => t, LINHA_LONGA + LINHA_LONGA);
+  const preambuloPreco = valor
+    ? `O preço certo e ajustado da presente venda é de ${valor}, que a COMPRADORA pagará ao VENDEDOR`
+    : "O preço da presente venda será pago pela COMPRADORA ao VENDEDOR";
   p.push(
-    `${clausula("DO PREÇO E DA FORMA DE PAGAMENTO")} O preço certo e ajustado da presente venda é de ${valor}, que a COMPRADORA pagará ao VENDEDOR da seguinte forma: ${v(c.payment_terms?.replace(/\s*\.\s*$/, ""), LINHA_LONGA + LINHA_LONGA)}.`
+    `${clausula("DO PREÇO E DA FORMA DE PAGAMENTO")} ${preambuloPreco}${forma ? ` da seguinte forma: ${forma}` : ""}.`
   );
   p.push(
     "PARÁGRAFO PRIMEIRO: Cada pagamento será comprovado por recibo assinado pelo VENDEDOR ou pelo comprovante de transferência bancária para conta de sua titularidade, que valerão como quitação da respectiva parcela."
@@ -254,9 +345,13 @@ export function paragrafosDaCompraEVenda(
   );
 
   // ── Posse ─────────────────────────────────────────────────────────────────
-  const posse = c.possession_date ? dataPorExtenso(c.possession_date) : `${LINHA_EM_BRANCO}`;
+  const posse = c.possession_date
+    ? ` em ${dataPorExtenso(c.possession_date)}`
+    : m.linhas
+      ? ` em ${LINHA_EM_BRANCO}`
+      : "";
   p.push(
-    `${clausula("DA POSSE")} A posse do imóvel será transmitida à COMPRADORA em ${posse}, com a entrega das chaves, livre e desocupado de pessoas e coisas, no estado de conservação em que se encontra e que a COMPRADORA declara conhecer.`
+    `${clausula("DA POSSE")} A posse do imóvel será transmitida à COMPRADORA${posse}, com a entrega das chaves, livre e desocupado de pessoas e coisas, no estado de conservação em que se encontra e que a COMPRADORA declara conhecer.`
   );
 
   // ── Declarações do vendedor ───────────────────────────────────────────────
@@ -273,9 +368,13 @@ export function paragrafosDaCompraEVenda(
   );
 
   // ── Escritura ─────────────────────────────────────────────────────────────
-  const prazoEscritura = c.deed_days ? `${numeroComExtenso(c.deed_days)} dias` : `${LINHA_EM_BRANCO} dias`;
+  const prazoEscritura = c.deed_days
+    ? `, no prazo de até ${numeroComExtenso(c.deed_days)} dias`
+    : m.linhas
+      ? `, no prazo de até ${LINHA_EM_BRANCO} dias`
+      : "";
   p.push(
-    `${clausula("DA ESCRITURA E DO REGISTRO")} Quitado o preço, as partes comparecerão ao Tabelionato de Notas, no prazo de até ${prazoEscritura}, para a lavratura da escritura pública definitiva de compra e venda, nos termos do artigo 108 do Código Civil, a ser registrada no Cartório de Registro de Imóveis competente.`
+    `${clausula("DA ESCRITURA E DO REGISTRO")} Quitado o preço, as partes comparecerão ao Tabelionato de Notas${prazoEscritura ? `${prazoEscritura},` : ""} para a lavratura da escritura pública definitiva de compra e venda, nos termos do artigo 108 do Código Civil, a ser registrada no Cartório de Registro de Imóveis competente.`
   );
   p.push(
     "PARÁGRAFO ÚNICO: Recusando-se o VENDEDOR a outorgar a escritura definitiva depois de quitado o preço, a COMPRADORA poderá requerer a adjudicação compulsória do imóvel, judicial ou extrajudicialmente, na forma dos artigos 1.417 e 1.418 do Código Civil, servindo o presente contrato como título."
@@ -296,17 +395,26 @@ export function paragrafosDaCompraEVenda(
   const multaTexto =
     multa > 0
       ? `${multa.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% (${numeroPorExtensoPercentual(multa)} por cento)`
-      : `${LINHA_EM_BRANCO}% (${LINHA_EM_BRANCO} por cento)`;
+      : m.linhas
+        ? `${LINHA_EM_BRANCO}% (${LINHA_EM_BRANCO} por cento)`
+        : null;
+  if (multaTexto) {
+    p.push(
+      `${clausula("DO DESCUMPRIMENTO")} A parte que descumprir qualquer cláusula deste contrato pagará à outra multa de ${multaTexto} sobre o preço total do imóvel, sem prejuízo das perdas e danos e do direito da parte prejudicada de exigir o cumprimento do contrato ou a sua rescisão.`
+    );
+  } else {
+    // sem multa combinada, vale a regra geral: perdas e danos
+    p.push(
+      `${clausula("DO DESCUMPRIMENTO")} A parte que descumprir qualquer cláusula deste contrato responderá pelas perdas e danos causados à outra, sem prejuízo do direito da parte prejudicada de exigir o cumprimento do contrato ou a sua rescisão.`
+    );
+  }
   p.push(
-    `${clausula("DO DESCUMPRIMENTO")} A parte que descumprir qualquer cláusula deste contrato pagará à outra multa de ${multaTexto} sobre o preço total do imóvel, sem prejuízo das perdas e danos e do direito da parte prejudicada de exigir o cumprimento do contrato ou a sua rescisão.`
-  );
-  p.push(
-    "PARÁGRAFO ÚNICO: Havendo atraso no pagamento, a COMPRADORA só será considerada em mora depois de notificada, judicial ou extrajudicialmente, para pagar no prazo de 15 (quinze) dias, conforme o Decreto-Lei nº 745/1969. Rescindido o contrato por culpa da COMPRADORA, o VENDEDOR restituirá os valores recebidos, descontada a multa desta cláusula."
+    `PARÁGRAFO ÚNICO: Havendo atraso no pagamento, a COMPRADORA só será considerada em mora depois de notificada, judicial ou extrajudicialmente, para pagar no prazo de 15 (quinze) dias, conforme o Decreto-Lei nº 745/1969. Rescindido o contrato por culpa da COMPRADORA, o VENDEDOR restituirá os valores recebidos, ${multaTexto ? "descontada a multa desta cláusula" : "descontadas as perdas e danos comprovados"}.`
   );
 
   // ── Cláusulas adicionais (só quando escritas) ─────────────────────────────
   if (c.notes?.trim()) {
-    p.push(`${clausula("DAS DISPOSIÇÕES ADICIONAIS")} ${c.notes.trim().replace(/\s*\.\s*$/, "")}.`);
+    p.push(`${clausula("DAS DISPOSIÇÕES ADICIONAIS")} ${semPonto(c.notes.trim())}.`);
   }
 
   // ── Foro ──────────────────────────────────────────────────────────────────
@@ -319,33 +427,34 @@ export function paragrafosDaCompraEVenda(
     "E, por estarem assim justas e contratadas, as partes assinam o presente instrumento em 2 (duas) vias de igual teor e forma, juntamente com as 2 (duas) testemunhas abaixo, para que produza os seus jurídicos e legais efeitos."
   );
 
-  const cidade = foro;
   const data = c.signed_at
-    ? dataPorExtenso(c.signed_at)
-    : `____ de ______________ de ________`;
-  p.push(`${cidade}, ${data}.`);
+    ? `, ${dataPorExtenso(c.signed_at)}`
+    : m.linhas
+      ? ", ____ de ______________ de ________"
+      : "";
+  p.push(`${foro}${data}.`);
 
   p.push(MARCA_ASSINATURAS);
   return p;
 }
 
-/** "12,5" → "12,5 m"; em branco, a linha curta para a caneta. */
-function metros(s?: string | null): string {
-  const t = s?.trim().replace(/\s*m(etros)?\.?$/i, "");
-  return t ? `${t} m` : "_______ m";
+/** "12,5" → "12,5 m". */
+function metros(t: string): string {
+  return `${t.replace(/\s*m(etros)?\.?$/i, "")} m`;
 }
 
 /**
  * O parágrafo do terreno: as quatro medidas, com quem faz divisa em cada lado
- * e o que tem construído (migration 114). Cada pedaço em branco vira a sua
- * linha para a caneta. Contrato salvo antes da 114, sem nenhuma medida, sai
- * com o texto corrido que tinha.
+ * e o que tem construído (migration 114). No contrato em branco cada pedaço
+ * vira a sua linha para a caneta; no preenchido, só entra o que foi
+ * preenchido. Contrato salvo antes da 114, sem nenhuma medida, sai com o texto
+ * corrido que tinha.
  */
-function medidasEDivisas(c: PropertySaleContract): string {
+function medidasEDivisas(m: Modo, c: PropertySaleContract): string {
   const abertura =
     "PARÁGRAFO ÚNICO: A venda compreende o terreno e todas as benfeitorias, acessões e instalações nele existentes";
 
-  const partes = [
+  const algum = [
     c.property_front,
     c.property_back,
     c.property_right,
@@ -355,21 +464,56 @@ function medidasEDivisas(c: PropertySaleContract): string {
     c.property_right_with,
     c.property_left_with,
     c.property_improvements,
-  ];
-  const algum = partes.some((x) => x?.trim());
-  const extra = c.property_description?.trim().replace(/\s*\.\s*$/, "");
+  ].some((x) => x?.trim());
+  const extra = c.property_description?.trim() ? semPonto(c.property_description.trim()) : "";
 
   if (!algum && extra) {
     return `${abertura}, com as seguintes medidas, confrontações e características: ${extra}.`;
   }
 
-  const frases = [
-    `${abertura}.`,
-    `O terreno mede ${metros(c.property_front)} de frente, ${metros(c.property_back)} de fundos, ${metros(c.property_right)} do lado direito e ${metros(c.property_left)} do lado esquerdo, de quem da rua olha o imóvel, limitando-se pela frente com ${v(c.property_front_with)}, pelos fundos com ${v(c.property_back_with)}, pelo lado direito com ${v(c.property_right_with)} e pelo lado esquerdo com ${v(c.property_left_with)}.`,
-    `Benfeitorias: ${v(c.property_improvements?.replace(/\s*\.\s*$/, ""), LINHA_LONGA)}.`,
-  ];
-  if (extra) frases.push(`${primeiraMaiuscula(extra)}.`);
-  return frases.join(" ");
+  const medida = (v: string | null | undefined, lado: string) =>
+    campo(m, v, (t) => `${metros(t)} ${lado}`, "_______");
+  const medidas = [
+    medida(c.property_front, "de frente"),
+    medida(c.property_back, "de fundos"),
+    medida(c.property_right, "do lado direito"),
+    medida(c.property_left, "do lado esquerdo"),
+  ].filter((x): x is string => !!x);
+
+  const divisa = (v: string | null | undefined, lado: string) => campo(m, v, (t) => `${lado} com ${t}`);
+  const divisas = [
+    divisa(c.property_front_with, "pela frente"),
+    divisa(c.property_back_with, "pelos fundos"),
+    divisa(c.property_right_with, "pelo lado direito"),
+    divisa(c.property_left_with, "pelo lado esquerdo"),
+  ].filter((x): x is string => !!x);
+
+  // "direito" e "esquerdo" só se entendem dizendo de onde se olha
+  const temLado = [c.property_right, c.property_left, c.property_right_with, c.property_left_with].some(
+    (x) => x?.trim()
+  );
+  const ondeOlha = m.linhas || temLado ? ", de quem da rua olha o imóvel" : "";
+
+  let terreno = "";
+  if (medidas.length && divisas.length) {
+    terreno = `O terreno mede ${listaComE(medidas)}${ondeOlha}, limitando-se ${listaComE(divisas)}.`;
+  } else if (medidas.length) {
+    terreno = `O terreno mede ${listaComE(medidas)}${ondeOlha}.`;
+  } else if (divisas.length) {
+    terreno = `O terreno limita-se ${listaComE(divisas)}${ondeOlha}.`;
+  }
+
+  const benfeitorias = campo(
+    m,
+    c.property_improvements ? semPonto(c.property_improvements) : null,
+    (t) => `Benfeitorias: ${t}.`,
+    LINHA_LONGA
+  );
+
+  return juntar(
+    [`${abertura}.`, terreno, benfeitorias, extra ? `${primeiraMaiuscula(extra)}.` : null],
+    " "
+  );
 }
 
 /** "10" → "dez"; "2,5" → "dois vírgula cinco" (a multa por extenso). */
