@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AlugueisPageClient } from "@/components/alugueis/alugueis-page-client";
 import type {
+  PowerOfAttorney,
   PropertyBuyer,
   PropertySaleContract,
   RentalContractTemplate,
@@ -34,7 +35,7 @@ export default async function AlugueisPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes] =
+  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes] =
     await Promise.all([
     supabase.from("rental_properties").select("*").order("code"),
     supabase.from("v_rental_contracts").select("*").order("property_code"),
@@ -59,6 +60,12 @@ export default async function AlugueisPage({
       .limit(500),
     // quem compra (migration 115 — sem ela a compra e venda segue com a PRODUMAR)
     supabase.from("property_buyers").select("*").order("name"),
+    // procurações (migration 121 — sem ela a aba abre com o aviso)
+    supabase
+      .from("power_of_attorneys")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500),
   ]);
 
   const templates = (templateRes.data as RentalContractTemplate[]) ?? [];
@@ -72,6 +79,8 @@ export default async function AlugueisPage({
       compras={(vendasRes.data as PropertySaleContract[]) ?? []}
       compraVendaPendente={!!vendasRes.error}
       compradores={(compradoresRes.data as PropertyBuyer[]) ?? []}
+      procuracoes={(procuracoesRes.data as PowerOfAttorney[]) ?? []}
+      procuracaoPendente={!!procuracoesRes.error}
       month={month}
       migrationPendente={!!propertiesRes.error}
     />

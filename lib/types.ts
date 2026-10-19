@@ -2567,6 +2567,53 @@ export interface PropertyBuyer {
   updated_at: string;
 }
 
+/**
+ * Procuração (migration 121) — ex.: troca de titularidade da conta de energia.
+ * OUTORGANTE dá os poderes (o titular da conta); OUTORGADO recebe (o procurador).
+ */
+export interface PowerOfAttorney {
+  id: string;
+  grantor_name: string | null;
+  grantor_gender: "m" | "f" | null;
+  grantor_nationality: string | null;
+  grantor_marital_status: string | null;
+  grantor_profession: string | null;
+  grantor_birthplace: string | null;
+  grantor_rg: string | null;
+  grantor_document: string | null;
+  grantor_street: string | null;
+  grantor_number: string | null;
+  grantor_complement: string | null;
+  grantor_district: string | null;
+  grantor_city: string | null;
+  grantor_zip: string | null;
+
+  attorney_name: string | null;
+  attorney_gender: "m" | "f" | null;
+  attorney_nationality: string | null;
+  attorney_marital_status: string | null;
+  attorney_profession: string | null;
+  attorney_rg: string | null;
+  attorney_document: string | null;
+  attorney_street: string | null;
+  attorney_number: string | null;
+  attorney_complement: string | null;
+  attorney_district: string | null;
+  attorney_city: string | null;
+  attorney_zip: string | null;
+
+  company: string | null;
+  service: string | null;
+  account_number: string | null;
+  validity: string | null;
+  city: string | null;
+  signed_at: string | null;
+  notes: string | null;
+
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface PropertySaleContract {
   id: string;
   /** Quem compra (migration 115). Vazio = a PRODUMAR. */

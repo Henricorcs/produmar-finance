@@ -107,7 +107,7 @@ function listaComE(partes: string[]): string {
 }
 
 /** "m" = homem, "f" = mulher, vazio = não informado (migration 116). */
-type Genero = "m" | "f" | null | undefined;
+export type Genero = "m" | "f" | null | undefined;
 
 /**
  * A palavra conforme quem é: "portador" (homem), "portadora" (mulher) e, sem
@@ -1106,7 +1106,7 @@ function paraArquivo(texto: string): string {
  * masculino (SOLTEIRO, CASADO...), mas a pessoa pode ser mulher — então o texto
  * usa a forma que serve aos dois, como já faz com "portador(a)".
  */
-function estadoCivilNoContrato(estado: string, g?: Genero): string {
+export function estadoCivilNoContrato(estado: string, g?: Genero): string {
   const e = estado.trim().toLowerCase();
   const raiz: Record<string, [string, string]> = {
     solteiro: ["solteiro", "solteira"],

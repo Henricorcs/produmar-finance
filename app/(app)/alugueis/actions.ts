@@ -781,3 +781,132 @@ export async function apagarComprador(id: string) {
   revalidate();
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROCURAÇÕES (migration 121)
+// ─────────────────────────────────────────────────────────────────────────────
+// Ex.: a troca de titularidade da conta de energia na EQUATORIAL. Outorgante é
+// quem dá os poderes (o titular da conta); outorgado, quem vai resolver.
+
+export interface PowerOfAttorneyInput {
+  grantor_name?: string | null;
+  grantor_gender?: string | null;
+  grantor_nationality?: string | null;
+  grantor_marital_status?: string | null;
+  grantor_profession?: string | null;
+  grantor_birthplace?: string | null;
+  grantor_rg?: string | null;
+  grantor_document?: string | null;
+  grantor_street?: string | null;
+  grantor_number?: string | null;
+  grantor_complement?: string | null;
+  grantor_district?: string | null;
+  grantor_city?: string | null;
+  grantor_zip?: string | null;
+
+  attorney_name?: string | null;
+  attorney_gender?: string | null;
+  attorney_nationality?: string | null;
+  attorney_marital_status?: string | null;
+  attorney_profession?: string | null;
+  attorney_rg?: string | null;
+  attorney_document?: string | null;
+  attorney_street?: string | null;
+  attorney_number?: string | null;
+  attorney_complement?: string | null;
+  attorney_district?: string | null;
+  attorney_city?: string | null;
+  attorney_zip?: string | null;
+
+  company?: string | null;
+  service?: string | null;
+  account_number?: string | null;
+  validity?: string | null;
+  city?: string | null;
+  signed_at?: string | null;
+  notes?: string | null;
+}
+
+function procuracaoError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.code === "42703" || error.message.includes("power_of_attorneys"))
+    return "Rode a migration 121 no Supabase para guardar as procurações";
+  return error.message;
+}
+
+function procuracaoRow(input: PowerOfAttorneyInput) {
+  return {
+    grantor_name: clean(input.grantor_name),
+    grantor_gender: genero(input.grantor_gender),
+    grantor_nationality: clean(input.grantor_nationality),
+    grantor_marital_status: clean(input.grantor_marital_status),
+    grantor_profession: clean(input.grantor_profession),
+    grantor_birthplace: clean(input.grantor_birthplace),
+    grantor_rg: clean(input.grantor_rg),
+    grantor_document: raw(input.grantor_document),
+    grantor_street: clean(input.grantor_street),
+    grantor_number: clean(input.grantor_number),
+    grantor_complement: clean(input.grantor_complement),
+    grantor_district: clean(input.grantor_district),
+    grantor_city: clean(input.grantor_city),
+    grantor_zip: raw(input.grantor_zip),
+
+    attorney_name: clean(input.attorney_name),
+    attorney_gender: genero(input.attorney_gender),
+    attorney_nationality: clean(input.attorney_nationality),
+    attorney_marital_status: clean(input.attorney_marital_status),
+    attorney_profession: clean(input.attorney_profession),
+    attorney_rg: clean(input.attorney_rg),
+    attorney_document: raw(input.attorney_document),
+    attorney_street: clean(input.attorney_street),
+    attorney_number: clean(input.attorney_number),
+    attorney_complement: clean(input.attorney_complement),
+    attorney_district: clean(input.attorney_district),
+    attorney_city: clean(input.attorney_city),
+    attorney_zip: raw(input.attorney_zip),
+
+    company: clean(input.company),
+    service: clean(input.service),
+    account_number: raw(input.account_number),
+    // texto corrido da folha: fica como foi escrito
+    validity: raw(input.validity),
+    city: raw(input.city),
+    signed_at: input.signed_at?.trim() || null,
+    notes: raw(input.notes),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function salvarProcuracao(
+  id: string | null,
+  input: PowerOfAttorneyInput
+): Promise<{ error: string } | { ok: true; id: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (id) {
+    const { error } = await supabase.from("power_of_attorneys").update(procuracaoRow(input)).eq("id", id);
+    if (error) return { error: procuracaoError(error) };
+    revalidate();
+    return { ok: true, id };
+  }
+
+  const { data, error } = await supabase
+    .from("power_of_attorneys")
+    .insert({ ...procuracaoRow(input), created_by: user.id })
+    .select("id")
+    .single();
+  if (error || !data) return { error: procuracaoError(error ?? { message: "Erro ao salvar" }) };
+  revalidate();
+  return { ok: true, id: data.id as string };
+}
+
+export async function apagarProcuracao(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("power_of_attorneys").delete().eq("id", id);
+  if (error) return { error: procuracaoError(error) };
+  revalidate();
+  return { ok: true };
+}

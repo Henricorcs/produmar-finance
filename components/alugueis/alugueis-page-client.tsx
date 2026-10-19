@@ -31,9 +31,11 @@ import { ContratoDialog } from "./contrato-dialog";
 import { BaixaDialog } from "./baixa-dialog";
 import { ModeloDialog } from "./modelo-dialog";
 import { CompraVendaDialog } from "./compra-venda-dialog";
+import { ProcuracaoDialog } from "./procuracao-dialog";
 import { CodigoDoImovel } from "./alugueis-shared";
 import {
   rentalKindLabel,
+  type PowerOfAttorney,
   type PropertyBuyer,
   type PropertySaleContract,
   type RentalContractTemplate,
@@ -53,16 +55,20 @@ interface Props {
   compraVendaPendente?: boolean;
   /** Compradores cadastrados (migration 115). */
   compradores?: PropertyBuyer[];
+  /** Procurações (migration 121) — a mais nova primeiro. */
+  procuracoes?: PowerOfAttorney[];
+  procuracaoPendente?: boolean;
   month: string;
   migrationPendente?: boolean;
 }
 
-type Aba = "mes" | "imoveis" | "compra";
+type Aba = "mes" | "imoveis" | "compra" | "procuracao";
 
 const ABAS = [
   { value: "mes" as const, label: "Aluguéis do mês" },
   { value: "imoveis" as const, label: "Imóveis" },
   { value: "compra" as const, label: "Compra e venda" },
+  { value: "procuracao" as const, label: "Procurações" },
 ];
 
 /**
@@ -80,6 +86,8 @@ export function AlugueisPageClient({
   compras = [],
   compraVendaPendente = false,
   compradores = [],
+  procuracoes = [],
+  procuracaoPendente = false,
   month,
   migrationPendente = false,
 }: Props) {
@@ -99,6 +107,8 @@ export function AlugueisPageClient({
   const [modeloOpen, setModeloOpen] = useState(false);
   const [compraOpen, setCompraOpen] = useState(false);
   const [editCompra, setEditCompra] = useState<PropertySaleContract | null>(null);
+  const [procuracaoOpen, setProcuracaoOpen] = useState(false);
+  const [editProcuracao, setEditProcuracao] = useState<PowerOfAttorney | null>(null);
 
   const [year, monthNum] = month.split("-").map(Number);
   const mesLabel = new Date(year, monthNum - 1, 1).toLocaleDateString("pt-BR", {
@@ -436,6 +446,16 @@ export function AlugueisPageClient({
             Modelo do contrato
           </button>
         </>
+      ) : aba === "procuracao" ? (
+        <ProcuracoesLista
+          procuracoes={procuracoes}
+          busca={search}
+          pendente={procuracaoPendente}
+          onAbrir={(p) => {
+            setEditProcuracao(p);
+            setProcuracaoOpen(true);
+          }}
+        />
       ) : (
         <ComprasLista
           compras={compras}
@@ -474,7 +494,132 @@ export function AlugueisPageClient({
         compradores={compradores}
         modeloAluguel={template?.body ?? null}
       />
+      <ProcuracaoDialog
+        open={procuracaoOpen}
+        onClose={() => setProcuracaoOpen(false)}
+        procuracao={editProcuracao}
+        ultima={procuracoes[0] ?? null}
+      />
     </div>
+  );
+}
+
+/**
+ * Aba PROCURAÇÕES: a troca de titularidade da conta de energia e afins. Cada
+ * uma sai impressa ou em PDF; a "em branco" sai só com as linhas.
+ */
+function ProcuracoesLista({
+  procuracoes,
+  busca,
+  pendente,
+  onAbrir,
+}: {
+  procuracoes: PowerOfAttorney[];
+  busca: string;
+  pendente: boolean;
+  onAbrir: (p: PowerOfAttorney | null) => void;
+}) {
+  const q = busca.trim().toUpperCase();
+  const visiveis = q
+    ? procuracoes.filter(
+        (p) =>
+          (p.grantor_name ?? "").toUpperCase().includes(q) ||
+          (p.attorney_name ?? "").toUpperCase().includes(q) ||
+          (p.account_number ?? "").includes(q) ||
+          (p.grantor_street ?? "").toUpperCase().includes(q)
+      )
+    : procuracoes;
+
+  return (
+    <>
+      {pendente && (
+        <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            Rode a migration 121 no Supabase para guardar as procurações. A procuração em
+            branco já pode ser impressa.
+          </span>
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => onAbrir(null)}>
+          <Plus className="w-4 h-4" />
+          Nova procuração
+        </Button>
+        <a
+          href="/imprimir/procuracao/em-branco"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 h-10 px-3 rounded-md border border-produmar-200 text-sm font-medium text-produmar-700 dark:border-slate-700 dark:text-produmar-400"
+        >
+          <Printer className="w-4 h-4" />
+          Imprimir em branco
+        </a>
+      </div>
+
+      {visiveis.length === 0 ? (
+        <div className="text-center py-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+          <FileSignature className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 px-6">
+            {procuracoes.length === 0
+              ? "Nenhuma procuração ainda. Use para trocar a titularidade da conta de energia na EQUATORIAL."
+              : "Nenhuma procuração com esse filtro."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {visiveis.map((p) => (
+            <div
+              key={p.id}
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2"
+            >
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                  OUTORGANTE
+                </p>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                  {p.grantor_name || "A preencher"}
+                </p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                  {[p.company, p.account_number ? `conta contrato ${p.account_number}` : null]
+                    .filter(Boolean)
+                    .join(" · ") || "Sem conta contrato"}
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Procurador:{" "}
+                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                  {p.attorney_name || "—"}
+                </span>
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {p.signed_at ? `Assinatura em ${formatDate(p.signed_at)}` : "Sem data de assinatura"}
+              </p>
+              <div className="flex items-center gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => onAbrir(p)}
+                  className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                >
+                  <FileSignature className="w-3 h-3" />
+                  Editar
+                </button>
+                <a
+                  href={`/imprimir/procuracao/${p.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                >
+                  <Printer className="w-3 h-3" />
+                  Imprimir
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

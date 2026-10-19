@@ -25,6 +25,8 @@ export interface ContratoParaPdf {
   rotulo: RegExp;
   assinaturas: AssinaturaPdf[];
   nomeArquivo: string;
+  /** As duas testemunhas no fim (padrão: sim). A procuração não tem. */
+  testemunhas?: boolean;
 }
 
 /** "João da Silva" → "joao-da-silva" (para o nome do arquivo). */
@@ -90,7 +92,9 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
   const espacoAssinatura = 35;
   const larguraAssinatura = 110;
   /** A altura do bloco de assinaturas: ele não se parte entre duas páginas. */
-  const alturaAssinaturas = c.assinaturas.length * (espacoAssinatura + 10) + espacoAssinatura + 20;
+  const comTestemunhas = c.testemunhas !== false;
+  const alturaAssinaturas =
+    c.assinaturas.length * (espacoAssinatura + 10) + (comTestemunhas ? espacoAssinatura + 20 : 0);
 
   for (const [i, bruto] of c.paragrafos.entries()) {
     if (bruto === c.marcaAssinaturas) {
@@ -158,6 +162,7 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
       doc.setFontSize(fonte);
       y += 10;
     }
+    if (!comTestemunhas) return;
 
     // As duas testemunhas, lado a lado — também com espaço para o gov.br
     y += espacoAssinatura;
