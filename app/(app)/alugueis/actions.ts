@@ -423,6 +423,8 @@ export async function salvarModeloContrato(id: string | null, body: string, name
 // branco sai no papel como linha para completar à caneta.
 
 export interface PropertySaleContractInput {
+  /** Quem compra (115) — vazio = a PRODUMAR. */
+  buyer_id?: string | null;
   seller_name?: string | null;
   seller_nationality?: string | null;
   seller_marital_status?: string | null;
@@ -483,6 +485,8 @@ export interface PropertySaleContractInput {
 
 /** A tabela vem da migration 110 — sem ela o erro do Postgres não diz nada. */
 function compraVendaError(error: { code?: string; message: string }): string {
+  if (/buyer_id|property_buyers/.test(error.message))
+    return "Rode a migration 115 no Supabase para escolher quem compra o imóvel";
   // as partes do endereço (rua, número, bairro...) são da 112
   if (/property_(front|back|right|left|improvements)/.test(error.message))
     return "Rode a migration 114 no Supabase para guardar as medidas e as divisas do imóvel";
@@ -495,6 +499,7 @@ function compraVendaError(error: { code?: string; message: string }): string {
 
 function saleRow(input: PropertySaleContractInput) {
   return {
+    buyer_id: input.buyer_id || null,
     seller_name: clean(input.seller_name),
     seller_nationality: clean(input.seller_nationality),
     seller_marital_status: clean(input.seller_marital_status),
@@ -590,6 +595,110 @@ export async function apagarContratoCompraVenda(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("property_sale_contracts").delete().eq("id", id);
   if (error) return { error: compraVendaError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPRADORES DE IMÓVEL (migration 115)
+// ─────────────────────────────────────────────────────────────────────────────
+// Outra empresa ou uma pessoa física comprando o imóvel. Fica num cadastro para
+// o próximo contrato não ter de digitar tudo de novo. Sem comprador escolhido,
+// a compradora do contrato é a PRODUMAR.
+
+export interface PropertyBuyerInput {
+  kind: "pj" | "pf";
+  name: string;
+  document?: string | null;
+  rg?: string | null;
+  nationality?: string | null;
+  marital_status?: string | null;
+  property_regime?: string | null;
+  profession?: string | null;
+  street?: string | null;
+  number?: string | null;
+  complement?: string | null;
+  district?: string | null;
+  city?: string | null;
+  zip?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  rep_name?: string | null;
+  rep_document?: string | null;
+  rep_rg?: string | null;
+  rep_role?: string | null;
+}
+
+function compradorError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.message.includes("property_buyers"))
+    return "Rode a migration 115 no Supabase para cadastrar compradores";
+  // a trava "on delete restrict": o comprador está em algum contrato
+  if (error.code === "23503")
+    return "Este comprador está em um contrato de compra e venda — apague ou troque o comprador do contrato antes";
+  return error.message;
+}
+
+function buyerRow(input: PropertyBuyerInput) {
+  const pj = input.kind === "pj";
+  return {
+    kind: pj ? "pj" : "pf",
+    name: clean(input.name),
+    document: raw(input.document),
+    // pessoa física tem RG, estado civil e profissão; empresa tem representante
+    rg: pj ? null : clean(input.rg),
+    nationality: pj ? null : clean(input.nationality),
+    marital_status: pj ? null : clean(input.marital_status),
+    property_regime: pj ? null : clean(input.property_regime),
+    profession: pj ? null : clean(input.profession),
+    street: clean(input.street),
+    number: clean(input.number),
+    complement: clean(input.complement),
+    district: clean(input.district),
+    city: clean(input.city),
+    zip: raw(input.zip),
+    phone: raw(input.phone),
+    email: raw(input.email),
+    rep_name: pj ? clean(input.rep_name) : null,
+    rep_document: pj ? raw(input.rep_document) : null,
+    rep_rg: pj ? clean(input.rep_rg) : null,
+    rep_role: pj ? clean(input.rep_role) : null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function salvarComprador(
+  id: string | null,
+  input: PropertyBuyerInput
+): Promise<{ error: string } | { ok: true; id: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!clean(input.name))
+    return { error: input.kind === "pj" ? "Escreva a razão social da empresa" : "Escreva o nome do comprador" };
+
+  if (id) {
+    const { error } = await supabase.from("property_buyers").update(buyerRow(input)).eq("id", id);
+    if (error) return { error: compradorError(error) };
+    revalidate();
+    return { ok: true, id };
+  }
+
+  const { data, error } = await supabase
+    .from("property_buyers")
+    .insert({ ...buyerRow(input), created_by: user.id })
+    .select("id")
+    .single();
+  if (error || !data) return { error: compradorError(error ?? { message: "Erro ao salvar" }) };
+  revalidate();
+  return { ok: true, id: data.id as string };
+}
+
+export async function apagarComprador(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("property_buyers").delete().eq("id", id);
+  if (error) return { error: compradorError(error) };
   revalidate();
   return { ok: true };
 }

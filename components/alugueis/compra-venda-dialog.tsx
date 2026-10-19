@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { Landmark, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { Building2, CheckCircle2, Landmark, Pencil, Plus, Printer, Trash2, User } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +30,21 @@ import {
   salvarContratoCompraVenda,
 } from "@/app/(app)/alugueis/actions";
 import { FOOTER_CANCEL, FOOTER_SUBMIT, STICKY_FOOTER } from "./alugueis-shared";
-import type { PropertySaleContract } from "@/lib/types";
+import { CompradorDialog } from "./comprador-dialog";
+import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import { gerarContratoPdf } from "@/lib/contrato-pdf";
+import {
+  MARCA_ASSINATURAS,
+  RE_ROTULO_COMPRA_VENDA,
+  assinaturasDaCompraEVenda,
+  contratoEmBranco,
+  nomeDoPdfDaCompraEVenda,
+  paragrafosDaCompraEVenda,
+} from "@/lib/compra-venda-contrato";
+import type { PropertyBuyer, PropertySaleContract } from "@/lib/types";
+
+/** O valor da pergunta "Quem compra?" quando é a PRODUMAR (no banco, buyer_id vazio). */
+const COMPRADOR_PRODUMAR = "PRODUMAR";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTRATO DE COMPRA E VENDA — preenchido UM CAMPO POR VEZ
@@ -55,6 +69,7 @@ const TIPOS = ["CASA", "TERRENO", "APARTAMENTO", "PONTO COMERCIAL", "GALPÃO", "
 
 /** Os campos da tela — os mesmos nomes das colunas do banco. */
 type Campo =
+  | "buyer_id"
   | "seller_name"
   | "seller_document"
   | "seller_rg"
@@ -117,6 +132,33 @@ function semPartes(d: Dados, quem: "seller" | "property"): boolean {
   );
 }
 
+/** "12,5" → 12.5; vazio ou inválido → 0. */
+function numero(s: string): number {
+  const n = parseFloat(s.replace(/./g, "").replace(",", "."));
+  return isNaN(n) ? 0 : n;
+}
+
+/**
+ * A ÁREA PELAS MEDIDAS: a média da frente e dos fundos vezes a média dos dois
+ * lados. No terreno retangular é a conta exata; no torto, é a aproximação que
+ * se usa na prática — e o campo continua corrigível quando a matrícula disser
+ * outro número. Sem pelo menos uma medida de cada direção, não há conta.
+ */
+const MEDIDAS: Campo[] = ["property_front", "property_back", "property_right", "property_left"];
+function areaPelasMedidas(d: Dados): string {
+  const media = (a: string, b: string) => {
+    const v = [numero(a), numero(b)].filter((x) => x > 0);
+    return v.length ? v.reduce((s, x) => s + x, 0) / v.length : 0;
+  };
+  const largura = media(d.property_front, d.property_back);
+  const comprimento = media(d.property_right, d.property_left);
+  if (!largura || !comprimento) return "";
+  return (largura * comprimento).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function casado(d: Dados): boolean {
   return d.seller_marital_status === "CASADO" || d.seller_marital_status === "UNIÃO ESTÁVEL";
 }
@@ -141,7 +183,7 @@ const PASSOS: Passo[] = [
 
   // ── Onde o vendedor mora ────────────────────────────────────────────────
   { campo: "seller_street", secao: "Onde o vendedor mora", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true },
-  { campo: "seller_number", secao: "Onde o vendedor mora", pergunta: "Número", tipo: "texto", placeholder: "ex: 120 ou S/N", maiusculo: true },
+  { campo: "seller_number", secao: "Onde o vendedor mora", pergunta: "Número", tipo: "texto", teclado: "numerico", atalhos: ["S/N"], placeholder: "ex: 120", maiusculo: true },
   { campo: "seller_complement", secao: "Onde o vendedor mora", pergunta: "Complemento", tipo: "texto", placeholder: "opcional — casa B, apto 3...", maiusculo: true },
   { campo: "seller_district", secao: "Onde o vendedor mora", pergunta: "Bairro", tipo: "texto", maiusculo: true },
   { campo: "seller_city", secao: "Onde o vendedor mora", pergunta: "Cidade / UF", tipo: "texto", placeholder: "ex: SÃO MATEUS DO MARANHÃO/MA", maiusculo: true },
@@ -167,21 +209,28 @@ const PASSOS: Passo[] = [
   // ── O imóvel ────────────────────────────────────────────────────────────
   { campo: "property_kind", secao: "O imóvel", pergunta: "Que tipo de imóvel é?", tipo: "opcoes", opcoes: TIPOS },
   { campo: "property_street", secao: "Endereço do imóvel", pergunta: "Rua ou avenida do imóvel", tipo: "texto", placeholder: "ex: AV. ANTÔNIA PORTELA", maiusculo: true },
-  { campo: "property_number", secao: "Endereço do imóvel", pergunta: "Número", tipo: "texto", placeholder: "ex: 40 ou S/N", maiusculo: true },
+  { campo: "property_number", secao: "Endereço do imóvel", pergunta: "Número", tipo: "texto", teclado: "numerico", atalhos: ["S/N"], placeholder: "ex: 40", maiusculo: true },
   { campo: "property_complement", secao: "Endereço do imóvel", pergunta: "Complemento", tipo: "texto", placeholder: "opcional — quadra, lote, sala...", maiusculo: true },
   { campo: "property_district", secao: "Endereço do imóvel", pergunta: "Bairro", tipo: "texto", maiusculo: true },
   { campo: "property_city", secao: "Endereço do imóvel", pergunta: "Cidade / UF", tipo: "texto", placeholder: "ex: SÃO MATEUS DO MARANHÃO/MA", maiusculo: true },
   { campo: "property_zip", secao: "Endereço do imóvel", pergunta: "CEP", tipo: "cep", placeholder: "00000-000" },
-  { campo: "property_area", secao: "O imóvel", pergunta: "Área do imóvel", tipo: "texto", placeholder: "ex: 360,00 m²" },
-  { campo: "property_registration", secao: "O imóvel", pergunta: "Número da matrícula", tipo: "texto", maiusculo: true, dica: "Está na certidão do cartório de imóveis." },
+  { campo: "property_registration", secao: "O imóvel", pergunta: "Número da matrícula", tipo: "texto", teclado: "numerico", maiusculo: true, dica: "Está na certidão do cartório de imóveis." },
   { campo: "property_registry_office", secao: "O imóvel", pergunta: "Cartório onde está registrado", tipo: "texto", placeholder: "Cartório de Registro de Imóveis de São Mateus do Maranhão/MA" },
-  { campo: "property_iptu_code", secao: "O imóvel", pergunta: "Inscrição do IPTU", tipo: "texto", maiusculo: true, dica: "Está no carnê do IPTU." },
+  { campo: "property_iptu_code", secao: "O imóvel", pergunta: "Inscrição do IPTU", tipo: "texto", teclado: "numerico", maiusculo: true, dica: "Está no carnê do IPTU." },
 
   // ── Medidas do terreno (em metros, como estão na matrícula) ─────────────
   { campo: "property_front", secao: "Medidas do terreno", pergunta: "Frente (metros)", tipo: "medida", placeholder: "ex: 12,00", dica: "Como está na matrícula." },
   { campo: "property_back", secao: "Medidas do terreno", pergunta: "Fundos (metros)", tipo: "medida", placeholder: "ex: 12,00" },
   { campo: "property_right", secao: "Medidas do terreno", pergunta: "Lado direito (metros)", tipo: "medida", placeholder: "ex: 30,00", dica: "Direito e esquerdo de quem está na rua olhando para o imóvel." },
   { campo: "property_left", secao: "Medidas do terreno", pergunta: "Lado esquerdo (metros)", tipo: "medida", placeholder: "ex: 30,00" },
+  {
+    campo: "property_area",
+    secao: "Medidas do terreno",
+    pergunta: "Área do imóvel (m²)",
+    tipo: "area",
+    placeholder: "ex: 360,00",
+    dica: "Calculada sozinha pelas medidas: a média da frente e dos fundos vezes a média dos lados. Se a matrícula disser outra área, corrija aqui.",
+  },
 
   // ── Com quem o terreno faz divisa ───────────────────────────────────────
   { campo: "property_front_with", secao: "Divisas do terreno", pergunta: "Na frente faz divisa com", tipo: "texto", placeholder: "ex: RUA DO ESPORTE", maiusculo: true, dica: "Na frente, quase sempre é a própria rua." },
@@ -230,6 +279,7 @@ const PASSOS: Passo[] = [
 function dadosIniciais(c: PropertySaleContract | null): Dados {
   const s = (v?: string | number | null) => (v === null || v === undefined ? "" : String(v));
   return {
+    buyer_id: c?.buyer_id || COMPRADOR_PRODUMAR,
     seller_name: s(c?.seller_name),
     seller_document: s(c?.seller_document),
     seller_rg: s(c?.seller_rg),
@@ -288,32 +338,158 @@ interface Props {
   onClose: () => void;
   /** Contrato em edição — null começa um novo. */
   contrato: PropertySaleContract | null;
+  /** Compradores cadastrados (migration 115). */
+  compradores?: PropertyBuyer[];
+  /** O modelo do contrato de aluguel — dele sai a qualificação da PRODUMAR (para o PDF). */
+  modeloAluguel?: string | null;
 }
 
 /**
  * CONTRATO DE COMPRA E VENDA DE IMÓVEL — um campo por vez.
  *
- * A PRODUMAR é sempre a compradora (os dados dela saem do contrato de aluguel).
- * Contrato novo começa na primeira pergunta; contrato salvo abre direto na
- * revisão. Nada é obrigatório: o que ficar em branco sai no papel como linha
- * para completar à caneta.
+ * Quem compra é a primeira pergunta: a PRODUMAR (padrão), um comprador já
+ * cadastrado ou um novo (empresa ou pessoa física). Contrato novo começa na
+ * primeira pergunta; contrato salvo abre direto na revisão. Nada é
+ * obrigatório: o que ficar em branco não sai no contrato. Salvo, a tela mostra
+ * o botão de compartilhar o PDF.
  */
-export function CompraVendaDialog({ open, onClose, contrato }: Props) {
+export function CompraVendaDialog({
+  open,
+  onClose,
+  contrato,
+  compradores = [],
+  modeloAluguel = null,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [dados, setDados] = useState<Dados>(() => dadosIniciais(null));
+  /** A área foi digitada na mão? Aí as medidas não mexem mais nela. */
+  const [areaNaMao, setAreaNaMao] = useState(false);
+  /** Compradores da tela + os cadastrados agora (antes de a página recarregar). */
+  const [lista, setLista] = useState<PropertyBuyer[]>(compradores);
+  const [compradorAberto, setCompradorAberto] = useState<{ b: PropertyBuyer | null } | null>(null);
+  /** Contrato salvo: a tela vira "pronto", com o PDF para compartilhar. */
+  const [salvo, setSalvo] = useState<PropertySaleContract | null>(null);
+
+  useEffect(() => {
+    setLista((atual) => {
+      const porId = new Map(atual.map((b) => [b.id, b]));
+      for (const b of compradores) porId.set(b.id, b);
+      return [...porId.values()].sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }, [compradores]);
 
   useEffect(() => {
     if (!open) return;
-    setDados(dadosIniciais(contrato));
+    const d = dadosIniciais(contrato);
+    setDados(d);
+    // contrato salvo com área diferente da conta: veio da matrícula, fica
+    setAreaNaMao(!!d.property_area.trim() && d.property_area.trim() !== areaPelasMedidas(d));
     setErro(null);
+    setSalvo(null);
   }, [open, contrato]);
 
-  const fluxo = usePassoAPasso(PASSOS, dados, open, !!contrato);
+  const compradorEscolhido =
+    dados.buyer_id && dados.buyer_id !== COMPRADOR_PRODUMAR
+      ? lista.find((b) => b.id === dados.buyer_id) ?? null
+      : null;
+
+  /** A primeira pergunta: quem compra. Depende da lista, então nasce aqui dentro. */
+  const todosOsPassos = useMemo<Passo[]>(
+    () => [
+      {
+        campo: "buyer_id",
+        secao: "Quem compra",
+        pergunta: "Quem está comprando o imóvel?",
+        tipo: "especial",
+        mostrar: (v) =>
+          v === COMPRADOR_PRODUMAR
+            ? "PRODUMAR SERVIÇOS LTDA"
+            : lista.find((b) => b.id === v)?.name ?? "Comprador não encontrado",
+        especial: (valor, mudarValor, avancar) => (
+          <div className="space-y-2">
+            {[
+              {
+                id: COMPRADOR_PRODUMAR,
+                nome: "PRODUMAR SERVIÇOS LTDA",
+                tipo: "Empresa · padrão",
+                b: null as PropertyBuyer | null,
+              },
+              ...lista.map((b) => ({
+                id: b.id,
+                nome: b.name,
+                tipo: b.kind === "pj" ? "Empresa" : "Pessoa física",
+                b,
+              })),
+            ].map((o) => (
+              <div
+                key={o.id}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-colors",
+                  valor === o.id
+                    ? "border-produmar-600 bg-produmar-50 dark:bg-produmar-900/20"
+                    : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    mudarValor(o.id);
+                    setTimeout(avancar, 150);
+                  }}
+                  className="flex flex-1 min-w-0 items-center gap-2 text-left"
+                >
+                  {o.b?.kind === "pf" ? (
+                    <User className="w-4 h-4 flex-shrink-0 text-slate-400" />
+                  ) : (
+                    <Building2 className="w-4 h-4 flex-shrink-0 text-slate-400" />
+                  )}
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                      {o.nome}
+                    </span>
+                    <span className="block text-[11px] text-slate-400">{o.tipo}</span>
+                  </span>
+                </button>
+                {o.b && (
+                  <button
+                    type="button"
+                    onClick={() => setCompradorAberto({ b: o.b })}
+                    aria-label={`Editar ${o.nome}`}
+                    className="p-2 text-slate-400 hover:text-produmar-600"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setCompradorAberto({ b: null })}
+              className="w-full flex items-center justify-center gap-1.5 min-h-[44px] rounded-xl border border-dashed border-produmar-300 text-sm font-semibold text-produmar-700 dark:border-slate-600 dark:text-produmar-300"
+            >
+              <Plus className="w-4 h-4" />
+              Cadastrar novo comprador
+            </button>
+          </div>
+        ),
+      },
+      ...PASSOS,
+    ],
+    [lista]
+  );
+
+  const fluxo = usePassoAPasso(todosOsPassos, dados, open, !!contrato);
   const { passo, passos, idx } = fluxo;
 
   function mudar(campo: Campo, valor: string) {
-    setDados((d) => ({ ...d, [campo]: valor }));
+    if (campo === "property_area") setAreaNaMao(!!valor.trim());
+    setDados((d) => {
+      const novo = { ...d, [campo]: valor };
+      // mexeu numa medida: a área acompanha, enquanto ninguém a digitou
+      if (MEDIDAS.includes(campo) && !areaNaMao) novo.property_area = areaPelasMedidas(novo);
+      return novo;
+    });
   }
 
   function salvar() {
@@ -322,6 +498,7 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
     startTransition(async () => {
       const r = await salvarContratoCompraVenda(contrato?.id ?? null, {
         ...dados,
+        buyer_id: dados.buyer_id === COMPRADOR_PRODUMAR ? null : dados.buyer_id || null,
         // endereço corrido antigo vale até alguém preencher as partes
         seller_address: semPartes(dados, "seller") ? contrato?.seller_address ?? null : null,
         property_address: semPartes(dados, "property") ? contrato?.property_address ?? null : null,
@@ -336,11 +513,11 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
         penalty_percent: parseMoney(dados.penalty_percent) || null,
       });
       const falha = actionError(r);
-      if (falha) {
-        setErro(falha);
+      if (falha || !r || "error" in r) {
+        setErro(falha ?? "Erro ao salvar o contrato");
         return;
       }
-      onClose();
+      setSalvo(contratoDosDados(dados, r.id, contrato));
     });
   }
 
@@ -371,11 +548,18 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
             <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
               <Landmark className="w-4 h-4" />
             </span>
-            {fluxo.naRevisao ? "Revisar o contrato" : "Compra e venda"}
+            {salvo ? "Contrato salvo" : fluxo.naRevisao ? "Revisar o contrato" : "Compra e venda"}
           </DialogTitle>
         </DialogHeader>
 
-        {passo ? (
+        {salvo ? (
+          <ContratoPronto
+            contrato={salvo}
+            comprador={compradorEscolhido}
+            modeloAluguel={modeloAluguel}
+            onFechar={onClose}
+          />
+        ) : passo ? (
           <PerguntaDoPasso
             passo={passo}
             idx={idx}
@@ -387,14 +571,27 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
             onRevisao={fluxo.irParaRevisao}
             daRevisao={fluxo.daRevisao}
             extra={
-              passo.campo === "price" && parseMoney(dados.price) > 0 ? (
+              passo.campo === "property_area" &&
+              areaPelasMedidas(dados) &&
+              areaPelasMedidas(dados) !== dados.property_area.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAreaNaMao(false);
+                    setDados((d) => ({ ...d, property_area: areaPelasMedidas(d) }));
+                  }}
+                  className="text-[11px] font-semibold text-produmar-600 dark:text-produmar-400 underline underline-offset-2"
+                >
+                  Pela conta das medidas: {areaPelasMedidas(dados)} m² — usar a conta
+                </button>
+              ) : passo.campo === "price" && parseMoney(dados.price) > 0 ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   {primeiraMaiuscula(valorPorExtenso(parseMoney(dados.price)))} — é assim que sai
                   no contrato.
                 </p>
               ) : null
             }
-            rodape="Nada é obrigatório: o que ficar em branco sai no papel como linha para completar à caneta. A compradora é sempre a PRODUMAR, com os dados do contrato de aluguel."
+            rodape="Nada é obrigatório: o que ficar em branco não sai no contrato."
           />
         ) : (
           <div className="space-y-4">
@@ -402,19 +599,6 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
               passos={passos}
               dados={dados}
               onEditar={fluxo.editar}
-              topo={
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/50">
-                  <p className="text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-                    COMPRADORA
-                  </p>
-                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    PRODUMAR SERVIÇOS LTDA
-                  </p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Os dados dela saem do contrato de aluguel (Modelo do contrato).
-                  </p>
-                </div>
-              }
             />
 
             {erro && (
@@ -456,6 +640,137 @@ export function CompraVendaDialog({ open, onClose, contrato }: Props) {
           </div>
         )}
       </DialogContent>
+
+      <CompradorDialog
+        open={!!compradorAberto}
+        onClose={() => setCompradorAberto(null)}
+        comprador={compradorAberto?.b ?? null}
+        onSalvo={(b) => {
+          setLista((atual) =>
+            [...atual.filter((x) => x.id !== b.id), b].sort((x, y) => x.name.localeCompare(y.name))
+          );
+          // novo ou editado: já fica escolhido no contrato
+          setDados((d) => ({ ...d, buyer_id: b.id }));
+        }}
+        onApagado={(id) => {
+          setLista((atual) => atual.filter((x) => x.id !== id));
+          setDados((d) => (d.buyer_id === id ? { ...d, buyer_id: COMPRADOR_PRODUMAR } : d));
+        }}
+      />
     </Dialog>
+  );
+}
+
+/** Campos que o servidor guarda como foram digitados; o resto sobe para caixa alta. */
+const SEM_CAIXA_ALTA = new Set<string>([
+  "seller_document",
+  "seller_phone",
+  "seller_email",
+  "seller_zip",
+  "spouse_document",
+  "property_zip",
+  "property_area",
+  "property_front",
+  "property_back",
+  "property_right",
+  "property_left",
+  "property_improvements",
+  "property_description",
+  "property_registry_office",
+  "payment_terms",
+  "forum_city",
+  "notes",
+]);
+
+/**
+ * O contrato do jeito que acabou de ser salvo — para gerar o PDF na hora, sem
+ * esperar a página recarregar. Segue as mesmas regras do servidor (caixa alta,
+ * cônjuge só para casado).
+ */
+function contratoDosDados(
+  d: Dados,
+  id: string,
+  antes: PropertySaleContract | null
+): PropertySaleContract {
+  const c: PropertySaleContract = { ...contratoEmBranco(), id };
+  const alvo = c as unknown as Record<string, unknown>;
+  for (const [k, v] of Object.entries(d)) {
+    if (k === "buyer_id" || k === "price" || k === "deed_days" || k === "penalty_percent") continue;
+    const t = v.trim();
+    alvo[k] = t ? (SEM_CAIXA_ALTA.has(k) ? t : t.toUpperCase()) : null;
+  }
+  if (!casado(d)) {
+    for (const k of [
+      "seller_property_regime",
+      "spouse_name",
+      "spouse_document",
+      "spouse_rg",
+      "spouse_nationality",
+      "spouse_profession",
+    ])
+      alvo[k] = null;
+  }
+  c.buyer_id = d.buyer_id === COMPRADOR_PRODUMAR ? null : d.buyer_id || null;
+  c.price = parseMoney(d.price);
+  c.deed_days = parseInt(d.deed_days, 10) || null;
+  c.penalty_percent = parseMoney(d.penalty_percent) || null;
+  c.seller_address = semPartes(d, "seller") ? antes?.seller_address ?? null : null;
+  c.property_address = semPartes(d, "property") ? antes?.property_address ?? null : null;
+  return c;
+}
+
+/** Salvo: o PDF pronto para compartilhar, e o contrato para abrir e imprimir. */
+function ContratoPronto({
+  contrato,
+  comprador,
+  modeloAluguel,
+  onFechar,
+}: {
+  contrato: PropertySaleContract;
+  comprador: PropertyBuyer | null;
+  modeloAluguel: string | null;
+  onFechar: () => void;
+}) {
+  const paragrafos = paragrafosDaCompraEVenda(contrato, modeloAluguel, comprador);
+  const assinaturas = assinaturasDaCompraEVenda(contrato, comprador, modeloAluguel);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col items-center gap-2 py-2 text-center">
+        <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          Contrato de compra e venda salvo
+          {contrato.seller_name ? ` com ${contrato.seller_name}` : ""}.
+        </p>
+      </div>
+
+      <CompartilharPdf
+        chave={contrato.id + JSON.stringify(paragrafos)}
+        gerar={() =>
+          gerarContratoPdf({
+            titulo: paragrafos[0],
+            paragrafos: paragrafos.slice(1),
+            marcaAssinaturas: MARCA_ASSINATURAS,
+            rotulo: RE_ROTULO_COMPRA_VENDA,
+            assinaturas,
+            nomeArquivo: nomeDoPdfDaCompraEVenda(contrato),
+          })
+        }
+      />
+
+      <a
+        href={`/imprimir/compra-venda/${contrato.id}`}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center justify-center gap-2 w-full h-12 rounded-md border border-produmar-200 dark:border-slate-700 text-base font-medium text-produmar-700 dark:text-produmar-300 hover:bg-produmar-50 dark:hover:bg-slate-800 transition-colors"
+      >
+        <Printer className="w-4 h-4" />
+        Abrir / imprimir o contrato
+      </a>
+
+      <Button type="button" variant="outline" onClick={onFechar} className="w-full h-11">
+        Fechar
+      </Button>
+    </div>
   );
 }

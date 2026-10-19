@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/auth";
 import { CompraVendaPrint } from "@/components/alugueis/compra-venda-print";
 import { contratoEmBranco } from "@/lib/compra-venda-contrato";
-import type { PropertySaleContract, RentalContractTemplate } from "@/lib/types";
+import type { PropertyBuyer, PropertySaleContract, RentalContractTemplate } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -55,5 +55,16 @@ export default async function ImprimirCompraVendaPage({
 
   const modelo = ((modeloRes.data as RentalContractTemplate[]) ?? [])[0]?.body ?? null;
 
-  return <CompraVendaPrint contrato={contrato} modeloAluguel={modelo} />;
+  // quem compra (115): sem comprador escolhido, é a PRODUMAR
+  let comprador: PropertyBuyer | null = null;
+  if (contrato.buyer_id) {
+    const { data } = await supabase
+      .from("property_buyers")
+      .select("*")
+      .eq("id", contrato.buyer_id)
+      .maybeSingle();
+    comprador = (data as PropertyBuyer | null) ?? null;
+  }
+
+  return <CompraVendaPrint contrato={contrato} modeloAluguel={modelo} comprador={comprador} />;
 }

@@ -34,6 +34,7 @@ import { CompraVendaDialog } from "./compra-venda-dialog";
 import { CodigoDoImovel } from "./alugueis-shared";
 import {
   rentalKindLabel,
+  type PropertyBuyer,
   type PropertySaleContract,
   type RentalContractTemplate,
   type RentalContractView,
@@ -50,6 +51,8 @@ interface Props {
   /** Contratos de compra e venda em que a PRODUMAR compra (migration 110). */
   compras?: PropertySaleContract[];
   compraVendaPendente?: boolean;
+  /** Compradores cadastrados (migration 115). */
+  compradores?: PropertyBuyer[];
   month: string;
   migrationPendente?: boolean;
 }
@@ -76,6 +79,7 @@ export function AlugueisPageClient({
   template,
   compras = [],
   compraVendaPendente = false,
+  compradores = [],
   month,
   migrationPendente = false,
 }: Props) {
@@ -435,6 +439,7 @@ export function AlugueisPageClient({
       ) : (
         <ComprasLista
           compras={compras}
+          compradores={compradores}
           busca={search}
           pendente={compraVendaPendente}
           onAbrir={(c) => {
@@ -466,6 +471,8 @@ export function AlugueisPageClient({
         open={compraOpen}
         onClose={() => setCompraOpen(false)}
         contrato={editCompra}
+        compradores={compradores}
+        modeloAluguel={template?.body ?? null}
       />
     </div>
   );
@@ -478,11 +485,13 @@ export function AlugueisPageClient({
  */
 function ComprasLista({
   compras,
+  compradores,
   busca,
   pendente,
   onAbrir,
 }: {
   compras: PropertySaleContract[];
+  compradores: PropertyBuyer[];
   busca: string;
   pendente: boolean;
   onAbrir: (c: PropertySaleContract | null) => void;
@@ -560,6 +569,14 @@ function ComprasLista({
                   </span>
                 )}
               </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Comprador:{" "}
+                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                  {c.buyer_id
+                    ? compradores.find((b) => b.id === c.buyer_id)?.name ?? "—"
+                    : "PRODUMAR SERVIÇOS LTDA"}
+                </span>
+              </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 {c.signed_at ? `Assinatura em ${formatDate(c.signed_at)}` : "Sem data de assinatura"}
                 {c.property_registration ? ` · matrícula ${c.property_registration}` : ""}

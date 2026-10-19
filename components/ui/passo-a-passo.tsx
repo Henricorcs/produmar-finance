@@ -30,6 +30,7 @@ export type TipoPasso =
   | "dinheiro"
   | "percentual"
   | "medida"
+  | "area"
   | "data"
   | "longo"
   | "opcoes"
@@ -51,6 +52,10 @@ export interface PassoDef<C extends string> {
   obrigatorio?: boolean;
   /** O passo só aparece quando faz sentido (o cônjuge, o fiador...). */
   quando?: (d: Record<C, string>) => boolean;
+  /** Campo de texto que é só número (matrícula, nº da casa): teclado numérico. */
+  teclado?: "numerico";
+  /** Respostas prontas a um toque, embaixo do campo (ex.: "S/N"). */
+  atalhos?: string[];
   /** Quantos dígitos cabem no campo de número. */
   maxDigitos?: number;
   /** Campo desenhado pela própria tela (ex.: a escolha do imóvel). */
@@ -84,6 +89,7 @@ function valorNaRevisao<C extends string>(p: PassoDef<C>, valor: string): string
   if (p.tipo === "dinheiro") return `R$ ${valor}`;
   if (p.tipo === "percentual") return `${valor}%`;
   if (p.tipo === "medida") return `${valor} m`;
+  if (p.tipo === "area") return /m/i.test(valor) ? valor : `${valor} m²`;
   return valor;
 }
 
@@ -242,6 +248,30 @@ export function PerguntaDoPasso<C extends string>({
         ultimo={ultimo}
       />
 
+      {/* Respostas prontas: "S/N" no número da casa, que o teclado numérico não tem */}
+      {passo.atalhos && passo.atalhos.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {passo.atalhos.map((a) => (
+            <button
+              key={a}
+              type="button"
+              onClick={() => {
+                onMudar(a);
+                setTimeout(onAvancar, 150);
+              }}
+              className={cn(
+                "min-h-[40px] px-4 rounded-xl border text-sm font-semibold transition-colors",
+                valor === a
+                  ? "bg-produmar-600 border-produmar-600 text-white"
+                  : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
+              )}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
+
       {extra}
       {passo.dica && <p className="text-[11px] text-slate-400 dark:text-slate-500">{passo.dica}</p>}
 
@@ -351,11 +381,17 @@ function CampoDoPasso<C extends string>({
   }
 
   const inputMode =
-    passo.tipo === "documento" || passo.tipo === "numero" || passo.tipo === "cep"
+    passo.tipo === "documento" ||
+    passo.tipo === "numero" ||
+    passo.tipo === "cep" ||
+    passo.teclado === "numerico"
       ? "numeric"
       : passo.tipo === "telefone"
         ? "tel"
-        : passo.tipo === "dinheiro" || passo.tipo === "percentual" || passo.tipo === "medida"
+        : passo.tipo === "dinheiro" ||
+            passo.tipo === "percentual" ||
+            passo.tipo === "medida" ||
+            passo.tipo === "area"
           ? "decimal"
           : passo.tipo === "email"
             ? "email"
@@ -370,6 +406,7 @@ function CampoDoPasso<C extends string>({
       case "numero":
         return bruto.replace(/\D/g, "").slice(0, passo.maxDigitos ?? 4);
       case "medida":
+      case "area":
         return bruto.replace(/[^d,]/g, "").slice(0, 9);
       case "percentual":
         return bruto.replace(/[^\d,]/g, "").slice(0, 5);

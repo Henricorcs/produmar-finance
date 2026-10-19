@@ -2533,8 +2533,42 @@ export interface RentalContractTemplate {
  * Tudo do vendedor é opcional: o que ficar em branco sai como linha para
  * completar à caneta.
  */
+/** Comprador de imóvel cadastrado (migration 115): outra empresa ou uma pessoa física. */
+export interface PropertyBuyer {
+  id: string;
+  /** "pj" = empresa, "pf" = pessoa física. */
+  kind: "pj" | "pf";
+  /** Razão social ou nome completo. */
+  name: string;
+  /** CNPJ ou CPF. */
+  document: string | null;
+  rg: string | null;
+  nationality: string | null;
+  marital_status: string | null;
+  property_regime: string | null;
+  profession: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zip: string | null;
+  phone: string | null;
+  email: string | null;
+  /** Empresa: quem assina por ela. */
+  rep_name: string | null;
+  rep_document: string | null;
+  rep_rg: string | null;
+  rep_role: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PropertySaleContract {
   id: string;
+  /** Quem compra (migration 115). Vazio = a PRODUMAR. */
+  buyer_id?: string | null;
 
   seller_name: string | null;
   seller_nationality: string | null;

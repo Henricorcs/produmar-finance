@@ -231,7 +231,7 @@ export function ContratoDialog({
 
       // ── Onde o inquilino mora hoje ────────────────────────────────────────
       { campo: "tenant_street", secao: "Onde o inquilino mora hoje", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true, dica: lembreteEndereco(contrato?.tenant_address, contrato?.tenant_street) },
-      { campo: "tenant_number", secao: "Onde o inquilino mora hoje", pergunta: "Número", tipo: "texto", placeholder: "ex: 120 ou S/N", maiusculo: true },
+      { campo: "tenant_number", secao: "Onde o inquilino mora hoje", pergunta: "Número", tipo: "texto", teclado: "numerico", atalhos: ["S/N"], placeholder: "ex: 120", maiusculo: true },
       { campo: "tenant_complement", secao: "Onde o inquilino mora hoje", pergunta: "Complemento", tipo: "texto", placeholder: "opcional — casa B, apto 3...", maiusculo: true },
       { campo: "tenant_district", secao: "Onde o inquilino mora hoje", pergunta: "Bairro", tipo: "texto", maiusculo: true },
       { campo: "tenant_city", secao: "Onde o inquilino mora hoje", pergunta: "Cidade / UF", tipo: "texto", placeholder: "ex: SÃO MATEUS DO MARANHÃO/MA", maiusculo: true },
@@ -266,7 +266,7 @@ export function ContratoDialog({
       { campo: "guarantor_rg", secao: "O fiador", pergunta: "RG do fiador", tipo: "texto", placeholder: "número e órgão", maiusculo: true, quando: temFiador },
       { campo: "guarantor_phone", secao: "O fiador", pergunta: "Telefone do fiador", tipo: "telefone", placeholder: "opcional", quando: temFiador },
       { campo: "guarantor_street", secao: "Onde o fiador mora", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true, quando: temFiador, dica: lembreteEndereco(contrato?.guarantor_address, contrato?.guarantor_street) },
-      { campo: "guarantor_number", secao: "Onde o fiador mora", pergunta: "Número", tipo: "texto", placeholder: "ex: 120 ou S/N", maiusculo: true, quando: temFiador },
+      { campo: "guarantor_number", secao: "Onde o fiador mora", pergunta: "Número", tipo: "texto", teclado: "numerico", atalhos: ["S/N"], placeholder: "ex: 120", maiusculo: true, quando: temFiador },
       { campo: "guarantor_complement", secao: "Onde o fiador mora", pergunta: "Complemento", tipo: "texto", placeholder: "opcional", maiusculo: true, quando: temFiador },
       { campo: "guarantor_district", secao: "Onde o fiador mora", pergunta: "Bairro", tipo: "texto", maiusculo: true, quando: temFiador },
       { campo: "guarantor_city", secao: "Onde o fiador mora", pergunta: "Cidade / UF", tipo: "texto", placeholder: "ex: SÃO MATEUS DO MARANHÃO/MA", maiusculo: true, quando: temFiador },

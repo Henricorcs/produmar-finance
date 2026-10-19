@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AlugueisPageClient } from "@/components/alugueis/alugueis-page-client";
 import type {
+  PropertyBuyer,
   PropertySaleContract,
   RentalContractTemplate,
   RentalContractView,
@@ -33,7 +34,8 @@ export default async function AlugueisPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes] = await Promise.all([
+  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes] =
+    await Promise.all([
     supabase.from("rental_properties").select("*").order("code"),
     supabase.from("v_rental_contracts").select("*").order("property_code"),
     // as baixas do mês da tela — é o que diz quem já pagou
@@ -55,6 +57,8 @@ export default async function AlugueisPage({
       .select("*")
       .order("created_at", { ascending: false })
       .limit(500),
+    // quem compra (migration 115 — sem ela a compra e venda segue com a PRODUMAR)
+    supabase.from("property_buyers").select("*").order("name"),
   ]);
 
   const templates = (templateRes.data as RentalContractTemplate[]) ?? [];
@@ -67,6 +71,7 @@ export default async function AlugueisPage({
       template={templates[0] ?? null}
       compras={(vendasRes.data as PropertySaleContract[]) ?? []}
       compraVendaPendente={!!vendasRes.error}
+      compradores={(compradoresRes.data as PropertyBuyer[]) ?? []}
       month={month}
       migrationPendente={!!propertiesRes.error}
     />

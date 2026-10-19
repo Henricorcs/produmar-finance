@@ -1,5 +1,5 @@
 import { dataPorExtenso, numeroComExtenso, primeiraMaiuscula, valorPorExtenso } from "./utils";
-import type { PropertySaleContract } from "./types";
+import type { PropertyBuyer, PropertySaleContract } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTRATO DE COMPRA E VENDA DE IMÓVEL — o texto
@@ -150,7 +150,8 @@ export function enderecoPorExtenso(
   const m: Modo = { linhas };
   return juntar([
     campo(m, e.rua, (t) => t),
-    campo(m, e.numero, (t) => `nº ${t}`, "_______"),
+    // "S/N" sai sozinho — "nº S/N" não existe
+    campo(m, e.numero, (t) => (/^s\/?n$/i.test(t) ? "S/N" : `nº ${t}`), "_______"),
     e.complemento?.trim() || null,
     campo(m, e.bairro, (t) => `bairro ${t}`),
     campo(m, e.cidade, (t) => t),
@@ -220,7 +221,7 @@ export function conjugeNoContrato(c: PropertySaleContract): boolean {
 function estadoCivil(m: Modo, c: PropertySaleContract): string | null {
   const estado = c.seller_marital_status?.trim();
   if (!estado) return m.linhas ? `estado civil ${LINHA_EM_BRANCO}` : null;
-  const e = estado.toLowerCase();
+  const e = estadoCivilNoContrato(estado);
   if (!/casad|uni[ãa]o/.test(e)) return e;
   const regime = campo(
     m,
@@ -257,15 +258,134 @@ function qualificacaoDoConjuge(m: Modo, c: PropertySaleContract): string {
 }
 
 /**
+ * QUEM COMPRA (migration 115): a PRODUMAR (padrão), outra empresa ou uma
+ * pessoa física. Empresa é "a COMPRADORA"; pessoa física, "o(a) COMPRADOR(A)" —
+ * o mesmo jeito do contrato de escrever "portador(a)" e "residente e
+ * domiciliado(a)" para o vendedor.
+ */
+export interface PartesDoComprador {
+  /** Pessoa física? Muda a concordância ("considerado(a)", "notificado(a)"). */
+  pf: boolean;
+  rotulo: string;
+  /** "a COMPRADORA" / "o(a) COMPRADOR(A)". */
+  a: string;
+  /** "à COMPRADORA" / "ao(à) COMPRADOR(A)". */
+  aCrase: string;
+  /** "da COMPRADORA" / "do(a) COMPRADOR(A)". */
+  da: string;
+  /** "pela COMPRADORA" / "pelo(a) COMPRADOR(A)". */
+  pela: string;
+  qualificacao: string;
+  /** A linha de assinatura: o nome e o que vai embaixo dele. */
+  assinaturaNome: string;
+  assinaturaDetalhe: string;
+}
+
+export function partesDoComprador(
+  m: { linhas: boolean },
+  comprador: PropertyBuyer | null | undefined,
+  modeloAluguel?: string | null
+): PartesDoComprador {
+  const feminino = {
+    pf: false,
+    rotulo: "COMPRADORA",
+    a: "a COMPRADORA",
+    aCrase: "à COMPRADORA",
+    da: "da COMPRADORA",
+    pela: "pela COMPRADORA",
+  };
+
+  if (!comprador) {
+    return {
+      ...feminino,
+      qualificacao: qualificacaoDaCompradora(modeloAluguel),
+      assinaturaNome: "PRODUMAR SERVIÇOS LTDA",
+      assinaturaDetalhe: `COMPRADORA · por ${ASSINA_PELA_PRODUMAR}, sócia administradora`,
+    };
+  }
+
+  const endereco = enderecoPorExtenso(
+    {
+      rua: comprador.street,
+      numero: comprador.number,
+      complemento: comprador.complement,
+      bairro: comprador.district,
+      cidade: comprador.city,
+      cep: comprador.zip,
+    },
+    null,
+    m.linhas
+  );
+
+  if (comprador.kind === "pj") {
+    const representante = comprador.rep_name?.trim()
+      ? juntar([
+          `neste ato representada por ${comprador.rep_name.trim()}`,
+          comprador.rep_role?.trim() ? comprador.rep_role.trim().toLowerCase() : null,
+          comprador.rep_rg?.trim() ? `portador(a) do RG nº ${comprador.rep_rg.trim()}` : null,
+          comprador.rep_document?.trim() ? `inscrito(a) no CPF sob o nº ${comprador.rep_document.trim()}` : null,
+        ])
+      : null;
+    return {
+      ...feminino,
+      qualificacao: juntar([
+        comprador.name,
+        comprador.document?.trim() ? `inscrita no CNPJ sob o nº ${comprador.document.trim()}` : null,
+        endereco ? `com sede na ${endereco}` : null,
+        representante,
+      ]),
+      assinaturaNome: comprador.name,
+      assinaturaDetalhe: comprador.rep_name?.trim()
+        ? `COMPRADORA · por ${comprador.rep_name.trim()}${comprador.rep_role?.trim() ? `, ${comprador.rep_role.trim().toLowerCase()}` : ""}`
+        : "COMPRADORA",
+    };
+  }
+
+  // pessoa física
+  const estado = comprador.marital_status?.trim().toLowerCase();
+  const casado = !!estado && /casad|uni[ãa]o/.test(estado);
+  return {
+    pf: true,
+    rotulo: "COMPRADOR(A)",
+    a: "o(a) COMPRADOR(A)",
+    aCrase: "ao(à) COMPRADOR(A)",
+    da: "do(a) COMPRADOR(A)",
+    pela: "pelo(a) COMPRADOR(A)",
+    qualificacao: juntar([
+      comprador.name,
+      comprador.nationality?.trim() ? `de nacionalidade ${comprador.nationality.trim().toLowerCase()}` : null,
+      estado
+        ? juntar([
+            estadoCivilNoContrato(estado),
+            casado && comprador.property_regime?.trim()
+              ? `sob o regime da ${comprador.property_regime.trim().toLowerCase().replace(/^(o |a |de |da |do )/, "")}`
+              : null,
+          ])
+        : null,
+      comprador.profession?.trim() ? `profissão ${comprador.profession.trim().toLowerCase()}` : null,
+      comprador.rg?.trim() ? `portador(a) da cédula de identidade RG nº ${comprador.rg.trim()}` : null,
+      comprador.document?.trim() ? `inscrito(a) no CPF sob o nº ${comprador.document.trim()}` : null,
+      endereco ? `residente e domiciliado(a) na ${endereco}` : null,
+    ]),
+    assinaturaNome: comprador.name,
+    assinaturaDetalhe: comprador.document?.trim()
+      ? `COMPRADOR(A) · CPF nº ${comprador.document.trim()}`
+      : "COMPRADOR(A)",
+  };
+}
+
+/**
  * O contrato inteiro, um parágrafo por item. O primeiro é o título; a marca
  * [[ASSINATURAS]] vira o bloco de assinaturas na impressão.
  */
 export function paragrafosDaCompraEVenda(
   c: PropertySaleContract,
-  modeloAluguel?: string | null
+  modeloAluguel?: string | null,
+  /** Quem compra (115). Vazio = a PRODUMAR. */
+  comprador?: PropertyBuyer | null
 ): string[] {
   const m: Modo = { linhas: c.id === "em-branco" };
-  const compradora = qualificacaoDaCompradora(modeloAluguel);
+  const C = partesDoComprador(m, comprador, modeloAluguel);
   const preco = Number(c.price) || 0;
 
   let n = 0;
@@ -288,10 +408,10 @@ export function paragrafosDaCompraEVenda(
     );
   }
 
-  p.push(`COMPRADORA: ${compradora}.`);
+  p.push(`${C.rotulo}: ${C.qualificacao}.`);
 
   p.push(
-    "As partes acima qualificadas, doravante denominadas simplesmente VENDEDOR e COMPRADORA, têm entre si, justo e contratado, o presente Contrato Particular de Compra e Venda de Imóvel, que se regerá pelas cláusulas e condições seguintes e, no que forem omissas, pelos artigos 481 e seguintes do Código Civil (Lei nº 10.406/2002)."
+    `As partes acima qualificadas, doravante denominadas simplesmente VENDEDOR e ${C.rotulo}, têm entre si, justo e contratado, o presente Contrato Particular de Compra e Venda de Imóvel, que se regerá pelas cláusulas e condições seguintes e, no que forem omissas, pelos artigos 481 e seguintes do Código Civil (Lei nº 10.406/2002).`
   );
 
   // ── Objeto ────────────────────────────────────────────────────────────────
@@ -314,12 +434,12 @@ export function paragrafosDaCompraEVenda(
   const detalhes = juntar([
     campo(m, c.property_kind, (t) => `do tipo ${t}`),
     enderecoImovel ? `situado na ${enderecoImovel}` : null,
-    campo(m, c.property_area, (t) => `com área de ${t}`),
+    campo(m, c.property_area, (t) => `com área de ${/m/i.test(t) ? t : `${t} m²`}`),
     registro,
     campo(m, c.property_iptu_code, (t) => `inscrito no cadastro imobiliário municipal (IPTU) sob o nº ${t}`),
   ]);
   p.push(
-    `${clausula("DO OBJETO")} O VENDEDOR, na qualidade de legítimo proprietário e possuidor, vende à COMPRADORA o imóvel${detalhes ? ` ${detalhes}` : ""}.`
+    `${clausula("DO OBJETO")} O VENDEDOR, na qualidade de legítimo proprietário e possuidor, vende ${C.aCrase} o imóvel${detalhes ? ` ${detalhes}` : ""}.`
   );
   p.push(medidasEDivisas(m, c));
 
@@ -332,8 +452,8 @@ export function paragrafosDaCompraEVenda(
         : null;
   const forma = campo(m, c.payment_terms ? semPonto(c.payment_terms) : null, (t) => t, LINHA_LONGA + LINHA_LONGA);
   const preambuloPreco = valor
-    ? `O preço certo e ajustado da presente venda é de ${valor}, que a COMPRADORA pagará ao VENDEDOR`
-    : "O preço da presente venda será pago pela COMPRADORA ao VENDEDOR";
+    ? `O preço certo e ajustado da presente venda é de ${valor}, que ${C.a} pagará ao VENDEDOR`
+    : `O preço da presente venda será pago ${C.pela} ao VENDEDOR`;
   p.push(
     `${clausula("DO PREÇO E DA FORMA DE PAGAMENTO")} ${preambuloPreco}${forma ? ` da seguinte forma: ${forma}` : ""}.`
   );
@@ -341,7 +461,7 @@ export function paragrafosDaCompraEVenda(
     "PARÁGRAFO PRIMEIRO: Cada pagamento será comprovado por recibo assinado pelo VENDEDOR ou pelo comprovante de transferência bancária para conta de sua titularidade, que valerão como quitação da respectiva parcela."
   );
   p.push(
-    "PARÁGRAFO SEGUNDO: Com o pagamento integral do preço, o VENDEDOR dará à COMPRADORA plena, geral, rasa e irrevogável quitação, para nada mais reclamar a qualquer título."
+    `PARÁGRAFO SEGUNDO: Com o pagamento integral do preço, o VENDEDOR dará ${C.aCrase} plena, geral, rasa e irrevogável quitação, para nada mais reclamar a qualquer título.`
   );
 
   // ── Posse ─────────────────────────────────────────────────────────────────
@@ -351,7 +471,7 @@ export function paragrafosDaCompraEVenda(
       ? ` em ${LINHA_EM_BRANCO}`
       : "";
   p.push(
-    `${clausula("DA POSSE")} A posse do imóvel será transmitida à COMPRADORA${posse}, com a entrega das chaves, livre e desocupado de pessoas e coisas, no estado de conservação em que se encontra e que a COMPRADORA declara conhecer.`
+    `${clausula("DA POSSE")} A posse do imóvel será transmitida ${C.aCrase}${posse}, com a entrega das chaves, livre e desocupado de pessoas e coisas, no estado de conservação em que se encontra e que ${C.a} declara conhecer.`
   );
 
   // ── Declarações do vendedor ───────────────────────────────────────────────
@@ -359,12 +479,12 @@ export function paragrafosDaCompraEVenda(
     `${clausula("DAS DECLARAÇÕES DO VENDEDOR")} O VENDEDOR declara, sob as penas da lei, que o imóvel se encontra livre e desembaraçado de quaisquer ônus reais, judiciais ou extrajudiciais, tais como hipoteca, penhora, arresto, sequestro, alienação fiduciária, usufruto ou servidão, que sobre ele não pesam ações reais ou pessoais reipersecutórias, nem débitos de tributos, taxas ou tarifas, e que não existe contra si ação ou execução capaz de comprometer o imóvel ou de tornar esta venda ineficaz.`
   );
   p.push(
-    "PARÁGRAFO ÚNICO: O VENDEDOR se obriga a entregar à COMPRADORA, até a lavratura da escritura, a certidão de inteiro teor e de ônus reais da matrícula, as certidões negativas de débitos municipais do imóvel e as certidões dos distribuidores cíveis, fiscais, trabalhistas e de protesto em seu nome e, quando houver, em nome do cônjuge."
+    `PARÁGRAFO ÚNICO: O VENDEDOR se obriga a entregar ${C.aCrase}, até a lavratura da escritura, a certidão de inteiro teor e de ônus reais da matrícula, as certidões negativas de débitos municipais do imóvel e as certidões dos distribuidores cíveis, fiscais, trabalhistas e de protesto em seu nome e, quando houver, em nome do cônjuge.`
   );
 
   // ── Tributos e despesas ───────────────────────────────────────────────────
   p.push(
-    `${clausula("DOS TRIBUTOS E DAS DESPESAS")} Os impostos, taxas e tarifas incidentes sobre o imóvel (IPTU, água, energia elétrica e outros) vencidos até a data da entrega da posse são de responsabilidade do VENDEDOR; os que vencerem a partir dela, da COMPRADORA. O Imposto sobre a Transmissão de Bens Imóveis (ITBI) e as despesas de escritura e de registro ficam a cargo da COMPRADORA, conforme o artigo 490 do Código Civil.`
+    `${clausula("DOS TRIBUTOS E DAS DESPESAS")} Os impostos, taxas e tarifas incidentes sobre o imóvel (IPTU, água, energia elétrica e outros) vencidos até a data da entrega da posse são de responsabilidade do VENDEDOR; os que vencerem a partir dela, ${C.da}. O Imposto sobre a Transmissão de Bens Imóveis (ITBI) e as despesas de escritura e de registro ficam a cargo ${C.da}, conforme o artigo 490 do Código Civil.`
   );
 
   // ── Escritura ─────────────────────────────────────────────────────────────
@@ -377,7 +497,7 @@ export function paragrafosDaCompraEVenda(
     `${clausula("DA ESCRITURA E DO REGISTRO")} Quitado o preço, as partes comparecerão ao Tabelionato de Notas${prazoEscritura ? `${prazoEscritura},` : ""} para a lavratura da escritura pública definitiva de compra e venda, nos termos do artigo 108 do Código Civil, a ser registrada no Cartório de Registro de Imóveis competente.`
   );
   p.push(
-    "PARÁGRAFO ÚNICO: Recusando-se o VENDEDOR a outorgar a escritura definitiva depois de quitado o preço, a COMPRADORA poderá requerer a adjudicação compulsória do imóvel, judicial ou extrajudicialmente, na forma dos artigos 1.417 e 1.418 do Código Civil, servindo o presente contrato como título."
+    `PARÁGRAFO ÚNICO: Recusando-se o VENDEDOR a outorgar a escritura definitiva depois de quitado o preço, ${C.a} poderá requerer a adjudicação compulsória do imóvel, judicial ou extrajudicialmente, na forma dos artigos 1.417 e 1.418 do Código Civil, servindo o presente contrato como título.`
   );
 
   // ── Irrevogabilidade ──────────────────────────────────────────────────────
@@ -409,7 +529,7 @@ export function paragrafosDaCompraEVenda(
     );
   }
   p.push(
-    `PARÁGRAFO ÚNICO: Havendo atraso no pagamento, a COMPRADORA só será considerada em mora depois de notificada, judicial ou extrajudicialmente, para pagar no prazo de 15 (quinze) dias, conforme o Decreto-Lei nº 745/1969. Rescindido o contrato por culpa da COMPRADORA, o VENDEDOR restituirá os valores recebidos, ${multaTexto ? "descontada a multa desta cláusula" : "descontadas as perdas e danos comprovados"}.`
+    `PARÁGRAFO ÚNICO: Havendo atraso no pagamento, ${C.a} só será ${C.pf ? "considerado(a) em mora depois de notificado(a)" : "considerada em mora depois de notificada"}, judicial ou extrajudicialmente, para pagar no prazo de 15 (quinze) dias, conforme o Decreto-Lei nº 745/1969. Rescindido o contrato por culpa ${C.da}, o VENDEDOR restituirá os valores recebidos, ${multaTexto ? "descontada a multa desta cláusula" : "descontadas as perdas e danos comprovados"}.`
   );
 
   // ── Cláusulas adicionais (só quando escritas) ─────────────────────────────
@@ -567,4 +687,75 @@ export function contratoEmBranco(): PropertySaleContract {
     created_at: "",
     updated_at: "",
   };
+}
+
+/** O rótulo em negrito no começo do parágrafo ("VENDEDOR:", "CLÁUSULA TERCEIRA – DA POSSE:"). */
+export const RE_ROTULO_COMPRA_VENDA =
+  /^(VENDEDOR|COMPRADORA|COMPRADOR\(A\)|CÔNJUGE DO VENDEDOR(?: \(se houver\))?|CLÁUSULA [^:]{1,60}|PARÁGRAFO [^:]{1,40}):/;
+
+/** As linhas de assinatura, na ordem da folha: vendedor, cônjuge (quando entra) e quem compra. */
+export function assinaturasDaCompraEVenda(
+  c: PropertySaleContract,
+  comprador?: PropertyBuyer | null,
+  modeloAluguel?: string | null
+): { nome: string; detalhe?: string }[] {
+  const C = partesDoComprador({ linhas: c.id === "em-branco" }, comprador, modeloAluguel);
+  const lista: { nome: string; detalhe?: string }[] = [
+    {
+      nome: c.seller_name || "VENDEDOR",
+      detalhe: c.seller_document
+        ? `VENDEDOR · CPF/CNPJ nº ${c.seller_document}`
+        : c.seller_name
+          ? "VENDEDOR"
+          : undefined,
+    },
+  ];
+  if (conjugeNoContrato(c)) {
+    lista.push({
+      nome: c.spouse_name || "CÔNJUGE DO VENDEDOR",
+      detalhe: c.spouse_document
+        ? `CÔNJUGE · CPF nº ${c.spouse_document}`
+        : c.spouse_name
+          ? "CÔNJUGE DO VENDEDOR"
+          : undefined,
+    });
+  }
+  lista.push({ nome: C.assinaturaNome, detalhe: C.assinaturaDetalhe });
+  return lista;
+}
+
+/** "contrato-compra-e-venda-joao-da-silva.pdf" */
+export function nomeDoPdfDaCompraEVenda(c: PropertySaleContract): string {
+  const quem = c.seller_name ? paraArquivo(c.seller_name) : c.id === "em-branco" ? "em-branco" : "";
+  return `contrato-compra-e-venda${quem ? `-${quem}` : ""}.pdf`;
+}
+
+function paraArquivo(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/**
+ * O estado civil do jeito que entra no contrato. A tela oferece os botões no
+ * masculino (SOLTEIRO, CASADO...), mas a pessoa pode ser mulher — então o texto
+ * usa a forma que serve aos dois, como já faz com "portador(a)".
+ */
+function estadoCivilNoContrato(estado: string): string {
+  const e = estado.trim().toLowerCase();
+  const neutro: Record<string, string> = {
+    solteiro: "solteiro(a)",
+    solteira: "solteiro(a)",
+    casado: "casado(a)",
+    casada: "casado(a)",
+    divorciado: "divorciado(a)",
+    divorciada: "divorciado(a)",
+    "viúvo": "viúvo(a)",
+    "viúva": "viúvo(a)",
+    "união estável": "em união estável",
+  };
+  return neutro[e] ?? e;
 }

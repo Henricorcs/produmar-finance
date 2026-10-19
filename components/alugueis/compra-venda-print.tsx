@@ -2,37 +2,40 @@
 
 import { useMemo } from "react";
 import {
-  ASSINA_PELA_PRODUMAR,
   MARCA_ASSINATURAS,
+  RE_ROTULO_COMPRA_VENDA,
+  assinaturasDaCompraEVenda,
+  nomeDoPdfDaCompraEVenda,
   paragrafosDaCompraEVenda,
-  conjugeNoContrato,
 } from "@/lib/compra-venda-contrato";
-import type { PropertySaleContract } from "@/lib/types";
-
-/**
- * O rótulo que abre o parágrafo ("VENDEDOR:", "CLÁUSULA TERCEIRA – DA POSSE:")
- * sai em negrito, como no contrato de aluguel. O resto do parágrafo segue normal.
- */
-const RE_ROTULO =
-  /^(VENDEDOR|COMPRADORA|CÔNJUGE DO VENDEDOR(?: \(se houver\))?|CLÁUSULA [^:]{1,60}|PARÁGRAFO [^:]{1,40}):/;
+import { gerarContratoPdf } from "@/lib/contrato-pdf";
+import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import type { PropertyBuyer, PropertySaleContract } from "@/lib/types";
 
 interface Props {
   contrato: PropertySaleContract;
   /** O modelo do contrato de aluguel — dele sai a qualificação da PRODUMAR. */
   modeloAluguel: string | null;
+  /** Quem compra (migration 115). Vazio = a PRODUMAR. */
+  comprador?: PropertyBuyer | null;
 }
 
 /**
  * O CONTRATO DE COMPRA E VENDA IMPRESSO.
  *
- * A PRODUMAR é sempre a compradora; o vendedor, o imóvel e o preço vêm do que
- * foi preenchido na tela. O que ficou em branco sai como linha para completar
- * à caneta.
+ * Quem compra é a PRODUMAR, outra empresa ou uma pessoa física; o vendedor, o
+ * imóvel e o preço vêm do que foi preenchido na tela. No contrato preenchido,
+ * o que ficou em branco não sai; no "em branco", sai como linha para a caneta.
+ * O mesmo conteúdo vira PDF para compartilhar.
  */
-export function CompraVendaPrint({ contrato, modeloAluguel }: Props) {
+export function CompraVendaPrint({ contrato, modeloAluguel, comprador = null }: Props) {
   const paragrafos = useMemo(
-    () => paragrafosDaCompraEVenda(contrato, modeloAluguel),
-    [contrato, modeloAluguel]
+    () => paragrafosDaCompraEVenda(contrato, modeloAluguel, comprador),
+    [contrato, modeloAluguel, comprador]
+  );
+  const assinaturas = useMemo(
+    () => assinaturasDaCompraEVenda(contrato, comprador, modeloAluguel),
+    [contrato, comprador, modeloAluguel]
   );
 
   const titulo = paragrafos[0];
@@ -55,14 +58,14 @@ export function CompraVendaPrint({ contrato, modeloAluguel }: Props) {
 
       {/* Barra de cima — não sai na impressão */}
       <div
-        className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex items-center justify-between px-6 pb-3 shadow-lg"
+        className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 pb-3 shadow-lg"
         style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
       >
-        <span className="font-semibold text-sm truncate">
+        <span className="font-semibold text-sm truncate min-w-0">
           Compra e venda
           {emBranco ? " · em branco" : contrato.seller_name ? ` · ${contrato.seller_name}` : ""}
         </span>
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => {
               if (window.history.length > 1) window.history.back();
@@ -72,18 +75,32 @@ export function CompraVendaPrint({ contrato, modeloAluguel }: Props) {
           >
             ← Voltar
           </button>
+          <CompartilharPdf
+            variante="barra"
+            chave={JSON.stringify([paragrafos, assinaturas])}
+            gerar={() =>
+              gerarContratoPdf({
+                titulo,
+                paragrafos: corpo,
+                marcaAssinaturas: MARCA_ASSINATURAS,
+                rotulo: RE_ROTULO_COMPRA_VENDA,
+                assinaturas,
+                nomeArquivo: nomeDoPdfDaCompraEVenda(contrato),
+              })
+            }
+          />
           <button
             onClick={() => window.print()}
-            className="bg-white text-produmar-700 font-semibold text-sm px-4 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
+            className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
           >
-            🖨 Imprimir / Salvar PDF
+            🖨 Imprimir
           </button>
         </div>
       </div>
 
       <div
         className="no-print"
-        style={{ height: "calc(3.5rem + env(safe-area-inset-top))" }}
+        style={{ height: "calc(4.5rem + env(safe-area-inset-top))" }}
       />
 
       {/* A folha */}
@@ -93,7 +110,7 @@ export function CompraVendaPrint({ contrato, modeloAluguel }: Props) {
 
           {corpo.map((p, i) =>
             p === MARCA_ASSINATURAS ? (
-              <Assinaturas key={`assin-${i}`} contrato={contrato} />
+              <Assinaturas key={`assin-${i}`} lista={assinaturas} />
             ) : (
               <Paragrafo key={i} texto={p} />
             )
@@ -105,7 +122,7 @@ export function CompraVendaPrint({ contrato, modeloAluguel }: Props) {
 }
 
 function Paragrafo({ texto }: { texto: string }) {
-  const rotulo = texto.match(RE_ROTULO);
+  const rotulo = texto.match(RE_ROTULO_COMPRA_VENDA);
 
   // A linha do "Cidade, data" fica centralizada, como no contrato de aluguel.
   const ehDataLocal = /^[^:]{3,60},\s*(\d{1,2}\s+de\s+\p{L}+\s+de\s+\d{4}|_+ de _+ de _+)\.?$/u.test(
@@ -129,40 +146,16 @@ function Paragrafo({ texto }: { texto: string }) {
 }
 
 /**
- * O bloco de assinaturas: vendedor, cônjuge (quando entra no contrato), a
- * PRODUMAR e as duas testemunhas — são elas que fazem do contrato um título
+ * O bloco de assinaturas: vendedor, cônjuge (quando entra no contrato), quem
+ * compra e as duas testemunhas — são elas que fazem do contrato um título
  * executivo.
  */
-function Assinaturas({ contrato }: { contrato: PropertySaleContract }) {
-  const conjuge = conjugeNoContrato(contrato);
+function Assinaturas({ lista }: { lista: { nome: string; detalhe?: string }[] }) {
   return (
     <div className="avoid-break pt-10 space-y-10">
-      <Linha
-        nome={contrato.seller_name || "VENDEDOR"}
-        detalhe={
-          contrato.seller_document
-            ? `VENDEDOR · CPF/CNPJ nº ${contrato.seller_document}`
-            : contrato.seller_name
-              ? "VENDEDOR"
-              : undefined
-        }
-      />
-      {conjuge && (
-        <Linha
-          nome={contrato.spouse_name || "CÔNJUGE DO VENDEDOR"}
-          detalhe={
-            contrato.spouse_document
-              ? `CÔNJUGE · CPF nº ${contrato.spouse_document}`
-              : contrato.spouse_name
-                ? "CÔNJUGE DO VENDEDOR"
-                : undefined
-          }
-        />
-      )}
-      <Linha
-        nome="PRODUMAR SERVIÇOS LTDA"
-        detalhe={`COMPRADORA · por ${ASSINA_PELA_PRODUMAR}, sócia administradora`}
-      />
+      {lista.map((a, i) => (
+        <Linha key={i} nome={a.nome} detalhe={a.detalhe} />
+      ))}
       <div className="grid grid-cols-2 gap-8 pt-4">
         <Testemunha />
         <Testemunha />

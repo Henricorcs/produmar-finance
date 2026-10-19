@@ -2,6 +2,8 @@
 
 import { useMemo } from "react";
 import { camposDoContrato, preencherModelo } from "@/lib/alugueis-contrato";
+import { gerarContratoPdf, paraNomeDeArquivo } from "@/lib/contrato-pdf";
+import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
 import type { RentalContractView } from "@/lib/types";
 
 /** A linha que vira o bloco de assinaturas do fim do contrato. */
@@ -61,13 +63,13 @@ export function ContratoPrint({
 
       {/* Barra de cima — não sai na impressão */}
       <div
-        className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex items-center justify-between px-6 pb-3 shadow-lg"
+        className="no-print fixed top-0 inset-x-0 z-50 bg-produmar-700 text-white flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 pb-3 shadow-lg"
         style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
       >
         <span className="font-semibold text-sm">
           Contrato · imóvel nº {contrato.property_code}
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => {
               if (window.history.length > 1) window.history.back();
@@ -77,18 +79,38 @@ export function ContratoPrint({
           >
             ← Voltar
           </button>
+          <CompartilharPdf
+            variante="barra"
+            chave={JSON.stringify(paragrafos)}
+            gerar={() =>
+              gerarContratoPdf({
+                titulo,
+                paragrafos: corpo,
+                marcaAssinaturas: MARCA_ASSINATURAS,
+                rotulo: RE_ROTULO,
+                assinaturas: [
+                  { nome: assinaturaLocador },
+                  {
+                    nome: contrato.tenant_name,
+                    detalhe: contrato.tenant_document ? `CPF nº ${contrato.tenant_document}` : undefined,
+                  },
+                ],
+                nomeArquivo: `contrato-locacao-${paraNomeDeArquivo(contrato.tenant_name) || "imovel"}.pdf`,
+              })
+            }
+          />
           <button
             onClick={() => window.print()}
-            className="bg-white text-produmar-700 font-semibold text-sm px-4 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
+            className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
           >
-            🖨 Imprimir / Salvar PDF
+            🖨 Imprimir
           </button>
         </div>
       </div>
 
       <div
         className="no-print"
-        style={{ height: "calc(3.5rem + env(safe-area-inset-top))" }}
+        style={{ height: "calc(4.5rem + env(safe-area-inset-top))" }}
       />
 
       {/* A folha */}
