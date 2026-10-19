@@ -481,6 +481,7 @@ export interface PropertySaleContractInput {
   installments?: number | null;
   installment_amount?: number | null;
   first_installment_amount?: number | null;
+  different_installment_number?: number | null;
   first_due_date?: string | null;
   payment_method?: string | null;
 
@@ -517,6 +518,8 @@ function compraVendaError(error: { code?: string; message: string }): string {
   if (/buyer_id|property_buyers/.test(error.message))
     return "Rode a migration 115 no Supabase para escolher quem compra o imóvel";
   // as partes do endereço (rua, número, bairro...) são da 112
+  if (/different_installment_number/.test(error.message))
+    return "Rode a migration 118 no Supabase para escolher qual parcela é diferente";
   if (/payment_mode|down_payment|installment|first_due_date|payment_method/.test(error.message))
     return "Rode a migration 117 no Supabase para guardar a entrada e as parcelas";
   if (/property_(front|back|right|left|improvements)/.test(error.message))
@@ -594,6 +597,10 @@ function saleRow(input: PropertySaleContractInput) {
     first_installment_amount: comParcelas(input.payment_mode)
       ? money(input.first_installment_amount) || null
       : null,
+    different_installment_number:
+      comParcelas(input.payment_mode) && money(input.first_installment_amount) > 0
+        ? inteiro(input.different_installment_number) ?? 1
+        : null,
     first_due_date: comParcelas(input.payment_mode) ? input.first_due_date?.trim() || null : null,
     payment_method: input.payment_mode && input.payment_mode !== "outro" ? clean(input.payment_method) : null,
 

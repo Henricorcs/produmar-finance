@@ -45,6 +45,7 @@ import {
   contratoEmBranco,
   nomeDoPdfDaCompraEVenda,
   parcelasDaCompra,
+  saldoDevedor,
   valorDasParcelasIguais,
   paragrafosDaCompraEVenda,
 } from "@/lib/compra-venda-contrato";
@@ -129,10 +130,11 @@ type Campo =
   | "down_payment"
   | "down_payment_date"
   | "installments"
-  /** Só na tela: o botão "a 1ª parcela tem valor diferente?" ("sim" / "nao"). */
-  | "primeira_diferente"
+  /** Só na tela: "o saldo será pago em parcelas iguais?" ("sim" / "nao"). */
+  | "parcelas_iguais"
+  /** Qual parcela tem valor diferente (2ª, 6ª...) — e o valor dela, abaixo. */
+  | "different_installment_number"
   | "first_installment_amount"
-  | "installment_amount"
   | "first_due_date"
   | "payment_method"
   | "possession_date"
@@ -185,31 +187,32 @@ function casado(d: Dados): boolean {
   return d.seller_marital_status === "CASADO" || d.seller_marital_status === "UNIÃO ESTÁVEL";
 }
 
-/** As perguntas que mostram, embaixo, a lista de pagamentos sendo montada. */
+/** As perguntas que mostram, embaixo, o saldo devedor e a lista de pagamentos. */
 const CAMPOS_COM_RESUMO: Campo[] = [
   "down_payment",
   "down_payment_date",
+  "parcelas_iguais",
   "installments",
-  "primeira_diferente",
+  "different_installment_number",
   "first_installment_amount",
-  "installment_amount",
   "first_due_date",
 ];
 
 /**
- * A lista de pagamentos, ao vivo: a entrada e cada parcela com a data e o
- * valor, como vai sair no contrato. Se a soma não fecha com o preço (o valor
- * da parcela foi mudado na mão), avisa e oferece voltar para a conta.
+ * O SALDO DEVEDOR e a lista de pagamentos, ao vivo: digitou a entrada, aparece
+ * quanto falta pagar; disse quantas parcelas, aparece cada uma com a data e o
+ * valor — já calculado, ninguém precisa fazer a conta nem digitar o valor.
  */
-function ResumoDasParcelas({ dados, onUsarConta }: { dados: Dados; onUsarConta: () => void }) {
+function ResumoDasParcelas({ dados }: { dados: Dados }) {
   const campos = camposDasParcelas(dados);
   const parcelas = parcelasDaCompra(campos);
   const entrada = dados.payment_mode === "entrada_parcelas" ? campos.down_payment : 0;
   const preco = campos.price;
-  if (parcelas.length === 0 && !entrada) return null;
+  const saldo = saldoDevedor(campos);
+  // sem nada para mostrar ainda (nem preço, nem entrada, nem parcelas)
+  if (parcelas.length === 0 && !entrada && !(preco > 0)) return null;
 
   const soma = Math.round((entrada + parcelas.reduce((s, p) => s + p.valor, 0)) * 100) / 100;
-  const conta = parcelaPelaConta(dados);
   const naoFecha = preco > 0 && parcelas.length > 0 && Math.abs(soma - preco) >= 0.01;
   // muitas parcelas: mostra as 4 primeiras, "…" e a última
   const visiveis =
@@ -217,6 +220,11 @@ function ResumoDasParcelas({ dados, onUsarConta }: { dados: Dados; onUsarConta: 
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300 space-y-0.5 tabular-nums">
+      {preco > 0 && saldo > 0 && (
+        <p className="pb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          Saldo devedor: {formatBRL(saldo)}
+        </p>
+      )}
       {entrada > 0 && (
         <p>
           Entrada — {dados.down_payment_date ? formatDate(dados.down_payment_date) : "na assinatura"} —{" "}
@@ -242,59 +250,39 @@ function ResumoDasParcelas({ dados, onUsarConta }: { dados: Dados; onUsarConta: 
           )}
         >
           Total {formatBRL(soma)}
-          {naoFecha ? ` — o preço é ${formatBRL(preco)}` : " — fecha com o preço"}
+          {naoFecha
+            ? ` — o preço é ${formatBRL(preco)}: confira o valor da parcela diferente`
+            : " — fecha com o preço"}
         </p>
-      )}
-      {naoFecha && conta && (
-        <button
-          type="button"
-          onClick={onUsarConta}
-          className="font-semibold text-produmar-600 dark:text-produmar-400 underline underline-offset-2"
-        >
-          Usar a conta: parcelas de R$ {conta}
-        </button>
       )}
     </div>
   );
 }
-
-/** Os campos que mudam a conta do valor das parcelas iguais. */
-const CAMPOS_DA_CONTA: Campo[] = [
-  "price",
-  "payment_mode",
-  "down_payment",
-  "installments",
-  "primeira_diferente",
-  "first_installment_amount",
-];
 
 /** Pagamento com parcelas: "entrada + parcelas" ou "parcelado". */
 function comParcelas(d: Dados): boolean {
   return d.payment_mode === "entrada_parcelas" || d.payment_mode === "parcelado";
 }
 
-/** Respondeu que a 1ª parcela tem valor próprio (e há 2 ou mais parcelas). */
-function primeiraDiferente(d: Dados): boolean {
-  return comParcelas(d) && d.primeira_diferente === "sim" && (parseInt(d.installments, 10) || 0) >= 2;
+/** Respondeu que o saldo NÃO é em parcelas iguais — uma tem valor próprio. */
+function comParcelaDiferente(d: Dados): boolean {
+  return comParcelas(d) && d.parcelas_iguais === "nao" && (parseInt(d.installments, 10) || 0) >= 2;
 }
 
 /** As respostas da tela no formato que a conta das parcelas entende. */
 function camposDasParcelas(d: Dados) {
+  const dif = comParcelaDiferente(d);
   return {
     payment_mode: (d.payment_mode || null) as PropertySaleContract["payment_mode"],
     price: parseMoney(d.price),
     down_payment: parseMoney(d.down_payment),
     installments: parseInt(d.installments, 10) || 0,
-    installment_amount: parseMoney(d.installment_amount),
-    first_installment_amount: primeiraDiferente(d) ? parseMoney(d.first_installment_amount) : null,
+    // o valor das parcelas iguais é sempre a conta
+    installment_amount: null,
+    first_installment_amount: dif ? parseMoney(d.first_installment_amount) : null,
+    different_installment_number: dif ? parseInt(d.different_installment_number, 10) || 1 : null,
     first_due_date: d.first_due_date || null,
   };
-}
-
-/** O valor das parcelas iguais pela conta, já no formato do campo ("11.000,00"). */
-function parcelaPelaConta(d: Dados): string {
-  const v = valorDasParcelasIguais({ ...camposDasParcelas(d), installment_amount: null });
-  return v > 0 ? formatBRLInput(v) : "";
 }
 
 /**
@@ -464,53 +452,47 @@ const PASSOS: Passo[] = [
     quando: (d) => d.payment_mode === "entrada_parcelas",
   },
 
-  // parcelas
+  // parcelas — o valor de cada uma é sempre a conta (aparece embaixo, com o
+  // saldo devedor); só se pergunta o que muda a conta
+  {
+    campo: "parcelas_iguais",
+    secao: "Parcelas",
+    pergunta: "O saldo será pago em parcelas iguais?",
+    tipo: "opcoes",
+    opcoes: [
+      { valor: "sim", label: "Sim, todas iguais" },
+      { valor: "nao", label: "Não, uma é diferente" },
+    ],
+    dica: "Ex.: uma 2ª parcela de 20 mil e o resto dividido em parcelas iguais.",
+    quando: comParcelas,
+  },
   {
     campo: "installments",
     secao: "Parcelas",
-    pergunta: "Em quantas parcelas? (sem contar a entrada)",
+    pergunta: "Em quantas parcelas será pago o saldo?",
     tipo: "numero",
     maxDigitos: 3,
     placeholder: "ex: 12",
     quando: comParcelas,
   },
   {
-    campo: "primeira_diferente",
+    campo: "different_installment_number",
     secao: "Parcelas",
-    pergunta: "A 1ª parcela tem valor diferente das outras?",
-    tipo: "opcoes",
-    opcoes: [
-      { valor: "nao", label: "Não, todas iguais" },
-      { valor: "sim", label: "Sim, a 1ª é diferente" },
-    ],
-    dica: "Ex.: entrada de 20 mil, 1ª parcela de 20 mil e o resto dividido em parcelas iguais.",
-    quando: (d) => comParcelas(d) && (parseInt(d.installments, 10) || 0) >= 2,
+    pergunta: "Qual parcela tem valor diferente?",
+    tipo: "numero",
+    maxDigitos: 3,
+    placeholder: "ex: 2 (para a 2ª parcela)",
+    atalhos: ["1", "2", "3"],
+    quando: comParcelaDiferente,
   },
   {
     campo: "first_installment_amount",
     secao: "Parcelas",
-    pergunta: "Valor da 1ª parcela (R$)",
+    pergunta: "Valor dessa parcela (R$)",
     tipo: "dinheiro",
     placeholder: "0,00",
-    quando: primeiraDiferente,
-  },
-  {
-    campo: "installment_amount",
-    secao: "Parcelas",
-    pergunta: "Valor das demais parcelas (R$)",
-    tipo: "dinheiro",
-    placeholder: "0,00",
-    dica: "Já vem calculado: o que falta pagar, dividido em partes iguais. Pode mudar.",
-    quando: primeiraDiferente,
-  },
-  {
-    campo: "installment_amount",
-    secao: "Parcelas",
-    pergunta: "Valor de cada parcela (R$)",
-    tipo: "dinheiro",
-    placeholder: "0,00",
-    dica: "Já vem calculado: o que falta pagar, dividido em partes iguais. Pode mudar.",
-    quando: (d) => comParcelas(d) && !primeiraDiferente(d),
+    dica: "As outras parcelas dividem o resto do saldo em partes iguais.",
+    quando: comParcelaDiferente,
   },
   {
     campo: "first_due_date",
@@ -617,11 +599,11 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
     down_payment: c && Number(c.down_payment) > 0 ? formatBRLInput(Number(c.down_payment)) : "",
     down_payment_date: s(c?.down_payment_date),
     installments: s(c?.installments),
-    primeira_diferente: c && Number(c.first_installment_amount) > 0 ? "sim" : "nao",
+    parcelas_iguais: c && Number(c.first_installment_amount) > 0 ? "nao" : "sim",
+    different_installment_number:
+      c && Number(c.first_installment_amount) > 0 ? String(c.different_installment_number ?? 1) : "",
     first_installment_amount:
       c && Number(c.first_installment_amount) > 0 ? formatBRLInput(Number(c.first_installment_amount)) : "",
-    installment_amount:
-      c && Number(c.installment_amount) > 0 ? formatBRLInput(Number(c.installment_amount)) : "",
     first_due_date: s(c?.first_due_date),
     payment_method: s(c?.payment_method),
     possession_date: s(c?.possession_date),
@@ -665,8 +647,6 @@ export function CompraVendaDialog({
   const [dados, setDados] = useState<Dados>(() => dadosIniciais(null));
   /** A área foi digitada na mão? Aí as medidas não mexem mais nela. */
   const [areaNaMao, setAreaNaMao] = useState(false);
-  /** O valor das parcelas foi digitado na mão? Aí a conta não mexe mais nele. */
-  const [parcelaNaMao, setParcelaNaMao] = useState(false);
   /** Compradores da tela + os cadastrados agora (antes de a página recarregar). */
   const [lista, setLista] = useState<PropertyBuyer[]>(compradores);
   const [compradorAberto, setCompradorAberto] = useState<{ b: PropertyBuyer | null } | null>(null);
@@ -687,8 +667,6 @@ export function CompraVendaDialog({
     setDados(d);
     // contrato salvo com área diferente da conta: veio da matrícula, fica
     setAreaNaMao(!!d.property_area.trim() && d.property_area.trim() !== areaPelasMedidas(d));
-    // contrato salvo com parcela diferente da conta: foi combinado assim, fica
-    setParcelaNaMao(!!d.installment_amount.trim() && d.installment_amount !== parcelaPelaConta(d));
     setErro(null);
     setSalvo(null);
   }, [open, contrato]);
@@ -788,15 +766,10 @@ export function CompraVendaDialog({
 
   function mudar(campo: Campo, valor: string) {
     if (campo === "property_area") setAreaNaMao(!!valor.trim());
-    if (campo === "installment_amount") setParcelaNaMao(!!valor.trim());
     setDados((d) => {
       const novo = { ...d, [campo]: valor };
       // mexeu numa medida: a área acompanha, enquanto ninguém a digitou
       if (MEDIDAS.includes(campo) && !areaNaMao) novo.property_area = areaPelasMedidas(novo);
-      // mexeu no preço, na entrada, nas parcelas ou na 1ª parcela: o valor das
-      // parcelas iguais acompanha, enquanto ninguém o digitou
-      if (CAMPOS_DA_CONTA.includes(campo) && !parcelaNaMao)
-        novo.installment_amount = parcelaPelaConta(novo);
       return novo;
     });
   }
@@ -824,12 +797,16 @@ export function CompraVendaDialog({
         spouse_nationality: conjuge ? dados.spouse_nationality : "",
         spouse_profession: conjuge ? dados.spouse_profession : "",
         price: parseMoney(dados.price),
-        // entrada e parcelas: números; a 1ª parcela própria só com o "sim"
+        // entrada e parcelas: números; o valor das parcelas iguais é a conta
+        // (guardado para o registro); a parcela diferente só com o "não"
         down_payment: parseMoney(dados.down_payment) || null,
         installments: parseInt(dados.installments, 10) || null,
-        installment_amount: parseMoney(dados.installment_amount) || null,
-        first_installment_amount: primeiraDiferente(dados)
+        installment_amount: valorDasParcelasIguais(camposDasParcelas(dados)) || null,
+        first_installment_amount: comParcelaDiferente(dados)
           ? parseMoney(dados.first_installment_amount) || null
+          : null,
+        different_installment_number: comParcelaDiferente(dados)
+          ? parseInt(dados.different_installment_number, 10) || 1
           : null,
         deed_days: parseInt(dados.deed_days, 10) || null,
         penalty_percent: parseMoney(dados.penalty_percent) || null,
@@ -912,13 +889,7 @@ export function CompraVendaDialog({
                   no contrato.
                 </p>
               ) : CAMPOS_COM_RESUMO.includes(passo.campo) && comParcelas(dados) ? (
-                <ResumoDasParcelas
-                  dados={dados}
-                  onUsarConta={() => {
-                    setParcelaNaMao(false);
-                    setDados((d) => ({ ...d, installment_amount: parcelaPelaConta(d) }));
-                  }}
-                />
+                <ResumoDasParcelas dados={dados} />
               ) : null
             }
             rodape="Nada é obrigatório: o que ficar em branco não sai no contrato."
@@ -1000,15 +971,15 @@ const NUMEROS_DO_CONTRATO = new Set<string>([
   "penalty_percent",
   "down_payment",
   "installments",
-  "installment_amount",
   "first_installment_amount",
+  "different_installment_number",
 ]);
 
 const SEM_CAIXA_ALTA = new Set<string>([
   "payment_mode",
   "down_payment_date",
   "first_due_date",
-  "primeira_diferente",
+  "parcelas_iguais",
   "seller_gender",
   "spouse_gender",
   "seller_document",
@@ -1066,13 +1037,14 @@ function contratoDosDados(
   }
   c.buyer_id = d.buyer_id === COMPRADOR_PRODUMAR ? null : d.buyer_id || null;
   c.price = parseMoney(d.price);
-  delete alvo.primeira_diferente;
+  delete alvo.parcelas_iguais;
   const parcelas = camposDasParcelas(d);
   c.payment_mode = parcelas.payment_mode;
   c.down_payment = d.payment_mode === "entrada_parcelas" ? parcelas.down_payment || null : null;
   c.installments = comParcelas(d) ? parcelas.installments || null : null;
-  c.installment_amount = comParcelas(d) ? parcelas.installment_amount || null : null;
+  c.installment_amount = comParcelas(d) ? valorDasParcelasIguais(parcelas) || null : null;
   c.first_installment_amount = parcelas.first_installment_amount || null;
+  c.different_installment_number = parcelas.different_installment_number || null;
   c.deed_days = parseInt(d.deed_days, 10) || null;
   c.penalty_percent = parseMoney(d.penalty_percent) || null;
   c.seller_address = semPartes(d, "seller") ? antes?.seller_address ?? null : null;

@@ -2641,8 +2641,10 @@ export interface PropertySaleContract {
   installments?: number | null;
   /** Valor das parcelas iguais (as "demais", quando a 1ª é diferente). */
   installment_amount?: number | null;
-  /** 1ª parcela com valor diferente das outras. Vazio = todas iguais. */
+  /** Valor da parcela diferente das outras (o nome ficou da 117). Vazio = todas iguais. */
   first_installment_amount?: number | null;
+  /** QUAL parcela é a diferente (118). Vazio = a 1ª. */
+  different_installment_number?: number | null;
   /** Vencimento da 1ª parcela; as outras, no mesmo dia dos meses seguintes. */
   first_due_date?: string | null;
   /** PIX, transferência, boleto... */

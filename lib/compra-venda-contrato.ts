@@ -793,55 +793,73 @@ type CamposDasParcelas = Pick<
   | "installments"
   | "installment_amount"
   | "first_installment_amount"
+  | "different_installment_number"
   | "first_due_date"
 >;
 
-/** A 1ª parcela tem valor diferente das outras? (só faz sentido com 2 ou mais) */
-export function primeiraParcelaDiferente(c: CamposDasParcelas): number {
-  const n = Math.floor(Number(c.installments) || 0);
-  const v1 = Number(c.first_installment_amount) || 0;
-  return n >= 2 && v1 > 0 ? centavos(v1) : 0;
+/** O saldo devedor: o preço menos a entrada (no "parcelado", o preço todo). */
+export function saldoDevedor(c: Pick<CamposDasParcelas, "payment_mode" | "price" | "down_payment">): number {
+  const preco = Number(c.price) || 0;
+  const entrada = c.payment_mode === "entrada_parcelas" ? Number(c.down_payment) || 0 : 0;
+  return centavos(preco - entrada);
 }
 
 /**
- * O valor das parcelas iguais, pela conta: o saldo (preço − entrada − a 1ª
- * parcela, quando ela é diferente) dividido pelas parcelas que sobram.
+ * A parcela com valor próprio, quando há uma ("a 2ª é de 20 mil, as outras
+ * iguais"). Só existe com 2 ou mais parcelas. Sem o número, é a 1ª.
+ */
+export function parcelaDiferente(c: CamposDasParcelas): { numero: number; valor: number } | null {
+  const n = Math.floor(Number(c.installments) || 0);
+  const valor = Number(c.first_installment_amount) || 0;
+  if (n < 2 || valor <= 0) return null;
+  const numero = Math.min(n, Math.max(1, Math.floor(Number(c.different_installment_number) || 1)));
+  return { numero, valor: centavos(valor) };
+}
+
+/**
+ * O valor das parcelas iguais, sempre pela conta: o saldo devedor (menos a
+ * parcela diferente, quando há) dividido pelas parcelas que sobram.
  */
 export function valorDasParcelasIguais(c: CamposDasParcelas): number {
   const n = Math.floor(Number(c.installments) || 0);
   if (n <= 0) return 0;
-  const preco = Number(c.price) || 0;
-  const entrada = c.payment_mode === "entrada_parcelas" ? Number(c.down_payment) || 0 : 0;
-  const v1 = primeiraParcelaDiferente(c);
-  const resto = centavos(preco - entrada - v1);
-  const quantas = v1 > 0 ? n - 1 : n;
+  const dif = parcelaDiferente(c);
+  const resto = centavos(saldoDevedor(c) - (dif?.valor ?? 0));
+  const quantas = dif ? n - 1 : n;
   return resto > 0 && quantas > 0 ? centavos(resto / quantas) : 0;
 }
 
 /**
- * As parcelas, uma a uma, com o vencimento e o valor. A 1ª pode ter valor
- * próprio (ex.: entrada 20 mil, 1ª parcela 20 mil, o resto igual); as demais
- * têm o valor digitado ou, sem ele, a conta de partes iguais. A ÚLTIMA acerta
- * os centavos: assim entrada + parcelas fecha certinho com o preço.
+ * As parcelas, uma a uma, com o vencimento e o valor. Uma delas pode ter valor
+ * próprio; as outras dividem o resto em partes iguais. A ÚLTIMA das iguais
+ * acerta os centavos: assim entrada + parcelas fecha certinho com o preço.
  */
 export function parcelasDaCompra(c: CamposDasParcelas): Parcela[] {
   if (c.payment_mode !== "entrada_parcelas" && c.payment_mode !== "parcelado") return [];
   const n = Math.floor(Number(c.installments) || 0);
   if (n <= 0) return [];
 
-  const preco = Number(c.price) || 0;
-  const entrada = c.payment_mode === "entrada_parcelas" ? Number(c.down_payment) || 0 : 0;
-  const v1 = primeiraParcelaDiferente(c);
-  const valor = centavos(Number(c.installment_amount) || valorDasParcelasIguais(c));
-  const iguais = v1 > 0 ? n - 1 : n;
-  const resto = centavos(preco - entrada - v1);
-  const ultima = preco > 0 && resto > 0 ? centavos(resto - valor * (iguais - 1)) : valor;
+  const dif = parcelaDiferente(c);
+  const valor = valorDasParcelasIguais(c);
+  const iguais = dif ? n - 1 : n;
+  const resto = centavos(saldoDevedor(c) - (dif?.valor ?? 0));
+  const ajuste = resto > 0 ? centavos(resto - valor * (iguais - 1)) : valor;
+  // a última parcela igual: a n-ésima, ou a anterior se a diferente for a última
+  const ultimaIgual = dif?.numero === n ? n - 1 : n;
 
-  return Array.from({ length: n }, (_, i) => ({
-    numero: i + 1,
-    vencimento: c.first_due_date ? somarMeses(c.first_due_date, i) : null,
-    valor: i === 0 && v1 > 0 ? v1 : i === n - 1 && ultima > 0 ? ultima : valor,
-  }));
+  return Array.from({ length: n }, (_, i) => {
+    const numero = i + 1;
+    return {
+      numero,
+      vencimento: c.first_due_date ? somarMeses(c.first_due_date, i) : null,
+      valor:
+        dif && numero === dif.numero
+          ? dif.valor
+          : numero === ultimaIgual && ajuste > 0
+            ? ajuste
+            : valor,
+    };
+  });
 }
 
 /** "R$ 5.000,00 (cinco mil reais)". */
@@ -911,7 +929,7 @@ export function formaDePagamento(c: PropertySaleContract): string | null {
 
     let textoParcelas: string | null = null;
     if (n > 0) {
-      const v1 = primeiraParcelaDiferente(c);
+      const dif = parcelaDiferente(c);
       const ultima = parcelas[n - 1].valor;
       const saldo = centavos(preco - entrada);
       const inicio =
@@ -919,13 +937,15 @@ export function formaDePagamento(c: PropertySaleContract): string | null {
       let quantas: string;
       if (n === 1) {
         quantas = `1 (uma) parcela de ${reaisPorExtenso(parcelas[0].valor)}`;
-      } else if (v1 > 0 && n === 2) {
-        quantas = `2 (duas) parcelas mensais e consecutivas, sendo a primeira de ${reaisPorExtenso(v1)} e a segunda de ${reaisPorExtenso(ultima)}`;
-      } else if (v1 > 0) {
-        // entrada, uma 1ª parcela própria e o resto em parcelas iguais
-        const igual = parcelas[1].valor;
-        quantas = `${parcelasPorExtenso(n)} parcelas mensais e consecutivas, sendo a primeira de ${reaisPorExtenso(v1)} e as demais ${parcelasPorExtenso(n - 1)} de ${reaisPorExtenso(igual)}${
-          ultima !== igual ? `, exceto a última, de ${reaisPorExtenso(ultima)}` : ""
+      } else if (dif && n === 2) {
+        quantas = `2 (duas) parcelas mensais e consecutivas, sendo a primeira de ${reaisPorExtenso(parcelas[0].valor)} e a segunda de ${reaisPorExtenso(parcelas[1].valor)}`;
+      } else if (dif) {
+        // uma parcela com valor próprio (a 2ª, a 6ª...) e o resto igual
+        const iguais = parcelas.filter((x) => x.numero !== dif.numero);
+        const igual = iguais[0].valor;
+        const ajustada = iguais[iguais.length - 1];
+        quantas = `${parcelasPorExtenso(n)} parcelas mensais e consecutivas de ${reaisPorExtenso(igual)}, exceto a ${dif.numero}ª, de ${reaisPorExtenso(dif.valor)}${
+          ajustada.valor !== igual ? `, e a ${ajustada.numero}ª, de ${reaisPorExtenso(ajustada.valor)}` : ""
         }`;
       } else {
         const valor = parcelas[0].valor;
