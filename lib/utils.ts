@@ -444,7 +444,18 @@ export function numeroPorExtenso(valor: number): string {
   if (milhares) partes.push(`${extensoAte999(milhares)} mil`);
   if (resto) partes.push(extensoAte999(resto));
 
-  return partes.join(" e ");
+  // O "e" entre as casas só vai quando o que vem depois é menor que cem ou é
+  // centena redonda: "mil e quinhentos", "dois mil e vinte" — mas "trinta e
+  // três mil trezentos e trinta e três", e não "mil e trezentos e trinta".
+  let texto = partes[0] ?? "";
+  const casas = [milhoes, milhares, resto].filter(Boolean);
+  for (let i = 1; i < partes.length; i++) {
+    const seguinte = casas[i];
+    // o que sobra depois desta casa decide o "e"
+    const usaE = seguinte < 100 || seguinte % 100 === 0;
+    texto += `${usaE ? " e " : " "}${partes[i]}`;
+  }
+  return texto;
 }
 
 /** "12 (doze)" — o número do jeito que contrato pede. */

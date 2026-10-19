@@ -1,4 +1,10 @@
-import { dataPorExtenso, numeroComExtenso, primeiraMaiuscula, valorPorExtenso } from "./utils";
+import {
+  dataPorExtenso,
+  formatDate,
+  numeroComExtenso,
+  primeiraMaiuscula,
+  valorPorExtenso,
+} from "./utils";
 import type { PropertyBuyer, PropertySaleContract } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,19 +537,39 @@ export function paragrafosDaCompraEVenda(
       : m.linhas
         ? `R$ ${LINHA_EM_BRANCO} (${LINHA_LONGA})`
         : null;
-  const forma = campo(m, c.payment_terms ? semPonto(c.payment_terms) : null, (t) => t, LINHA_LONGA + LINHA_LONGA);
+  // a forma montada pelas respostas (à vista, entrada, parcelas); sem elas,
+  // o texto livre de sempre — ou a linha para a caneta no contrato em branco
+  const forma =
+    formaDePagamento(c) ??
+    campo(m, c.payment_terms ? semPonto(c.payment_terms) : null, (t) => t, LINHA_LONGA + LINHA_LONGA);
   const preambuloPreco = valor
     ? `O preço certo e ajustado da presente venda é de ${valor}, que ${C.a} pagará ${V.ao}`
     : `O preço da presente venda será pago ${C.pela} ${V.ao}`;
   p.push(
     `${clausula("DO PREÇO E DA FORMA DE PAGAMENTO")} ${preambuloPreco}${forma ? ` da seguinte forma: ${forma}` : ""}.`
   );
-  p.push(
-    `PARÁGRAFO PRIMEIRO: Cada pagamento será comprovado por recibo assinado ${V.pelo} ou pelo comprovante de transferência bancária para conta de sua titularidade, que valerão como quitação da respectiva parcela.`
+
+  // A lista de TODOS os pagamentos, com data e valor: a entrada (quando tem) e
+  // cada parcela. Parcela sem o 1º vencimento informado sai só com o valor.
+  const paragrafosDoPreco: string[] = [];
+  const parcelas = parcelasDaCompra(c);
+  if (parcelas.length > 0) {
+    const entrada = c.payment_mode === "entrada_parcelas" ? Number(c.down_payment) || 0 : 0;
+    const linhasDaLista = [
+      entrada > 0
+        ? `entrada – ${c.down_payment_date ? formatDate(c.down_payment_date) : "na assinatura deste contrato"} – R$ ${reais(entrada)}`
+        : null,
+      ...parcelas.map(
+        (x) => `${x.numero}ª parcela${x.vencimento ? ` – ${formatDate(x.vencimento)}` : ""} – R$ ${reais(x.valor)}`
+      ),
+    ].filter(Boolean);
+    paragrafosDoPreco.push(`Os pagamentos serão feitos assim: ${linhasDaLista.join("; ")}.`);
+  }
+  paragrafosDoPreco.push(
+    `Cada pagamento será comprovado por recibo assinado ${V.pelo} ou pelo comprovante de transferência bancária para conta de sua titularidade, que valerão como quitação da respectiva parcela.`,
+    `Com o pagamento integral do preço, ${V.o} dará ${C.aCrase} plena, geral, rasa e irrevogável quitação, para nada mais reclamar a qualquer título.`
   );
-  p.push(
-    `PARÁGRAFO SEGUNDO: Com o pagamento integral do preço, ${V.o} dará ${C.aCrase} plena, geral, rasa e irrevogável quitação, para nada mais reclamar a qualquer título.`
-  );
+  paragrafosDoPreco.forEach((texto, i) => p.push(`PARÁGRAFO ${ORDINAIS_PARAGRAFO[i]}: ${texto}`));
 
   // ── Posse ─────────────────────────────────────────────────────────────────
   const posse = c.possession_date
@@ -728,6 +754,198 @@ function numeroPorExtensoPercentual(valor: number): string {
     "$1"
   );
   return `${base} vírgula ${dec}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTRADA, PARCELAS E VENCIMENTOS (migration 117)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ORDINAIS_PARAGRAFO = ["PRIMEIRO", "SEGUNDO", "TERCEIRO", "QUARTO", "QUINTO", "SEXTO"];
+
+export interface Parcela {
+  numero: number;
+  /** "2026-11-20" — vazio quando o primeiro vencimento não foi informado. */
+  vencimento: string | null;
+  valor: number;
+}
+
+/** "2026-01-31" + 1 mês → "2026-02-28" (o dia 31 cai no último dia do mês curto). */
+export function somarMeses(iso: string, meses: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const base = new Date(y, m - 1 + meses, 1);
+  const ultimo = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  base.setDate(Math.min(d, ultimo));
+  const mm = String(base.getMonth() + 1).padStart(2, "0");
+  const dd = String(base.getDate()).padStart(2, "0");
+  return `${base.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Dinheiro sem erro de centavo: 0,1 + 0,2 vira 0,30, não 0,30000000004. */
+function centavos(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
+type CamposDasParcelas = Pick<
+  PropertySaleContract,
+  | "payment_mode"
+  | "price"
+  | "down_payment"
+  | "installments"
+  | "installment_amount"
+  | "first_installment_amount"
+  | "first_due_date"
+>;
+
+/** A 1ª parcela tem valor diferente das outras? (só faz sentido com 2 ou mais) */
+export function primeiraParcelaDiferente(c: CamposDasParcelas): number {
+  const n = Math.floor(Number(c.installments) || 0);
+  const v1 = Number(c.first_installment_amount) || 0;
+  return n >= 2 && v1 > 0 ? centavos(v1) : 0;
+}
+
+/**
+ * O valor das parcelas iguais, pela conta: o saldo (preço − entrada − a 1ª
+ * parcela, quando ela é diferente) dividido pelas parcelas que sobram.
+ */
+export function valorDasParcelasIguais(c: CamposDasParcelas): number {
+  const n = Math.floor(Number(c.installments) || 0);
+  if (n <= 0) return 0;
+  const preco = Number(c.price) || 0;
+  const entrada = c.payment_mode === "entrada_parcelas" ? Number(c.down_payment) || 0 : 0;
+  const v1 = primeiraParcelaDiferente(c);
+  const resto = centavos(preco - entrada - v1);
+  const quantas = v1 > 0 ? n - 1 : n;
+  return resto > 0 && quantas > 0 ? centavos(resto / quantas) : 0;
+}
+
+/**
+ * As parcelas, uma a uma, com o vencimento e o valor. A 1ª pode ter valor
+ * próprio (ex.: entrada 20 mil, 1ª parcela 20 mil, o resto igual); as demais
+ * têm o valor digitado ou, sem ele, a conta de partes iguais. A ÚLTIMA acerta
+ * os centavos: assim entrada + parcelas fecha certinho com o preço.
+ */
+export function parcelasDaCompra(c: CamposDasParcelas): Parcela[] {
+  if (c.payment_mode !== "entrada_parcelas" && c.payment_mode !== "parcelado") return [];
+  const n = Math.floor(Number(c.installments) || 0);
+  if (n <= 0) return [];
+
+  const preco = Number(c.price) || 0;
+  const entrada = c.payment_mode === "entrada_parcelas" ? Number(c.down_payment) || 0 : 0;
+  const v1 = primeiraParcelaDiferente(c);
+  const valor = centavos(Number(c.installment_amount) || valorDasParcelasIguais(c));
+  const iguais = v1 > 0 ? n - 1 : n;
+  const resto = centavos(preco - entrada - v1);
+  const ultima = preco > 0 && resto > 0 ? centavos(resto - valor * (iguais - 1)) : valor;
+
+  return Array.from({ length: n }, (_, i) => ({
+    numero: i + 1,
+    vencimento: c.first_due_date ? somarMeses(c.first_due_date, i) : null,
+    valor: i === 0 && v1 > 0 ? v1 : i === n - 1 && ultima > 0 ? ultima : valor,
+  }));
+}
+
+/** "R$ 5.000,00 (cinco mil reais)". */
+function reaisPorExtenso(v: number): string {
+  return `R$ ${reais(v)} (${valorPorExtenso(v)})`;
+}
+
+/** Número de parcelas no feminino: "2 (duas)", "21 (vinte e uma)". */
+function parcelasPorExtenso(n: number): string {
+  return numeroComExtenso(n)
+    .replace(/\bum\b/g, "uma")
+    .replace(/\bdois\b/g, "duas")
+    .replace(/entos\b/g, "entas");
+}
+
+/** "PIX" → "PIX"; "TRANSFERÊNCIA" → "transferência bancária". */
+function meioDePagamento(meio?: string | null): string {
+  const t = meio?.trim();
+  if (!t) return "";
+  const conhecido: Record<string, string> = {
+    PIX: "PIX",
+    "TRANSFERÊNCIA": "transferência bancária",
+    DINHEIRO: "dinheiro",
+    CHEQUE: "cheque",
+    BOLETO: "boleto bancário",
+  };
+  return conhecido[t.toUpperCase()] ?? t.toLowerCase();
+}
+
+/**
+ * A forma de pagamento por extenso, montada pelas respostas da tela:
+ *
+ *   "à vista, na assinatura deste contrato, por PIX"
+ *   "R$ 50.000,00 (cinquenta mil reais) de entrada, na assinatura deste
+ *    contrato, e o saldo de R$ 100.000,00 (...) em 20 (vinte) parcelas mensais
+ *    e consecutivas de R$ 5.000,00 (...), vencendo a primeira em 20 de novembro
+ *    de 2026 e as demais no mesmo dia dos meses seguintes, pagas por PIX"
+ *
+ * Sem o modo escolhido (contrato antigo) ou em "outra forma", devolve null — e
+ * vale o texto livre de sempre.
+ */
+export function formaDePagamento(c: PropertySaleContract): string | null {
+  const modo = c.payment_mode;
+  if (!modo || modo === "outro") return null;
+
+  const obs = c.payment_terms?.trim() ? semPonto(c.payment_terms.trim()) : "";
+  const meio = meioDePagamento(c.payment_method);
+  let texto: string;
+
+  if (modo === "avista") {
+    const quando = c.down_payment_date
+      ? `em ${dataPorExtenso(c.down_payment_date)}`
+      : "na assinatura deste contrato";
+    texto = juntar(["à vista", quando, meio ? `por ${meio}` : null]);
+  } else {
+    const parcelas = parcelasDaCompra(c);
+    const n = parcelas.length;
+    const entrada = modo === "entrada_parcelas" ? Number(c.down_payment) || 0 : 0;
+    const preco = Number(c.price) || 0;
+
+    const textoEntrada =
+      entrada > 0
+        ? `${reaisPorExtenso(entrada)} de entrada, ${
+            c.down_payment_date ? `paga em ${dataPorExtenso(c.down_payment_date)}` : "paga na assinatura deste contrato"
+          }`
+        : null;
+
+    let textoParcelas: string | null = null;
+    if (n > 0) {
+      const v1 = primeiraParcelaDiferente(c);
+      const ultima = parcelas[n - 1].valor;
+      const saldo = centavos(preco - entrada);
+      const inicio =
+        textoEntrada && saldo > 0 ? `o saldo de ${reaisPorExtenso(saldo)} em ` : "em ";
+      let quantas: string;
+      if (n === 1) {
+        quantas = `1 (uma) parcela de ${reaisPorExtenso(parcelas[0].valor)}`;
+      } else if (v1 > 0 && n === 2) {
+        quantas = `2 (duas) parcelas mensais e consecutivas, sendo a primeira de ${reaisPorExtenso(v1)} e a segunda de ${reaisPorExtenso(ultima)}`;
+      } else if (v1 > 0) {
+        // entrada, uma 1ª parcela própria e o resto em parcelas iguais
+        const igual = parcelas[1].valor;
+        quantas = `${parcelasPorExtenso(n)} parcelas mensais e consecutivas, sendo a primeira de ${reaisPorExtenso(v1)} e as demais ${parcelasPorExtenso(n - 1)} de ${reaisPorExtenso(igual)}${
+          ultima !== igual ? `, exceto a última, de ${reaisPorExtenso(ultima)}` : ""
+        }`;
+      } else {
+        const valor = parcelas[0].valor;
+        quantas = `${parcelasPorExtenso(n)} parcelas mensais e consecutivas de ${reaisPorExtenso(valor)}${
+          ultima !== valor ? `, sendo a última de ${reaisPorExtenso(ultima)}` : ""
+        }`;
+      }
+      const vencimento = c.first_due_date
+        ? n === 1
+          ? `, vencendo em ${dataPorExtenso(c.first_due_date)}`
+          : `, vencendo a primeira em ${dataPorExtenso(c.first_due_date)} e as demais no mesmo dia dos meses seguintes`
+        : "";
+      textoParcelas = `${inicio}${quantas}${vencimento}${meio ? `, ${n === 1 ? "paga" : "pagas"} por ${meio}` : ""}`;
+    }
+
+    texto = [textoEntrada, textoParcelas].filter(Boolean).join(", e ");
+    if (!texto) return obs || null;
+  }
+
+  return obs ? `${texto}; ${obs}` : texto;
 }
 
 /** Contrato vazio — a versão para imprimir em branco e preencher à caneta. */

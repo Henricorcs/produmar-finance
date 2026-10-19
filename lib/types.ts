@@ -2630,7 +2630,23 @@ export interface PropertySaleContract {
   property_iptu_code: string | null;
 
   price: number;
+  /** Texto livre: a "outra forma" de pagar, ou uma observação (contrato antigo: tudo aqui). */
   payment_terms: string | null;
+  /** Como paga (migration 117). Vazio = contrato antigo, só com o texto livre. */
+  payment_mode?: "avista" | "entrada_parcelas" | "parcelado" | "outro" | null;
+  /** Valor da entrada. */
+  down_payment?: number | null;
+  /** À vista: a data do pagamento; com entrada: a data da entrada. Vazio = na assinatura. */
+  down_payment_date?: string | null;
+  installments?: number | null;
+  /** Valor das parcelas iguais (as "demais", quando a 1ª é diferente). */
+  installment_amount?: number | null;
+  /** 1ª parcela com valor diferente das outras. Vazio = todas iguais. */
+  first_installment_amount?: number | null;
+  /** Vencimento da 1ª parcela; as outras, no mesmo dia dos meses seguintes. */
+  first_due_date?: string | null;
+  /** PIX, transferência, boleto... */
+  payment_method?: string | null;
 
   possession_date: string | null;
   deed_days: number | null;

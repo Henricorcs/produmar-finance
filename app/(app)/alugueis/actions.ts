@@ -475,6 +475,14 @@ export interface PropertySaleContractInput {
 
   price?: number | null;
   payment_terms?: string | null;
+  payment_mode?: string | null;
+  down_payment?: number | null;
+  down_payment_date?: string | null;
+  installments?: number | null;
+  installment_amount?: number | null;
+  first_installment_amount?: number | null;
+  first_due_date?: string | null;
+  payment_method?: string | null;
 
   possession_date?: string | null;
   deed_days?: number | null;
@@ -491,6 +499,17 @@ function genero(v?: string | null): "m" | "f" | null {
   return t === "m" || t === "f" ? t : null;
 }
 
+type ModoDePagamento = "avista" | "entrada_parcelas" | "parcelado" | "outro";
+
+/** Como o imóvel é pago (117) — fora da lista, fica vazio (contrato antigo). */
+function modoDePagamento(v?: string | null): ModoDePagamento | null {
+  return v === "avista" || v === "entrada_parcelas" || v === "parcelado" || v === "outro" ? v : null;
+}
+
+function comParcelas(v?: string | null): boolean {
+  return v === "entrada_parcelas" || v === "parcelado";
+}
+
 /** A tabela vem da migration 110 — sem ela o erro do Postgres não diz nada. */
 function compraVendaError(error: { code?: string; message: string }): string {
   if (/_gender\b|\bgender\b/.test(error.message))
@@ -498,6 +517,8 @@ function compraVendaError(error: { code?: string; message: string }): string {
   if (/buyer_id|property_buyers/.test(error.message))
     return "Rode a migration 115 no Supabase para escolher quem compra o imóvel";
   // as partes do endereço (rua, número, bairro...) são da 112
+  if (/payment_mode|down_payment|installment|first_due_date|payment_method/.test(error.message))
+    return "Rode a migration 117 no Supabase para guardar a entrada e as parcelas";
   if (/property_(front|back|right|left|improvements)/.test(error.message))
     return "Rode a migration 114 no Supabase para guardar as medidas e as divisas do imóvel";
   if (/(seller|property)_(street|number|complement|district|city|zip)/.test(error.message))
@@ -561,6 +582,20 @@ function saleRow(input: PropertySaleContractInput) {
 
     price: money(input.price),
     payment_terms: raw(input.payment_terms),
+    payment_mode: modoDePagamento(input.payment_mode),
+    // entrada só existe no "entrada + parcelas"; parcelas, quando há parcelas
+    down_payment: input.payment_mode === "entrada_parcelas" ? money(input.down_payment) || null : null,
+    down_payment_date:
+      input.payment_mode === "avista" || input.payment_mode === "entrada_parcelas"
+        ? input.down_payment_date?.trim() || null
+        : null,
+    installments: comParcelas(input.payment_mode) ? inteiro(input.installments) : null,
+    installment_amount: comParcelas(input.payment_mode) ? money(input.installment_amount) || null : null,
+    first_installment_amount: comParcelas(input.payment_mode)
+      ? money(input.first_installment_amount) || null
+      : null,
+    first_due_date: comParcelas(input.payment_mode) ? input.first_due_date?.trim() || null : null,
+    payment_method: input.payment_mode && input.payment_mode !== "outro" ? clean(input.payment_method) : null,
 
     possession_date: input.possession_date?.trim() || null,
     deed_days: inteiro(input.deed_days),
