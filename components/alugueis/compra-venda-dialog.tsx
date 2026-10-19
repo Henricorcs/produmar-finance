@@ -165,6 +165,14 @@ function casado(d: Dados): boolean {
   return d.seller_marital_status === "CASADO" || d.seller_marital_status === "UNIÃO ESTÁVEL";
 }
 
+/**
+ * O cônjuge entra no contrato: vendedor casado E nome do cônjuge preenchido.
+ * Pulou o nome, as outras perguntas dele somem — e ele não sai no papel.
+ */
+function comConjuge(d: Dados): boolean {
+  return casado(d) && !!d.spouse_name.trim();
+}
+
 const PASSOS: Passo[] = [
   // ── O vendedor ──────────────────────────────────────────────────────────
   { campo: "seller_name", secao: "O vendedor", pergunta: "Nome completo do vendedor", tipo: "texto", maiusculo: true },
@@ -223,12 +231,12 @@ const PASSOS: Passo[] = [
       { valor: "m", label: "Homem" },
       { valor: "f", label: "Mulher" },
     ],
-    quando: casado,
+    quando: comConjuge,
   },
-  { campo: "spouse_document", secao: "O cônjuge do vendedor", pergunta: "CPF do cônjuge", tipo: "documento", placeholder: "000.000.000-00", quando: casado },
-  { campo: "spouse_rg", secao: "O cônjuge do vendedor", pergunta: "RG do cônjuge", tipo: "texto", placeholder: "número e órgão", maiusculo: true, quando: casado },
-  { campo: "spouse_nationality", secao: "O cônjuge do vendedor", pergunta: "Nacionalidade do cônjuge", tipo: "texto", maiusculo: true, quando: casado },
-  { campo: "spouse_profession", secao: "O cônjuge do vendedor", pergunta: "Profissão do cônjuge", tipo: "texto", maiusculo: true, quando: casado },
+  { campo: "spouse_document", secao: "O cônjuge do vendedor", pergunta: "CPF do cônjuge", tipo: "documento", placeholder: "000.000.000-00", quando: comConjuge },
+  { campo: "spouse_rg", secao: "O cônjuge do vendedor", pergunta: "RG do cônjuge", tipo: "texto", placeholder: "número e órgão", maiusculo: true, quando: comConjuge },
+  { campo: "spouse_nationality", secao: "O cônjuge do vendedor", pergunta: "Nacionalidade do cônjuge", tipo: "texto", maiusculo: true, quando: comConjuge },
+  { campo: "spouse_profession", secao: "O cônjuge do vendedor", pergunta: "Profissão do cônjuge", tipo: "texto", maiusculo: true, quando: comConjuge },
 
   // ── O imóvel ────────────────────────────────────────────────────────────
   { campo: "property_kind", secao: "O imóvel", pergunta: "Que tipo de imóvel é?", tipo: "opcoes", opcoes: TIPOS },
@@ -521,6 +529,9 @@ export function CompraVendaDialog({
   function salvar() {
     setErro(null);
     const ehCasado = casado(dados);
+    // sem o nome do cônjuge, nada dele é guardado (a nacionalidade já vem
+    // preenchida e, sozinha, faria o cônjuge aparecer no papel)
+    const conjuge = comConjuge(dados);
     startTransition(async () => {
       const r = await salvarContratoCompraVenda(contrato?.id ?? null, {
         ...dados,
@@ -529,12 +540,12 @@ export function CompraVendaDialog({
         seller_address: semPartes(dados, "seller") ? contrato?.seller_address ?? null : null,
         property_address: semPartes(dados, "property") ? contrato?.property_address ?? null : null,
         seller_property_regime: ehCasado ? dados.seller_property_regime : "",
-        spouse_name: ehCasado ? dados.spouse_name : "",
-        spouse_gender: ehCasado ? dados.spouse_gender : "",
-        spouse_document: ehCasado ? dados.spouse_document : "",
-        spouse_rg: ehCasado ? dados.spouse_rg : "",
-        spouse_nationality: ehCasado ? dados.spouse_nationality : "",
-        spouse_profession: ehCasado ? dados.spouse_profession : "",
+        spouse_name: conjuge ? dados.spouse_name : "",
+        spouse_gender: conjuge ? dados.spouse_gender : "",
+        spouse_document: conjuge ? dados.spouse_document : "",
+        spouse_rg: conjuge ? dados.spouse_rg : "",
+        spouse_nationality: conjuge ? dados.spouse_nationality : "",
+        spouse_profession: conjuge ? dados.spouse_profession : "",
         price: parseMoney(dados.price),
         deed_days: parseInt(dados.deed_days, 10) || null,
         penalty_percent: parseMoney(dados.penalty_percent) || null,
@@ -728,9 +739,9 @@ function contratoDosDados(
     const t = v.trim();
     alvo[k] = t ? (SEM_CAIXA_ALTA.has(k) ? t : t.toUpperCase()) : null;
   }
-  if (!casado(d)) {
+  if (!casado(d)) alvo.seller_property_regime = null;
+  if (!comConjuge(d)) {
     for (const k of [
-      "seller_property_regime",
       "spouse_name",
       "spouse_gender",
       "spouse_document",

@@ -277,9 +277,9 @@ export function temConjuge(c: Pick<PropertySaleContract, "seller_marital_status"
 export function conjugeNoContrato(c: PropertySaleContract): boolean {
   if (!temConjuge(c)) return false;
   if (c.id === "em-branco") return true;
-  return [c.spouse_name, c.spouse_document, c.spouse_rg, c.spouse_nationality, c.spouse_profession].some(
-    (x) => x?.trim()
-  );
+  // Só com o NOME: sem ele não há quem assinar. A nacionalidade vem preenchida
+  // ("BRASILEIRA") e, sozinha, fazia aparecer um cônjuge sem nome no papel.
+  return !!c.spouse_name?.trim();
 }
 
 /** "CASADO" → "casado, sob o regime da comunhão parcial de bens". */
