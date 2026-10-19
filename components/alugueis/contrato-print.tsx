@@ -169,10 +169,10 @@ function Assinaturas({
   documento: string | null;
 }) {
   return (
-    <div className="avoid-break pt-10 space-y-10">
+    <div className="avoid-break pt-4">
       <Linha nome={locador} />
       <Linha nome={locatario} detalhe={documento ? `CPF nº ${documento}` : undefined} />
-      <div className="grid grid-cols-2 gap-8 pt-4">
+      <div className="grid grid-cols-2 gap-8">
         <Linha nome="Testemunha" pequena />
         <Linha nome="Testemunha" pequena />
       </div>
@@ -190,7 +190,9 @@ function Linha({
   pequena?: boolean;
 }) {
   return (
-    <div className={pequena ? "text-center" : "text-center max-w-[380px] mx-auto"}>
+    // uns 3,5 cm livres acima de cada linha: é onde entra o carimbo da
+    // assinatura digital do gov.br, bem maior que uma rubrica
+    <div className={pequena ? "text-center pt-[35mm]" : "text-center max-w-[420px] mx-auto pt-[35mm]"}>
       <div className="border-t border-slate-800" />
       <p className="mt-1 font-bold text-[12px]">{nome}</p>
       {detalhe && <p className="text-[11px]">{detalhe}</p>}

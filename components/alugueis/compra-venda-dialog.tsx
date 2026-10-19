@@ -71,6 +71,7 @@ const TIPOS = ["CASA", "TERRENO", "APARTAMENTO", "PONTO COMERCIAL", "GALPÃO", "
 type Campo =
   | "buyer_id"
   | "seller_name"
+  | "seller_gender"
   | "seller_document"
   | "seller_rg"
   | "seller_nationality"
@@ -86,6 +87,7 @@ type Campo =
   | "seller_phone"
   | "seller_email"
   | "spouse_name"
+  | "spouse_gender"
   | "spouse_document"
   | "spouse_rg"
   | "spouse_nationality"
@@ -166,6 +168,17 @@ function casado(d: Dados): boolean {
 const PASSOS: Passo[] = [
   // ── O vendedor ──────────────────────────────────────────────────────────
   { campo: "seller_name", secao: "O vendedor", pergunta: "Nome completo do vendedor", tipo: "texto", maiusculo: true },
+  {
+    campo: "seller_gender",
+    secao: "O vendedor",
+    pergunta: "O vendedor é homem ou mulher?",
+    tipo: "opcoes",
+    opcoes: [
+      { valor: "m", label: "Homem" },
+      { valor: "f", label: "Mulher" },
+    ],
+    dica: "É o que decide, no contrato, entre \"portador\" e \"portadora\", \"VENDEDOR\" e \"VENDEDORA\".",
+  },
   { campo: "seller_document", secao: "O vendedor", pergunta: "CPF ou CNPJ do vendedor", tipo: "documento", placeholder: "000.000.000-00" },
   { campo: "seller_rg", secao: "O vendedor", pergunta: "RG do vendedor", tipo: "texto", placeholder: "número e órgão (ex: 123456 SSP/MA)", maiusculo: true },
   { campo: "seller_nationality", secao: "O vendedor", pergunta: "Nacionalidade", tipo: "texto", maiusculo: true },
@@ -199,6 +212,17 @@ const PASSOS: Passo[] = [
     tipo: "texto",
     maiusculo: true,
     dica: "Vendedor casado: o cônjuge assina junto. Sem essa assinatura a venda pode ser anulada (só a separação total de bens dispensa).",
+    quando: casado,
+  },
+  {
+    campo: "spouse_gender",
+    secao: "O cônjuge do vendedor",
+    pergunta: "O cônjuge é homem ou mulher?",
+    tipo: "opcoes",
+    opcoes: [
+      { valor: "m", label: "Homem" },
+      { valor: "f", label: "Mulher" },
+    ],
     quando: casado,
   },
   { campo: "spouse_document", secao: "O cônjuge do vendedor", pergunta: "CPF do cônjuge", tipo: "documento", placeholder: "000.000.000-00", quando: casado },
@@ -281,6 +305,7 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
   return {
     buyer_id: c?.buyer_id || COMPRADOR_PRODUMAR,
     seller_name: s(c?.seller_name),
+    seller_gender: s(c?.seller_gender),
     seller_document: s(c?.seller_document),
     seller_rg: s(c?.seller_rg),
     seller_nationality: c ? s(c.seller_nationality) : "BRASILEIRA",
@@ -297,6 +322,7 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
     seller_phone: s(c?.seller_phone),
     seller_email: s(c?.seller_email),
     spouse_name: s(c?.spouse_name),
+    spouse_gender: s(c?.spouse_gender),
     spouse_document: s(c?.spouse_document),
     spouse_rg: s(c?.spouse_rg),
     spouse_nationality: c ? s(c.spouse_nationality) : "BRASILEIRA",
@@ -504,6 +530,7 @@ export function CompraVendaDialog({
         property_address: semPartes(dados, "property") ? contrato?.property_address ?? null : null,
         seller_property_regime: ehCasado ? dados.seller_property_regime : "",
         spouse_name: ehCasado ? dados.spouse_name : "",
+        spouse_gender: ehCasado ? dados.spouse_gender : "",
         spouse_document: ehCasado ? dados.spouse_document : "",
         spouse_rg: ehCasado ? dados.spouse_rg : "",
         spouse_nationality: ehCasado ? dados.spouse_nationality : "",
@@ -663,6 +690,8 @@ export function CompraVendaDialog({
 
 /** Campos que o servidor guarda como foram digitados; o resto sobe para caixa alta. */
 const SEM_CAIXA_ALTA = new Set<string>([
+  "seller_gender",
+  "spouse_gender",
   "seller_document",
   "seller_phone",
   "seller_email",
@@ -703,6 +732,7 @@ function contratoDosDados(
     for (const k of [
       "seller_property_regime",
       "spouse_name",
+      "spouse_gender",
       "spouse_document",
       "spouse_rg",
       "spouse_nationality",

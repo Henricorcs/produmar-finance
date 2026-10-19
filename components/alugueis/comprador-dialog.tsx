@@ -43,6 +43,7 @@ const REGIMES = [
 type Campo =
   | "kind"
   | "name"
+  | "gender"
   | "document"
   | "rg"
   | "nationality"
@@ -73,6 +74,7 @@ function dadosIniciais(b: PropertyBuyer | null): Dados {
   return {
     kind: b?.kind ?? "pf",
     name: s(b?.name),
+    gender: s(b?.gender),
     document: s(b?.document),
     rg: s(b?.rg),
     nationality: b ? s(b.nationality) : "BRASILEIRA",
@@ -130,6 +132,18 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
       },
       { campo: "name", secao: "Quem compra", pergunta: "Razão social da empresa", tipo: "texto", maiusculo: true, obrigatorio: true, quando: pj },
       { campo: "name", secao: "Quem compra", pergunta: "Nome completo do comprador", tipo: "texto", maiusculo: true, obrigatorio: true, quando: pf },
+      {
+        campo: "gender",
+        secao: "Quem compra",
+        pergunta: "O comprador é homem ou mulher?",
+        tipo: "opcoes",
+        opcoes: [
+      { valor: "m", label: "Homem" },
+      { valor: "f", label: "Mulher" },
+    ],
+        dica: "É o que decide, no contrato, entre \"COMPRADOR\" e \"COMPRADORA\".",
+        quando: pf,
+      },
       { campo: "document", secao: "Quem compra", pergunta: "CNPJ da empresa", tipo: "documento", placeholder: "00.000.000/0000-00", quando: pj },
       { campo: "document", secao: "Quem compra", pergunta: "CPF do comprador", tipo: "documento", placeholder: "000.000.000-00", quando: pf },
       { campo: "rg", secao: "Quem compra", pergunta: "RG do comprador", tipo: "texto", placeholder: "número e órgão (ex: 123456 SSP/MA)", maiusculo: true, quando: pf },
@@ -199,6 +213,7 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
         id: r.id,
         kind,
         name: dados.name.trim().toUpperCase(),
+        gender: kind === "pf" && (dados.gender === "m" || dados.gender === "f") ? dados.gender : null,
         document: dados.document.trim() || null,
         rg: kind === "pf" ? maiusc(dados.rg) : null,
         nationality: kind === "pf" ? maiusc(dados.nationality) : null,

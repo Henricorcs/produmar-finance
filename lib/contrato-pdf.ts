@@ -82,8 +82,15 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
 
   doc.setFontSize(fonte);
 
+  /**
+   * ESPAÇO PARA A ASSINATURA DIGITAL DO GOV.BR: o carimbo que o assinador
+   * coloca no PDF ocupa uns 3 cm de altura — sobre uma linha apertada ele
+   * cobriria o texto. Cada assinatura tem 3,5 cm livres acima da linha.
+   */
+  const espacoAssinatura = 35;
+  const larguraAssinatura = 110;
   /** A altura do bloco de assinaturas: ele não se parte entre duas páginas. */
-  const alturaAssinaturas = c.assinaturas.length * linha * 4.5 + linha * 9;
+  const alturaAssinaturas = c.assinaturas.length * (espacoAssinatura + 10) + espacoAssinatura + 20;
 
   for (const [i, bruto] of c.paragrafos.entries()) {
     if (bruto === c.marcaAssinaturas) {
@@ -138,9 +145,8 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
     cabe(alturaAssinaturas);
     doc.setLineWidth(0.3);
     for (const a of c.assinaturas) {
-      y += linha * 3;
-      cabe(linha * 3);
-      doc.line(meio - 45, y, meio + 45, y);
+      y += espacoAssinatura;
+      doc.line(meio - larguraAssinatura / 2, y, meio + larguraAssinatura / 2, y);
       doc.setFont("times", "bold");
       doc.setFontSize(10);
       doc.text(limpar(a.nome), meio, y + 4.5, { align: "center" });
@@ -150,12 +156,11 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
         doc.text(limpar(a.detalhe), meio, y + 8.5, { align: "center" });
       }
       doc.setFontSize(fonte);
-      y += linha * 1.5;
+      y += 10;
     }
 
-    // As duas testemunhas, lado a lado
-    y += linha * 3;
-    cabe(linha * 5);
+    // As duas testemunhas, lado a lado — também com espaço para o gov.br
+    y += espacoAssinatura;
     const col = [margem, meio + 5];
     const larguraCol = largura / 2 - 5;
     doc.setFontSize(10);

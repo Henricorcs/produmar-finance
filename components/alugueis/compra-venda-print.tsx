@@ -152,11 +152,11 @@ function Paragrafo({ texto }: { texto: string }) {
  */
 function Assinaturas({ lista }: { lista: { nome: string; detalhe?: string }[] }) {
   return (
-    <div className="avoid-break pt-10 space-y-10">
+    <div className="avoid-break pt-4">
       {lista.map((a, i) => (
         <Linha key={i} nome={a.nome} detalhe={a.detalhe} />
       ))}
-      <div className="grid grid-cols-2 gap-8 pt-4">
+      <div className="grid grid-cols-2 gap-8">
         <Testemunha />
         <Testemunha />
       </div>
@@ -164,9 +164,13 @@ function Assinaturas({ lista }: { lista: { nome: string; detalhe?: string }[] })
   );
 }
 
+/**
+ * Cada assinatura tem uns 3,5 cm livres acima da linha: é onde entra o carimbo
+ * da assinatura digital do gov.br, que é bem maior que uma rubrica.
+ */
 function Linha({ nome, detalhe }: { nome: string; detalhe?: string }) {
   return (
-    <div className="text-center max-w-[380px] mx-auto">
+    <div className="text-center max-w-[420px] mx-auto pt-[35mm]">
       <div className="border-t border-slate-800" />
       <p className="mt-1 font-bold text-[12px]">{nome}</p>
       {detalhe && <p className="text-[11px]">{detalhe}</p>}
@@ -176,7 +180,7 @@ function Linha({ nome, detalhe }: { nome: string; detalhe?: string }) {
 
 function Testemunha() {
   return (
-    <div className="text-[11px] space-y-1">
+    <div className="text-[11px] space-y-1 pt-[35mm]">
       <div className="border-t border-slate-800" />
       <p className="font-bold text-[12px] text-center">Testemunha</p>
       <p>Nome: ______________________________</p>

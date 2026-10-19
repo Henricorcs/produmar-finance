@@ -2540,6 +2540,8 @@ export interface PropertyBuyer {
   kind: "pj" | "pf";
   /** Razão social ou nome completo. */
   name: string;
+  /** Pessoa física: "m" / "f" (116). */
+  gender?: "m" | "f" | null;
   /** CNPJ ou CPF. */
   document: string | null;
   rg: string | null;
@@ -2571,6 +2573,8 @@ export interface PropertySaleContract {
   buyer_id?: string | null;
 
   seller_name: string | null;
+  /** "m" / "f" — escolhe "portador" ou "portadora" no contrato (116). Vazio = as duas formas. */
+  seller_gender?: "m" | "f" | null;
   seller_nationality: string | null;
   seller_marital_status: string | null;
   seller_property_regime: string | null;
@@ -2590,6 +2594,7 @@ export interface PropertySaleContract {
   seller_email: string | null;
 
   spouse_name: string | null;
+  spouse_gender?: "m" | "f" | null;
   spouse_nationality: string | null;
   spouse_profession: string | null;
   spouse_rg: string | null;

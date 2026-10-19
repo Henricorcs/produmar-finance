@@ -426,6 +426,7 @@ export interface PropertySaleContractInput {
   /** Quem compra (115) — vazio = a PRODUMAR. */
   buyer_id?: string | null;
   seller_name?: string | null;
+  seller_gender?: string | null;
   seller_nationality?: string | null;
   seller_marital_status?: string | null;
   seller_property_regime?: string | null;
@@ -443,6 +444,7 @@ export interface PropertySaleContractInput {
   seller_email?: string | null;
 
   spouse_name?: string | null;
+  spouse_gender?: string | null;
   spouse_nationality?: string | null;
   spouse_profession?: string | null;
   spouse_rg?: string | null;
@@ -483,8 +485,16 @@ export interface PropertySaleContractInput {
   notes?: string | null;
 }
 
+/** "m" / "f" ou nada — homem ou mulher, para a palavra certa no contrato (116). */
+function genero(v?: string | null): "m" | "f" | null {
+  const t = v?.trim().toLowerCase();
+  return t === "m" || t === "f" ? t : null;
+}
+
 /** A tabela vem da migration 110 — sem ela o erro do Postgres não diz nada. */
 function compraVendaError(error: { code?: string; message: string }): string {
+  if (/_gender|gender/.test(error.message))
+    return "Rode a migration 116 no Supabase para guardar se é homem ou mulher";
   if (/buyer_id|property_buyers/.test(error.message))
     return "Rode a migration 115 no Supabase para escolher quem compra o imóvel";
   // as partes do endereço (rua, número, bairro...) são da 112
@@ -501,6 +511,7 @@ function saleRow(input: PropertySaleContractInput) {
   return {
     buyer_id: input.buyer_id || null,
     seller_name: clean(input.seller_name),
+    seller_gender: genero(input.seller_gender),
     seller_nationality: clean(input.seller_nationality),
     seller_marital_status: clean(input.seller_marital_status),
     seller_property_regime: clean(input.seller_property_regime),
@@ -518,6 +529,7 @@ function saleRow(input: PropertySaleContractInput) {
     seller_email: raw(input.seller_email),
 
     spouse_name: clean(input.spouse_name),
+    spouse_gender: genero(input.spouse_gender),
     spouse_nationality: clean(input.spouse_nationality),
     spouse_profession: clean(input.spouse_profession),
     spouse_rg: clean(input.spouse_rg),
@@ -609,6 +621,7 @@ export async function apagarContratoCompraVenda(id: string) {
 export interface PropertyBuyerInput {
   kind: "pj" | "pf";
   name: string;
+  gender?: string | null;
   document?: string | null;
   rg?: string | null;
   nationality?: string | null;
@@ -630,6 +643,8 @@ export interface PropertyBuyerInput {
 }
 
 function compradorError(error: { code?: string; message: string }): string {
+  if (/\bgender\b/.test(error.message))
+    return "Rode a migration 116 no Supabase para guardar se é homem ou mulher";
   if (error.code === "42P01" || error.message.includes("property_buyers"))
     return "Rode a migration 115 no Supabase para cadastrar compradores";
   // a trava "on delete restrict": o comprador está em algum contrato
@@ -643,6 +658,7 @@ function buyerRow(input: PropertyBuyerInput) {
   return {
     kind: pj ? "pj" : "pf",
     name: clean(input.name),
+    gender: pj ? null : genero(input.gender),
     document: raw(input.document),
     // pessoa física tem RG, estado civil e profissão; empresa tem representante
     rg: pj ? null : clean(input.rg),
