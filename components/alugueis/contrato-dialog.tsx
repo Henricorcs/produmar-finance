@@ -14,6 +14,9 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   PerguntaDoPasso,
   RevisaoDosPassos,
+  ORGAOS_RG,
+  juntarRg,
+  separarRg,
   usePassoAPasso,
   type PassoDef,
 } from "@/components/ui/passo-a-passo";
@@ -57,6 +60,8 @@ type Campo =
   | "tenant_name"
   | "tenant_document"
   | "tenant_rg"
+  /** Só na tela: o órgão do RG é perguntado à parte e gravado junto do número. */
+  | "tenant_rg_orgao"
   | "tenant_birthplace"
   | "tenant_marital_status"
   | "tenant_profession"
@@ -78,6 +83,7 @@ type Campo =
   | "guarantor_name"
   | "guarantor_document"
   | "guarantor_rg"
+  | "guarantor_rg_orgao"
   | "guarantor_phone"
   | "guarantor_street"
   | "guarantor_number"
@@ -114,7 +120,8 @@ function dadosIniciais(c: RentalContractView | null, presetPropertyId?: string |
     property_id: c?.property_id ?? presetPropertyId ?? "",
     tenant_name: s(c?.tenant_name),
     tenant_document: s(c?.tenant_document),
-    tenant_rg: s(c?.tenant_rg),
+    tenant_rg: separarRg(c?.tenant_rg).numero,
+    tenant_rg_orgao: separarRg(c?.tenant_rg).orgao,
     tenant_birthplace: s(c?.tenant_birthplace),
     tenant_marital_status: s(c?.tenant_marital_status),
     tenant_profession: s(c?.tenant_profession),
@@ -137,7 +144,8 @@ function dadosIniciais(c: RentalContractView | null, presetPropertyId?: string |
     signed_at: c ? s(c.signed_at) : localDateISO(),
     guarantor_name: s(c?.guarantor_name),
     guarantor_document: s(c?.guarantor_document),
-    guarantor_rg: s(c?.guarantor_rg),
+    guarantor_rg: separarRg(c?.guarantor_rg).numero,
+    guarantor_rg_orgao: separarRg(c?.guarantor_rg).orgao,
     guarantor_phone: s(c?.guarantor_phone),
     guarantor_street: s(c?.guarantor_street),
     guarantor_number: s(c?.guarantor_number),
@@ -224,7 +232,8 @@ export function ContratoDialog({
       // ── O inquilino ───────────────────────────────────────────────────────
       { campo: "tenant_name", secao: "O inquilino", pergunta: "Nome completo do inquilino", tipo: "texto", maiusculo: true, obrigatorio: true },
       { campo: "tenant_document", secao: "O inquilino", pergunta: "CPF ou CNPJ do inquilino", tipo: "documento", placeholder: "000.000.000-00" },
-      { campo: "tenant_rg", secao: "O inquilino", pergunta: "RG do inquilino", tipo: "texto", placeholder: "número e órgão (ex: 326785949 SEJUSP MA)", maiusculo: true },
+      { campo: "tenant_rg", secao: "O inquilino", pergunta: "Número do RG do inquilino", tipo: "texto", teclado: "numerico", placeholder: "ex: 326785949" },
+      { campo: "tenant_rg_orgao", secao: "O inquilino", pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA" },
       { campo: "tenant_birthplace", secao: "O inquilino", pergunta: "Naturalidade", tipo: "texto", placeholder: "ex: VARGEM GRANDE/MA", maiusculo: true },
       { campo: "tenant_marital_status", secao: "O inquilino", pergunta: "Estado civil", tipo: "opcoes", opcoes: ESTADOS_CIVIS },
       { campo: "tenant_profession", secao: "O inquilino", pergunta: "Profissão do inquilino", tipo: "texto", placeholder: "ex: mecânico", maiusculo: true },
@@ -263,7 +272,8 @@ export function ContratoDialog({
       // ── O fiador (quando tem) ─────────────────────────────────────────────
       { campo: "guarantor_name", secao: "O fiador", pergunta: "Nome do fiador", tipo: "texto", maiusculo: true, placeholder: "não tem fiador? toque em Pular" },
       { campo: "guarantor_document", secao: "O fiador", pergunta: "CPF do fiador", tipo: "documento", placeholder: "000.000.000-00", quando: temFiador },
-      { campo: "guarantor_rg", secao: "O fiador", pergunta: "RG do fiador", tipo: "texto", placeholder: "número e órgão", maiusculo: true, quando: temFiador },
+      { campo: "guarantor_rg", secao: "O fiador", pergunta: "Número do RG do fiador", tipo: "texto", teclado: "numerico", placeholder: "ex: 123456789", quando: temFiador },
+      { campo: "guarantor_rg_orgao", secao: "O fiador", pergunta: "Órgão expedidor do RG do fiador", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA", quando: temFiador },
       { campo: "guarantor_phone", secao: "O fiador", pergunta: "Telefone do fiador", tipo: "telefone", placeholder: "opcional", quando: temFiador },
       { campo: "guarantor_street", secao: "Onde o fiador mora", pergunta: "Rua ou avenida", tipo: "texto", placeholder: "ex: RUA DAS FLORES", maiusculo: true, quando: temFiador, dica: lembreteEndereco(contrato?.guarantor_address, contrato?.guarantor_street) },
       { campo: "guarantor_number", secao: "Onde o fiador mora", pergunta: "Número", tipo: "texto", teclado: "numerico", atalhos: ["S/N"], placeholder: "ex: 120", maiusculo: true, quando: temFiador },
@@ -311,7 +321,9 @@ export function ContratoDialog({
         guarantor_address:
           fiador && semPartes(dados, "guarantor") ? contrato?.guarantor_address ?? null : null,
         guarantor_document: fiador ? dados.guarantor_document : "",
-        guarantor_rg: fiador ? dados.guarantor_rg : "",
+        // o RG volta a ser um campo só: "326785949 SEJUSP/MA"
+        tenant_rg: juntarRg(dados.tenant_rg, dados.tenant_rg_orgao),
+        guarantor_rg: fiador ? juntarRg(dados.guarantor_rg, dados.guarantor_rg_orgao) : "",
         guarantor_phone: fiador ? dados.guarantor_phone : "",
         guarantor_street: fiador ? dados.guarantor_street : "",
         guarantor_number: fiador ? dados.guarantor_number : "",

@@ -71,6 +71,26 @@ function rotuloDaOpcao(o: OpcaoPasso): string {
   return typeof o === "string" ? o : o.label;
 }
 
+/** Órgãos expedidores do RG mais comuns por aqui, a um toque. */
+export const ORGAOS_RG = ["SSP/MA", "SEJUSP/MA", "DETRAN/MA", "PC/MA"];
+
+/**
+ * O RG é guardado num campo só ("123456 SSP/MA"), mas perguntado em dois — o
+ * número com teclado numérico, o órgão com letras. Aqui ele se separa ao abrir
+ * um cadastro: o começo com dígitos é o número, o resto é o órgão.
+ */
+export function separarRg(rg?: string | null): { numero: string; orgao: string } {
+  const t = (rg ?? "").trim();
+  const m = t.match(/^([\d.\-xX]+)\s*(.*)$/);
+  if (!m) return { numero: t, orgao: "" };
+  return { numero: m[1], orgao: m[2].trim() };
+}
+
+/** E se junta de novo para gravar: "123456" + "SSP/MA" → "123456 SSP/MA". */
+export function juntarRg(numero: string, orgao: string): string {
+  return [numero.trim(), orgao.trim()].filter(Boolean).join(" ");
+}
+
 /** "65470000" → "65470-000". */
 export function mascaraCep(s: string): string {
   const d = s.replace(/\D/g, "").slice(0, 8);

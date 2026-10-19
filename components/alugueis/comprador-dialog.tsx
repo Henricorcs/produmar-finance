@@ -13,6 +13,9 @@ import { Button } from "@/components/ui/button";
 import {
   PerguntaDoPasso,
   RevisaoDosPassos,
+  ORGAOS_RG,
+  juntarRg,
+  separarRg,
   usePassoAPasso,
   type PassoDef,
 } from "@/components/ui/passo-a-passo";
@@ -46,6 +49,8 @@ type Campo =
   | "gender"
   | "document"
   | "rg"
+  /** Só na tela: o órgão do RG é perguntado à parte e gravado junto do número. */
+  | "rg_orgao"
   | "nationality"
   | "marital_status"
   | "property_regime"
@@ -61,7 +66,8 @@ type Campo =
   | "rep_name"
   | "rep_role"
   | "rep_document"
-  | "rep_rg";
+  | "rep_rg"
+  | "rep_rg_orgao";
 
 type Dados = Record<Campo, string>;
 type Passo = PassoDef<Campo>;
@@ -76,7 +82,8 @@ function dadosIniciais(b: PropertyBuyer | null): Dados {
     name: s(b?.name),
     gender: s(b?.gender),
     document: s(b?.document),
-    rg: s(b?.rg),
+    rg: separarRg(b?.rg).numero,
+    rg_orgao: separarRg(b?.rg).orgao,
     nationality: b ? s(b.nationality) : "BRASILEIRA",
     marital_status: s(b?.marital_status),
     property_regime: s(b?.property_regime),
@@ -92,7 +99,8 @@ function dadosIniciais(b: PropertyBuyer | null): Dados {
     rep_name: s(b?.rep_name),
     rep_role: s(b?.rep_role),
     rep_document: s(b?.rep_document),
-    rep_rg: s(b?.rep_rg),
+    rep_rg: separarRg(b?.rep_rg).numero,
+    rep_rg_orgao: separarRg(b?.rep_rg).orgao,
   };
 }
 
@@ -146,7 +154,8 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
       },
       { campo: "document", secao: "Quem compra", pergunta: "CNPJ da empresa", tipo: "documento", placeholder: "00.000.000/0000-00", quando: pj },
       { campo: "document", secao: "Quem compra", pergunta: "CPF do comprador", tipo: "documento", placeholder: "000.000.000-00", quando: pf },
-      { campo: "rg", secao: "Quem compra", pergunta: "RG do comprador", tipo: "texto", placeholder: "número e órgão (ex: 123456 SSP/MA)", maiusculo: true, quando: pf },
+      { campo: "rg", secao: "Quem compra", pergunta: "Número do RG do comprador", tipo: "texto", teclado: "numerico", placeholder: "ex: 123456789", quando: pf },
+      { campo: "rg_orgao", secao: "Quem compra", pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA", quando: pf },
       { campo: "nationality", secao: "Quem compra", pergunta: "Nacionalidade", tipo: "texto", maiusculo: true, quando: pf },
       { campo: "marital_status", secao: "Quem compra", pergunta: "Estado civil", tipo: "opcoes", opcoes: ESTADOS_CIVIS, quando: pf },
       {
@@ -181,7 +190,8 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
         quando: pj,
       },
       { campo: "rep_document", secao: "Quem assina pela empresa", pergunta: "CPF de quem assina", tipo: "documento", placeholder: "000.000.000-00", quando: pj },
-      { campo: "rep_rg", secao: "Quem assina pela empresa", pergunta: "RG de quem assina", tipo: "texto", placeholder: "número e órgão", maiusculo: true, quando: pj },
+      { campo: "rep_rg", secao: "Quem assina pela empresa", pergunta: "Número do RG de quem assina", tipo: "texto", teclado: "numerico", placeholder: "ex: 123456789", quando: pj },
+      { campo: "rep_rg_orgao", secao: "Quem assina pela empresa", pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA", quando: pj },
     ],
     []
   );
@@ -201,7 +211,15 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
     }
     const kind = dados.kind === "pj" ? ("pj" as const) : ("pf" as const);
     startTransition(async () => {
-      const r = await salvarComprador(comprador?.id ?? null, { ...dados, kind });
+      // o RG volta a ser um campo só: "123456 SSP/MA"
+      const rg = juntarRg(dados.rg, dados.rg_orgao);
+      const repRg = juntarRg(dados.rep_rg, dados.rep_rg_orgao);
+      const r = await salvarComprador(comprador?.id ?? null, {
+        ...dados,
+        kind,
+        rg,
+        rep_rg: repRg,
+      });
       const falha = actionError(r);
       if (falha || !r || "error" in r) {
         setErro(falha ?? "Erro ao salvar o comprador");
@@ -215,7 +233,7 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
         name: dados.name.trim().toUpperCase(),
         gender: kind === "pf" && (dados.gender === "m" || dados.gender === "f") ? dados.gender : null,
         document: dados.document.trim() || null,
-        rg: kind === "pf" ? maiusc(dados.rg) : null,
+        rg: kind === "pf" ? maiusc(rg) : null,
         nationality: kind === "pf" ? maiusc(dados.nationality) : null,
         marital_status: kind === "pf" ? maiusc(dados.marital_status) : null,
         property_regime: kind === "pf" ? maiusc(dados.property_regime) : null,
@@ -230,7 +248,7 @@ export function CompradorDialog({ open, onClose, comprador, onSalvo, onApagado }
         email: dados.email.trim() || null,
         rep_name: kind === "pj" ? maiusc(dados.rep_name) : null,
         rep_document: kind === "pj" ? dados.rep_document.trim() || null : null,
-        rep_rg: kind === "pj" ? maiusc(dados.rep_rg) : null,
+        rep_rg: kind === "pj" ? maiusc(repRg) : null,
         rep_role: kind === "pj" ? maiusc(dados.rep_role) : null,
         created_by: comprador?.created_by ?? null,
         created_at: comprador?.created_at ?? agora,

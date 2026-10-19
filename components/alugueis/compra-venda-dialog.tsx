@@ -13,6 +13,9 @@ import { Button } from "@/components/ui/button";
 import {
   PerguntaDoPasso,
   RevisaoDosPassos,
+  ORGAOS_RG,
+  juntarRg,
+  separarRg,
   usePassoAPasso,
   type PassoDef,
 } from "@/components/ui/passo-a-passo";
@@ -74,6 +77,8 @@ type Campo =
   | "seller_gender"
   | "seller_document"
   | "seller_rg"
+  /** Só na tela: o órgão do RG é perguntado à parte e gravado junto do número. */
+  | "seller_rg_orgao"
   | "seller_nationality"
   | "seller_profession"
   | "seller_marital_status"
@@ -90,6 +95,7 @@ type Campo =
   | "spouse_gender"
   | "spouse_document"
   | "spouse_rg"
+  | "spouse_rg_orgao"
   | "spouse_nationality"
   | "spouse_profession"
   | "property_kind"
@@ -188,7 +194,8 @@ const PASSOS: Passo[] = [
     dica: "É o que decide, no contrato, entre \"portador\" e \"portadora\", \"VENDEDOR\" e \"VENDEDORA\".",
   },
   { campo: "seller_document", secao: "O vendedor", pergunta: "CPF ou CNPJ do vendedor", tipo: "documento", placeholder: "000.000.000-00" },
-  { campo: "seller_rg", secao: "O vendedor", pergunta: "RG do vendedor", tipo: "texto", placeholder: "número e órgão (ex: 123456 SSP/MA)", maiusculo: true },
+  { campo: "seller_rg", secao: "O vendedor", pergunta: "Número do RG do vendedor", tipo: "texto", teclado: "numerico", placeholder: "ex: 123456789" },
+  { campo: "seller_rg_orgao", secao: "O vendedor", pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA" },
   { campo: "seller_nationality", secao: "O vendedor", pergunta: "Nacionalidade", tipo: "texto", maiusculo: true },
   { campo: "seller_profession", secao: "O vendedor", pergunta: "Profissão do vendedor", tipo: "texto", placeholder: "ex: lavrador, comerciante", maiusculo: true },
   { campo: "seller_marital_status", secao: "O vendedor", pergunta: "Estado civil", tipo: "opcoes", opcoes: ESTADOS_CIVIS },
@@ -234,7 +241,8 @@ const PASSOS: Passo[] = [
     quando: comConjuge,
   },
   { campo: "spouse_document", secao: "O cônjuge do vendedor", pergunta: "CPF do cônjuge", tipo: "documento", placeholder: "000.000.000-00", quando: comConjuge },
-  { campo: "spouse_rg", secao: "O cônjuge do vendedor", pergunta: "RG do cônjuge", tipo: "texto", placeholder: "número e órgão", maiusculo: true, quando: comConjuge },
+  { campo: "spouse_rg", secao: "O cônjuge do vendedor", pergunta: "Número do RG do cônjuge", tipo: "texto", teclado: "numerico", placeholder: "ex: 123456789", quando: comConjuge },
+  { campo: "spouse_rg_orgao", secao: "O cônjuge do vendedor", pergunta: "Órgão expedidor do RG do cônjuge", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA", quando: comConjuge },
   { campo: "spouse_nationality", secao: "O cônjuge do vendedor", pergunta: "Nacionalidade do cônjuge", tipo: "texto", maiusculo: true, quando: comConjuge },
   { campo: "spouse_profession", secao: "O cônjuge do vendedor", pergunta: "Profissão do cônjuge", tipo: "texto", maiusculo: true, quando: comConjuge },
 
@@ -315,7 +323,8 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
     seller_name: s(c?.seller_name),
     seller_gender: s(c?.seller_gender),
     seller_document: s(c?.seller_document),
-    seller_rg: s(c?.seller_rg),
+    seller_rg: separarRg(c?.seller_rg).numero,
+    seller_rg_orgao: separarRg(c?.seller_rg).orgao,
     seller_nationality: c ? s(c.seller_nationality) : "BRASILEIRA",
     seller_profession: s(c?.seller_profession),
     seller_marital_status: s(c?.seller_marital_status),
@@ -332,7 +341,8 @@ function dadosIniciais(c: PropertySaleContract | null): Dados {
     spouse_name: s(c?.spouse_name),
     spouse_gender: s(c?.spouse_gender),
     spouse_document: s(c?.spouse_document),
-    spouse_rg: s(c?.spouse_rg),
+    spouse_rg: separarRg(c?.spouse_rg).numero,
+    spouse_rg_orgao: separarRg(c?.spouse_rg).orgao,
     spouse_nationality: c ? s(c.spouse_nationality) : "BRASILEIRA",
     spouse_profession: s(c?.spouse_profession),
     property_kind: s(c?.property_kind),
@@ -543,7 +553,9 @@ export function CompraVendaDialog({
         spouse_name: conjuge ? dados.spouse_name : "",
         spouse_gender: conjuge ? dados.spouse_gender : "",
         spouse_document: conjuge ? dados.spouse_document : "",
-        spouse_rg: conjuge ? dados.spouse_rg : "",
+        // o RG volta a ser um campo só: "123456 SSP/MA"
+        seller_rg: juntarRg(dados.seller_rg, dados.seller_rg_orgao),
+        spouse_rg: conjuge ? juntarRg(dados.spouse_rg, dados.spouse_rg_orgao) : "",
         spouse_nationality: conjuge ? dados.spouse_nationality : "",
         spouse_profession: conjuge ? dados.spouse_profession : "",
         price: parseMoney(dados.price),
@@ -739,6 +751,11 @@ function contratoDosDados(
     const t = v.trim();
     alvo[k] = t ? (SEM_CAIXA_ALTA.has(k) ? t : t.toUpperCase()) : null;
   }
+  // o RG perguntado em dois volta a ser um só, como o servidor grava
+  alvo.seller_rg = juntarRg(d.seller_rg, d.seller_rg_orgao).toUpperCase() || null;
+  alvo.spouse_rg = juntarRg(d.spouse_rg, d.spouse_rg_orgao).toUpperCase() || null;
+  delete alvo.seller_rg_orgao;
+  delete alvo.spouse_rg_orgao;
   if (!casado(d)) alvo.seller_property_regime = null;
   if (!comConjuge(d)) {
     for (const k of [
