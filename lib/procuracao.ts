@@ -32,7 +32,7 @@ export const VALIDADE_PADRAO = "até a conclusão do processo";
 export const CIDADE_PADRAO = "São Mateus do Maranhão";
 
 /** O rótulo em negrito no começo do parágrafo. */
-export const RE_ROTULO_PROCURACAO = /^(OUTORGANTE|OUTORGADA?|PODERES OUTORGADOS):/;
+export const RE_ROTULO_PROCURACAO = /^(OUTORGANTE|OUTORGAD[OA]|PODERES OUTORGADOS):/;
 
 function gen(g: Genero, masc: string, fem: string, neutro: string): string {
   return g === "m" ? masc : g === "f" ? fem : neutro;
