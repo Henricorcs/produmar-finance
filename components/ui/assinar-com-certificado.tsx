@@ -28,7 +28,7 @@ export function AssinarComCertificado({
   variante = "barra",
 }: {
   /** O contrato/procuração: o PDF assinado fica guardado no lugar do que faltava assinar. */
-  documento?: { tipo: TipoDocumentoAssinavel; id: string };
+  documento?: { tipo: TipoDocumentoAssinavel; id: string; nomes?: string[] };
   assinaturas: { nome: string; detalhe?: string }[];
   /** Gera o PDF com os carimbos (um por lugar de assinatura, na ordem; depois as testemunhas). */
   gerar: (carimbos: (string[] | null)[]) => Promise<File>;
@@ -140,7 +140,10 @@ export function AssinarComCertificado({
       const r = await assinarComCertificados(
         paraBase64(await pdf.arrayBuffer()),
         lista.map((c) => c.id),
-        documento
+        documento && {
+          ...documento,
+          nomes: lista.map((c) => nomeNoCarimbo(c, assinaturas[locais.get(c.id) ?? -1]?.nome)),
+        }
       );
       if ("error" in r) {
         setErro(r.error);

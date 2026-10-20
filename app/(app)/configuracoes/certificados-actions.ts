@@ -142,7 +142,8 @@ export async function apagarCertificado(id: string): Promise<{ error: string } |
 export async function assinarComCertificados(
   pdfBase64: string,
   ids: string[],
-  documento?: { tipo: TipoDocumentoAssinavel; id: string }
+  /** `nomes`: como cada um aparece no contrato (o certificado corta o nome em 64 letras). */
+  documento?: { tipo: TipoDocumentoAssinavel; id: string; nomes?: string[] }
 ): Promise<{ error: string } | { ok: true; pdf: string; guardado: DocumentoAssinado | null; avisoGuardar?: string }> {
   const userId = await souAdmin();
   if (!userId) return { error: "Só administradores podem assinar com certificado" };
@@ -179,13 +180,12 @@ export async function assinarComCertificados(
     let guardado: DocumentoAssinado | null = null;
     let avisoGuardar: string | undefined;
     if (documento) {
-      const g = await guardarAssinado(
-        documento.tipo,
-        documento.id,
-        assinado,
-        certificados.map((c) => c.nome),
-        userId
-      );
+      // o nome do contrato quando veio um para cada certificado; senão, o do certificado
+      const nomes =
+        documento.nomes?.length === certificados.length
+          ? documento.nomes.map((n, i) => String(n).trim().slice(0, 150) || certificados[i].nome)
+          : certificados.map((c) => c.nome);
+      const g = await guardarAssinado(documento.tipo, documento.id, assinado, nomes, userId);
       if ("error" in g) avisoGuardar = g.error;
       else guardado = g.doc;
       revalidatePath("/alugueis");

@@ -12,6 +12,7 @@ import { gerarContratoPdf } from "@/lib/contrato-pdf";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
 import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
 import { FaixaAssinado, baixarAssinado } from "@/components/ui/faixa-assinado";
+import { FolhasDoPdfAssinado } from "@/components/ui/visualizar-pdf";
 import type { DocumentoAssinado, PowerOfAttorney } from "@/lib/types";
 
 /**
@@ -106,7 +107,8 @@ export function ProcuracaoPrint({
       <div className="no-print" style={{ height: "calc(4.5rem + env(safe-area-inset-top))" }} />
       {assinado && <FaixaAssinado assinado={assinado} />}
 
-      {/* A folha */}
+      {/* A folha — assinada, é o próprio PDF assinado (o Imprimir imprime ele) */}
+      {assinado ? <FolhasDoPdfAssinado url={assinado.url} /> : (
       <div className="doc max-w-[794px] mx-auto my-6 shadow-xl text-[13px] leading-relaxed text-slate-900">
         <div className="p-10 space-y-3">
           <h1 className="text-center text-[15px] font-bold underline mb-4">{titulo}</h1>
@@ -129,6 +131,7 @@ export function ProcuracaoPrint({
           )}
         </div>
       </div>
+      )}
     </>
   );
 }

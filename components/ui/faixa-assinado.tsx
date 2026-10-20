@@ -25,8 +25,9 @@ export function FaixaAssinado({ assinado }: { assinado: DocumentoAssinado }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
         <BadgeCheck className="w-4 h-4 flex-shrink-0" />
         <span className="min-w-0 flex-1">
-          <strong>Assinado digitalmente</strong> por {quem} em {quando}. O &quot;Compartilhar
-          PDF&quot; manda o assinado. Se o documento for editado, a assinatura é descartada.
+          <strong>Assinado digitalmente</strong> por {quem} em {quando}. A folha abaixo é o PDF
+          assinado — o Imprimir e o Compartilhar usam ele. Se o documento for editado, a
+          assinatura é descartada.
         </span>
         <a
           href={assinado.url}
