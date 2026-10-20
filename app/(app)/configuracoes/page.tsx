@@ -9,7 +9,7 @@ import { UserManagementClient } from "@/components/configuracoes/user-management
 import { CertificadosConfig } from "@/components/configuracoes/certificados-config";
 import { listarCertificados } from "./certificados-actions";
 import { User, Bell, Building2, Tag, Users, BadgeCheck } from "lucide-react";
-import type { Profile, Category } from "@/lib/types";
+import type { Profile, Category, CertificadoResumo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +53,7 @@ export default async function ConfiguracoesPage() {
   }
 
   // certificados A1 (122): só os dados de quem é — o arquivo nunca sai do servidor
-  const certificados = isAdmin
+  const certificados: { lista: CertificadoResumo[]; erro?: string } = isAdmin
     ? await listarCertificados().catch(() => ({ lista: [], erro: "Não foi possível ler os certificados" }))
     : { lista: [] };
 
