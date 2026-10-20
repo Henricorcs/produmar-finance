@@ -10,6 +10,7 @@ import {
 } from "@/lib/procuracao";
 import { gerarContratoPdf } from "@/lib/contrato-pdf";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
 import type { PowerOfAttorney } from "@/lib/types";
 
 /**
@@ -23,6 +24,19 @@ export function ProcuracaoPrint({ procuracao }: { procuracao: PowerOfAttorney })
   const titulo = paragrafos[0];
   const corpo = paragrafos.slice(1);
   const emBranco = procuracao.id === "em-branco";
+
+  /** O PDF — com os carimbos da assinatura com certificado, quando vier assinar. */
+  const gerarPdf = (carimbos?: (string[] | null)[]) =>
+    gerarContratoPdf({
+      titulo,
+      paragrafos: corpo,
+      marcaAssinaturas: MARCA_ASSINATURAS,
+      rotulo: RE_ROTULO_PROCURACAO,
+      assinaturas,
+      nomeArquivo: nomeDoPdfDaProcuracao(procuracao),
+      testemunhas: false,
+      carimbos,
+    });
 
   return (
     <>
@@ -60,18 +74,9 @@ export function ProcuracaoPrint({ procuracao }: { procuracao: PowerOfAttorney })
           <CompartilharPdf
             variante="barra"
             chave={JSON.stringify([paragrafos, assinaturas])}
-            gerar={() =>
-              gerarContratoPdf({
-                titulo,
-                paragrafos: corpo,
-                marcaAssinaturas: MARCA_ASSINATURAS,
-                rotulo: RE_ROTULO_PROCURACAO,
-                assinaturas,
-                nomeArquivo: nomeDoPdfDaProcuracao(procuracao),
-                testemunhas: false,
-              })
-            }
+            gerar={() => gerarPdf()}
           />
+          {!emBranco && <AssinarComCertificado assinaturas={assinaturas} gerar={gerarPdf} />}
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"

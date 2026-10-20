@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { camposDoContrato, preencherModelo } from "@/lib/alugueis-contrato";
 import { gerarContratoPdf, paraNomeDeArquivo } from "@/lib/contrato-pdf";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
 import type { RentalContractView } from "@/lib/types";
 
 /** A linha que vira o bloco de assinaturas do fim do contrato. */
@@ -47,6 +48,25 @@ export function ContratoPrint({
   const titulo = paragrafos[0] ?? "CONTRATO DE LOCAÇÃO";
   const corpo = paragrafos.slice(1);
 
+  const assinaturasPdf = [
+    { nome: assinaturaLocador },
+    {
+      nome: contrato.tenant_name,
+      detalhe: contrato.tenant_document ? `CPF nº ${contrato.tenant_document}` : undefined,
+    },
+  ];
+  /** O PDF — com os carimbos da assinatura com certificado, quando vier assinar. */
+  const gerarPdf = (carimbos?: (string[] | null)[]) =>
+    gerarContratoPdf({
+      titulo,
+      paragrafos: corpo,
+      marcaAssinaturas: MARCA_ASSINATURAS,
+      rotulo: RE_ROTULO,
+      assinaturas: assinaturasPdf,
+      nomeArquivo: `contrato-locacao-${paraNomeDeArquivo(contrato.tenant_name) || "imovel"}.pdf`,
+      carimbos,
+    });
+
   return (
     <>
       <style>{`
@@ -79,26 +99,8 @@ export function ContratoPrint({
           >
             ← Voltar
           </button>
-          <CompartilharPdf
-            variante="barra"
-            chave={JSON.stringify(paragrafos)}
-            gerar={() =>
-              gerarContratoPdf({
-                titulo,
-                paragrafos: corpo,
-                marcaAssinaturas: MARCA_ASSINATURAS,
-                rotulo: RE_ROTULO,
-                assinaturas: [
-                  { nome: assinaturaLocador },
-                  {
-                    nome: contrato.tenant_name,
-                    detalhe: contrato.tenant_document ? `CPF nº ${contrato.tenant_document}` : undefined,
-                  },
-                ],
-                nomeArquivo: `contrato-locacao-${paraNomeDeArquivo(contrato.tenant_name) || "imovel"}.pdf`,
-              })
-            }
-          />
+          <CompartilharPdf variante="barra" chave={JSON.stringify(paragrafos)} gerar={() => gerarPdf()} />
+          <AssinarComCertificado assinaturas={assinaturasPdf} gerar={gerarPdf} />
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"

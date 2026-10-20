@@ -27,6 +27,11 @@ export interface ContratoParaPdf {
   nomeArquivo: string;
   /** As duas testemunhas no fim (padrão: sim). A procuração não tem. */
   testemunhas?: boolean;
+  /**
+   * "Assinado digitalmente por..." no espaço acima da linha de quem assinou
+   * com certificado — um item por linha de assinatura, na mesma ordem.
+   */
+  carimbos?: (string[] | null | undefined)[];
 }
 
 /** "João da Silva" → "joao-da-silva" (para o nome do arquivo). */
@@ -155,11 +160,32 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
     y += linha * 0.6;
   }
 
+  /** O carimbo da assinatura com certificado: um quadro logo acima da linha. */
+  function carimbar(linhas: string[], linhaY: number) {
+    const altura = 4 + linhas.length * 4;
+    const topo = linhaY - altura - 2;
+    const largura = larguraAssinatura - 10;
+    doc.setDrawColor(30, 90, 160);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(meio - largura / 2, topo, largura, altura, 1.5, 1.5);
+    doc.setTextColor(30, 90, 160);
+    linhas.forEach((t, j) => {
+      doc.setFont(FONTE, j === 1 ? "bold" : "normal");
+      doc.setFontSize(j === 1 ? 9 : 8);
+      doc.text(limpar(t), meio, topo + 5 + j * 4, { align: "center", maxWidth: largura - 4 });
+    });
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+  }
+
   function assinaturas() {
     cabe(alturaAssinaturas);
     doc.setLineWidth(0.3);
-    for (const a of c.assinaturas) {
+    for (const [i, a] of c.assinaturas.entries()) {
       y += espacoAssinatura;
+      const carimbo = c.carimbos?.[i];
+      if (carimbo?.length) carimbar(carimbo, y);
       doc.line(meio - larguraAssinatura / 2, y, meio + larguraAssinatura / 2, y);
       doc.setFont(FONTE, "bold");
       doc.setFontSize(10);

@@ -6,7 +6,9 @@ import { AlertConfigClient } from "@/components/configuracoes/alert-config-clien
 import { ProfileFormClient } from "@/components/configuracoes/profile-form-client";
 import { CategoriasConfig } from "@/components/configuracoes/categorias-config";
 import { UserManagementClient } from "@/components/configuracoes/user-management-client";
-import { User, Bell, Building2, Tag, Users } from "lucide-react";
+import { CertificadosConfig } from "@/components/configuracoes/certificados-config";
+import { listarCertificados } from "./certificados-actions";
+import { User, Bell, Building2, Tag, Users, BadgeCheck } from "lucide-react";
 import type { Profile, Category } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +51,11 @@ export default async function ConfiguracoesPage() {
       // If service role key is not configured, skip the user list gracefully
     }
   }
+
+  // certificados A1 (122): só os dados de quem é — o arquivo nunca sai do servidor
+  const certificados = isAdmin
+    ? await listarCertificados().catch(() => ({ lista: [], erro: "Não foi possível ler os certificados" }))
+    : { lista: [] };
 
   return (
     <div className="space-y-5 animate-fade-in max-w-3xl">
@@ -115,6 +122,25 @@ export default async function ConfiguracoesPage() {
           </CardHeader>
           <CardContent>
             <UserManagementClient users={allUsers} currentUserId={userId!} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Admin-only: certificados A1 para assinar contratos e procurações */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <BadgeCheck className="w-4 h-4 text-produmar-600" />
+              <CardTitle>Certificados digitais</CardTitle>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Os certificados A1 que assinam contratos e procurações direto do sistema — o botão
+              &quot;Assinar&quot; aparece na impressão de cada um
+            </p>
+          </CardHeader>
+          <CardContent>
+            <CertificadosConfig iniciais={certificados.lista} erroInicial={certificados.erro} />
           </CardContent>
         </Card>
       )}

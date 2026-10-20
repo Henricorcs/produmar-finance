@@ -10,6 +10,7 @@ import {
 } from "@/lib/compra-venda-contrato";
 import { gerarContratoPdf } from "@/lib/contrato-pdf";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
 import type { PropertyBuyer, PropertySaleContract } from "@/lib/types";
 
 interface Props {
@@ -41,6 +42,18 @@ export function CompraVendaPrint({ contrato, modeloAluguel, comprador = null }: 
   const titulo = paragrafos[0];
   const corpo = paragrafos.slice(1);
   const emBranco = contrato.id === "em-branco";
+
+  /** O PDF — com os carimbos da assinatura com certificado, quando vier assinar. */
+  const gerarPdf = (carimbos?: (string[] | null)[]) =>
+    gerarContratoPdf({
+      titulo,
+      paragrafos: corpo,
+      marcaAssinaturas: MARCA_ASSINATURAS,
+      rotulo: RE_ROTULO_COMPRA_VENDA,
+      assinaturas,
+      nomeArquivo: nomeDoPdfDaCompraEVenda(contrato),
+      carimbos,
+    });
 
   return (
     <>
@@ -78,17 +91,9 @@ export function CompraVendaPrint({ contrato, modeloAluguel, comprador = null }: 
           <CompartilharPdf
             variante="barra"
             chave={JSON.stringify([paragrafos, assinaturas])}
-            gerar={() =>
-              gerarContratoPdf({
-                titulo,
-                paragrafos: corpo,
-                marcaAssinaturas: MARCA_ASSINATURAS,
-                rotulo: RE_ROTULO_COMPRA_VENDA,
-                assinaturas,
-                nomeArquivo: nomeDoPdfDaCompraEVenda(contrato),
-              })
-            }
+            gerar={() => gerarPdf()}
           />
+          {!emBranco && <AssinarComCertificado assinaturas={assinaturas} gerar={gerarPdf} />}
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"

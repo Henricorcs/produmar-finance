@@ -2567,6 +2567,17 @@ export interface PropertyBuyer {
   updated_at: string;
 }
 
+/** Certificado A1 guardado (migration 122) — só os dados de quem é, nunca o arquivo. */
+export interface CertificadoResumo {
+  id: string;
+  /** O titular, como está no certificado ("PRODUMAR SERVIÇOS LTDA"). */
+  nome: string;
+  /** CPF ou CNPJ, só dígitos. */
+  documento: string | null;
+  emissor: string | null;
+  validoAte: string | null;
+}
+
 /**
  * Procuração (migration 121) — ex.: troca de titularidade da conta de energia.
  * OUTORGANTE dá os poderes (o titular da conta); OUTORGADO recebe (o procurador).
