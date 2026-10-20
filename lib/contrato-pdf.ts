@@ -6,7 +6,7 @@
 // Serve aos dois contratos do módulo Aluguéis (locação e compra e venda).
 //
 // A biblioteca (jsPDF) só é carregada na hora de gerar. A fonte padrão do PDF
-// (Times) tem acento e ç, mas não tem todo sinal tipográfico — o travessão
+// (Helvetica, a Arial do PDF) tem acento e ç, mas não tem todo sinal tipográfico — o travessão
 // curto vira hífen, e o que não existir na fonte é trocado antes de escrever.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -38,6 +38,14 @@ export function paraNomeDeArquivo(texto: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 }
+
+/**
+ * A FONTE: Arial. O jsPDF traz embutidas só Times, Helvetica e Courier — e a
+ * Helvetica tem as mesmas medidas da Arial (é a Arial que o leitor de PDF
+ * mostra no lugar dela). Embutir o arquivo da Arial deixaria cada PDF centenas
+ * de KB maior, para o mesmo desenho na folha.
+ */
+const FONTE = "helvetica";
 
 /** Troca o que a fonte padrão do PDF não sabe desenhar. */
 function limpar(texto: string): string {
@@ -73,7 +81,7 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
   }
 
   // ── Título ────────────────────────────────────────────────────────────────
-  doc.setFont("times", "bold");
+  doc.setFont(FONTE, "bold");
   doc.setFontSize(13);
   const titulo = limpar(c.titulo);
   doc.text(titulo, meio, y, { align: "center" });
@@ -107,7 +115,7 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
       y += linha;
       // "Cidade, data" fica na mesma página das assinaturas que vêm logo depois
       cabe(linha * 2 + (c.paragrafos[i + 1] === c.marcaAssinaturas ? alturaAssinaturas : 0));
-      doc.setFont("times", "bold");
+      doc.setFont(FONTE, "bold");
       doc.text(texto, meio, y, { align: "center" });
       y += linha * 2;
       continue;
@@ -119,23 +127,25 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
     const rotulo = achado ? achado[0] : "";
     const resto = rotulo ? texto.slice(rotulo.length).trimStart() : texto;
 
-    doc.setFont("times", "bold");
+    doc.setFont(FONTE, "bold");
     const larguraRotulo = rotulo ? doc.getTextWidth(rotulo + " ") : 0;
-    doc.setFont("times", "normal");
+    doc.setFont(FONTE, "normal");
 
     const primeira: string[] = rotulo
       ? doc.splitTextToSize(resto, largura - larguraRotulo)
       : [];
+    // coube tudo na primeira linha: sem o resto, que viraria uma linha em branco
+    const depois = rotulo ? resto.slice((primeira[0] ?? "").length).trimStart() : "";
     const linhas: string[] = rotulo
-      ? [primeira[0] ?? "", ...doc.splitTextToSize(resto.slice((primeira[0] ?? "").length).trimStart(), largura)]
+      ? [primeira[0] ?? "", ...(depois ? doc.splitTextToSize(depois, largura) : [])]
       : doc.splitTextToSize(resto, largura);
 
     linhas.forEach((l, i) => {
       cabe(linha);
       if (i === 0 && rotulo) {
-        doc.setFont("times", "bold");
+        doc.setFont(FONTE, "bold");
         doc.text(rotulo, margem, y);
-        doc.setFont("times", "normal");
+        doc.setFont(FONTE, "normal");
         doc.text(l, margem + larguraRotulo, y);
       } else {
         doc.text(l, margem, y);
@@ -151,11 +161,11 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
     for (const a of c.assinaturas) {
       y += espacoAssinatura;
       doc.line(meio - larguraAssinatura / 2, y, meio + larguraAssinatura / 2, y);
-      doc.setFont("times", "bold");
+      doc.setFont(FONTE, "bold");
       doc.setFontSize(10);
       doc.text(limpar(a.nome), meio, y + 4.5, { align: "center" });
       if (a.detalhe) {
-        doc.setFont("times", "normal");
+        doc.setFont(FONTE, "normal");
         doc.setFontSize(9);
         doc.text(limpar(a.detalhe), meio, y + 8.5, { align: "center" });
       }
@@ -171,9 +181,9 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
     doc.setFontSize(10);
     for (const x of col) {
       doc.line(x, y, x + larguraCol, y);
-      doc.setFont("times", "bold");
+      doc.setFont(FONTE, "bold");
       doc.text("Testemunha", x + larguraCol / 2, y + 4.5, { align: "center" });
-      doc.setFont("times", "normal");
+      doc.setFont(FONTE, "normal");
       doc.text("Nome: ______________________________", x, y + 10);
       doc.text("CPF: _______________________________", x, y + 15);
     }

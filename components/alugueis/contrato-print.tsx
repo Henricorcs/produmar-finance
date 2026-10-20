@@ -57,7 +57,7 @@ export function ContratoPrint({
           .doc { box-shadow: none !important; margin: 0 !important; }
           .avoid-break { break-inside: avoid; }
         }
-        body { font-family: 'Times New Roman', Georgia, serif; background: #f1f5f9; color: #0f172a; }
+        body { font-family: Arial, Helvetica, sans-serif; background: #f1f5f9; color: #0f172a; }
         .doc { background: white; }
       `}</style>
 
