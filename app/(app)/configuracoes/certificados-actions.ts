@@ -47,15 +47,22 @@ function resumo(l: Linha): CertificadoResumo {
   };
 }
 
-/** Os certificados guardados (só os dados de quem é — nunca o arquivo). Quem não é admin recebe lista vazia. */
-export async function listarCertificados(): Promise<{ lista: CertificadoResumo[]; erro?: string }> {
-  if (!(await souAdmin())) return { lista: [] };
+/**
+ * Os certificados guardados (só os dados de quem é — nunca o arquivo). Quem
+ * não é admin recebe `admin: false` e lista vazia — o botão nem aparece.
+ */
+export async function listarCertificados(): Promise<{
+  admin: boolean;
+  lista: CertificadoResumo[];
+  erro?: string;
+}> {
+  if (!(await souAdmin())) return { admin: false, lista: [] };
   const { data, error } = await createAdminClient()
     .from("signing_certificates")
     .select("id, holder_name, holder_document, issuer, valid_until")
     .order("holder_name");
-  if (error) return { lista: [], erro: erroDaTabela(error.message) };
-  return { lista: ((data as Linha[]) ?? []).map(resumo) };
+  if (error) return { admin: true, lista: [], erro: erroDaTabela(error.message) };
+  return { admin: true, lista: ((data as Linha[]) ?? []).map(resumo) };
 }
 
 /**

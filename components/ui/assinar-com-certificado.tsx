@@ -35,9 +35,16 @@ export function AssinarComCertificado({
   const [erro, setErro] = useState<string | null>(null);
   const [pronto, setPronto] = useState<{ arquivo: File; url: string } | null>(null);
 
+  /** Só admin assina com certificado — para os outros, o botão nem aparece. */
+  const [admin, setAdmin] = useState(false);
+
   useEffect(() => {
     listarCertificados()
-      .then((r) => setCerts(r.lista))
+      .then((r) => {
+        setAdmin(r.admin);
+        setCerts(r.lista);
+        if (r.erro) setErro(r.erro);
+      })
       .catch(() => setCerts([]));
   }, []);
 
@@ -45,8 +52,8 @@ export function AssinarComCertificado({
     if (pronto) URL.revokeObjectURL(pronto.url);
   }, [pronto]);
 
-  // sem certificado (ou sem ser admin): o botão nem aparece
-  if (!certs || certs.length === 0) return null;
+  // quem não é admin não assina por ninguém: o botão nem aparece
+  if (!certs || !admin) return null;
 
   const vencido = (c: CertificadoResumo) => !!c.validoAte && new Date(c.validoAte) < new Date();
 
@@ -55,7 +62,8 @@ export function AssinarComCertificado({
     setEscolhidos(
       new Set(certs!.filter((c) => !vencido(c) && linhaDoCertificado(assinaturas, c) >= 0).map((c) => c.id))
     );
-    setErro(null);
+    // o erro de leitura da lista (ex.: migration) fica à mostra; o da última assinatura, não
+    if (certs!.length > 0) setErro(null);
     setPronto(null);
     setAberto(true);
   }
@@ -135,7 +143,22 @@ export function AssinarComCertificado({
             </DialogTitle>
           </DialogHeader>
 
-          {pronto ? (
+          {certs.length === 0 ? (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Nenhum certificado guardado ainda. Guarde os certificados A1 (arquivo .pfx e senha) em{" "}
+                <strong>Configurações → Certificados digitais</strong> — depois é só voltar aqui e
+                tocar em Assinar.
+              </p>
+              {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
+              <a
+                href="/configuracoes"
+                className="flex items-center justify-center gap-2 w-full h-12 rounded-md bg-produmar-600 text-white font-medium hover:bg-produmar-700"
+              >
+                Ir para Configurações
+              </a>
+            </div>
+          ) : pronto ? (
             <div className="space-y-3">
               <p className="text-sm text-slate-600 dark:text-slate-300">
                 Assinado com certificado ICP-Brasil. A outra parte ainda pode assinar este mesmo
