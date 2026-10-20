@@ -74,6 +74,47 @@ export async function guardarAssinado(
   return { ok: true, doc: { url: urlDoArquivo(chave), assinantes, assinadoEm: data.created_at as string } };
 }
 
+export type OrigemAssinado = "avulso" | TipoDocumentoAssinavel;
+
+/**
+ * Guarda a cópia no ARQUIVO (migration 124): um registro por certificado que
+ * assinou — é o que põe o documento na pasta de cada um. Histórico: não some
+ * quando o contrato é editado. Falhar aqui não desfaz a assinatura.
+ */
+export async function arquivarAssinado(
+  pdf: Buffer,
+  nomeArquivo: string,
+  certificados: { id: string; nome: string; documento: string | null }[],
+  origem: OrigemAssinado,
+  docId: string | null,
+  userId: string
+): Promise<{ error: string } | { ok: true; url: string }> {
+  const chave = `arquivo-assinado/${randomUUID()}.pdf`;
+  const up = await uploadBytes(chave, pdf);
+  if (up.error) return { error: `Não foi possível guardar no arquivo: ${up.error.message}` };
+  const { error } = await createAdminClient()
+    .from("signed_files")
+    .insert(
+      certificados.map((c) => ({
+        file_name: nomeArquivo,
+        file_path: chave,
+        size_bytes: pdf.length,
+        certificate_id: c.id,
+        certificate_name: c.nome,
+        certificate_document: c.documento,
+        origin: origem,
+        doc_id: docId,
+        created_by: userId,
+      }))
+    );
+  if (error) {
+    await removerArquivos([chave]);
+    if (/signed_files/.test(error.message)) return { error: "Rode a migration 124 no Supabase para guardar o arquivo de assinados" };
+    return { error: error.message };
+  }
+  return { ok: true, url: urlDoArquivo(chave) };
+}
+
 /**
  * O documento foi editado: a assinatura não vale para o texto novo — sai o
  * registro e o arquivo. Silencioso: sem migration ou sem assinatura, nada a fazer.

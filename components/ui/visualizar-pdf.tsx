@@ -39,6 +39,22 @@ async function desenharPaginas(
   }
 }
 
+/**
+ * As páginas do PDF como imagens (para a tela de tocar onde vai a
+ * assinatura). `proporcao` = altura ÷ largura da página.
+ */
+export async function paginasComoImagens(
+  bytes: Uint8Array,
+  largura: number
+): Promise<{ src: string; proporcao: number }[]> {
+  const alvo = document.createElement("div");
+  await desenharPaginas(bytes, alvo, { largura, nitidez: Math.min(window.devicePixelRatio || 1, 2), classe: "" }, () => true);
+  return [...alvo.querySelectorAll("canvas")].map((c) => ({
+    src: c.toDataURL("image/jpeg", 0.85),
+    proporcao: c.height / c.width,
+  }));
+}
+
 /** Na janela do "PDF assinado": as páginas numa caixa com rolagem. */
 export function VisualizarPdf({ arquivo }: { arquivo: File }) {
   const caixa = useRef<HTMLDivElement>(null);

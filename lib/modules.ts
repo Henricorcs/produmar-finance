@@ -19,6 +19,7 @@ import {
   Building2,
   Printer,
   Landmark,
+  PenLine,
   type LucideIcon,
 } from "lucide-react";
 
@@ -152,6 +153,8 @@ export const APP_MODULES: AppModule[] = [
       { href: "/alugueis", label: "Imóveis", short: "Imóveis", icon: Building2 },
       // o aluguel de impressoras: contador de cada mês e a fatura (migration 096)
       { href: "/impressoras", label: "Impressoras", short: "Impress.", icon: Printer },
+      // qualquer PDF assinado com certificado A1, e o arquivo por certificado (124)
+      { href: "/assinar", label: "Assinar digitalmente", short: "Assinar", icon: PenLine },
     ],
   },
   {

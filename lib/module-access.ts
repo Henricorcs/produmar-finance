@@ -48,7 +48,7 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   animais: ["/animais"],
   // Aluguéis: imóveis, contratos e o aluguel de cada mês (migration 078) — e
   // o aluguel de impressoras, com a leitura do contador (migration 096)
-  alugueis: ["/alugueis", "/impressoras"],
+  alugueis: ["/alugueis", "/impressoras", "/assinar"],
   // Devedores: quem deve para a empresa. Era a aba /emprestimos dentro de
   // Finanças; virou módulo próprio, e a rota velha redireciona para cá.
   devedores: ["/devedores", "/emprestimos"],

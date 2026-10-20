@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assinarPdf, cifrar, decifrar, lerCertificado } from "@/lib/assinatura-digital";
-import { TIPOS_ASSINAVEIS, guardarAssinado } from "@/lib/documentos-assinados";
+import { assinarPdf, cifrar, decifrar, lerCertificado, prepararPdfDeFora } from "@/lib/assinatura-digital";
+import { TIPOS_ASSINAVEIS, arquivarAssinado, guardarAssinado } from "@/lib/documentos-assinados";
+import { carimboDoCertificado } from "@/lib/certificado-na-folha";
+import { removerArquivos, urlDoArquivo } from "@/lib/storage";
 import type { CertificadoResumo, DocumentoAssinado, TipoDocumentoAssinavel } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -134,30 +136,24 @@ export async function apagarCertificado(id: string): Promise<{ error: string } |
   return { ok: true };
 }
 
-/**
- * Assina o PDF (em base64) com os certificados escolhidos, na ordem da lista,
- * e devolve o PDF assinado em base64. Com o `documento`, o PDF assinado fica
- * guardado no lugar do que faltava assinar (migration 123).
- */
-export async function assinarComCertificados(
-  pdfBase64: string,
-  ids: string[],
-  /** `nomes`: como cada um aparece no contrato (o certificado corta o nome em 64 letras). */
-  documento?: { tipo: TipoDocumentoAssinavel; id: string; nomes?: string[] }
-): Promise<{ error: string } | { ok: true; pdf: string; guardado: DocumentoAssinado | null; avisoGuardar?: string }> {
-  const userId = await souAdmin();
-  if (!userId) return { error: "Só administradores podem assinar com certificado" };
-  if (documento && (!TIPOS_ASSINAVEIS.includes(documento.tipo) || !/^[0-9a-f-]{36}$/i.test(documento.id)))
-    return { error: "Documento inválido" };
-  if (ids.length === 0) return { error: "Escolha pelo menos um certificado" };
+type CertificadoAberto = {
+  id: string;
+  nome: string;
+  documento: string | null;
+  pfx: Buffer;
+  senha: string;
+};
 
+/** Busca os certificados escolhidos, confere a validade e abre o cofre — na ordem dos ids. */
+async function abrirCertificados(ids: string[]): Promise<{ error: string } | { certificados: CertificadoAberto[] }> {
+  if (ids.length === 0) return { error: "Escolha pelo menos um certificado" };
   const { data, error } = await createAdminClient()
     .from("signing_certificates")
-    .select("id, holder_name, valid_until, pfx_encrypted, password_encrypted")
+    .select("id, holder_name, holder_document, valid_until, pfx_encrypted, password_encrypted")
     .in("id", ids);
   if (error) return { error: erroDaTabela(error.message) };
   const linhas = (data ?? []) as (Linha & { pfx_encrypted: string; password_encrypted: string })[];
-  if (linhas.length !== ids.length) return { error: "Um dos certificados não foi encontrado — recarregue a tela" };
+  if (linhas.length !== new Set(ids).size) return { error: "Um dos certificados não foi encontrado — recarregue a tela" };
 
   const vencido = linhas.find((l) => l.valid_until && new Date(l.valid_until) < new Date());
   if (vencido)
@@ -167,31 +163,204 @@ export async function assinarComCertificados(
 
   try {
     const porId = new Map(linhas.map((l) => [l.id, l]));
-    const certificados = ids.map((id) => {
-      const l = porId.get(id)!;
+    return {
+      certificados: ids.map((id) => {
+        const l = porId.get(id)!;
+        return {
+          id: l.id,
+          nome: l.holder_name,
+          documento: l.holder_document,
+          pfx: decifrar(l.pfx_encrypted),
+          senha: decifrar(l.password_encrypted).toString("utf8"),
+        };
+      }),
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Não foi possível abrir o certificado" };
+  }
+}
+
+/**
+ * Assina o PDF (em base64) com os certificados escolhidos, na ordem da lista,
+ * e devolve o PDF assinado em base64. Com o `documento`, o PDF assinado fica
+ * guardado no lugar do que faltava assinar (migration 123) — e uma cópia vai
+ * para o arquivo, na pasta de cada certificado (124).
+ */
+export async function assinarComCertificados(
+  pdfBase64: string,
+  ids: string[],
+  /** `nomes`: como cada um aparece no contrato (o certificado corta o nome em 64 letras). */
+  documento?: { tipo: TipoDocumentoAssinavel; id: string; nomes?: string[]; nomeArquivo?: string }
+): Promise<{ error: string } | { ok: true; pdf: string; guardado: DocumentoAssinado | null; avisoGuardar?: string }> {
+  const userId = await souAdmin();
+  if (!userId) return { error: "Só administradores podem assinar com certificado" };
+  if (documento && (!TIPOS_ASSINAVEIS.includes(documento.tipo) || !/^[0-9a-f-]{36}$/i.test(documento.id)))
+    return { error: "Documento inválido" };
+
+  const abertos = await abrirCertificados(ids);
+  if ("error" in abertos) return abertos;
+  const certificados = abertos.certificados;
+
+  let assinado: Buffer;
+  try {
+    assinado = await assinarPdf(Buffer.from(pdfBase64, "base64"), certificados);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Não foi possível assinar o PDF" };
+  }
+
+  // guardado no sistema; se falhar, o PDF assinado ainda volta para compartilhar
+  let guardado: DocumentoAssinado | null = null;
+  const avisos: string[] = [];
+  if (documento) {
+    // o nome do contrato quando veio um para cada certificado; senão, o do certificado
+    const nomes =
+      documento.nomes?.length === certificados.length
+        ? documento.nomes.map((n, i) => String(n).trim().slice(0, 150) || certificados[i].nome)
+        : certificados.map((c) => c.nome);
+    const g = await guardarAssinado(documento.tipo, documento.id, assinado, nomes, userId);
+    if ("error" in g) avisos.push(g.error);
+    else guardado = g.doc;
+
+    const arq = await arquivarAssinado(
+      assinado,
+      nomeDoAssinado(documento.nomeArquivo || `${documento.tipo}.pdf`),
+      certificados,
+      documento.tipo,
+      documento.id,
+      userId
+    );
+    if ("error" in arq) avisos.push(arq.error);
+    revalidatePath("/alugueis");
+    revalidatePath("/assinar");
+  }
+  return {
+    ok: true,
+    pdf: assinado.toString("base64"),
+    guardado,
+    avisoGuardar: avisos.length ? avisos.join("; ") : undefined,
+  };
+}
+
+/** "contrato.pdf" → "contrato-assinado.pdf" (sem repetir o "-assinado"). */
+function nomeDoAssinado(nome: string): string {
+  const base = nome.replace(/\.pdf$/i, "").replace(/-assinado$/i, "").trim() || "documento";
+  return `${base.slice(0, 120)}-assinado.pdf`;
+}
+
+/**
+ * ABA "ASSINAR DIGITALMENTE": assina um PDF anexado. Cada certificado pode
+ * levar um carimbo no ponto da página que foi tocado na tela. O assinado vai
+ * para o arquivo, na pasta de cada certificado, e volta o endereço dele.
+ */
+export async function assinarPdfAnexado(
+  formData: FormData
+): Promise<{ error: string } | { ok: true; url: string; nome: string; aviso?: string }> {
+  const userId = await souAdmin();
+  if (!userId) return { error: "Só administradores podem assinar com certificado" };
+
+  const arquivo = formData.get("arquivo");
+  if (!(arquivo instanceof File) || arquivo.size === 0) return { error: "Anexe o PDF para assinar" };
+  if (arquivo.size > 9_000_000) return { error: "PDF grande demais (o limite é 9 MB)" };
+  const pdf = Buffer.from(await arquivo.arrayBuffer());
+  if (pdf.subarray(0, 5).toString("latin1") !== "%PDF-") return { error: "O arquivo anexado não é um PDF" };
+
+  let ids: string[] = [];
+  let pontos: { certId: string; pagina: number; x: number; y: number }[] = [];
+  try {
+    ids = JSON.parse(String(formData.get("ids") ?? "[]"));
+    pontos = JSON.parse(String(formData.get("carimbos") ?? "[]"));
+  } catch {
+    return { error: "Pedido inválido — recarregue a tela" };
+  }
+
+  const abertos = await abrirCertificados(ids);
+  if ("error" in abertos) return abertos;
+  const certificados = abertos.certificados;
+
+  try {
+    const agora = new Date();
+    const porId = new Map(certificados.map((c) => [c.id, c]));
+    const carimbos = pontos
+      .filter((p) => porId.has(p.certId) && Number.isFinite(p.pagina) && Number.isFinite(p.x) && Number.isFinite(p.y))
+      .map((p) => ({
+        pagina: Math.floor(p.pagina),
+        x: p.x,
+        y: p.y,
+        linhas: carimboDoCertificado(porId.get(p.certId)!, agora),
+      }));
+    const preparado = await prepararPdfDeFora(pdf, carimbos);
+    let assinado: Buffer;
+    try {
+      assinado = await assinarPdf(preparado.pdf, certificados);
+    } catch {
       return {
-        nome: l.holder_name,
-        pfx: decifrar(l.pfx_encrypted),
-        senha: decifrar(l.password_encrypted).toString("utf8"),
+        error:
+          "Esse PDF já tem assinatura num formato em que não dá para acrescentar outra por aqui. Assine a versão sem assinatura e depois colha as outras.",
       };
-    });
-    const assinado = await assinarPdf(Buffer.from(pdfBase64, "base64"), certificados);
-    // guardado no sistema; se falhar, o PDF assinado ainda volta para compartilhar
-    let guardado: DocumentoAssinado | null = null;
-    let avisoGuardar: string | undefined;
-    if (documento) {
-      // o nome do contrato quando veio um para cada certificado; senão, o do certificado
-      const nomes =
-        documento.nomes?.length === certificados.length
-          ? documento.nomes.map((n, i) => String(n).trim().slice(0, 150) || certificados[i].nome)
-          : certificados.map((c) => c.nome);
-      const g = await guardarAssinado(documento.tipo, documento.id, assinado, nomes, userId);
-      if ("error" in g) avisoGuardar = g.error;
-      else guardado = g.doc;
-      revalidatePath("/alugueis");
     }
-    return { ok: true, pdf: assinado.toString("base64"), guardado, avisoGuardar };
+    const nome = nomeDoAssinado(arquivo.name || "documento.pdf");
+    const arq = await arquivarAssinado(assinado, nome, certificados, "avulso", null, userId);
+    if ("error" in arq) return arq;
+    revalidatePath("/assinar");
+    return { ok: true, url: arq.url, nome, aviso: preparado.aviso };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Não foi possível assinar o PDF" };
   }
 }
+
+export interface ItemDoArquivo {
+  id: string;
+  nome: string;
+  url: string;
+  tamanho: number | null;
+  certificadoNome: string;
+  certificadoDocumento: string | null;
+  origem: string;
+  docId: string | null;
+  assinadoEm: string;
+}
+
+/** O arquivo de assinados — a tela agrupa por certificado. Só para admin. */
+export async function listarArquivoAssinado(): Promise<{ itens: ItemDoArquivo[]; erro?: string }> {
+  if (!(await souAdmin())) return { itens: [] };
+  const { data, error } = await createAdminClient()
+    .from("signed_files")
+    .select("id, file_name, file_path, size_bytes, certificate_name, certificate_document, origin, doc_id, created_at")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  if (error) {
+    if (/signed_files/.test(error.message)) return { itens: [], erro: "Rode a migration 124 no Supabase para ver o arquivo de assinados" };
+    return { itens: [], erro: error.message };
+  }
+  return {
+    itens: (data ?? []).map((d) => ({
+      id: d.id as string,
+      nome: d.file_name as string,
+      url: urlDoArquivo(d.file_path as string),
+      tamanho: (d.size_bytes as number | null) ?? null,
+      certificadoNome: d.certificate_name as string,
+      certificadoDocumento: (d.certificate_document as string | null) ?? null,
+      origem: d.origin as string,
+      docId: (d.doc_id as string | null) ?? null,
+      assinadoEm: d.created_at as string,
+    })),
+  };
+}
+
+/** Tira o documento da pasta. O arquivo só some do disco quando nenhuma outra pasta o tem. */
+export async function apagarDoArquivo(id: string): Promise<{ error: string } | { ok: true }> {
+  if (!(await souAdmin())) return { error: "Só administradores podem apagar do arquivo" };
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("signed_files").delete().eq("id", id).select("file_path").maybeSingle();
+  if (error) return { error: error.message };
+  if (data?.file_path) {
+    const { count } = await admin
+      .from("signed_files")
+      .select("id", { count: "exact", head: true })
+      .eq("file_path", data.file_path as string);
+    if (!count) await removerArquivos([data.file_path as string]);
+  }
+  revalidatePath("/assinar");
+  return { ok: true };
+}
+

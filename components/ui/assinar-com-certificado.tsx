@@ -28,7 +28,7 @@ export function AssinarComCertificado({
   variante = "barra",
 }: {
   /** O contrato/procuração: o PDF assinado fica guardado no lugar do que faltava assinar. */
-  documento?: { tipo: TipoDocumentoAssinavel; id: string; nomes?: string[] };
+  documento?: { tipo: TipoDocumentoAssinavel; id: string };
   assinaturas: { nome: string; detalhe?: string }[];
   /** Gera o PDF com os carimbos (um por lugar de assinatura, na ordem; depois as testemunhas). */
   gerar: (carimbos: (string[] | null)[]) => Promise<File>;
@@ -142,6 +142,7 @@ export function AssinarComCertificado({
         lista.map((c) => c.id),
         documento && {
           ...documento,
+          nomeArquivo: pdf.name,
           nomes: lista.map((c) => nomeNoCarimbo(c, assinaturas[locais.get(c.id) ?? -1]?.nome)),
         }
       );
