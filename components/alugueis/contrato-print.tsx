@@ -5,7 +5,8 @@ import { camposDoContrato, preencherModelo } from "@/lib/alugueis-contrato";
 import { gerarContratoPdf, paraNomeDeArquivo } from "@/lib/contrato-pdf";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
 import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
-import type { RentalContractView } from "@/lib/types";
+import { FaixaAssinado, baixarAssinado } from "@/components/ui/faixa-assinado";
+import type { DocumentoAssinado, RentalContractView } from "@/lib/types";
 
 /** A linha que vira o bloco de assinaturas do fim do contrato. */
 const MARCA_ASSINATURAS = "[[ASSINATURAS]]";
@@ -23,6 +24,8 @@ interface Props {
   modelo: string;
   /** Nome de quem assina pela locadora. */
   assinaturaLocador?: string;
+  /** O PDF assinado com certificado guardado (123). */
+  assinado?: DocumentoAssinado | null;
 }
 
 /**
@@ -36,6 +39,7 @@ export function ContratoPrint({
   contrato,
   modelo,
   assinaturaLocador = "NILMA PEREIRA DA COSTA",
+  assinado = null,
 }: Props) {
   const paragrafos = useMemo(() => {
     const preenchido = preencherModelo(modelo, camposDoContrato(contrato));
@@ -55,6 +59,7 @@ export function ContratoPrint({
       detalhe: contrato.tenant_document ? `CPF nº ${contrato.tenant_document}` : undefined,
     },
   ];
+  const nomeArquivo = `contrato-locacao-${paraNomeDeArquivo(contrato.tenant_name) || "imovel"}.pdf`;
   /** O PDF — com os carimbos da assinatura com certificado, quando vier assinar. */
   const gerarPdf = (carimbos?: (string[] | null)[]) =>
     gerarContratoPdf({
@@ -63,7 +68,7 @@ export function ContratoPrint({
       marcaAssinaturas: MARCA_ASSINATURAS,
       rotulo: RE_ROTULO,
       assinaturas: assinaturasPdf,
-      nomeArquivo: `contrato-locacao-${paraNomeDeArquivo(contrato.tenant_name) || "imovel"}.pdf`,
+      nomeArquivo,
       carimbos,
     });
 
@@ -99,8 +104,16 @@ export function ContratoPrint({
           >
             ← Voltar
           </button>
-          <CompartilharPdf variante="barra" chave={JSON.stringify(paragrafos)} gerar={() => gerarPdf()} />
-          <AssinarComCertificado assinaturas={assinaturasPdf} gerar={gerarPdf} />
+          <CompartilharPdf
+            variante="barra"
+            chave={assinado ? assinado.url : JSON.stringify(paragrafos)}
+            gerar={() => (assinado ? baixarAssinado(assinado.url, nomeArquivo) : gerarPdf())}
+          />
+          <AssinarComCertificado
+            assinaturas={assinaturasPdf}
+            gerar={gerarPdf}
+            documento={{ tipo: "aluguel", id: contrato.id }}
+          />
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
@@ -114,6 +127,7 @@ export function ContratoPrint({
         className="no-print"
         style={{ height: "calc(4.5rem + env(safe-area-inset-top))" }}
       />
+      {assinado && <FaixaAssinado assinado={assinado} />}
 
       {/* A folha */}
       <div className="doc max-w-[794px] mx-auto my-6 shadow-xl text-[13px] leading-relaxed text-slate-900">

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/auth";
 import { ProcuracaoPrint } from "@/components/alugueis/procuracao-print";
 import { procuracaoEmBranco } from "@/lib/procuracao";
+import { documentoAssinado } from "@/lib/documentos-assinados";
 import type { PowerOfAttorney } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -35,5 +36,8 @@ export default async function ImprimirProcuracaoPage({ params }: { params: { id:
     );
   }
 
-  return <ProcuracaoPrint procuracao={procuracao} />;
+  const assinado =
+    params.id === "em-branco" ? null : await documentoAssinado(createClient(), "procuracao", procuracao.id);
+
+  return <ProcuracaoPrint procuracao={procuracao} assinado={assinado} />;
 }

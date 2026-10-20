@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/auth";
 import { ContratoPrint } from "@/components/alugueis/contrato-print";
+import { documentoAssinado } from "@/lib/documentos-assinados";
 import type { RentalContractTemplate, RentalContractView } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -66,5 +67,8 @@ export default async function ImprimirContratoPage({
     );
   }
 
-  return <ContratoPrint contrato={contrato} modelo={modelo} />;
+  // o PDF assinado com certificado, se já tiver (123)
+  const assinado = await documentoAssinado(supabase, "aluguel", contrato.id);
+
+  return <ContratoPrint contrato={contrato} modelo={modelo} assinado={assinado} />;
 }

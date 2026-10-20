@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { descartarAssinatura } from "@/lib/documentos-assinados";
 import type { RentalContractStatus } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -293,6 +294,8 @@ export async function updateRentalContract(id: string, input: RentalContractInpu
     .eq("id", id);
 
   if (error) return { error: aluguelError(error) };
+  // editado: o PDF assinado tem o texto antigo
+  await descartarAssinatura("aluguel", id);
   revalidate();
   return { ok: true };
 }
@@ -301,6 +304,7 @@ export async function deleteRentalContract(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("rental_contracts").delete().eq("id", id);
   if (error) return { error: aluguelError(error) };
+  await descartarAssinatura("aluguel", id);
   revalidate();
   return { ok: true };
 }
@@ -652,6 +656,8 @@ export async function salvarContratoCompraVenda(
       .update(saleRow(input))
       .eq("id", id);
     if (error) return { error: compraVendaError(error) };
+    // editado: o PDF assinado tem o texto antigo
+    await descartarAssinatura("compra_venda", id);
     revalidate();
     return { ok: true, id };
   }
@@ -670,6 +676,7 @@ export async function apagarContratoCompraVenda(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("property_sale_contracts").delete().eq("id", id);
   if (error) return { error: compraVendaError(error) };
+  await descartarAssinatura("compra_venda", id);
   revalidate();
   return { ok: true };
 }
@@ -889,6 +896,8 @@ export async function salvarProcuracao(
   if (id) {
     const { error } = await supabase.from("power_of_attorneys").update(procuracaoRow(input)).eq("id", id);
     if (error) return { error: procuracaoError(error) };
+    // editada: o PDF assinado tem o texto antigo
+    await descartarAssinatura("procuracao", id);
     revalidate();
     return { ok: true, id };
   }
@@ -907,6 +916,7 @@ export async function apagarProcuracao(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("power_of_attorneys").delete().eq("id", id);
   if (error) return { error: procuracaoError(error) };
+  await descartarAssinatura("procuracao", id);
   revalidate();
   return { ok: true };
 }

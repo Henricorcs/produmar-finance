@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/auth";
 import { CompraVendaPrint } from "@/components/alugueis/compra-venda-print";
 import { contratoEmBranco } from "@/lib/compra-venda-contrato";
+import { documentoAssinado } from "@/lib/documentos-assinados";
 import type { PropertyBuyer, PropertySaleContract, RentalContractTemplate } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -66,5 +67,10 @@ export default async function ImprimirCompraVendaPage({
     comprador = (data as PropertyBuyer | null) ?? null;
   }
 
-  return <CompraVendaPrint contrato={contrato} modeloAluguel={modelo} comprador={comprador} />;
+  // o PDF assinado com certificado, se já tiver (123)
+  const assinado = emBranco ? null : await documentoAssinado(supabase, "compra_venda", contrato.id);
+
+  return (
+    <CompraVendaPrint contrato={contrato} modeloAluguel={modelo} comprador={comprador} assinado={assinado} />
+  );
 }

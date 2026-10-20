@@ -2567,6 +2567,17 @@ export interface PropertyBuyer {
   updated_at: string;
 }
 
+/** Os documentos que podem ser assinados com certificado (migration 123). */
+export type TipoDocumentoAssinavel = "aluguel" | "compra_venda" | "procuracao";
+
+/** O PDF assinado guardado de um contrato/procuração (migration 123). */
+export interface DocumentoAssinado {
+  /** Endereço do PDF assinado (/api/arquivo/...). */
+  url: string;
+  assinantes: string[];
+  assinadoEm: string;
+}
+
 /** Certificado A1 guardado (migration 122) — só os dados de quem é, nunca o arquivo. */
 export interface CertificadoResumo {
   id: string;

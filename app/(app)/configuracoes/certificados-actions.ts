@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assinarPdf, cifrar, decifrar, lerCertificado } from "@/lib/assinatura-digital";
-import type { CertificadoResumo } from "@/lib/types";
+import { TIPOS_ASSINAVEIS, guardarAssinado } from "@/lib/documentos-assinados";
+import type { CertificadoResumo, DocumentoAssinado, TipoDocumentoAssinavel } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CERTIFICADOS A1 — enviar, listar, apagar e assinar (migration 122)
@@ -135,13 +136,18 @@ export async function apagarCertificado(id: string): Promise<{ error: string } |
 
 /**
  * Assina o PDF (em base64) com os certificados escolhidos, na ordem da lista,
- * e devolve o PDF assinado em base64.
+ * e devolve o PDF assinado em base64. Com o `documento`, o PDF assinado fica
+ * guardado no lugar do que faltava assinar (migration 123).
  */
 export async function assinarComCertificados(
   pdfBase64: string,
-  ids: string[]
-): Promise<{ error: string } | { ok: true; pdf: string }> {
-  if (!(await souAdmin())) return { error: "Só administradores podem assinar com certificado" };
+  ids: string[],
+  documento?: { tipo: TipoDocumentoAssinavel; id: string }
+): Promise<{ error: string } | { ok: true; pdf: string; guardado: DocumentoAssinado | null; avisoGuardar?: string }> {
+  const userId = await souAdmin();
+  if (!userId) return { error: "Só administradores podem assinar com certificado" };
+  if (documento && (!TIPOS_ASSINAVEIS.includes(documento.tipo) || !/^[0-9a-f-]{36}$/i.test(documento.id)))
+    return { error: "Documento inválido" };
   if (ids.length === 0) return { error: "Escolha pelo menos um certificado" };
 
   const { data, error } = await createAdminClient()
@@ -169,7 +175,22 @@ export async function assinarComCertificados(
       };
     });
     const assinado = await assinarPdf(Buffer.from(pdfBase64, "base64"), certificados);
-    return { ok: true, pdf: assinado.toString("base64") };
+    // guardado no sistema; se falhar, o PDF assinado ainda volta para compartilhar
+    let guardado: DocumentoAssinado | null = null;
+    let avisoGuardar: string | undefined;
+    if (documento) {
+      const g = await guardarAssinado(
+        documento.tipo,
+        documento.id,
+        assinado,
+        certificados.map((c) => c.nome),
+        userId
+      );
+      if ("error" in g) avisoGuardar = g.error;
+      else guardado = g.doc;
+      revalidatePath("/alugueis");
+    }
+    return { ok: true, pdf: assinado.toString("base64"), guardado, avisoGuardar };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Não foi possível assinar o PDF" };
   }

@@ -35,7 +35,7 @@ export default async function AlugueisPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes] =
+  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes, assinadosRes] =
     await Promise.all([
     supabase.from("rental_properties").select("*").order("code"),
     supabase.from("v_rental_contracts").select("*").order("property_code"),
@@ -66,6 +66,8 @@ export default async function AlugueisPage({
       .select("*")
       .order("created_at", { ascending: false })
       .limit(500),
+    // quais já têm o PDF assinado com certificado (123 — sem ela, nenhum)
+    supabase.from("signed_documents").select("doc_type, doc_id"),
   ]);
 
   const templates = (templateRes.data as RentalContractTemplate[]) ?? [];
@@ -81,6 +83,9 @@ export default async function AlugueisPage({
       compradores={(compradoresRes.data as PropertyBuyer[]) ?? []}
       procuracoes={(procuracoesRes.data as PowerOfAttorney[]) ?? []}
       procuracaoPendente={!!procuracoesRes.error}
+      assinados={((assinadosRes.data as { doc_type: string; doc_id: string }[]) ?? []).map(
+        (d) => `${d.doc_type}:${d.doc_id}`
+      )}
       month={month}
       migrationPendente={!!propertiesRes.error}
     />

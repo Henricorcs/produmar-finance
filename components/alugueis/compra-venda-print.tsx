@@ -11,7 +11,8 @@ import {
 import { gerarContratoPdf } from "@/lib/contrato-pdf";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
 import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
-import type { PropertyBuyer, PropertySaleContract } from "@/lib/types";
+import { FaixaAssinado, baixarAssinado } from "@/components/ui/faixa-assinado";
+import type { DocumentoAssinado, PropertyBuyer, PropertySaleContract } from "@/lib/types";
 
 interface Props {
   contrato: PropertySaleContract;
@@ -19,6 +20,8 @@ interface Props {
   modeloAluguel: string | null;
   /** Quem compra (migration 115). Vazio = a PRODUMAR. */
   comprador?: PropertyBuyer | null;
+  /** O PDF assinado com certificado guardado (123). */
+  assinado?: DocumentoAssinado | null;
 }
 
 /**
@@ -29,7 +32,7 @@ interface Props {
  * o que ficou em branco não sai; no "em branco", sai como linha para a caneta.
  * O mesmo conteúdo vira PDF para compartilhar.
  */
-export function CompraVendaPrint({ contrato, modeloAluguel, comprador = null }: Props) {
+export function CompraVendaPrint({ contrato, modeloAluguel, comprador = null, assinado = null }: Props) {
   const paragrafos = useMemo(
     () => paragrafosDaCompraEVenda(contrato, modeloAluguel, comprador),
     [contrato, modeloAluguel, comprador]
@@ -90,10 +93,18 @@ export function CompraVendaPrint({ contrato, modeloAluguel, comprador = null }: 
           </button>
           <CompartilharPdf
             variante="barra"
-            chave={JSON.stringify([paragrafos, assinaturas])}
-            gerar={() => gerarPdf()}
+            chave={assinado ? assinado.url : JSON.stringify([paragrafos, assinaturas])}
+            gerar={() =>
+              assinado ? baixarAssinado(assinado.url, nomeDoPdfDaCompraEVenda(contrato)) : gerarPdf()
+            }
           />
-          {!emBranco && <AssinarComCertificado assinaturas={assinaturas} gerar={gerarPdf} />}
+          {!emBranco && (
+            <AssinarComCertificado
+              assinaturas={assinaturas}
+              gerar={gerarPdf}
+              documento={{ tipo: "compra_venda", id: contrato.id }}
+            />
+          )}
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
@@ -107,6 +118,7 @@ export function CompraVendaPrint({ contrato, modeloAluguel, comprador = null }: 
         className="no-print"
         style={{ height: "calc(4.5rem + env(safe-area-inset-top))" }}
       />
+      {assinado && <FaixaAssinado assinado={assinado} />}
 
       {/* A folha */}
       <div className="doc max-w-[794px] mx-auto my-6 shadow-xl text-[13px] leading-relaxed text-slate-900">

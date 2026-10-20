@@ -58,6 +58,8 @@ interface Props {
   /** Procurações (migration 121) — a mais nova primeiro. */
   procuracoes?: PowerOfAttorney[];
   procuracaoPendente?: boolean;
+  /** "tipo:id" dos documentos que já têm o PDF assinado com certificado (123). */
+  assinados?: string[];
   month: string;
   migrationPendente?: boolean;
 }
@@ -88,6 +90,7 @@ export function AlugueisPageClient({
   compradores = [],
   procuracoes = [],
   procuracaoPendente = false,
+  assinados = [],
   month,
   migrationPendente = false,
 }: Props) {
@@ -449,6 +452,7 @@ export function AlugueisPageClient({
       ) : aba === "procuracao" ? (
         <ProcuracoesLista
           procuracoes={procuracoes}
+          assinados={assinados}
           busca={search}
           pendente={procuracaoPendente}
           onAbrir={(p) => {
@@ -459,6 +463,7 @@ export function AlugueisPageClient({
       ) : (
         <ComprasLista
           compras={compras}
+          assinados={assinados}
           compradores={compradores}
           busca={search}
           pendente={compraVendaPendente}
@@ -510,11 +515,13 @@ export function AlugueisPageClient({
  */
 function ProcuracoesLista({
   procuracoes,
+  assinados,
   busca,
   pendente,
   onAbrir,
 }: {
   procuracoes: PowerOfAttorney[];
+  assinados: string[];
   busca: string;
   pendente: boolean;
   onAbrir: (p: PowerOfAttorney | null) => void;
@@ -595,6 +602,7 @@ function ProcuracoesLista({
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 {p.signed_at ? `Assinatura em ${formatDate(p.signed_at)}` : "Sem data de assinatura"}
+                <SeloAssinado ok={assinados.includes(`procuracao:${p.id}`)} />
               </p>
               <div className="flex items-center gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
                 <button
@@ -630,12 +638,14 @@ function ProcuracoesLista({
  */
 function ComprasLista({
   compras,
+  assinados,
   compradores,
   busca,
   pendente,
   onAbrir,
 }: {
   compras: PropertySaleContract[];
+  assinados: string[];
   compradores: PropertyBuyer[];
   busca: string;
   pendente: boolean;
@@ -724,6 +734,7 @@ function ComprasLista({
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 {c.signed_at ? `Assinatura em ${formatDate(c.signed_at)}` : "Sem data de assinatura"}
+                <SeloAssinado ok={assinados.includes(`compra_venda:${c.id}`)} />
                 {c.property_registration ? ` · matrícula ${c.property_registration}` : ""}
               </p>
               <div className="flex items-center gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
@@ -756,6 +767,16 @@ function ComprasLista({
         registro no cartório de imóveis.
       </p>
     </>
+  );
+}
+
+/** "✓ Assinado" no cartão: o PDF assinado com certificado já está guardado (123). */
+function SeloAssinado({ ok }: { ok: boolean }) {
+  if (!ok) return null;
+  return (
+    <span className="ml-2 inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+      ✓ Assinado
+    </span>
   );
 }
 

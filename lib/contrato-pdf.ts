@@ -29,7 +29,8 @@ export interface ContratoParaPdf {
   testemunhas?: boolean;
   /**
    * "Assinado digitalmente por..." no espaço acima da linha de quem assinou
-   * com certificado — um item por linha de assinatura, na mesma ordem.
+   * com certificado — um item por linha de assinatura, na mesma ordem; depois
+   * deles, a 1ª e a 2ª testemunha.
    */
   carimbos?: (string[] | null | undefined)[];
 }
@@ -160,19 +161,22 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
     y += linha * 0.6;
   }
 
-  /** O carimbo da assinatura com certificado: um quadro logo acima da linha. */
-  function carimbar(linhas: string[], linhaY: number) {
-    const altura = 4 + linhas.length * 4;
-    const topo = linhaY - altura - 2;
-    const largura = larguraAssinatura - 10;
-    doc.setDrawColor(30, 90, 160);
-    doc.setLineWidth(0.4);
-    doc.roundedRect(meio - largura / 2, topo, largura, altura, 1.5, 1.5);
-    doc.setTextColor(30, 90, 160);
-    linhas.forEach((t, j) => {
+  /** O carimbo da assinatura com certificado: o texto em azul logo acima da linha. */
+  function carimbar(linhas: string[], linhaY: number, centro = meio, largura = larguraAssinatura + 30) {
+    // na coluna estreita da testemunha a última linha (CPF · data · ICP) quebra em duas
+    const quebradas = linhas.flatMap((t, j) => {
       doc.setFont(FONTE, j === 1 ? "bold" : "normal");
       doc.setFontSize(j === 1 ? 9 : 8);
-      doc.text(limpar(t), meio, topo + 5 + j * 4, { align: "center", maxWidth: largura - 4 });
+      return (doc.splitTextToSize(limpar(t), largura - 4) as string[]).map((l) => ({ l, j }));
+    });
+    // só o texto, em azul, logo acima da linha — sem moldura (o dono pediu)
+    const altura = 4 + quebradas.length * 4;
+    const topo = linhaY - altura - 1;
+    doc.setTextColor(30, 90, 160);
+    quebradas.forEach(({ l, j }, k) => {
+      doc.setFont(FONTE, j === 1 ? "bold" : "normal");
+      doc.setFontSize(j === 1 ? 9 : 8);
+      doc.text(l, centro, topo + 5 + k * 4, { align: "center" });
     });
     doc.setTextColor(0, 0, 0);
     doc.setDrawColor(0, 0, 0);
@@ -204,8 +208,11 @@ export async function gerarContratoPdf(c: ContratoParaPdf): Promise<File> {
     y += espacoAssinatura;
     const col = [margem, meio + 5];
     const larguraCol = largura / 2 - 5;
-    doc.setFontSize(10);
-    for (const x of col) {
+    for (const [k, x] of col.entries()) {
+      // carimbo da testemunha que assinou com certificado: vem depois das assinaturas
+      const carimbo = c.carimbos?.[c.assinaturas.length + k];
+      if (carimbo?.length) carimbar(carimbo, y, x + larguraCol / 2, larguraCol);
+      doc.setFontSize(10);
       doc.line(x, y, x + larguraCol, y);
       doc.setFont(FONTE, "bold");
       doc.text("Testemunha", x + larguraCol / 2, y + 4.5, { align: "center" });

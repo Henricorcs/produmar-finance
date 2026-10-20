@@ -11,13 +11,21 @@ import {
 import { gerarContratoPdf } from "@/lib/contrato-pdf";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
 import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
-import type { PowerOfAttorney } from "@/lib/types";
+import { FaixaAssinado, baixarAssinado } from "@/components/ui/faixa-assinado";
+import type { DocumentoAssinado, PowerOfAttorney } from "@/lib/types";
 
 /**
  * A PROCURAÇÃO IMPRESSA — a mesma folha da compra e venda, sem testemunhas:
  * assinam o outorgante e o outorgado. O mesmo conteúdo vira PDF.
  */
-export function ProcuracaoPrint({ procuracao }: { procuracao: PowerOfAttorney }) {
+export function ProcuracaoPrint({
+  procuracao,
+  assinado = null,
+}: {
+  procuracao: PowerOfAttorney;
+  /** O PDF assinado com certificado guardado (123). */
+  assinado?: DocumentoAssinado | null;
+}) {
   const paragrafos = useMemo(() => paragrafosDaProcuracao(procuracao), [procuracao]);
   const assinaturas = useMemo(() => assinaturasDaProcuracao(procuracao), [procuracao]);
 
@@ -73,10 +81,19 @@ export function ProcuracaoPrint({ procuracao }: { procuracao: PowerOfAttorney })
           </button>
           <CompartilharPdf
             variante="barra"
-            chave={JSON.stringify([paragrafos, assinaturas])}
-            gerar={() => gerarPdf()}
+            chave={assinado ? assinado.url : JSON.stringify([paragrafos, assinaturas])}
+            gerar={() =>
+              assinado ? baixarAssinado(assinado.url, nomeDoPdfDaProcuracao(procuracao)) : gerarPdf()
+            }
           />
-          {!emBranco && <AssinarComCertificado assinaturas={assinaturas} gerar={gerarPdf} />}
+          {!emBranco && (
+            <AssinarComCertificado
+              assinaturas={assinaturas}
+              gerar={gerarPdf}
+              testemunhas={false}
+              documento={{ tipo: "procuracao", id: procuracao.id }}
+            />
+          )}
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
@@ -87,6 +104,7 @@ export function ProcuracaoPrint({ procuracao }: { procuracao: PowerOfAttorney })
       </div>
 
       <div className="no-print" style={{ height: "calc(4.5rem + env(safe-area-inset-top))" }} />
+      {assinado && <FaixaAssinado assinado={assinado} />}
 
       {/* A folha */}
       <div className="doc max-w-[794px] mx-auto my-6 shadow-xl text-[13px] leading-relaxed text-slate-900">

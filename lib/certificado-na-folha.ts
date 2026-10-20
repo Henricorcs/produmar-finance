@@ -38,8 +38,22 @@ export function linhaDoCertificado(
   return -1;
 }
 
+/**
+ * O nome que vai no carimbo. O certificado guarda o nome com no máximo 64
+ * letras e sem acento ("...MULTIMIDIA LTD"); quando a linha escolhida é do
+ * próprio titular, vale o nome completo do contrato ("...MULTIMIDIA LTDA").
+ */
+export function nomeNoCarimbo(cert: Pick<CertificadoResumo, "nome">, nomeDaLinha?: string | null): string {
+  if (nomeDaLinha && semAcento(nomeDaLinha).startsWith(semAcento(cert.nome))) return nomeDaLinha;
+  return cert.nome;
+}
+
 /** As linhas do carimbo que vai acima da assinatura. */
-export function carimboDoCertificado(cert: Pick<CertificadoResumo, "nome" | "documento">, quando = new Date()): string[] {
+export function carimboDoCertificado(
+  cert: Pick<CertificadoResumo, "nome" | "documento">,
+  quando = new Date(),
+  nomeDaLinha?: string | null
+): string[] {
   const doc = cert.documento?.replace(/\D/g, "") ?? "";
   const docFormatado =
     doc.length === 11
@@ -57,7 +71,7 @@ export function carimboDoCertificado(cert: Pick<CertificadoResumo, "nome" | "doc
   });
   return [
     "Documento assinado digitalmente",
-    cert.nome,
+    nomeNoCarimbo(cert, nomeDaLinha),
     `${docFormatado ? `${docFormatado} · ` : ""}${data} · Certificado ICP-Brasil`,
   ];
 }

@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BadgeCheck, Download, Loader2, PenLine, Share2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { assinarComCertificados, listarCertificados } from "@/app/(app)/configuracoes/certificados-actions";
-import { carimboDoCertificado, linhaDoCertificado } from "@/lib/certificado-na-folha";
-import type { CertificadoResumo } from "@/lib/types";
+import { carimboDoCertificado, linhaDoCertificado, nomeNoCarimbo } from "@/lib/certificado-na-folha";
+import { VisualizarPdf } from "@/components/ui/visualizar-pdf";
+import type { CertificadoResumo, TipoDocumentoAssinavel } from "@/lib/types";
 
 /**
  * ASSINAR COM CERTIFICADO A1 — o botão da barra da impressão.
@@ -21,19 +23,36 @@ import type { CertificadoResumo } from "@/lib/types";
 export function AssinarComCertificado({
   assinaturas,
   gerar,
+  testemunhas = true,
+  documento,
   variante = "barra",
 }: {
+  /** O contrato/procuração: o PDF assinado fica guardado no lugar do que faltava assinar. */
+  documento?: { tipo: TipoDocumentoAssinavel; id: string };
   assinaturas: { nome: string; detalhe?: string }[];
-  /** Gera o PDF com os carimbos (um por linha de assinatura, na ordem). */
+  /** Gera o PDF com os carimbos (um por lugar de assinatura, na ordem; depois as testemunhas). */
   gerar: (carimbos: (string[] | null)[]) => Promise<File>;
+  /** O documento tem as duas testemunhas no fim (a procuração não tem). */
+  testemunhas?: boolean;
   variante?: "barra" | "bloco";
 }) {
   const [certs, setCerts] = useState<CertificadoResumo[] | null>(null);
   const [aberto, setAberto] = useState(false);
-  const [escolhidos, setEscolhidos] = useState<Set<string>>(new Set());
+  /** Quem assina e ONDE: id do certificado → lugar na folha (-1 = só no arquivo, sem carimbo). */
+  const [locais, setLocais] = useState<Map<string, number>>(new Map());
   const [assinando, setAssinando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [pronto, setPronto] = useState<{ arquivo: File; url: string } | null>(null);
+  /** O PDF assinado ficou guardado no sistema? (e, se não, por quê) */
+  const [guardado, setGuardado] = useState(false);
+  const [avisoGuardar, setAvisoGuardar] = useState<string | null>(null);
+  const router = useRouter();
+
+  function fechar() {
+    setAberto(false);
+    // assinado e guardado: a página recarrega já mostrando "Assinado digitalmente"
+    if (guardado) router.refresh();
+  }
 
   /** Só admin assina com certificado — para os outros, o botão nem aparece. */
   const [admin, setAdmin] = useState(false);
@@ -57,28 +76,53 @@ export function AssinarComCertificado({
 
   const vencido = (c: CertificadoResumo) => !!c.validoAte && new Date(c.validoAte) < new Date();
 
+  /** Os lugares de assinatura da folha: as linhas das partes e, no contrato, as duas testemunhas. */
+  const lugares = [
+    ...assinaturas.map((a, i) => ({ i, rotulo: a.nome, sub: a.detalhe })),
+    ...(testemunhas
+      ? [
+          { i: assinaturas.length, rotulo: "1ª testemunha", sub: undefined },
+          { i: assinaturas.length + 1, rotulo: "2ª testemunha", sub: undefined },
+        ]
+      : []),
+  ];
+
+  /** O lugar que já vem marcado: a linha de quem é o certificado; senão, o primeiro livre. */
+  function lugarSugerido(c: CertificadoResumo, ocupados: Set<number>): number {
+    const proprio = linhaDoCertificado(assinaturas, c);
+    if (proprio >= 0 && !ocupados.has(proprio)) return proprio;
+    return lugares.find((l) => !ocupados.has(l.i))?.i ?? -1;
+  }
+
   function abrir() {
     // marcados de saída: os certificados de quem está nas linhas de assinatura
-    setEscolhidos(
-      new Set(certs!.filter((c) => !vencido(c) && linhaDoCertificado(assinaturas, c) >= 0).map((c) => c.id))
-    );
+    const novo = new Map<string, number>();
+    for (const c of certs!) {
+      const i = linhaDoCertificado(assinaturas, c);
+      if (!vencido(c) && i >= 0 && ![...novo.values()].includes(i)) novo.set(c.id, i);
+    }
+    setLocais(novo);
     // o erro de leitura da lista (ex.: migration) fica à mostra; o da última assinatura, não
     if (certs!.length > 0) setErro(null);
     setPronto(null);
     setAberto(true);
   }
 
-  function alternar(id: string) {
-    setEscolhidos((s) => {
-      const novo = new Set(s);
-      if (novo.has(id)) novo.delete(id);
-      else novo.add(id);
+  function alternar(c: CertificadoResumo) {
+    setLocais((m) => {
+      const novo = new Map(m);
+      if (novo.has(c.id)) novo.delete(c.id);
+      else novo.set(c.id, lugarSugerido(c, new Set([...m.values()].filter((i) => i >= 0))));
       return novo;
     });
   }
 
+  function escolherLugar(id: string, i: number) {
+    setLocais((m) => new Map(m).set(id, i));
+  }
+
   async function assinar() {
-    const lista = certs!.filter((c) => escolhidos.has(c.id));
+    const lista = certs!.filter((c) => locais.has(c.id));
     if (lista.length === 0) {
       setErro("Marque pelo menos um certificado");
       return;
@@ -87,20 +131,23 @@ export function AssinarComCertificado({
     setAssinando(true);
     try {
       const agora = new Date();
-      const carimbos: (string[] | null)[] = assinaturas.map(() => null);
+      const carimbos: (string[] | null)[] = lugares.map(() => null);
       for (const c of lista) {
-        const i = linhaDoCertificado(assinaturas, c);
-        if (i >= 0 && !carimbos[i]) carimbos[i] = carimboDoCertificado(c, agora);
+        const i = locais.get(c.id) ?? -1;
+        if (i >= 0 && !carimbos[i]) carimbos[i] = carimboDoCertificado(c, agora, assinaturas[i]?.nome);
       }
       const pdf = await gerar(carimbos);
       const r = await assinarComCertificados(
         paraBase64(await pdf.arrayBuffer()),
-        lista.map((c) => c.id)
+        lista.map((c) => c.id),
+        documento
       );
       if ("error" in r) {
         setErro(r.error);
         return;
       }
+      setAvisoGuardar(r.avisoGuardar ?? null);
+      setGuardado(!!r.guardado);
       const arquivo = new File([deBase64(r.pdf)], pdf.name.replace(/\.pdf$/i, "") + "-assinado.pdf", {
         type: "application/pdf",
       });
@@ -134,8 +181,8 @@ export function AssinarComCertificado({
         Assinar
       </button>
 
-      <Dialog open={aberto} onOpenChange={(v) => !v && !assinando && setAberto(false)}>
-        <DialogContent className="max-w-md font-sans">
+      <Dialog open={aberto} onOpenChange={(v) => !v && !assinando && fechar()}>
+        <DialogContent className={cn("font-sans max-h-[92vh] overflow-y-auto", pronto ? "max-w-2xl" : "max-w-md")}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
               <BadgeCheck className="w-5 h-5 text-produmar-600" />
@@ -161,9 +208,21 @@ export function AssinarComCertificado({
           ) : pronto ? (
             <div className="space-y-3">
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                Assinado com certificado ICP-Brasil. A outra parte ainda pode assinar este mesmo
-                arquivo pelo gov.br.
+                Confira o PDF assinado abaixo — o carimbo fica acima da linha de quem assinou. A
+                outra parte ainda pode assinar este mesmo arquivo pelo gov.br.
               </p>
+              <VisualizarPdf arquivo={pronto.arquivo} />
+              {guardado && (
+                <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                  ✓ Guardado no sistema no lugar do que faltava assinar.
+                </p>
+              )}
+              {avisoGuardar && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Assinado, mas não ficou guardado no sistema ({avisoGuardar}) — compartilhe agora
+                  para não perder.
+                </p>
+              )}
               {podeCompartilhar ? (
                 <Button
                   type="button"
@@ -185,52 +244,92 @@ export function AssinarComCertificado({
                   Baixar PDF assinado
                 </a>
               )}
-              <Button type="button" variant="outline" className="w-full h-11" onClick={() => setAberto(false)}>
+              <Button type="button" variant="outline" className="w-full h-11" onClick={fechar}>
                 Fechar
               </Button>
             </div>
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Marque quem assina. O carimbo &quot;Assinado digitalmente&quot; sai acima da linha de
-                cada um.
+                Toque em quem assina e escolha o lugar da assinatura na folha. O carimbo
+                &quot;Assinado digitalmente&quot; sai acima da linha escolhida.
               </p>
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
                 {certs.map((c) => {
-                  const i = linhaDoCertificado(assinaturas, c);
                   const venceu = vencido(c);
+                  const marcado = locais.has(c.id);
+                  const meu = locais.get(c.id);
+                  // lugares já escolhidos por OUTRO certificado
+                  const ocupados = new Set(
+                    [...locais.entries()].filter(([id, i]) => id !== c.id && i >= 0).map(([, i]) => i)
+                  );
                   return (
-                    <label
+                    <div
                       key={c.id}
                       className={cn(
-                        "flex items-start gap-3 rounded-xl border px-3 py-2.5",
+                        "rounded-xl border px-3 py-2.5",
                         venceu
                           ? "opacity-50 border-slate-200 dark:border-slate-700"
-                          : escolhidos.has(c.id)
+                          : marcado
                             ? "border-produmar-600 bg-produmar-50 dark:bg-produmar-900/20"
                             : "border-slate-200 dark:border-slate-700"
                       )}
                     >
-                      <input
-                        type="checkbox"
-                        className="mt-1 w-4 h-4"
-                        checked={escolhidos.has(c.id)}
-                        disabled={venceu || assinando}
-                        onChange={() => alternar(c.id)}
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
-                          {c.nome}
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 w-4 h-4"
+                          checked={marcado}
+                          disabled={venceu || assinando}
+                          onChange={() => alternar(c)}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {nomeNoCarimbo(c, assinaturas[linhaDoCertificado(assinaturas, c)]?.nome)}
+                          </span>
+                          {venceu && (
+                            <span className="block text-[11px] text-red-600 dark:text-red-400">
+                              Venceu em {new Date(c.validoAte!).toLocaleDateString("pt-BR")}
+                            </span>
+                          )}
                         </span>
-                        <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                          {venceu
-                            ? `Venceu em ${new Date(c.validoAte!).toLocaleDateString("pt-BR")}`
-                            : i >= 0
-                              ? `Assina na linha de ${assinaturas[i].nome}`
-                              : "Não está nas linhas de assinatura — assina sem carimbo na folha"}
-                        </span>
-                      </span>
-                    </label>
+                      </label>
+
+                      {marcado && (
+                        <div className="mt-2 pl-7 space-y-1.5">
+                          <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                            Onde assina?
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {[...lugares, { i: -1, rotulo: "Só no arquivo, sem carimbo", sub: undefined }].map((l) => {
+                              const ocupado = ocupados.has(l.i);
+                              return (
+                                <button
+                                  key={l.i}
+                                  type="button"
+                                  disabled={ocupado || assinando}
+                                  onClick={() => escolherLugar(c.id, l.i)}
+                                  className={cn(
+                                    "text-left rounded-lg border px-2.5 py-1.5 text-[11px] leading-tight max-w-full",
+                                    meu === l.i
+                                      ? "border-produmar-600 bg-produmar-600 text-white"
+                                      : "border-slate-300 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200",
+                                    ocupado && "opacity-40 line-through"
+                                  )}
+                                >
+                                  <span className="block font-semibold">{l.rotulo}</span>
+                                  {l.sub && (
+                                    <span className={cn("block", meu === l.i ? "text-white/80" : "text-slate-500")}>
+                                      {l.sub}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

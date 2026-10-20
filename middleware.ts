@@ -15,6 +15,6 @@ export const config = {
   // — o aparelho que mais precisa abrir sem rede era o único que nunca ia
   // conseguir. Ele é arquivo estático de programa e não carrega dado nenhum.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|apple-icon|icon-192|icon-512|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|pdf.worker-|apple-icon|icon-192|icon-512|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
