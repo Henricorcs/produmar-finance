@@ -22,6 +22,13 @@ interface Props<T> {
   autoFocusSearch?: boolean;
   /** Só mostra a lista depois que o usuário digita algo. Default: false. */
   suggestOnType?: boolean;
+  /**
+   * LISTA ABERTA: sem a caixinha que abre — a busca e as opções já ficam à
+   * mostra, ocupando o espaço da tela. Para quando a escolha é a pergunta da
+   * vez (no celular, a caixinha dentro de uma janela mostrava 2 itens só).
+   * Tocar de novo na opção escolhida tira a escolha (se `clearable`).
+   */
+  inline?: boolean;
 }
 
 export function SearchableSelect<T>({
@@ -39,6 +46,7 @@ export function SearchableSelect<T>({
   clearable = true,
   autoFocusSearch = false,
   suggestOnType = false,
+  inline = false,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -90,6 +98,60 @@ export function SearchableSelect<T>({
   function clear(e: React.MouseEvent) {
     e.stopPropagation();
     onChange("");
+  }
+
+  if (inline) {
+    return (
+      <div className="rounded-md border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+        <div className="relative border-b border-slate-100 dark:border-slate-700">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="w-full bg-transparent text-base pl-9 pr-3 py-3 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
+          />
+        </div>
+        <div className="max-h-[48vh] overflow-y-auto py-1">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-4 text-sm text-slate-400 dark:text-slate-500 text-center">
+              {suggestOnType && !hasQuery ? "Digite para buscar…" : emptyMessage}
+            </div>
+          ) : (
+            filtered.map((item) => {
+              const id = getId(item);
+              const isSelected = id === value;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onChange(isSelected && clearable ? "" : id)}
+                  className={cn(
+                    "w-full flex items-center justify-between gap-2 px-3 py-3 text-base text-left transition-colors",
+                    "hover:bg-produmar-50 dark:hover:bg-slate-700",
+                    isSelected && "bg-produmar-100/70 dark:bg-slate-700 font-semibold"
+                  )}
+                >
+                  <div className="flex-1 min-w-0">{renderItem ? renderItem(item) : getLabel(item)}</div>
+                  {isSelected && <Check className="w-5 h-5 text-produmar-600 dark:text-produmar-400 flex-shrink-0" />}
+                </button>
+              );
+            })
+          )}
+        </div>
+        {onCreateNew && (
+          <button
+            type="button"
+            onClick={onCreateNew}
+            className="w-full flex items-center gap-2 px-3 py-3 text-sm font-medium border-t border-slate-100 dark:border-slate-700 text-produmar-600 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-slate-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {createNewLabel}
+          </button>
+        )}
+      </div>
+    );
   }
 
   return (

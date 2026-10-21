@@ -207,6 +207,17 @@ export function TransactionDialog({
     irPara(i >= 0 && i < CAMINHO.length - 1 ? CAMINHO[i + 1] : "revisao");
   }
 
+  /**
+   * Escolheu na lista aberta (categoria, centro de custo...): guarda e já vai
+   * para o passo seguinte. Tirar a escolha (tocar de novo) fica no mesmo passo.
+   */
+  function escolherEContinuar(guardar: (id: string) => void) {
+    return (id: string) => {
+      guardar(id);
+      if (id) setTimeout(continuar, 150);
+    };
+  }
+
   function voltar() {
     if (voltarPraRevisao) {
       setVoltarPraRevisao(false);
@@ -490,9 +501,10 @@ export function TransactionDialog({
             {passo === "categoria" && (
               <PassoDaVez titulo="Categoria" dica="Opcional — serve para os relatórios">
                 <SearchableSelect
+                  inline
                   items={filteredCategories}
                   value={categoryId}
-                  onChange={setCategoryId}
+                  onChange={escolherEContinuar(setCategoryId)}
                   getId={(c) => c.id}
                   getLabel={(c) => c.name}
                   renderItem={(c) => (
@@ -518,9 +530,10 @@ export function TransactionDialog({
             {passo === "centro" && (
               <PassoDaVez titulo="Centro de custo" dica="Opcional">
                 <SearchableSelect
+                  inline
                   items={localCostCenters}
                   value={costCenterId}
-                  onChange={setCostCenterId}
+                  onChange={escolherEContinuar(setCostCenterId)}
                   getId={(cc) => cc.id}
                   getLabel={(cc) => cc.name}
                   placeholder="Selecione um centro de custo..."
@@ -540,9 +553,10 @@ export function TransactionDialog({
                 dica="Opcional — obrigatório para gerar boleto pela Cora"
               >
                 <SearchableSelect
+                  inline
                   items={localContacts}
                   value={contactId}
-                  onChange={setContactId}
+                  onChange={escolherEContinuar(setContactId)}
                   getId={(c) => c.id}
                   getLabel={(c) => c.name}
                   placeholder="Selecione um cliente..."
@@ -559,9 +573,10 @@ export function TransactionDialog({
             {passo === "obra" && (
               <PassoDaVez titulo="Obra" dica="Opcional — vincula o lançamento a uma obra">
                 <SearchableSelect
+                  inline
                   items={obras}
                   value={obraId}
-                  onChange={setObraId}
+                  onChange={escolherEContinuar(setObraId)}
                   getId={(o) => o.id}
                   getLabel={(o) => o.name}
                   placeholder="Vincular a uma obra..."
