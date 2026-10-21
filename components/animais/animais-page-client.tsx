@@ -1514,6 +1514,8 @@ export function AnimaisPageClient({
         weights={weights}
         pesosFoto={pesosFoto}
         presetAnimalId={weightPresetId}
+        // aberta na aba Ovinos, a lista mostra só os ovinos
+        especie={species === "todos" ? null : species}
       />
       <TreatmentDialog
         open={treatmentOpen}

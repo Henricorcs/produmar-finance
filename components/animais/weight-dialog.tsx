@@ -32,8 +32,10 @@ import {
   parseDecimal,
   previousWeighing,
   weightGain,
+  SPECIES_META,
+  speciesOf,
 } from "./animal-shared";
-import type { AnimalPesoFoto, AnimalWeight, AnimalWithInfo } from "@/lib/types";
+import type { AnimalPesoFoto, AnimalSpecies, AnimalWeight, AnimalWithInfo } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -44,6 +46,11 @@ interface Props {
   /** Pesos estimados pela foto (migration 109) — daqui sai a precisão da foto. */
   pesosFoto?: AnimalPesoFoto[];
   presetAnimalId?: string | null;
+  /**
+   * A criação aberta na tela (Ovinos, Caprinos...): a lista de animais mostra
+   * só os dela. Sem ela ("todos os tipos"), o rebanho inteiro.
+   */
+  especie?: AnimalSpecies | null;
 }
 
 const CONFIANCA: Record<EstimativaPesoFoto["confianca"], string> = {
@@ -72,6 +79,7 @@ export function WeightDialog({
   weights = [],
   pesosFoto = [],
   presetAnimalId,
+  especie = null,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +178,12 @@ export function WeightDialog({
       linhas: comBalanca.slice(0, 15),
     };
   }, [pesosFoto]);
+
+  /** Os animais da lista: só os da criação aberta na tela, quando há uma. */
+  const daLista = useMemo(
+    () => (especie ? animals.filter((a) => speciesOf(a.species) === especie) : animals),
+    [animals, especie]
+  );
 
   const tagDe = useMemo(() => {
     const m = new Map<string, string>();
@@ -280,7 +294,9 @@ export function WeightDialog({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="dark:text-slate-100">Pesagem</DialogTitle>
+          <DialogTitle className="dark:text-slate-100">
+            Pesagem{especie && !presetAnimalId ? ` · ${SPECIES_META[especie].plural}` : ""}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -292,23 +308,32 @@ export function WeightDialog({
               </div>
             ) : (
               <SearchableSelect
-                items={animals}
+                items={daLista}
                 value={animalId}
                 onChange={chooseAnimal}
                 getId={(a) => a.id}
                 getLabel={(a) => a.tag}
                 renderItem={(a) => (
+                  // o número grande: no curral é ele que se procura na lista
                   <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="truncate">{a.tag}</span>
-                    <span className="text-[10px] text-slate-400 flex-shrink-0">
+                    <span className="truncate text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                      {a.tag}
+                    </span>
+                    <span className="text-xs text-slate-500 flex-shrink-0">
                       {categoryLabel(a.category, a.sex, a.species)}
                       {Number(a.weight) > 0 ? ` · ${formatWeight(Number(a.weight))}` : ""}
                     </span>
                   </div>
                 )}
-                placeholder="Selecione o animal..."
+                placeholder={
+                  especie ? `Selecione o ${SPECIES_META[especie].label.toLowerCase()}...` : "Selecione o animal..."
+                }
                 searchPlaceholder="Buscar pelo número..."
-                emptyMessage="Nenhum animal cadastrado"
+                emptyMessage={
+                  especie
+                    ? `Nenhum ${SPECIES_META[especie].label.toLowerCase()} cadastrado`
+                    : "Nenhum animal cadastrado"
+                }
               />
             )}
           </div>
