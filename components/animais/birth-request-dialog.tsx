@@ -22,6 +22,7 @@ import {
   SexPicker,
   categoryLabel,
   speciesOf,
+  ItemDeAnimal,
 } from "./animal-shared";
 import type { AnimalBirthRequest, AnimalSex, AnimalWithInfo } from "@/lib/types";
 
@@ -127,13 +128,11 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
               getId={(a) => a.id}
               getLabel={(a) => a.tag}
               renderItem={(a) => (
-                <div className="flex items-center justify-between gap-2 min-w-0">
-                  <span className="truncate">{a.tag}</span>
-                  <span className="text-[10px] text-slate-400 flex-shrink-0">
-                    {categoryLabel(a.category, a.sex, a.species)}
-                    {a.breed_name ? ` · ${a.breed_name}` : ""}
-                  </span>
-                </div>
+                // todas as fêmeas: o pedido do vaqueiro pode ser de outra criação que não a da aba
+                <ItemDeAnimal
+                  numero={a.tag}
+                  detalhe={`${categoryLabel(a.category, a.sex, a.species)}${a.breed_name ? ` · ${a.breed_name}` : ""}`}
+                />
               )}
               placeholder="Selecione a mãe..."
               searchPlaceholder="Buscar pelo número..."

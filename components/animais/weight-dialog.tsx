@@ -33,7 +33,8 @@ import {
   previousWeighing,
   weightGain,
   SPECIES_META,
-  speciesOf,
+  daCriacao,
+  ItemDeAnimal,
 } from "./animal-shared";
 import type { AnimalPesoFoto, AnimalSpecies, AnimalWeight, AnimalWithInfo } from "@/lib/types";
 
@@ -180,10 +181,7 @@ export function WeightDialog({
   }, [pesosFoto]);
 
   /** Os animais da lista: só os da criação aberta na tela, quando há uma. */
-  const daLista = useMemo(
-    () => (especie ? animals.filter((a) => speciesOf(a.species) === especie) : animals),
-    [animals, especie]
-  );
+  const daLista = useMemo(() => daCriacao(animals, especie), [animals, especie]);
 
   const tagDe = useMemo(() => {
     const m = new Map<string, string>();
@@ -314,16 +312,12 @@ export function WeightDialog({
                 getId={(a) => a.id}
                 getLabel={(a) => a.tag}
                 renderItem={(a) => (
-                  // o número grande: no curral é ele que se procura na lista
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="truncate text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                      {a.tag}
-                    </span>
-                    <span className="text-xs text-slate-500 flex-shrink-0">
-                      {categoryLabel(a.category, a.sex, a.species)}
-                      {Number(a.weight) > 0 ? ` · ${formatWeight(Number(a.weight))}` : ""}
-                    </span>
-                  </div>
+                  <ItemDeAnimal
+                    numero={a.tag}
+                    detalhe={`${categoryLabel(a.category, a.sex, a.species)}${
+                      Number(a.weight) > 0 ? ` · ${formatWeight(Number(a.weight))}` : ""
+                    }`}
+                  />
                 )}
                 placeholder={
                   especie ? `Selecione o ${SPECIES_META[especie].label.toLowerCase()}...` : "Selecione o animal..."

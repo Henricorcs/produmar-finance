@@ -27,8 +27,10 @@ import {
   formatWeight,
   parseDecimal,
   speciesOf,
+  daCriacao,
+  ItemDeAnimal,
 } from "./animal-shared";
-import type { AnimalBirth, AnimalSex, AnimalWithInfo } from "@/lib/types";
+import type { AnimalBirth, AnimalSex, AnimalSpecies, AnimalWithInfo } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -39,6 +41,8 @@ interface Props {
   presetMotherId?: string | null;
   /** Partos já registrados da mãe escolhida — dá para apagar o que saiu errado. */
   births?: AnimalBirth[];
+  /** A criação aberta na tela: a lista mostra só as fêmeas dela. */
+  especie?: AnimalSpecies | null;
 }
 
 /**
@@ -47,7 +51,7 @@ interface Props {
  * já entra no rebanho atrelada à mãe — número e peso são dela. O nome dela na
  * tela sai do tipo da mãe: bezerro, potro, cabrito ou cordeiro.
  */
-export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [] }: Props) {
+export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [], especie = null }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -195,23 +199,24 @@ export function BirthDialog({ open, onClose, mothers, presetMotherId, births = [
               </div>
             ) : (
               <SearchableSelect
-                items={mothers}
+                items={daCriacao(mothers, especie)}
                 value={motherId}
                 onChange={setMotherId}
                 getId={(a) => a.id}
                 getLabel={(a) => a.tag}
                 renderItem={(a) => (
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="truncate">{a.tag}</span>
-                    <span className="text-[10px] text-slate-400 flex-shrink-0">
-                      {categoryLabel(a.category, a.sex, a.species)}
-                      {a.breed_name ? ` · ${a.breed_name}` : ""}
-                    </span>
-                  </div>
+                  <ItemDeAnimal
+                    numero={a.tag}
+                    detalhe={`${categoryLabel(a.category, a.sex, a.species)}${a.breed_name ? ` · ${a.breed_name}` : ""}`}
+                  />
                 )}
                 placeholder="Selecione a mãe..."
                 searchPlaceholder="Buscar pelo número..."
-                emptyMessage="Nenhuma fêmea cadastrada"
+                emptyMessage={
+                  especie
+                    ? `Nenhuma fêmea de ${SPECIES_META[especie].plural.toLowerCase()} cadastrada`
+                    : "Nenhuma fêmea cadastrada"
+                }
               />
             )}
           </div>

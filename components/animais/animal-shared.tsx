@@ -224,6 +224,30 @@ export function speciesOf(species?: AnimalSpecies | null): AnimalSpecies {
 }
 
 /**
+ * Só os animais da criação aberta na tela (aba Ovinos → só ovinos). Sem
+ * criação ("todos os tipos"), a lista inteira.
+ */
+export function daCriacao<T extends { species?: AnimalSpecies | null }>(
+  lista: T[],
+  especie?: AnimalSpecies | null
+): T[] {
+  return especie ? lista.filter((a) => speciesOf(a.species) === especie) : lista;
+}
+
+/**
+ * Uma linha da lista de escolher animal: o NÚMERO grande (no curral é ele que
+ * se procura) e, ao lado, menor, o tipo e o peso.
+ */
+export function ItemDeAnimal({ numero, detalhe }: { numero: string; detalhe?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2 min-w-0">
+      <span className="truncate text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100">{numero}</span>
+      {detalhe && <span className="text-xs text-slate-500 flex-shrink-0 truncate max-w-[9rem]">{detalhe}</span>}
+    </div>
+  );
+}
+
+/**
  * As vacinas daquele tipo de animal — aftosa não aparece para o porco.
  *
  * Rede de segurança: enquanto a migration 062 não roda, a coluna `species`

@@ -40,6 +40,7 @@ import {
   localLabel,
   parseDecimal,
   speciesOf,
+  ItemDeAnimal,
 } from "./animal-shared";
 import {
   DESPESAS_ANIMAIS_SUGERIDAS,
@@ -820,16 +821,7 @@ export function AnimalDespesaDialog({
                 onChange={setAnimalId}
                 getId={(a) => a.id}
                 getLabel={(a) => `nº ${a.tag}`}
-                renderItem={(a) => (
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="truncate">nº {a.tag}</span>
-                    {a.breed_name && (
-                      <span className="text-[10px] text-slate-400 flex-shrink-0 truncate max-w-[7rem]">
-                        {a.breed_name}
-                      </span>
-                    )}
-                  </div>
-                )}
+                renderItem={(a) => <ItemDeAnimal numero={a.tag} detalhe={a.breed_name ?? undefined} />}
                 placeholder="Todo o lote"
                 searchPlaceholder="Buscar pelo número..."
                 emptyMessage="Nenhum animal deste tipo"

@@ -35,8 +35,11 @@ import {
   vaccineStatusFor,
   vaccinesForSpecies,
   weightGain,
+  daCriacao,
+  ItemDeAnimal,
 } from "./animal-shared";
 import type {
+  AnimalSpecies,
   AnimalVaccination,
   AnimalVaccine,
   AnimalWeight,
@@ -56,6 +59,8 @@ interface Props {
   presetAnimalId?: string | null;
   /** Vacinas já marcadas ao abrir (ex.: "Aplicar" numa vacina da ficha). */
   presetVaccineIds?: string[];
+  /** A criação aberta na tela: a lista mostra só os animais dela. */
+  especie?: AnimalSpecies | null;
 }
 
 /** Uma vacina marcada no protocolo. */
@@ -96,6 +101,7 @@ export function VaccineProtocolDialog({
   weights = [],
   presetAnimalId,
   presetVaccineIds,
+  especie = null,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -369,23 +375,22 @@ export function VaccineProtocolDialog({
               </div>
             ) : (
               <SearchableSelect
-                items={animals}
+                items={daCriacao(animals, especie)}
                 value={animalId}
                 onChange={chooseAnimal}
                 getId={(a) => a.id}
                 getLabel={(a) => a.tag}
                 renderItem={(a) => (
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="truncate">{a.tag}</span>
-                    <span className="text-[10px] text-slate-400 flex-shrink-0">
-                      {categoryLabel(a.category, a.sex, a.species)}
-                      {Number(a.weight) > 0 ? ` · ${formatWeight(Number(a.weight))}` : ""}
-                    </span>
-                  </div>
+                  <ItemDeAnimal
+                    numero={a.tag}
+                    detalhe={`${categoryLabel(a.category, a.sex, a.species)}${
+                      Number(a.weight) > 0 ? ` · ${formatWeight(Number(a.weight))}` : ""
+                    }`}
+                  />
                 )}
-                placeholder="Selecione o animal..."
+                placeholder={especie ? `Selecione o ${SPECIES_META[especie].label.toLowerCase()}...` : "Selecione o animal..."}
                 searchPlaceholder="Buscar pelo número..."
-                emptyMessage="Nenhum animal cadastrado"
+                emptyMessage={especie ? `Nenhum ${SPECIES_META[especie].label.toLowerCase()} cadastrado` : "Nenhum animal cadastrado"}
               />
             )}
           </div>

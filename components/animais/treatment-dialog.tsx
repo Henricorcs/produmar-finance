@@ -19,8 +19,11 @@ import {
   FOOTER_SUBMIT,
   STICKY_FOOTER,
   categoryLabel,
+  daCriacao,
+  ItemDeAnimal,
+  SPECIES_META,
 } from "./animal-shared";
-import type { AnimalWithInfo } from "@/lib/types";
+import type { AnimalSpecies, AnimalWithInfo } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -30,6 +33,8 @@ interface Props {
   presetAnimalId?: string | null;
   /** Remédios já usados antes — viram sugestões no campo. */
   medicineSuggestions?: string[];
+  /** A criação aberta na tela: a lista mostra só os animais dela. */
+  especie?: AnimalSpecies | null;
 }
 
 /** Tratamento simples: o que foi tratado, o remédio e a dose. */
@@ -39,6 +44,7 @@ export function TreatmentDialog({
   animals,
   presetAnimalId,
   medicineSuggestions = [],
+  especie = null,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -108,23 +114,20 @@ export function TreatmentDialog({
               </div>
             ) : (
               <SearchableSelect
-                items={animals}
+                items={daCriacao(animals, especie)}
                 value={animalId}
                 onChange={setAnimalId}
                 getId={(a) => a.id}
                 getLabel={(a) => a.tag}
                 renderItem={(a) => (
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="truncate">{a.tag}</span>
-                    <span className="text-[10px] text-slate-400 flex-shrink-0">
-                      {categoryLabel(a.category, a.sex, a.species)}
-                      {a.breed_name ? ` · ${a.breed_name}` : ""}
-                    </span>
-                  </div>
+                  <ItemDeAnimal
+                    numero={a.tag}
+                    detalhe={`${categoryLabel(a.category, a.sex, a.species)}${a.breed_name ? ` · ${a.breed_name}` : ""}`}
+                  />
                 )}
-                placeholder="Selecione o animal..."
+                placeholder={especie ? `Selecione o ${SPECIES_META[especie].label.toLowerCase()}...` : "Selecione o animal..."}
                 searchPlaceholder="Buscar pelo número..."
-                emptyMessage="Nenhum animal cadastrado"
+                emptyMessage={especie ? `Nenhum ${SPECIES_META[especie].label.toLowerCase()} cadastrado` : "Nenhum animal cadastrado"}
               />
             )}
           </div>

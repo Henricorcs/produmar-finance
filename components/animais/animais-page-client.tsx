@@ -1506,6 +1506,7 @@ export function AnimaisPageClient({
         weights={weights}
         presetAnimalId={protocolPreset.animalId}
         presetVaccineIds={protocolPreset.vaccineIds}
+        especie={species === "todos" ? null : species}
       />
       <WeightDialog
         open={weightOpen}
@@ -1523,6 +1524,7 @@ export function AnimaisPageClient({
         animals={animals}
         presetAnimalId={treatmentPresetId}
         medicineSuggestions={medicineSuggestions}
+        especie={species === "todos" ? null : species}
       />
       <BirthDialog
         open={birthOpen}
@@ -1530,6 +1532,7 @@ export function AnimaisPageClient({
         mothers={females}
         presetMotherId={birthPresetId}
         births={births}
+        especie={species === "todos" ? null : species}
       />
       <BirthRequestDetailDialog
         open={!!detailRequest}
