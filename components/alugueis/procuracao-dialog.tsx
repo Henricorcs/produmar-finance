@@ -616,6 +616,7 @@ function EscolherContrato({
     <div className="space-y-2">
       <button
         type="button"
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => onEscolher("nenhum")}
         className={cn(
           "w-full rounded-xl border px-3 py-2.5 text-left text-sm font-semibold",
@@ -644,6 +645,9 @@ function EscolherContrato({
             <button
               key={o.chave}
               type="button"
+              // no iPhone, com o teclado da busca aberto, o toque fechava o
+              // teclado, a tela pulava e a escolha se perdia: não tirar o foco
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => onEscolher(o.chave)}
               className={cn(
                 "w-full rounded-xl border px-3 py-2.5 text-left",
