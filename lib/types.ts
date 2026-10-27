@@ -2626,6 +2626,21 @@ export interface PowerOfAttorney {
   attorney_city: string | null;
   attorney_zip: string | null;
 
+  /**
+   * Empresa (migration 127): "pj" usa name = razão social, document = CNPJ e o
+   * endereço = sede, e diz quem a representa. Sem a coluna = pessoa física.
+   */
+  grantor_kind?: "pf" | "pj";
+  grantor_rep_name?: string | null;
+  grantor_rep_role?: string | null;
+  grantor_rep_document?: string | null;
+  grantor_rep_rg?: string | null;
+  attorney_kind?: "pf" | "pj";
+  attorney_rep_name?: string | null;
+  attorney_rep_role?: string | null;
+  attorney_rep_document?: string | null;
+  attorney_rep_rg?: string | null;
+
   company: string | null;
   service: string | null;
   account_number: string | null;

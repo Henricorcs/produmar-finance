@@ -67,6 +67,8 @@ export interface PassoDef<C extends string> {
   especial?: (valor: string, mudar: (v: string) => void, avancar: () => void) => ReactNode;
   /** Como o valor aparece na revisão, quando não é o próprio texto. */
   mostrar?: (valor: string) => string;
+  /** Opções que nunca ficam em branco: tocar na já escolhida só segue em frente. */
+  fixo?: boolean;
 }
 
 function valorDaOpcao(o: OpcaoPasso): string {
@@ -232,7 +234,7 @@ export function PerguntaDoPasso<C extends string>({
   }, [idx, passo.tipo]);
 
   function escolher(opcao: string) {
-    const novo = valor === opcao ? "" : opcao;
+    const novo = valor === opcao && !passo.fixo ? "" : opcao;
     onMudar(novo);
     // escolheu: segue sozinho para a próxima pergunta
     if (novo) setTimeout(onAvancar, 150);

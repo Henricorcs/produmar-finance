@@ -20,6 +20,7 @@ import {
   MARCA_ASSINATURAS,
   enderecoPorExtenso,
   estadoCivilNoContrato,
+  generoPeloCargo,
   type Genero,
 } from "./compra-venda-contrato";
 import type { PowerOfAttorney } from "./types";
@@ -58,7 +59,18 @@ function semPonto(s: string): string {
   return s.replace(/\s*\.\s*$/, "");
 }
 
+/** Quem assina pela empresa. */
+interface Representante {
+  nome: string | null;
+  cargo: string | null;
+  cpf: string | null;
+  rg: string | null;
+}
+
 interface Pessoa {
+  /** Empresa: nome = razão social, cpf = CNPJ, endereço = sede. */
+  pj: boolean;
+  rep: Representante;
   nome: string | null;
   genero: Genero;
   nacionalidade: string | null;
@@ -72,6 +84,13 @@ interface Pessoa {
 
 function outorgante(p: PowerOfAttorney, linhas: boolean): Pessoa {
   return {
+    pj: p.grantor_kind === "pj",
+    rep: {
+      nome: p.grantor_rep_name ?? null,
+      cargo: p.grantor_rep_role ?? null,
+      cpf: p.grantor_rep_document ?? null,
+      rg: p.grantor_rep_rg ?? null,
+    },
     nome: p.grantor_name,
     genero: p.grantor_gender,
     nacionalidade: p.grantor_nationality,
@@ -97,6 +116,13 @@ function outorgante(p: PowerOfAttorney, linhas: boolean): Pessoa {
 
 function outorgado(p: PowerOfAttorney, linhas: boolean): Pessoa {
   return {
+    pj: p.attorney_kind === "pj",
+    rep: {
+      nome: p.attorney_rep_name ?? null,
+      cargo: p.attorney_rep_role ?? null,
+      cpf: p.attorney_rep_document ?? null,
+      rg: p.attorney_rep_rg ?? null,
+    },
     nome: p.attorney_name,
     genero: p.attorney_gender,
     nacionalidade: p.attorney_nationality,
@@ -121,6 +147,7 @@ function outorgado(p: PowerOfAttorney, linhas: boolean): Pessoa {
 
 /** "FULANO, de nacionalidade brasileira, solteiro, profissão mecânico, natural de..." */
 function qualificacao(x: Pessoa, linhas: boolean): string {
+  if (x.pj) return qualificacaoDaEmpresa(x, linhas);
   const g = x.genero;
   return juntar([
     campo(linhas, x.nome, (t) => t),
@@ -138,6 +165,30 @@ function qualificacao(x: Pessoa, linhas: boolean): string {
   ]);
 }
 
+/**
+ * "EMPRESA LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o
+ * nº ..., com sede na ..., neste ato representada por FULANO, sócio
+ * administrador, portador do RG nº ..., inscrito no CPF sob o nº ..."
+ */
+function qualificacaoDaEmpresa(x: Pessoa, linhas: boolean): string {
+  const g = generoPeloCargo(x.rep.cargo);
+  const representante = campo(linhas, x.rep.nome, (t) =>
+    juntar([
+      `neste ato representada por ${t}`,
+      x.rep.cargo?.trim() ? x.rep.cargo.trim().toLowerCase() : null,
+      campo(linhas, x.rep.rg, (r) => `${gen(g, "portador", "portadora", "portador(a)")} do RG nº ${r}`),
+      campo(linhas, x.rep.cpf, (c) => `${gen(g, "inscrito", "inscrita", "inscrito(a)")} no CPF sob o nº ${c}`),
+    ])
+  );
+  return juntar([
+    campo(linhas, x.nome, (t) => t),
+    "pessoa jurídica de direito privado",
+    campo(linhas, x.cpf, (t) => `inscrita no CNPJ sob o nº ${t}`),
+    x.endereco ? `com sede na ${x.endereco}` : null,
+    representante,
+  ]);
+}
+
 /** "junto à EQUATORIAL" / "junto ao SAAE" — a concessionária, com o artigo certo. */
 function juntoA(empresa: string): string {
   const feminina =
@@ -152,8 +203,9 @@ function juntoA(empresa: string): string {
  */
 export function paragrafosDaProcuracao(p: PowerOfAttorney): string[] {
   const linhas = p.id === "em-branco";
-  const gA = p.grantor_gender;
-  const gB = p.attorney_gender;
+  // empresa é feminino: "a outorgante", "a ora outorgada", "sua bastante procuradora"
+  const gA: Genero = p.grantor_kind === "pj" ? "f" : p.grantor_gender;
+  const gB: Genero = p.attorney_kind === "pj" ? "f" : p.attorney_gender;
   const oOutorgante = gen(gA, "o outorgante", "a outorgante", "o(a) outorgante");
   const rotuloOutorgado = gen(gB, "OUTORGADO", "OUTORGADA", "OUTORGADO");
   const procurador = gen(gB, "seu bastante procurador", "sua bastante procuradora", "seu(sua) bastante procurador(a)");
@@ -193,9 +245,23 @@ export function assinaturasDaProcuracao(p: PowerOfAttorney): { nome: string; det
     nome: nome?.trim() || rotulo,
     detalhe: cpf?.trim() ? `${rotulo} · CPF nº ${cpf.trim()}` : rotulo,
   });
+  // empresa: assina pela razão social, com quem a representa embaixo
+  const daEmpresa = (nome: string | null, rotulo: string, cnpj: string | null, rep?: string | null, cargo?: string | null) => ({
+    nome: nome?.trim() || rotulo,
+    detalhe: rep?.trim()
+      ? `${rotulo} · por ${rep.trim()}${cargo?.trim() ? `, ${cargo.trim().toLowerCase()}` : ""}`
+      : cnpj?.trim()
+        ? `${rotulo} · CNPJ nº ${cnpj.trim()}`
+        : rotulo,
+  });
+  const rotuloB = p.attorney_kind === "pj" ? "OUTORGADA" : gen(p.attorney_gender, "OUTORGADO", "OUTORGADA", "OUTORGADO");
   return [
-    linha(p.grantor_name, "OUTORGANTE", p.grantor_document),
-    linha(p.attorney_name, gen(p.attorney_gender, "OUTORGADO", "OUTORGADA", "OUTORGADO"), p.attorney_document),
+    p.grantor_kind === "pj"
+      ? daEmpresa(p.grantor_name, "OUTORGANTE", p.grantor_document, p.grantor_rep_name, p.grantor_rep_role)
+      : linha(p.grantor_name, "OUTORGANTE", p.grantor_document),
+    p.attorney_kind === "pj"
+      ? daEmpresa(p.attorney_name, rotuloB, p.attorney_document, p.attorney_rep_name, p.attorney_rep_role)
+      : linha(p.attorney_name, rotuloB, p.attorney_document),
   ];
 }
 

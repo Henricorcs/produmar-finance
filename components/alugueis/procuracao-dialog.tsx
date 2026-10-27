@@ -66,7 +66,20 @@ const CAMPOS_DA_PESSOA = [
   "district",
   "city",
   "zip",
+  // empresa: "pf" | "pj" e quem assina por ela
+  "kind",
+  "rep_name",
+  "rep_role",
+  "rep_document",
+  "rep_rg",
 ] as const;
+
+/** Os campos que só valem para pessoa física — somem da empresa ao salvar. */
+const SO_DE_PESSOA_FISICA = ["gender", "rg", "rg_orgao", "nationality", "marital_status", "profession"] as const;
+/** E os que só valem para empresa. */
+const SO_DE_EMPRESA = ["rep_name", "rep_role", "rep_document", "rep_rg"] as const;
+
+const CARGOS = ["SÓCIO ADMINISTRADOR", "SÓCIA ADMINISTRADORA", "PROCURADOR", "PROCURADORA", "DIRETOR"];
 
 type Campo =
   | `${Quem}_${(typeof CAMPOS_DA_PESSOA)[number]}`
@@ -86,13 +99,62 @@ type Campo =
 type Dados = Record<Campo, string>;
 type Passo = PassoDef<Campo>;
 
-/** As perguntas de uma pessoa (outorgante ou outorgado) — as mesmas para os dois. */
-function passosDaPessoa(quem: Quem, titulo: string, nome: string, enderecoTitulo: string): Passo[] {
-  const c = (k: string) => `${quem}_${k}` as Campo;
+/** O endereço — de onde a pessoa mora ou da sede da empresa. */
+function passosDoEndereco(c: (k: string) => Campo, secao: string, quando: (d: Dados) => boolean): Passo[] {
   return [
-    { campo: c("name"), secao: titulo, pergunta: `Nome completo ${nome}`, tipo: "texto", maiusculo: true },
+    { campo: c("street"), secao, quando, pergunta: "Rua ou avenida", tipo: "texto", maiusculo: true, placeholder: "ex: RUA DA CAEMA" },
+    { campo: c("number"), secao, quando, pergunta: "Número", tipo: "texto", teclado: "numerico", atalhos: ["S/N"], maiusculo: true, placeholder: "ex: 134" },
+    { campo: c("complement"), secao, quando, pergunta: "Complemento", tipo: "texto", maiusculo: true, placeholder: "opcional — casa B, apto 3..." },
+    { campo: c("district"), secao, quando, pergunta: "Bairro", tipo: "texto", maiusculo: true },
+    { campo: c("city"), secao, quando, pergunta: "Cidade / UF", tipo: "texto", maiusculo: true, atalhos: ["SÃO MATEUS DO MARANHÃO/MA"], placeholder: "ex: SÃO MATEUS DO MARANHÃO/MA" },
+    { campo: c("zip"), secao, quando, pergunta: "CEP", tipo: "cep", atalhos: ["65470-000"], placeholder: "00000-000" },
+  ];
+}
+
+/**
+ * As perguntas de uma pessoa (outorgante ou outorgado) — as mesmas para os
+ * dois. Primeiro: pessoa física ou empresa? Empresa pergunta razão social,
+ * CNPJ, quem assina por ela e a sede; pessoa física, o de sempre.
+ */
+function passosDaPessoa(
+  quem: Quem,
+  titulo: string,
+  nome: string,
+  enderecoTitulo: string,
+  sedeTitulo: string
+): Passo[] {
+  const c = (k: string) => `${quem}_${k}` as Campo;
+  const ehEmpresa = (d: Dados) => d[c("kind")] === "pj";
+  const ehPessoa = (d: Dados) => !ehEmpresa(d);
+  return [
+    {
+      campo: c("kind"),
+      secao: titulo,
+      pergunta: "Pessoa física ou empresa?",
+      tipo: "opcoes",
+      opcoes: [
+        { valor: "pf", label: "Pessoa física" },
+        { valor: "pj", label: "Empresa" },
+      ],
+      mostrar: (v) => (v === "pj" ? "Empresa" : "Pessoa física"),
+      // já vem "Pessoa física": tocar nela de novo segue, não desmarca
+      fixo: true,
+    },
+
+    // ── empresa ──
+    { campo: c("name"), secao: titulo, quando: ehEmpresa, pergunta: "Razão social da empresa", tipo: "texto", maiusculo: true, placeholder: "ex: PRODUMAR SERVIÇOS LTDA" },
+    { campo: c("document"), secao: titulo, quando: ehEmpresa, pergunta: "CNPJ", tipo: "documento", placeholder: "00.000.000/0000-00" },
+    { campo: c("rep_name"), secao: titulo, quando: ehEmpresa, pergunta: "Quem assina pela empresa?", tipo: "texto", maiusculo: true, dica: "O sócio, diretor ou procurador que representa a empresa." },
+    { campo: c("rep_role"), secao: titulo, quando: ehEmpresa, pergunta: "Cargo de quem assina", tipo: "texto", maiusculo: true, atalhos: CARGOS },
+    { campo: c("rep_document"), secao: titulo, quando: ehEmpresa, pergunta: "CPF de quem assina", tipo: "documento", placeholder: "000.000.000-00" },
+    { campo: c("rep_rg"), secao: titulo, quando: ehEmpresa, pergunta: "RG de quem assina (com o órgão)", tipo: "texto", maiusculo: true, placeholder: "ex: 123456789 SSP/MA" },
+    ...passosDoEndereco(c, sedeTitulo, ehEmpresa),
+
+    // ── pessoa física ──
+    { campo: c("name"), secao: titulo, quando: ehPessoa, pergunta: `Nome completo ${nome}`, tipo: "texto", maiusculo: true },
     {
       campo: c("gender"),
+      quando: ehPessoa,
       secao: titulo,
       pergunta: "Homem ou mulher?",
       tipo: "opcoes",
@@ -102,17 +164,18 @@ function passosDaPessoa(quem: Quem, titulo: string, nome: string, enderecoTitulo
       ],
       dica: "Decide, na procuração, entre \"portador\" e \"portadora\", \"procurador\" e \"procuradora\".",
     },
-    { campo: c("document"), secao: titulo, pergunta: "CPF", tipo: "documento", placeholder: "000.000.000-00" },
-    { campo: c("rg"), secao: titulo, pergunta: "Número do RG", tipo: "texto", teclado: "numerico", teclasExtras: ["-", "X"], placeholder: "ex: 123456789" },
-    { campo: c("rg_orgao"), secao: titulo, pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA" },
-    { campo: c("nationality"), secao: titulo, pergunta: "Nacionalidade", tipo: "texto", maiusculo: true },
-    { campo: c("marital_status"), secao: titulo, pergunta: "Estado civil", tipo: "opcoes", opcoes: ESTADOS_CIVIS },
-    { campo: c("profession"), secao: titulo, pergunta: "Profissão", tipo: "texto", maiusculo: true, placeholder: "ex: mecânico, auxiliar administrativo" },
+    { campo: c("document"), secao: titulo, quando: ehPessoa, pergunta: "CPF", tipo: "documento", placeholder: "000.000.000-00" },
+    { campo: c("rg"), secao: titulo, quando: ehPessoa, pergunta: "Número do RG", tipo: "texto", teclado: "numerico", teclasExtras: ["-", "X"], placeholder: "ex: 123456789" },
+    { campo: c("rg_orgao"), secao: titulo, quando: ehPessoa, pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, placeholder: "ex: SSP/MA" },
+    { campo: c("nationality"), secao: titulo, quando: ehPessoa, pergunta: "Nacionalidade", tipo: "texto", maiusculo: true },
+    { campo: c("marital_status"), secao: titulo, quando: ehPessoa, pergunta: "Estado civil", tipo: "opcoes", opcoes: ESTADOS_CIVIS },
+    { campo: c("profession"), secao: titulo, quando: ehPessoa, pergunta: "Profissão", tipo: "texto", maiusculo: true, placeholder: "ex: mecânico, auxiliar administrativo" },
     ...(quem === "grantor"
       ? [
           {
             campo: "grantor_birthplace" as Campo,
             secao: titulo,
+            quando: ehPessoa,
             pergunta: "Naturalidade (onde nasceu)",
             tipo: "texto" as const,
             maiusculo: true,
@@ -120,12 +183,7 @@ function passosDaPessoa(quem: Quem, titulo: string, nome: string, enderecoTitulo
           },
         ]
       : []),
-    { campo: c("street"), secao: enderecoTitulo, pergunta: "Rua ou avenida", tipo: "texto", maiusculo: true, placeholder: "ex: RUA DA CAEMA" },
-    { campo: c("number"), secao: enderecoTitulo, pergunta: "Número", tipo: "texto", teclado: "numerico", atalhos: ["S/N"], maiusculo: true, placeholder: "ex: 134" },
-    { campo: c("complement"), secao: enderecoTitulo, pergunta: "Complemento", tipo: "texto", maiusculo: true, placeholder: "opcional — casa B, apto 3..." },
-    { campo: c("district"), secao: enderecoTitulo, pergunta: "Bairro", tipo: "texto", maiusculo: true },
-    { campo: c("city"), secao: enderecoTitulo, pergunta: "Cidade / UF", tipo: "texto", maiusculo: true, atalhos: ["SÃO MATEUS DO MARANHÃO/MA"], placeholder: "ex: SÃO MATEUS DO MARANHÃO/MA" },
-    { campo: c("zip"), secao: enderecoTitulo, pergunta: "CEP", tipo: "cep", atalhos: ["65470-000"], placeholder: "00000-000" },
+    ...passosDoEndereco(c, enderecoTitulo, ehPessoa),
   ];
 }
 
@@ -159,10 +217,10 @@ const PASSOS: Passo[] = [
   },
 
   // ── Quem dá a procuração ────────────────────────────────────────────────
-  ...passosDaPessoa("grantor", "Outorgante (titular da conta)", "do outorgante", "Onde o outorgante mora"),
+  ...passosDaPessoa("grantor", "Outorgante (titular da conta)", "do outorgante", "Onde o outorgante mora", "Sede da empresa outorgante"),
 
   // ── Quem recebe ─────────────────────────────────────────────────────────
-  ...passosDaPessoa("attorney", "Outorgado (o procurador)", "do procurador", "Onde o procurador mora"),
+  ...passosDaPessoa("attorney", "Outorgado (o procurador)", "do procurador", "Onde o procurador mora", "Sede da empresa outorgada"),
 
   // ── Validade e assinatura ───────────────────────────────────────────────
   {
@@ -211,6 +269,11 @@ function dadosIniciais(p: PowerOfAttorney | null): Dados {
     grantor_district: s(p?.grantor_district),
     grantor_city: s(p?.grantor_city),
     grantor_zip: s(p?.grantor_zip),
+    grantor_kind: p?.grantor_kind === "pj" ? "pj" : "pf",
+    grantor_rep_name: s(p?.grantor_rep_name),
+    grantor_rep_role: s(p?.grantor_rep_role),
+    grantor_rep_document: s(p?.grantor_rep_document),
+    grantor_rep_rg: s(p?.grantor_rep_rg),
 
     attorney_name: s(procurador?.attorney_name),
     attorney_gender: s(procurador?.attorney_gender),
@@ -226,6 +289,11 @@ function dadosIniciais(p: PowerOfAttorney | null): Dados {
     attorney_district: s(procurador?.attorney_district),
     attorney_city: s(procurador?.attorney_city),
     attorney_zip: s(procurador?.attorney_zip),
+    attorney_kind: procurador?.attorney_kind === "pj" ? "pj" : "pf",
+    attorney_rep_name: s(procurador?.attorney_rep_name),
+    attorney_rep_role: s(procurador?.attorney_rep_role),
+    attorney_rep_document: s(procurador?.attorney_rep_document),
+    attorney_rep_rg: s(procurador?.attorney_rep_rg),
 
     validity: p ? s(p.validity) : VALIDADE_PADRAO,
     signed_at: p ? s(p.signed_at) : localDateISO(),
@@ -233,6 +301,19 @@ function dadosIniciais(p: PowerOfAttorney | null): Dados {
     notes: s(p?.notes),
   };
 }
+
+/** CNPJ (14 dígitos) no lugar do CPF: o outorgante do contrato é uma empresa. */
+function tipoPeloDocumento(doc?: string | null): "pf" | "pj" {
+  return (doc ?? "").replace(/\D/g, "").length > 11 ? "pj" : "pf";
+}
+
+/** Outorgante novo vindo de contrato: quem assinava pela empresa anterior sai. */
+const SEM_REPRESENTANTE = {
+  grantor_rep_name: "",
+  grantor_rep_role: "",
+  grantor_rep_document: "",
+  grantor_rep_rg: "",
+};
 
 /**
  * DE UM CONTRATO JÁ CADASTRADO: o outorgante vem pronto — do aluguel, o
@@ -247,6 +328,8 @@ function outorganteDoAluguel(d: Dados, c: RentalContractView, imovel?: RentalPro
   return {
     ...d,
     origem: `aluguel:${c.id}`,
+    ...SEM_REPRESENTANTE,
+    grantor_kind: tipoPeloDocumento(c.tenant_document),
     grantor_name: s(c.tenant_name),
     grantor_gender: "",
     grantor_document: s(c.tenant_document),
@@ -288,6 +371,11 @@ function outorgadoDe(p: PowerOfAttorney): Partial<Dados> {
     attorney_district: s(p.attorney_district),
     attorney_city: s(p.attorney_city),
     attorney_zip: s(p.attorney_zip),
+    attorney_kind: p.attorney_kind === "pj" ? "pj" : "pf",
+    attorney_rep_name: s(p.attorney_rep_name),
+    attorney_rep_role: s(p.attorney_rep_role),
+    attorney_rep_document: s(p.attorney_rep_document),
+    attorney_rep_rg: s(p.attorney_rep_rg),
   };
 }
 
@@ -318,6 +406,8 @@ function outorganteDaVenda(d: Dados, c: PropertySaleContract): Dados {
   return {
     ...d,
     origem: `venda:${c.id}`,
+    ...SEM_REPRESENTANTE,
+    grantor_kind: tipoPeloDocumento(c.seller_document),
     grantor_name: s(c.seller_name),
     grantor_gender: s(c.seller_gender),
     grantor_document: s(c.seller_document),
@@ -336,8 +426,17 @@ function outorganteDaVenda(d: Dados, c: PropertySaleContract): Dados {
   };
 }
 
-/** O que vai para o servidor: o RG volta a ser um campo só ("123456 SSP/MA"). */
-function paraSalvar(d: Dados) {
+/**
+ * O que vai para o servidor: o RG volta a ser um campo só ("123456 SSP/MA"), e
+ * o que foi digitado para o outro tipo (pessoa física × empresa) não vai junto.
+ */
+function paraSalvar(dados: Dados) {
+  const d = { ...dados };
+  for (const quem of ["grantor", "attorney"] as const) {
+    const empresa = d[`${quem}_kind`] === "pj";
+    for (const k of empresa ? SO_DE_PESSOA_FISICA : SO_DE_EMPRESA) d[`${quem}_${k}` as Campo] = "";
+    if (empresa && quem === "grantor") d.grantor_birthplace = "";
+  }
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { grantor_rg_orgao, attorney_rg_orgao, origem, ...resto } = d;
   return {
@@ -355,6 +454,10 @@ const SEM_CAIXA_ALTA = new Set<string>([
   "attorney_document",
   "grantor_zip",
   "attorney_zip",
+  "grantor_kind",
+  "attorney_kind",
+  "grantor_rep_document",
+  "attorney_rep_document",
   "account_number",
   "validity",
   "city",
@@ -547,10 +650,10 @@ export function ProcuracaoDialog({
             onRevisao={fluxo.irParaRevisao}
             daRevisao={fluxo.daRevisao}
             extra={
-              passo.campo === "attorney_name" && outorgados.length > 0 ? (
+              (passo.campo === "attorney_kind" || passo.campo === "attorney_name") && outorgados.length > 0 ? (
                 <EscolherOutorgado
                   outorgados={outorgados}
-                  digitado={dados.attorney_name}
+                  digitado={passo.campo === "attorney_name" ? dados.attorney_name : ""}
                   onEscolher={(p) => {
                     setDados((d) => ({ ...d, ...outorgadoDe(p) }));
                     // os dados dele já vieram todos: pula o bloco do outorgado
@@ -773,7 +876,9 @@ function EscolherOutorgado({
               {p.attorney_name}
             </span>
             {p.attorney_document && (
-              <span className="block text-[11px] text-slate-500 dark:text-slate-400">CPF {p.attorney_document}</span>
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                {p.attorney_kind === "pj" ? "Empresa · CNPJ" : "CPF"} {p.attorney_document}
+              </span>
             )}
           </span>
         </button>

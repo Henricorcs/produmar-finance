@@ -829,6 +829,17 @@ export interface PowerOfAttorneyInput {
   attorney_city?: string | null;
   attorney_zip?: string | null;
 
+  grantor_kind?: string | null;
+  grantor_rep_name?: string | null;
+  grantor_rep_role?: string | null;
+  grantor_rep_document?: string | null;
+  grantor_rep_rg?: string | null;
+  attorney_kind?: string | null;
+  attorney_rep_name?: string | null;
+  attorney_rep_role?: string | null;
+  attorney_rep_document?: string | null;
+  attorney_rep_rg?: string | null;
+
   company?: string | null;
   service?: string | null;
   account_number?: string | null;
@@ -839,6 +850,7 @@ export interface PowerOfAttorneyInput {
 }
 
 function procuracaoError(error: { code?: string; message: string }): string {
+  if (/_kind|_rep_/.test(error.message)) return "Rode a migration 127 no Supabase para a procuração de empresa";
   if (error.code === "42P01" || error.code === "42703" || error.message.includes("power_of_attorneys"))
     return "Rode a migration 121 no Supabase para guardar as procurações";
   return error.message;
@@ -874,6 +886,18 @@ function procuracaoRow(input: PowerOfAttorneyInput) {
     attorney_district: clean(input.attorney_district),
     attorney_city: clean(input.attorney_city),
     attorney_zip: raw(input.attorney_zip),
+
+    // empresa: name = razão social, document = CNPJ, e quem a representa
+    grantor_kind: input.grantor_kind === "pj" ? "pj" : "pf",
+    grantor_rep_name: input.grantor_kind === "pj" ? clean(input.grantor_rep_name) : null,
+    grantor_rep_role: input.grantor_kind === "pj" ? clean(input.grantor_rep_role) : null,
+    grantor_rep_document: input.grantor_kind === "pj" ? raw(input.grantor_rep_document) : null,
+    grantor_rep_rg: input.grantor_kind === "pj" ? clean(input.grantor_rep_rg) : null,
+    attorney_kind: input.attorney_kind === "pj" ? "pj" : "pf",
+    attorney_rep_name: input.attorney_kind === "pj" ? clean(input.attorney_rep_name) : null,
+    attorney_rep_role: input.attorney_kind === "pj" ? clean(input.attorney_rep_role) : null,
+    attorney_rep_document: input.attorney_kind === "pj" ? raw(input.attorney_rep_document) : null,
+    attorney_rep_rg: input.attorney_kind === "pj" ? clean(input.attorney_rep_rg) : null,
 
     company: clean(input.company),
     service: clean(input.service),

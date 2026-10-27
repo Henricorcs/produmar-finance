@@ -163,7 +163,7 @@ export function papelDoVendedor(g: Genero): PapelDoVendedor {
 }
 
 /** Quem assina pela empresa: o cargo diz se é homem ou mulher ("SÓCIA", "DIRETORA"). */
-function generoPeloCargo(cargo?: string | null): Genero {
+export function generoPeloCargo(cargo?: string | null): Genero {
   const c = cargo?.trim().toUpperCase() ?? "";
   // sem o "\b" no fim, "DIRETORA" casaria com "DIRETOR" e "SÓCIA" com "SÓCIO"
   if (/S[ÓO]CIA\b|DIRETORA\b|PROCURADORA\b|ADMINISTRADORA\b/.test(c)) return "f";
