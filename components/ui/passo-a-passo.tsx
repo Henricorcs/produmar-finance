@@ -176,10 +176,17 @@ export function usePassoAPasso<C extends string>(
     setIdx(i);
   }
 
+  /** Pula direto para uma pergunta (ex.: depois de preencher um bloco de uma vez). */
+  function irPara(campo: C) {
+    const i = passos.findIndex((p) => p.campo === campo);
+    setDaRevisao(false);
+    setIdx(i < 0 ? -1 : i);
+  }
+
   /** O que é obrigatório e ficou em branco. */
   const faltando = passos.filter((p) => p.obrigatorio && !dados[p.campo]?.trim());
 
-  return { passos, idx, naRevisao, passo, daRevisao, avancar, voltar, irParaRevisao, editar, faltando };
+  return { passos, idx, naRevisao, passo, daRevisao, avancar, voltar, irParaRevisao, editar, irPara, faltando };
 }
 
 /** A pergunta da vez: a seção, a barra de andamento, o campo e os botões. */

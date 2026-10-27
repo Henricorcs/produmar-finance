@@ -2411,6 +2411,8 @@ export interface RentalProperty {
   iptu_code: string | null;
   water_code: string | null;
   power_code: string | null;
+  /** Conta contrato da energia (Equatorial) — vai na procuração. */
+  power_account: string | null;
   notes: string | null;
   active: boolean;
   created_by: string | null;

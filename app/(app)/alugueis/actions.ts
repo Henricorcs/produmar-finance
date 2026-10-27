@@ -52,6 +52,8 @@ function aluguelError(error: { code?: string; message: string }): string {
   // o endereço em partes do inquilino e do fiador é da 113
   if (/(tenant|guarantor)_(street|number|complement|district|city|zip)/.test(error.message))
     return "Rode a migration 113 no Supabase para guardar o endereço em partes";
+  if (error.message.includes("power_account"))
+    return "Rode a migration 126 no Supabase para guardar a conta contrato do imóvel";
   if (error.code === "42P01")
     return "Rode a migration 078 no Supabase para usar o módulo Aluguéis";
   if (error.code === "42703")
@@ -78,6 +80,7 @@ export interface RentalPropertyInput {
   iptu_code?: string | null;
   water_code?: string | null;
   power_code?: string | null;
+  power_account?: string | null;
   notes?: string | null;
   active?: boolean;
 }
@@ -97,6 +100,7 @@ function propertyRow(input: RentalPropertyInput) {
     iptu_code: clean(input.iptu_code),
     water_code: clean(input.water_code),
     power_code: clean(input.power_code),
+    power_account: raw(input.power_account),
     notes: clean(input.notes),
     ...(input.active === undefined ? {} : { active: input.active }),
   };
@@ -885,13 +889,27 @@ function procuracaoRow(input: PowerOfAttorneyInput) {
 
 export async function salvarProcuracao(
   id: string | null,
-  input: PowerOfAttorneyInput
+  input: PowerOfAttorneyInput,
+  /** Feita de um contrato de aluguel: o imóvel sem conta contrato fica com a digitada. */
+  imovelId?: string | null
 ): Promise<{ error: string } | { ok: true; id: string }> {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Não autenticado" };
+
+  // a conta contrato digitada na procuração vai para o cadastro do imóvel (só
+  // se ele ainda não tiver uma): na próxima, já vem pronta. Falhar aqui não
+  // impede a procuração de ser salva.
+  const conta = raw(input.account_number);
+  if (imovelId && conta && !/CAEMA/i.test(input.company ?? "")) {
+    await supabase
+      .from("rental_properties")
+      .update({ power_account: conta })
+      .eq("id", imovelId)
+      .is("power_account", null);
+  }
 
   if (id) {
     const { error } = await supabase.from("power_of_attorneys").update(procuracaoRow(input)).eq("id", id);

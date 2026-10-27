@@ -503,7 +503,8 @@ export function AlugueisPageClient({
         open={procuracaoOpen}
         onClose={() => setProcuracaoOpen(false)}
         procuracao={editProcuracao}
-        ultima={procuracoes[0] ?? null}
+        procuracoes={procuracoes}
+        imoveis={properties}
         contratos={contracts}
         compras={compras}
       />

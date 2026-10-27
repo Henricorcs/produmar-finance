@@ -54,6 +54,7 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
   const [iptu, setIptu] = useState("");
   const [water, setWater] = useState("");
   const [power, setPower] = useState("");
+  const [powerAccount, setPowerAccount] = useState("");
   const [notes, setNotes] = useState("");
   const [active, setActive] = useState(true);
 
@@ -73,6 +74,7 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
     setIptu(imovel?.iptu_code ?? "");
     setWater(imovel?.water_code ?? "");
     setPower(imovel?.power_code ?? "");
+    setPowerAccount(imovel?.power_account ?? "");
     setNotes(imovel?.notes ?? "");
     setActive(imovel?.active ?? true);
     setErro(null);
@@ -100,6 +102,7 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
         iptu_code: iptu,
         water_code: water,
         power_code: power,
+        power_account: powerAccount,
         notes,
         active,
       };
@@ -324,6 +327,18 @@ export function ImovelDialog({ open, onClose, imovel }: Props) {
                 onChange={(e) => setPower(upperKeepingCaret(e))}
                 placeholder="opcional"
                 autoCapitalize="characters"
+                className="h-11 sm:h-10"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="im_conta_luz">Luz (conta contrato)</Label>
+              <Input
+                id="im_conta_luz"
+                value={powerAccount}
+                onChange={(e) => setPowerAccount(e.target.value)}
+                placeholder="vai na procuração"
+                inputMode="numeric"
                 className="h-11 sm:h-10"
                 autoComplete="off"
               />

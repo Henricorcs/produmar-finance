@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { CheckCircle2, FileSignature, Printer, Search, Trash2 } from "lucide-react";
+import { CheckCircle2, FileSignature, Printer, Search, Trash2, UserCheck } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,15 +37,15 @@ import {
   paragrafosDaProcuracao,
   procuracaoEmBranco,
 } from "@/lib/procuracao";
-import type { PowerOfAttorney, PropertySaleContract, RentalContractView } from "@/lib/types";
+import type { PowerOfAttorney, PropertySaleContract, RentalContractView, RentalProperty } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROCURAÇÃO — preenchida UM CAMPO POR VEZ, como a compra e venda
 // ─────────────────────────────────────────────────────────────────────────────
 // Primeiro a conta (concessionária, serviço, conta contrato), depois quem dá a
-// procuração (o titular), depois quem recebe. O procurador costuma ser sempre o
-// mesmo: numa procuração nova, ele já vem preenchido com o da última — é só
-// conferir e tocar em OK.
+// procuração (o titular), depois quem recebe. Todo outorgado que já foi
+// digitado numa procuração fica guardado: na próxima, é só tocar no nome dele
+// (ou digitar um novo).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ESTADOS_CIVIS = ["SOLTEIRO", "CASADO", "UNIÃO ESTÁVEL", "DIVORCIADO", "VIÚVO"];
@@ -184,10 +184,10 @@ const PASSOS: Passo[] = [
   },
 ];
 
-function dadosIniciais(p: PowerOfAttorney | null, ultima: PowerOfAttorney | null): Dados {
+function dadosIniciais(p: PowerOfAttorney | null): Dados {
   const s = (v?: string | null) => v ?? "";
-  // procuração nova: o procurador vem da última (costuma ser sempre o mesmo)
-  const procurador = p ?? ultima;
+  // procuração nova: o outorgado fica em branco — digita ou escolhe um já cadastrado
+  const procurador = p;
   const rgA = separarRg(p?.grantor_rg);
   const rgB = separarRg(procurador?.attorney_rg);
   return {
@@ -239,7 +239,7 @@ function dadosIniciais(p: PowerOfAttorney | null, ultima: PowerOfAttorney | null
  * INQUILINO (e a conta contrato de energia do imóvel); da compra e venda, o
  * VENDEDOR. Só troca os dados do outorgante e a conta; o procurador fica.
  */
-function outorganteDoAluguel(d: Dados, c: RentalContractView): Dados {
+function outorganteDoAluguel(d: Dados, c: RentalContractView, imovel?: RentalProperty): Dados {
   const rg = separarRg(c.tenant_rg);
   const s = (v?: string | null) => v?.trim() ?? "";
   // contrato antigo, de antes do endereço em partes: o endereço corrido vai na rua
@@ -262,10 +262,53 @@ function outorganteDoAluguel(d: Dados, c: RentalContractView): Dados {
     grantor_district: s(c.tenant_district),
     grantor_city: s(c.tenant_city),
     grantor_zip: s(c.tenant_zip),
-    // a conta da CAEMA é a da água; a da Equatorial (padrão), a de energia
+    // a conta da CAEMA é a da água; a da Equatorial (padrão), a conta contrato
+    // da energia guardada no imóvel (não o nº da instalação)
     account_number:
-      (/CAEMA/i.test(d.company) ? s(c.property_water_code) : s(c.property_power_code)) || d.account_number,
+      (/CAEMA/i.test(d.company) ? s(c.property_water_code) : s(imovel?.power_account)) || d.account_number,
   };
+}
+
+/** O outorgado de uma procuração salva — os campos que a próxima reaproveita. */
+function outorgadoDe(p: PowerOfAttorney): Partial<Dados> {
+  const s = (v?: string | null) => v ?? "";
+  const rg = separarRg(p.attorney_rg);
+  return {
+    attorney_name: s(p.attorney_name),
+    attorney_gender: s(p.attorney_gender),
+    attorney_document: s(p.attorney_document),
+    attorney_rg: rg.numero,
+    attorney_rg_orgao: rg.orgao,
+    attorney_nationality: s(p.attorney_nationality) || "BRASILEIRA",
+    attorney_marital_status: s(p.attorney_marital_status),
+    attorney_profession: s(p.attorney_profession),
+    attorney_street: s(p.attorney_street),
+    attorney_number: s(p.attorney_number),
+    attorney_complement: s(p.attorney_complement),
+    attorney_district: s(p.attorney_district),
+    attorney_city: s(p.attorney_city),
+    attorney_zip: s(p.attorney_zip),
+  };
+}
+
+/**
+ * O CADASTRO DE OUTORGADOS: cada pessoa que já foi outorgada numa procuração,
+ * uma vez só (pelo CPF, ou pelo nome quando não tem CPF), com os dados da
+ * procuração mais recente dela.
+ */
+function outorgadosCadastrados(procuracoes: PowerOfAttorney[]): PowerOfAttorney[] {
+  const vistos = new Set<string>();
+  const lista: PowerOfAttorney[] = [];
+  const recentes = [...procuracoes].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+  for (const p of recentes) {
+    const nome = p.attorney_name?.trim().toUpperCase();
+    if (!nome) continue;
+    const chave = (p.attorney_document ?? "").replace(/\D/g, "") || nome;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    lista.push(p);
+  }
+  return lista;
 }
 
 function outorganteDaVenda(d: Dados, c: PropertySaleContract): Dados {
@@ -334,10 +377,12 @@ interface Props {
   onClose: () => void;
   /** Procuração em edição — null começa uma nova. */
   procuracao: PowerOfAttorney | null;
-  /** A última salva: dela vem o procurador de uma procuração nova. */
-  ultima: PowerOfAttorney | null;
-  /** Contratos de aluguel: o inquilino vira o outorgante (e vem a conta de energia do imóvel). */
+  /** As procurações salvas: delas sai o cadastro de outorgados. */
+  procuracoes?: PowerOfAttorney[];
+  /** Contratos de aluguel: o inquilino vira o outorgante (e vem a conta contrato do imóvel). */
   contratos?: RentalContractView[];
+  /** Os imóveis: é onde fica a conta contrato da energia. */
+  imoveis?: RentalProperty[];
   /** Contratos de compra e venda: o vendedor vira o outorgante. */
   compras?: PropertySaleContract[];
 }
@@ -345,18 +390,29 @@ interface Props {
 /** Uma linha da lista "puxar de um contrato". */
 type OpcaoDeContrato = { chave: string; titulo: string; detalhe: string; busca: string };
 
-export function ProcuracaoDialog({ open, onClose, procuracao, ultima, contratos = [], compras = [] }: Props) {
+export function ProcuracaoDialog({
+  open,
+  onClose,
+  procuracao,
+  procuracoes = [],
+  contratos = [],
+  imoveis = [],
+  compras = [],
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
-  const [dados, setDados] = useState<Dados>(() => dadosIniciais(null, null));
+  const [dados, setDados] = useState<Dados>(() => dadosIniciais(null));
   const [salva, setSalva] = useState<PowerOfAttorney | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setDados(dadosIniciais(procuracao, ultima));
+    setDados(dadosIniciais(procuracao));
     setErro(null);
     setSalva(null);
-  }, [open, procuracao, ultima]);
+  }, [open, procuracao]);
+
+  const outorgados = useMemo(() => outorgadosCadastrados(procuracoes), [procuracoes]);
+  const imovelDoContrato = (c: RentalContractView) => imoveis.find((i) => i.id === c.property_id);
 
   /** Os contratos para escolher: os aluguéis ativos primeiro, depois as compras e vendas. */
   const opcoes = useMemo<OpcaoDeContrato[]>(() => {
@@ -369,7 +425,7 @@ export function ProcuracaoDialog({ open, onClose, procuracao, ultima, contratos 
         const detalhe = [
           `Aluguel · imóvel nº ${c.property_code}`,
           endereco || c.property_name,
-          c.property_power_code ? `energia ${c.property_power_code}` : null,
+          imovelDoContrato(c)?.power_account ? `conta contrato ${imovelDoContrato(c)?.power_account}` : null,
           c.status === "encerrado" ? "encerrado" : null,
         ]
           .filter(Boolean)
@@ -382,14 +438,15 @@ export function ProcuracaoDialog({ open, onClose, procuracao, ultima, contratos 
       return { chave: `venda:${c.id}`, titulo, detalhe, busca: `${titulo} ${detalhe}` };
     });
     return [...alugueis, ...vendas];
-  }, [contratos, compras]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contratos, compras, imoveis]);
 
   function puxarDoContrato(chave: string) {
     const [tipo, id] = chave.split(":");
     setDados((d) => {
       if (tipo === "aluguel") {
         const c = contratos.find((x) => x.id === id);
-        return c ? outorganteDoAluguel(d, c) : d;
+        return c ? outorganteDoAluguel(d, c, imovelDoContrato(c)) : d;
       }
       if (tipo === "venda") {
         const c = compras.find((x) => x.id === id);
@@ -431,7 +488,11 @@ export function ProcuracaoDialog({ open, onClose, procuracao, ultima, contratos 
   function salvar() {
     setErro(null);
     startTransition(async () => {
-      const r = await salvarProcuracao(procuracao?.id ?? null, paraSalvar(dados));
+      // feita de um aluguel: a conta contrato digitada fica no imóvel para a próxima
+      const [tipo, idDoContrato] = dados.origem.split(":");
+      const imovelId =
+        tipo === "aluguel" ? (contratos.find((c) => c.id === idDoContrato)?.property_id ?? null) : null;
+      const r = await salvarProcuracao(procuracao?.id ?? null, paraSalvar(dados), imovelId);
       const falha = actionError(r);
       if (falha || !r || "error" in r) {
         setErro(falha ?? "Erro ao salvar a procuração");
@@ -486,10 +547,17 @@ export function ProcuracaoDialog({ open, onClose, procuracao, ultima, contratos 
             onRevisao={fluxo.irParaRevisao}
             daRevisao={fluxo.daRevisao}
             extra={
-              !procuracao && ultima && passo.campo === "attorney_name" && dados.attorney_name.trim() ? (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Veio da última procuração — se for a mesma pessoa, é só tocar em OK nas próximas.
-                </p>
+              passo.campo === "attorney_name" && outorgados.length > 0 ? (
+                <EscolherOutorgado
+                  outorgados={outorgados}
+                  digitado={dados.attorney_name}
+                  onEscolher={(p) => {
+                    setDados((d) => ({ ...d, ...outorgadoDe(p) }));
+                    // os dados dele já vieram todos: pula o bloco do outorgado
+                    if (fluxo.daRevisao) fluxo.avancar();
+                    else fluxo.irPara("validity");
+                  }}
+                />
               ) : null
             }
             rodape="Nada é obrigatório: o que ficar em branco não sai na procuração."
@@ -662,6 +730,54 @@ function EscolherContrato({
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * OS OUTORGADOS JÁ CADASTRADOS, embaixo do campo do nome: tocou num, os dados
+ * dele entram todos; se é gente nova, é só digitar o nome no campo.
+ */
+function EscolherOutorgado({
+  outorgados,
+  digitado,
+  onEscolher,
+}: {
+  outorgados: PowerOfAttorney[];
+  digitado: string;
+  onEscolher: (p: PowerOfAttorney) => void;
+}) {
+  const q = digitado.trim().toUpperCase();
+  // digitando: mostra só quem bate com o nome
+  const visiveis = q
+    ? outorgados.filter((p) => (p.attorney_name ?? "").toUpperCase().includes(q))
+    : outorgados;
+  if (visiveis.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+        Ou escolha um outorgado já cadastrado:
+      </p>
+      {visiveis.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          // no iPhone o teclado do campo está aberto: o toque não pode se perder fechando ele
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onEscolher(p)}
+          className="w-full flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left dark:border-slate-700 dark:bg-slate-900"
+        >
+          <UserCheck className="w-4 h-4 shrink-0 text-produmar-600" />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+              {p.attorney_name}
+            </span>
+            {p.attorney_document && (
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400">CPF {p.attorney_document}</span>
+            )}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
