@@ -504,6 +504,8 @@ export function AlugueisPageClient({
         onClose={() => setProcuracaoOpen(false)}
         procuracao={editProcuracao}
         ultima={procuracoes[0] ?? null}
+        contratos={contracts}
+        compras={compras}
       />
     </div>
   );

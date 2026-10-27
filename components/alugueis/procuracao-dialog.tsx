@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { CheckCircle2, FileSignature, Printer, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { CheckCircle2, FileSignature, Printer, Search, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +37,7 @@ import {
   paragrafosDaProcuracao,
   procuracaoEmBranco,
 } from "@/lib/procuracao";
-import type { PowerOfAttorney } from "@/lib/types";
+import type { PowerOfAttorney, PropertySaleContract, RentalContractView } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROCURAÇÃO — preenchida UM CAMPO POR VEZ, como a compra e venda
@@ -73,6 +73,8 @@ type Campo =
   /** Só na tela: o órgão do RG é perguntado à parte e gravado junto do número. */
   | `${Quem}_rg_orgao`
   | "grantor_birthplace"
+  /** Só na tela: o contrato de onde vieram os dados ("aluguel:<id>", "venda:<id>" ou "nenhum"). */
+  | "origem"
   | "company"
   | "service"
   | "account_number"
@@ -189,6 +191,7 @@ function dadosIniciais(p: PowerOfAttorney | null, ultima: PowerOfAttorney | null
   const rgA = separarRg(p?.grantor_rg);
   const rgB = separarRg(procurador?.attorney_rg);
   return {
+    origem: "",
     company: p ? s(p.company) : EMPRESA_PADRAO,
     service: p ? s(p.service) : SERVICO_PADRAO,
     account_number: s(p?.account_number),
@@ -231,9 +234,69 @@ function dadosIniciais(p: PowerOfAttorney | null, ultima: PowerOfAttorney | null
   };
 }
 
+/**
+ * DE UM CONTRATO JÁ CADASTRADO: o outorgante vem pronto — do aluguel, o
+ * INQUILINO (e a conta contrato de energia do imóvel); da compra e venda, o
+ * VENDEDOR. Só troca os dados do outorgante e a conta; o procurador fica.
+ */
+function outorganteDoAluguel(d: Dados, c: RentalContractView): Dados {
+  const rg = separarRg(c.tenant_rg);
+  const s = (v?: string | null) => v?.trim() ?? "";
+  // contrato antigo, de antes do endereço em partes: o endereço corrido vai na rua
+  const semPartes = ![c.tenant_street, c.tenant_number, c.tenant_district, c.tenant_city].some((v) => v?.trim());
+  return {
+    ...d,
+    origem: `aluguel:${c.id}`,
+    grantor_name: s(c.tenant_name),
+    grantor_gender: "",
+    grantor_document: s(c.tenant_document),
+    grantor_rg: rg.numero,
+    grantor_rg_orgao: rg.orgao,
+    grantor_nationality: s(c.tenant_nationality) || "BRASILEIRA",
+    grantor_marital_status: s(c.tenant_marital_status),
+    grantor_profession: s(c.tenant_profession),
+    grantor_birthplace: s(c.tenant_birthplace),
+    grantor_street: semPartes ? s(c.tenant_address) : s(c.tenant_street),
+    grantor_number: s(c.tenant_number),
+    grantor_complement: s(c.tenant_complement),
+    grantor_district: s(c.tenant_district),
+    grantor_city: s(c.tenant_city),
+    grantor_zip: s(c.tenant_zip),
+    // a conta da CAEMA é a da água; a da Equatorial (padrão), a de energia
+    account_number:
+      (/CAEMA/i.test(d.company) ? s(c.property_water_code) : s(c.property_power_code)) || d.account_number,
+  };
+}
+
+function outorganteDaVenda(d: Dados, c: PropertySaleContract): Dados {
+  const rg = separarRg(c.seller_rg);
+  const s = (v?: string | null) => v?.trim() ?? "";
+  const semPartes = ![c.seller_street, c.seller_number, c.seller_district, c.seller_city].some((v) => v?.trim());
+  return {
+    ...d,
+    origem: `venda:${c.id}`,
+    grantor_name: s(c.seller_name),
+    grantor_gender: s(c.seller_gender),
+    grantor_document: s(c.seller_document),
+    grantor_rg: rg.numero,
+    grantor_rg_orgao: rg.orgao,
+    grantor_nationality: s(c.seller_nationality) || "BRASILEIRA",
+    grantor_marital_status: s(c.seller_marital_status),
+    grantor_profession: s(c.seller_profession),
+    grantor_birthplace: "",
+    grantor_street: semPartes ? s(c.seller_address) : s(c.seller_street),
+    grantor_number: s(c.seller_number),
+    grantor_complement: s(c.seller_complement),
+    grantor_district: s(c.seller_district),
+    grantor_city: s(c.seller_city),
+    grantor_zip: s(c.seller_zip),
+  };
+}
+
 /** O que vai para o servidor: o RG volta a ser um campo só ("123456 SSP/MA"). */
 function paraSalvar(d: Dados) {
-  const { grantor_rg_orgao, attorney_rg_orgao, ...resto } = d;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { grantor_rg_orgao, attorney_rg_orgao, origem, ...resto } = d;
   return {
     ...resto,
     grantor_rg: juntarRg(d.grantor_rg, grantor_rg_orgao),
@@ -273,9 +336,16 @@ interface Props {
   procuracao: PowerOfAttorney | null;
   /** A última salva: dela vem o procurador de uma procuração nova. */
   ultima: PowerOfAttorney | null;
+  /** Contratos de aluguel: o inquilino vira o outorgante (e vem a conta de energia do imóvel). */
+  contratos?: RentalContractView[];
+  /** Contratos de compra e venda: o vendedor vira o outorgante. */
+  compras?: PropertySaleContract[];
 }
 
-export function ProcuracaoDialog({ open, onClose, procuracao, ultima }: Props) {
+/** Uma linha da lista "puxar de um contrato". */
+type OpcaoDeContrato = { chave: string; titulo: string; detalhe: string; busca: string };
+
+export function ProcuracaoDialog({ open, onClose, procuracao, ultima, contratos = [], compras = [] }: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [dados, setDados] = useState<Dados>(() => dadosIniciais(null, null));
@@ -288,7 +358,74 @@ export function ProcuracaoDialog({ open, onClose, procuracao, ultima }: Props) {
     setSalva(null);
   }, [open, procuracao, ultima]);
 
-  const fluxo = usePassoAPasso(PASSOS, dados, open, !!procuracao);
+  /** Os contratos para escolher: os aluguéis ativos primeiro, depois as compras e vendas. */
+  const opcoes = useMemo<OpcaoDeContrato[]>(() => {
+    const alugueis = [...contratos]
+      .sort((a, b) => (a.status === b.status ? a.property_code - b.property_code : a.status === "ativo" ? -1 : 1))
+      .map((c) => {
+        const endereco = [c.property_street, c.property_number ? `nº ${c.property_number}` : null]
+          .filter(Boolean)
+          .join(", ");
+        const detalhe = [
+          `Aluguel · imóvel nº ${c.property_code}`,
+          endereco || c.property_name,
+          c.property_power_code ? `energia ${c.property_power_code}` : null,
+          c.status === "encerrado" ? "encerrado" : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return { chave: `aluguel:${c.id}`, titulo: c.tenant_name, detalhe, busca: `${c.tenant_name} ${detalhe}` };
+      });
+    const vendas = compras.map((c) => {
+      const detalhe = ["Compra e venda", c.property_kind, c.property_street].filter(Boolean).join(" · ");
+      const titulo = c.seller_name || "Vendedor a preencher";
+      return { chave: `venda:${c.id}`, titulo, detalhe, busca: `${titulo} ${detalhe}` };
+    });
+    return [...alugueis, ...vendas];
+  }, [contratos, compras]);
+
+  function puxarDoContrato(chave: string) {
+    const [tipo, id] = chave.split(":");
+    setDados((d) => {
+      if (tipo === "aluguel") {
+        const c = contratos.find((x) => x.id === id);
+        return c ? outorganteDoAluguel(d, c) : d;
+      }
+      if (tipo === "venda") {
+        const c = compras.find((x) => x.id === id);
+        return c ? outorganteDaVenda(d, c) : d;
+      }
+      return { ...d, origem: "nenhum" };
+    });
+  }
+
+  /** Procuração nova (e com contrato cadastrado): a 1ª pergunta é de onde puxar o outorgante. */
+  const todosOsPassos = useMemo<Passo[]>(() => {
+    if (procuracao || opcoes.length === 0) return PASSOS;
+    const passoOrigem: Passo = {
+      campo: "origem",
+      secao: "Outorgante (titular da conta)",
+      pergunta: "Puxar os dados de um contrato?",
+      tipo: "especial",
+      dica: "O outorgante já vem preenchido — do aluguel, o inquilino (e a conta de energia do imóvel); da compra e venda, o vendedor. Depois é só conferir.",
+      mostrar: (v) =>
+        v === "nenhum" || !v ? "Não — preenchido do zero" : opcoes.find((o) => o.chave === v)?.titulo ?? "—",
+      especial: (valor, _mudar, avancar) => (
+        <EscolherContrato
+          opcoes={opcoes}
+          valor={valor}
+          onEscolher={(chave) => {
+            puxarDoContrato(chave);
+            setTimeout(avancar, 150);
+          }}
+        />
+      ),
+    };
+    return [passoOrigem, ...PASSOS];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [procuracao, opcoes]);
+
+  const fluxo = usePassoAPasso(todosOsPassos, dados, open, !!procuracao);
   const { passo, passos, idx } = fluxo;
 
   function salvar() {
@@ -453,6 +590,74 @@ function ProcuracaoPronta({
       <Button type="button" variant="outline" onClick={onFechar} className="w-full h-11">
         Fechar
       </Button>
+    </div>
+  );
+}
+
+/**
+ * A lista "puxar de um contrato": busca pelo nome, endereço ou nº do imóvel,
+ * e o botão de preencher do zero. Tocou num contrato, os dados entram e a
+ * procuração segue para a próxima pergunta.
+ */
+function EscolherContrato({
+  opcoes,
+  valor,
+  onEscolher,
+}: {
+  opcoes: OpcaoDeContrato[];
+  valor: string;
+  onEscolher: (chave: string) => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const q = busca.trim().toUpperCase();
+  const visiveis = q ? opcoes.filter((o) => o.busca.toUpperCase().includes(q)) : opcoes;
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => onEscolher("nenhum")}
+        className={cn(
+          "w-full rounded-xl border px-3 py-2.5 text-left text-sm font-semibold",
+          valor === "nenhum"
+            ? "border-produmar-600 bg-produmar-50 text-produmar-800 dark:bg-produmar-900/20"
+            : "border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-200"
+        )}
+      >
+        Não — preencher do zero
+      </button>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+        <input
+          type="text"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar pelo nome, rua ou nº do imóvel..."
+          className="w-full h-11 pl-9 pr-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-base text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-produmar-500"
+        />
+      </div>
+      <div className="max-h-[45vh] overflow-y-auto space-y-1.5">
+        {visiveis.length === 0 ? (
+          <p className="py-4 text-center text-sm text-slate-400">Nenhum contrato com essa busca.</p>
+        ) : (
+          visiveis.map((o) => (
+            <button
+              key={o.chave}
+              type="button"
+              onClick={() => onEscolher(o.chave)}
+              className={cn(
+                "w-full rounded-xl border px-3 py-2.5 text-left",
+                valor === o.chave
+                  ? "border-produmar-600 bg-produmar-50 dark:bg-produmar-900/20"
+                  : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+              )}
+            >
+              <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{o.titulo}</span>
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">{o.detalhe}</span>
+            </button>
+          ))
+        )}
+      </div>
     </div>
   );
 }
