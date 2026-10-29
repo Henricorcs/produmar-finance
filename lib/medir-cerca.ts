@@ -13,6 +13,8 @@ export interface PontoGps {
   precisao: number;
   /** Quando foi marcado (ISO). */
   em: string;
+  /** Quantas leituras entraram na média. */
+  leituras?: number;
 }
 
 export interface LeituraGps {
@@ -35,14 +37,14 @@ export function distanciaEmMetros(a: { lat: number; lng: number }, b: { lat: num
 }
 
 /**
- * O ponto a partir das leituras: só as boas (até 2 m piores que a melhor)
- * entram, e a média dá mais peso às mais precisas. A precisão do resultado é
- * a da melhor leitura — a média só melhora a partir dela.
+ * O ponto a partir das leituras: só as boas (até `folga` metros piores que a
+ * melhor) entram, e a média dá mais peso às mais precisas. A precisão do
+ * resultado é a da melhor leitura — a média só melhora a partir dela.
  */
-export function pontoDasLeituras(leituras: LeituraGps[]): PontoGps | null {
+export function pontoDasLeituras(leituras: LeituraGps[], folga = 2): PontoGps | null {
   if (leituras.length === 0) return null;
   const melhor = Math.min(...leituras.map((l) => l.precisao));
-  const boas = leituras.filter((l) => l.precisao <= melhor + 2);
+  const boas = leituras.filter((l) => l.precisao <= melhor + folga);
   let somaPeso = 0;
   let lat = 0;
   let lng = 0;
@@ -52,7 +54,13 @@ export function pontoDasLeituras(leituras: LeituraGps[]): PontoGps | null {
     lat += l.lat * peso;
     lng += l.lng * peso;
   }
-  return { lat: lat / somaPeso, lng: lng / somaPeso, precisao: melhor, em: new Date().toISOString() };
+  return {
+    lat: lat / somaPeso,
+    lng: lng / somaPeso,
+    precisao: melhor,
+    em: new Date().toISOString(),
+    leituras: boas.length,
+  };
 }
 
 /** Os trechos entre pontos seguidos (e, fechado, do último de volta ao primeiro). */
