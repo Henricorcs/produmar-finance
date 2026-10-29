@@ -364,10 +364,14 @@ export function ObrasEstoqueTab({
               onValueChange={(v) => setLocalFiltro(v === TODOS ? "" : v)}
             >
               <SelectTrigger aria-label="Escolher o setor">
-                <span className="flex min-w-0 items-center gap-2">
+                {/* div, não span: o gatilho corta em uma linha todo span filho
+                    direto, e isso empilhava o ícone em cima do nome */}
+                <div className="flex min-w-0 items-center gap-2">
                   <MapPinned className="w-4 h-4 text-sky-500 flex-shrink-0" />
-                  <SelectValue />
-                </span>
+                  <span className="truncate">
+                    <SelectValue />
+                  </span>
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={TODOS}>Todos os setores ({obras.length})</SelectItem>
