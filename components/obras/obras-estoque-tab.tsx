@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatBRL } from "@/lib/utils";
 import { num } from "@/components/almoxarifado/supply-shared";
 import { SupplyObraDialog } from "./estoque-obra-dialog";
@@ -60,6 +61,8 @@ interface Props {
 
 /** A chave de agrupamento das obras sem local — vale como um grupo à parte. */
 const SEM_LOCAL = "sem-local";
+/** "Todos os setores" no menu do filtro (o menu não aceita valor vazio). */
+const TODOS = "todos";
 
 /**
  * A lista de OBRAS (tabela supply_obras) — o coração do módulo.
@@ -353,24 +356,28 @@ export function ObrasEstoqueTab({
             />
           </div>
 
-          {/* Filtro por local */}
+          {/* Filtro por setor — num menu: os botões em fila não cabiam na tela
+              do celular e era preciso arrastar para achar a fazenda */}
           {gruposFiltro.length > 1 && (
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
-              <FiltroChip
-                label="Todos"
-                ativo={localFiltro === ""}
-                onClick={() => setLocalFiltro("")}
-              />
-              {gruposFiltro.map((g) => (
-                <FiltroChip
-                  key={g.id}
-                  label={g.nome}
-                  count={g.count}
-                  ativo={localFiltro === g.id}
-                  onClick={() => setLocalFiltro(localFiltro === g.id ? "" : g.id)}
-                />
-              ))}
-            </div>
+            <Select
+              value={localFiltro || TODOS}
+              onValueChange={(v) => setLocalFiltro(v === TODOS ? "" : v)}
+            >
+              <SelectTrigger aria-label="Escolher o setor">
+                <span className="flex min-w-0 items-center gap-2">
+                  <MapPinned className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                  <SelectValue />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS}>Todos os setores ({obras.length})</SelectItem>
+                {gruposFiltro.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.nome} ({g.count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
 
           {filtradas.length === 0 ? (
@@ -495,34 +502,6 @@ export function ObrasEstoqueTab({
         presetObraId={soltasObraId}
       />
     </div>
-  );
-}
-
-/** Chip do filtro por local. */
-function FiltroChip({
-  label,
-  count,
-  ativo,
-  onClick,
-}: {
-  label: string;
-  count?: number;
-  ativo: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-        ativo
-          ? "bg-produmar-600 border-produmar-600 text-white"
-          : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-      }`}
-    >
-      {label}
-      {count != null && <span className="opacity-60 ml-1 tabular-nums">{count}</span>}
-    </button>
   );
 }
 
