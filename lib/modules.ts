@@ -20,6 +20,7 @@ import {
   Printer,
   Landmark,
   PenLine,
+  Ruler,
   type LucideIcon,
 } from "lucide-react";
 
@@ -137,7 +138,11 @@ export const APP_MODULES: AppModule[] = [
     icon: HardHat,
     accentIcon:
       "bg-orange-50 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400",
-    tabs: [{ href: "/obras", label: "Obras", short: "Obras", icon: HardHat }],
+    tabs: [
+      { href: "/obras", label: "Obras", short: "Obras", icon: HardHat },
+      // a conta é no celular, pelo GPS: começo e fim da cerca → metragem
+      { href: "/medir-cerca", label: "Medir cerca", short: "Cerca", icon: Ruler },
+    ],
   },
   {
     // Os imóveis alugados: cadastro com código, contrato preenchido e o
