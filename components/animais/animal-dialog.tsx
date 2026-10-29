@@ -26,6 +26,7 @@ import {
   parseDecimal,
   formatDecimalInput,
   speciesOf,
+  ehNelorePO,
 } from "./animal-shared";
 import { AnimalBreedsDialog } from "./animal-breeds-dialog";
 import type { Animal, AnimalBreed, AnimalSex, AnimalSpecies } from "@/lib/types";
@@ -53,6 +54,7 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
   const [breedId, setBreedId] = useState("");
   const [weight, setWeight] = useState("");
   const [notes, setNotes] = useState("");
+  const [abcz, setAbcz] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [breedsOpen, setBreedsOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -66,6 +68,7 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
     setBreedId(animal?.breed_id ?? "");
     setWeight(animal && animal.weight ? String(animal.weight).replace(".", ",") : "");
     setNotes(animal?.notes ?? "");
+    setAbcz(animal?.abcz_code ?? "");
     setPhotos([]);
     setError(null);
   }, [open, animal, defaultSpecies]);
@@ -75,6 +78,9 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
     () => breeds.filter((b) => speciesOf(b.species) === species),
     [breeds, species]
   );
+
+  /** O registro da ABCZ só existe para o Nelore PO. */
+  const nelorePO = ehNelorePO(breeds.find((b) => b.id === breedId)?.name);
 
   /** Trocou o tipo: a raça de antes é de outro bicho, sai da frente. */
   function pickSpecies(v: AnimalSpecies) {
@@ -102,6 +108,8 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
         breed_id: breedId || null,
         weight: parseDecimal(weight),
         notes,
+        // outra raça: o registro da ABCZ não vale e sai (se tinha); sem ele, nem vai
+        abcz_code: nelorePO ? abcz : animal?.abcz_code ? null : undefined,
       };
       const r = animal ? await updateAnimal(animal.id, input) : await createAnimal(input);
       if (r && "error" in r) {
@@ -209,6 +217,21 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
               </p>
             )}
           </div>
+
+          {nelorePO && (
+            <div className="space-y-1.5">
+              <Label htmlFor="animal_abcz">Registro ABCZ</Label>
+              <Input
+                id="animal_abcz"
+                value={abcz}
+                onChange={(e) => setAbcz(upperKeepingCaret(e))}
+                placeholder="RGN / RGD do animal"
+                autoCapitalize="characters"
+                autoComplete="off"
+                className="h-11 sm:h-10"
+              />
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>Fotos</Label>

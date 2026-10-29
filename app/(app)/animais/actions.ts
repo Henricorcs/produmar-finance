@@ -107,6 +107,13 @@ export interface AnimalInput {
   breed_id?: string | null;
   weight?: number | null;
   notes?: string | null;
+  /** Registro na ABCZ (Nelore PO). Sem o campo (undefined) = não mexe. */
+  abcz_code?: string | null;
+}
+
+/** O registro da ABCZ só entra quando a tela mandou (migration 128). */
+function abczDoInput(input: AnimalInput) {
+  return input.abcz_code === undefined ? {} : { abcz_code: clean(input.abcz_code) };
 }
 
 export async function createAnimal(input: AnimalInput) {
@@ -129,6 +136,7 @@ export async function createAnimal(input: AnimalInput) {
       breed_id: input.breed_id || null,
       weight: normWeight(input.weight),
       notes: clean(input.notes),
+      ...abczDoInput(input),
       created_by: user.id,
     })
     .select("id")
@@ -182,6 +190,7 @@ export async function updateAnimal(id: string, input: AnimalInput) {
       breed_id: input.breed_id || null,
       weight,
       notes: clean(input.notes),
+      ...abczDoInput(input),
     })
     .eq("id", id);
 

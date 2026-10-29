@@ -224,6 +224,14 @@ export function speciesOf(species?: AnimalSpecies | null): AnimalSpecies {
 }
 
 /**
+ * Raça Nelore PO (puro de origem): só ela tem registro na ABCZ. Aceita
+ * "NELORE PO", "Nelore P.O.", "NELORE (PO)".
+ */
+export function ehNelorePO(raca?: string | null): boolean {
+  return /NELORE.*\bP\.?\s*O\b/i.test(raca ?? "");
+}
+
+/**
  * Só os animais da criação aberta na tela (aba Ovinos → só ovinos). Sem
  * criação ("todos os tipos"), a lista inteira.
  */

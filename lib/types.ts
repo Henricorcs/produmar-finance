@@ -838,6 +838,8 @@ export interface Animal {
   /** Lançamento gerado no financeiro pela venda — some junto se a saída for desfeita. */
   exit_transaction_id?: string | null;
   notes: string | null;
+  /** Registro na ABCZ — só do Nelore PO (migration 128). */
+  abcz_code?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

@@ -42,6 +42,7 @@ import {
   addMonths,
   categoryLabel,
   doseRuleLabel,
+  ehNelorePO,
   formatAge,
   formatMl,
   formatPeriod,
@@ -571,6 +572,9 @@ export function AnimalDetailDialog({
                 <InfoRow label="Tipo" value={names.label} />
                 <InfoRow label="Sexo" value={SEX_LABELS[animal.sex]} />
                 <InfoRow label="Raça" value={animal.breed_name ?? "—"} />
+                {ehNelorePO(animal.breed_name) && animal.abcz_code && (
+                  <InfoRow label="ABCZ" value={animal.abcz_code} />
+                )}
                 <InfoRow
                   label="Nascimento"
                   value={animal.birth_date ? formatDate(animal.birth_date) : "—"}
