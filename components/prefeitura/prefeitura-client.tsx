@@ -561,9 +561,8 @@ function TabelaNotas({
               {mostrarSecretaria && <th className="px-2 py-2 text-left">Secretaria</th>}
               <th className="px-2 py-2 text-left">Emissão</th>
               <th className="px-2 py-2 text-right">Valor</th>
-              <th className="px-2 py-2 text-left">Situação</th>
-              <th className="px-2 py-2 text-left whitespace-nowrap">Data da baixa</th>
-              <th className="w-8" />
+              <th className="px-2 py-2 text-left whitespace-nowrap">Situação / pagamento</th>
+              <th className="hidden sm:table-cell w-8" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -585,7 +584,8 @@ function TabelaNotas({
                 Total
               </td>
               <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">{formatBRL(total)}</td>
-              <td colSpan={3} />
+              <td />
+              <td className="hidden sm:table-cell" />
             </tr>
           </tfoot>
         </table>
@@ -633,7 +633,7 @@ function LinhaNota({
         </button>
       </td>
       {secretaria !== null && (
-        <td className="px-2 py-2 text-xs text-slate-600 dark:text-slate-300 min-w-[10rem]">{secretaria}</td>
+        <td className="px-2 py-2 text-xs text-slate-600 dark:text-slate-300 min-w-[7rem] sm:min-w-[10rem]">{secretaria}</td>
       )}
       <td className="px-2 py-2 tabular-nums text-slate-600 dark:text-slate-300">
         {formatDate(nota.data_emissao)}
@@ -646,8 +646,15 @@ function LinhaNota({
         {formatBRL(Number(nota.valor))}
       </td>
       <td className="px-2 py-2 whitespace-nowrap">
+        {/* a data do pagamento fica junto do OK: no iPhone uma coluna própria
+            ia parar fora da tela */}
         {nota.situacao === "pago" ? (
-          <Badge variant="success">OK</Badge>
+          <span className="inline-flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
+            <Badge variant="success">OK</Badge>
+            <span className="text-xs tabular-nums text-slate-600 dark:text-slate-300">
+              {nota.data_baixa ? `pago em ${formatDate(nota.data_baixa)}` : "sem data"}
+            </span>
+          </span>
         ) : cancelada ? (
           <Badge variant="muted">Cancelada</Badge>
         ) : (
@@ -657,10 +664,7 @@ function LinhaNota({
           </span>
         )}
       </td>
-      <td className="px-2 py-2 tabular-nums text-slate-600 dark:text-slate-300">
-        {nota.data_baixa ? formatDate(nota.data_baixa) : "—"}
-      </td>
-      <td className="px-1 py-2">
+      <td className="hidden sm:table-cell px-1 py-2">
         <button
           onClick={onEditar}
           title="Editar"

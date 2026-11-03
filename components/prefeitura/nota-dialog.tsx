@@ -225,7 +225,7 @@ export function NotaDialog({
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pn_baixa">Data da baixa</Label>
+              <Label htmlFor="pn_baixa">Data do pagamento</Label>
               <Input
                 id="pn_baixa"
                 type="date"
