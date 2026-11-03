@@ -71,16 +71,18 @@ function precoCombinado(d: DiaristaResumo): string {
     return v > 0 ? `${formatBRL(v)}/mês` : "salário não informado";
   }
   const modo = d.payment_mode ?? "diaria";
+  const diaria = Number(d.daily_rate ?? 0);
+  // o empreiteiro do metro/obra que também trabalha na diária mostra os dois
+  const eDiaria = diaria > 0 ? ` · ${formatBRL(diaria)}/dia` : "";
   if (modo === "metro") {
     const v = Number(d.meter_rate ?? 0);
-    return v > 0 ? `${formatBRL(v)}/m` : "metro não combinado";
+    return (v > 0 ? `${formatBRL(v)}/m` : "metro não combinado") + eDiaria;
   }
   if (modo === "obra") {
     const v = Number(d.job_rate ?? 0);
-    return v > 0 ? `${formatBRL(v)} por obra` : "valor da obra não combinado";
+    return (v > 0 ? `${formatBRL(v)} por obra` : "valor da obra não combinado") + eDiaria;
   }
-  const v = Number(d.daily_rate ?? 0);
-  return v > 0 ? `${formatBRL(v)}/dia` : "diária não combinada";
+  return diaria > 0 ? `${formatBRL(diaria)}/dia` : "diária não combinada";
 }
 
 /**

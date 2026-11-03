@@ -340,7 +340,9 @@ export function ServicoDialog({
                   : ""}
                 {(profissional.payment_mode ?? "diaria") === "diaria"
                   ? ` · ${formatBRL(Number(profissional.daily_rate))}/dia — a diária é marcada no calendário, não aqui`
-                  : ""}
+                  : Number(profissional.daily_rate) > 0
+                    ? ` · também na diária, ${formatBRL(Number(profissional.daily_rate))}/dia — o dia dele é marcado no calendário, não aqui`
+                    : ""}
               </p>
             )}
             <p className="text-[11px] text-slate-400 dark:text-slate-500">

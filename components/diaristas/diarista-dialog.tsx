@@ -54,6 +54,11 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
   const [meterRate, setMeterRate] = useState("");
   const [jobRate, setJobRate] = useState("");
   const [salary, setSalary] = useState("");
+  /**
+   * O empreiteiro do metro ou da obra que às vezes vem por dia (o cerqueiro:
+   * cerca no metro, um dia avulso na diária). Ligado, a diária é obrigatória.
+   */
+  const [tambemDiaria, setTambemDiaria] = useState(false);
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -71,12 +76,16 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
     setMeterRate(diarista ? formatBRLInput(Number(diarista.meter_rate ?? 0)) : "");
     setJobRate(diarista ? formatBRLInput(Number(diarista.job_rate ?? 0)) : "");
     setSalary(diarista ? formatBRLInput(Number(diarista.monthly_salary ?? 0)) : "");
+    // quem já tem diária combinada abre com a opção ligada — nada some calado
+    setTambemDiaria(Number(diarista?.daily_rate ?? 0) > 0);
     setNotes(diarista?.notes ?? "");
     setError(null);
   }, [open, diarista]);
 
   const empreiteiro = workerType === "empreiteiro";
   const clt = workerType === "clt";
+  /** Empreiteiro no metro ou na obra: a diária vira uma opção à parte. */
+  const diariaOpcional = empreiteiro && paymentMode !== "diaria";
 
   /**
    * O diarista é pago por dia, e ponto: a escolha da forma de pagamento só
@@ -115,13 +124,19 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
       setError("Informe o valor da obra combinado com ele");
       return;
     }
+    // sem o valor, o dia dele marcado no calendário entraria valendo zero
+    if (diariaOpcional && tambemDiaria && parseMoney(dailyRate) <= 0) {
+      setError("Informe o valor da diária dele");
+      return;
+    }
 
     startTransition(async () => {
       const input = {
         name,
         phone,
         pix_key: pixKey,
-        daily_rate: parseMoney(dailyRate),
+        // desligou "também na diária": a diária combinada sai do cadastro
+        daily_rate: diariaOpcional && !tambemDiaria ? 0 : parseMoney(dailyRate),
         worker_type: workerType,
         profession,
         payment_mode: modo,
@@ -299,6 +314,50 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
             </div>
           )}
 
+          {/*
+            TAMBÉM NA DIÁRIA — o empreiteiro do metro ou da obra que às vezes
+            trabalha por dia. Ligado, pede o valor da diária: é o que o dia dele
+            marcado no calendário passa a valer.
+          */}
+          {diariaOpcional && (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 space-y-2.5">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tambemDiaria}
+                  onChange={(e) => setTambemDiaria(e.target.checked)}
+                  className="w-5 h-5 accent-teal-600 flex-shrink-0"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Também trabalha na diária
+                  </span>
+                  <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                    Quando vier por dia, é marcado no calendário e ganha a diária
+                  </span>
+                </span>
+              </label>
+              {tambemDiaria && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="di_rate">Valor da diária (R$) *</Label>
+                  <Input
+                    id="di_rate"
+                    value={dailyRate}
+                    onChange={(e) => setDailyRate(formatBRLInput(e.target.value))}
+                    placeholder="0,00"
+                    inputMode="decimal"
+                    className="tabular-nums text-lg font-semibold"
+                    autoComplete="off"
+                  />
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                    É o que cada dia dele marcado no calendário vale. Mudar aqui NÃO
+                    mexe no que já foi lançado.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* A profissão */}
           <div className="space-y-1.5">
             <Label htmlFor="di_prof">Profissão</Label>
@@ -328,30 +387,29 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="di_rate">
-              Valor da diária (R$)
-              {(empreiteiro && paymentMode !== "diaria") || clt
-                ? " — se ele também vier por dia"
-                : ""}
-            </Label>
-            <Input
-              id="di_rate"
-              value={dailyRate}
-              onChange={(e) => setDailyRate(formatBRLInput(e.target.value))}
-              placeholder="0,00"
-              inputMode="decimal"
-              className="tabular-nums text-lg font-semibold"
-              autoComplete="off"
-            />
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              {empreiteiro
-                ? "O empreiteiro ganha pelo serviço; a diária aqui só vale se um dia ele for marcado no calendário. Pode ficar zerada."
-                : clt
+          {/* a diária do empreiteiro do metro/obra fica na opção lá em cima */}
+          {!diariaOpcional && (
+            <div className="space-y-1.5">
+              <Label htmlFor="di_rate">
+                Valor da diária (R$)
+                {clt ? " — se ele também vier por dia" : ""}
+              </Label>
+              <Input
+                id="di_rate"
+                value={dailyRate}
+                onChange={(e) => setDailyRate(formatBRLInput(e.target.value))}
+                placeholder="0,00"
+                inputMode="decimal"
+                className="tabular-nums text-lg font-semibold"
+                autoComplete="off"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                {clt
                   ? "O CLT ganha pelo salário; a diária aqui só vale para um dia avulso, fora do salário, marcado no calendário. Pode ficar zerada."
                   : "É o que cada dia marcado no calendário passa a valer. Mudar aqui NÃO mexe no que já foi lançado."}
-            </p>
-          </div>
+              </p>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="di_pix">Chave PIX</Label>
