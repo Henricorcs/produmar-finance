@@ -8,6 +8,7 @@ import {
   MULTA_PADRAO,
   barrasDoBoleto,
   boletoEmAberto,
+  boletoNoBanco,
   linhaDigitavelFormatada,
   nomeDoMes,
 } from "@/lib/alugueis-boletos";
@@ -84,7 +85,9 @@ export default async function ImprimirBoletosPage({ params }: { params: { id: st
             <div className="border-2 border-slate-800 rounded p-3">
               <div className="flex items-start justify-between gap-3 border-b border-slate-300 pb-1.5">
                 <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Beneficiário</p>
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                    {boletoNoBanco(b) ? "Beneficiário" : "Carnê de aluguel · pagar a"}
+                  </p>
                   <p className="text-sm font-bold">PRODUMAR SERVIÇOS LTDA</p>
                 </div>
                 <div className="text-right">
@@ -115,6 +118,22 @@ export default async function ImprimirBoletosPage({ params }: { params: { id: st
                 </div>
               </div>
 
+              {!boletoNoBanco(b) ? (
+                <div className="pt-2 space-y-2 text-[11px]">
+                  <p className="text-[10px] text-slate-600 leading-snug">
+                    Pagamento direto à PRODUMAR (Pix, transferência ou dinheiro). Depois do vencimento: multa de{" "}
+                    {multa}% e juros de {juros}% ao mês.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 pt-3">
+                    <p className="border-t border-slate-500 pt-0.5 text-[9px] uppercase text-slate-500">
+                      Recebido em ____/____/________
+                    </p>
+                    <p className="border-t border-slate-500 pt-0.5 text-[9px] uppercase text-slate-500">
+                      Assinatura de quem recebeu
+                    </p>
+                  </div>
+                </div>
+              ) : (
               <div className="flex gap-3 pt-2">
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <p className="font-mono text-[13px] font-bold tracking-tight break-all">
@@ -133,6 +152,7 @@ export default async function ImprimirBoletosPage({ params }: { params: { id: st
                   </div>
                 )}
               </div>
+              )}
             </div>
             {b.pdf_url && (
               <a

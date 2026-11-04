@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { HandCoins, Receipt, Undo2 } from "lucide-react";
-import { boletoEmAberto, situacaoDoBoleto } from "@/lib/alugueis-boletos";
+import { boletoEmAberto, boletoNoBanco, situacaoDoBoleto } from "@/lib/alugueis-boletos";
 import {
   Dialog,
   DialogContent,
@@ -161,7 +161,7 @@ export function BaixaDialog({ cobranca, onClose, mesLabel, boleto = null }: Prop
                     </a>
                   )}
                 </p>
-                {boletoEmAberto(boleto) && (
+                {boletoEmAberto(boleto) && boletoNoBanco(boleto) && (
                   <p>
                     Pago pelo boleto ou Pix, a baixa entra sozinha. Se ele pagou de outro jeito, dê a baixa aqui e
                     cancele o boleto em Imóveis → Boletos.

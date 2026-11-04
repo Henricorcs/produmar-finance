@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Ban, Copy, ExternalLink, Printer, Receipt, RefreshCw, Sparkles } from "lucide-react";
+import { Ban, Copy, ExternalLink, Landmark, Printer, Receipt, RefreshCw, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,13 +15,16 @@ import { cn, formatBRL, formatDate, localDateISO } from "@/lib/utils";
 import {
   JUROS_PADRAO,
   MULTA_PADRAO,
+  VALOR_MINIMO_BOLETO,
   boletoEmAberto,
-  mesesDoContrato,
+  boletoNoBanco,
+  mesesParaGerar,
   nomeDoMes,
   situacaoDoBoleto,
 } from "@/lib/alugueis-boletos";
 import {
   cancelarBoletoAluguel,
+  gerarBoletoNoBanco,
   gerarBoletosDoContrato,
   refazerBoletosDoContrato,
 } from "@/app/(app)/alugueis/actions";
@@ -41,13 +44,16 @@ interface Props {
 }
 
 /**
- * OS BOLETOS DO CONTRATO — um por mês, emitidos na Cora com Pix.
+ * OS BOLETOS DO CONTRATO — um por mês.
  *
- * Daqui sai o carnê para entregar ao inquilino. Quando ele paga, a Cora avisa
- * e a baixa do mês acontece sozinha.
+ * Eles nascem SÓ NO SISTEMA: saem no carnê para pagar direto à PRODUMAR. Se
+ * precisar, "Gerar no banco" registra o boleto na Cora (com código de barras
+ * e Pix) — um de cada vez ou todos — e aí a baixa do mês entra sozinha quando
+ * o inquilino paga.
  */
 export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, onClose }: Props) {
   const [isPending, startTransition] = useTransition();
+  const [acao, setAcao] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [recado, setRecado] = useState<string | null>(null);
   const [copiado, setCopiado] = useState<string | null>(null);
@@ -55,11 +61,13 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
   const hoje = localDateISO();
   const lista = [...boletos].sort((a, b) => a.due_date.localeCompare(b.due_date));
   const comBoleto = new Set(lista.map((b) => b.competencia));
-  const semBoleto = contrato
-    ? mesesDoContrato(contrato).filter((m) => !comBoleto.has(m.competencia) && m.due_date >= hoje).length
-    : 0;
+  const semBoleto = contrato ? mesesParaGerar(contrato, hoje).filter((m) => !comBoleto.has(m.competencia)).length : 0;
   const abertosFuturos = lista.filter((b) => boletoEmAberto(b) && b.due_date >= hoje).length;
   const emAberto = lista.filter(boletoEmAberto).length;
+  /** Só no sistema e ainda dá para mandar ao banco (não venceu, valor mínimo). */
+  const podeIrAoBanco = (b: RentalBoleto) =>
+    b.cora_status === "SISTEMA" && b.due_date >= hoje && Number(b.amount) >= VALOR_MINIMO_BOLETO;
+  const paraOBanco = lista.filter(podeIrAoBanco).length;
 
   function fechar() {
     setErro(null);
@@ -67,11 +75,14 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
     onClose();
   }
 
-  function rodar(acao: () => Promise<unknown>) {
+  /** Roda a ação; `onde` é para o recado ("gerado no banco"). */
+  function rodar(chave: string, onde: string, fazer: () => Promise<unknown>) {
     setErro(null);
     setRecado(null);
+    setAcao(chave);
     startTransition(async () => {
-      const r = await acao();
+      const r = await fazer();
+      setAcao(null);
       const falha = actionError(r);
       if (falha) {
         setErro(falha);
@@ -79,11 +90,9 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
       }
       if (r && typeof r === "object" && "gerados" in r) {
         const { gerados, aviso } = r as { gerados: number; aviso: string | null };
-        setRecado(
-          [gerados > 0 ? `${gerados} boleto${gerados === 1 ? "" : "s"} gerado${gerados === 1 ? "" : "s"}.` : "", aviso]
-            .filter(Boolean)
-            .join(" ") || "Nenhum boleto novo para gerar."
-        );
+        const feito =
+          gerados > 0 ? `${gerados} boleto${gerados === 1 ? "" : "s"} gerado${gerados === 1 ? "" : "s"} ${onde}.` : "";
+        setRecado([feito, aviso].filter(Boolean).join(" ") || "Nenhum boleto novo para gerar.");
       }
     });
   }
@@ -99,6 +108,7 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
   }
 
   const aviso = recado ?? mensagem ?? null;
+  const link = "text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1 disabled:opacity-40";
 
   return (
     <Dialog open={!!contrato} onOpenChange={(v) => !v && fechar()}>
@@ -144,6 +154,7 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
               <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden max-h-[45vh] overflow-y-auto">
                 {lista.map((b) => {
                   const s = situacaoDoBoleto(b, hoje);
+                  const banco = boletoNoBanco(b);
                   return (
                     <div key={b.id} className="px-3 py-2.5 bg-white dark:bg-slate-900 space-y-1">
                       <div className="flex items-center justify-between gap-2">
@@ -153,6 +164,7 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                           </p>
                           <p className="text-[11px] text-slate-400 dark:text-slate-500">
                             vence {formatDate(b.due_date)}
+                            {banco ? " · no banco" : ""}
                             {b.paid_at ? ` · pago em ${formatDate(b.paid_at)}` : ""}
                           </p>
                         </div>
@@ -167,33 +179,38 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                       </div>
                       {boletoEmAberto(b) && (
                         <div className="flex items-center gap-3 flex-wrap">
-                          {b.pdf_url && (
-                            <a
-                              href={b.pdf_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                          {podeIrAoBanco(b) && (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    `Gerar no banco (Cora) o boleto de ${nomeDoMes(b.competencia)}, ${formatBRL(Number(b.amount))}? Ele passa a ter código de barras e Pix.`
+                                  )
+                                )
+                                  rodar(`b${b.id}`, "no banco", () => gerarBoletoNoBanco(contrato.id, b.id));
+                              }}
+                              className={link}
                             >
+                              <Landmark className="w-3 h-3" />
+                              {acao === `b${b.id}` ? "Gerando no banco..." : "Gerar no banco"}
+                            </button>
+                          )}
+                          {b.pdf_url && (
+                            <a href={b.pdf_url} target="_blank" rel="noreferrer" className={link}>
                               <ExternalLink className="w-3 h-3" />
                               PDF do boleto
                             </a>
                           )}
                           {b.digitable_line && (
-                            <button
-                              type="button"
-                              onClick={() => copiar(b.digitable_line!, `l${b.id}`)}
-                              className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
-                            >
+                            <button type="button" onClick={() => copiar(b.digitable_line!, `l${b.id}`)} className={link}>
                               <Copy className="w-3 h-3" />
                               {copiado === `l${b.id}` ? "Copiado!" : "Copiar código"}
                             </button>
                           )}
                           {b.pix_emv && (
-                            <button
-                              type="button"
-                              onClick={() => copiar(b.pix_emv!, `p${b.id}`)}
-                              className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
-                            >
+                            <button type="button" onClick={() => copiar(b.pix_emv!, `p${b.id}`)} className={link}>
                               <Copy className="w-3 h-3" />
                               {copiado === `p${b.id}` ? "Copiado!" : "Copiar Pix"}
                             </button>
@@ -204,10 +221,12 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                             onClick={() => {
                               if (
                                 confirm(
-                                  `Cancelar na Cora o boleto de ${nomeDoMes(b.competencia)}? O inquilino não vai mais conseguir pagar por ele.`
+                                  banco
+                                    ? `Cancelar no banco o boleto de ${nomeDoMes(b.competencia)}? O inquilino não vai mais conseguir pagar por ele.`
+                                    : `Cancelar o boleto de ${nomeDoMes(b.competencia)}?`
                                 )
                               )
-                                rodar(() => cancelarBoletoAluguel(b.id));
+                                rodar(`c${b.id}`, "", () => cancelarBoletoAluguel(b.id));
                             }}
                             className="text-[11px] font-medium text-red-600 dark:text-red-400 flex items-center gap-1 disabled:opacity-40"
                           >
@@ -223,9 +242,10 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
             )}
 
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              Os boletos saem pela Cora com Pix, multa de {contrato.late_fee_percent ?? MULTA_PADRAO}% e juros de{" "}
-              {contrato.interest_percent ?? JUROS_PADRAO}% ao mês depois do vencimento. Quando o inquilino paga, a baixa do mês
-              acontece sozinha.
+              Os boletos nascem só no sistema e saem no carnê para pagar direto à PRODUMAR. &quot;Gerar no
+              banco&quot; registra na Cora, com código de barras, Pix, multa de{" "}
+              {contrato.late_fee_percent ?? MULTA_PADRAO}% e juros de {contrato.interest_percent ?? JUROS_PADRAO}% ao
+              mês — e aí a baixa do mês entra sozinha quando o inquilino paga.
             </p>
 
             {erro && (
@@ -245,10 +265,10 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
               onClick={() => {
                 if (
                   confirm(
-                    `Cancelar os ${abertosFuturos} boleto(s) que ainda não venceram e gerar de novo com o valor de hoje do contrato (${formatBRL(Number(contrato.monthly_amount))}, dia ${contrato.due_day})?`
+                    `Cancelar os ${abertosFuturos} boleto(s) que ainda não venceram e gerar de novo com o valor de hoje do contrato (${formatBRL(Number(contrato.monthly_amount))}, dia ${contrato.due_day})? Os que estavam no banco voltam para o banco.`
                   )
                 )
-                  rodar(() => refazerBoletosDoContrato(contrato.id));
+                  rodar("refazer", "", () => refazerBoletosDoContrato(contrato.id));
               }}
               className="h-11 sm:h-10"
             >
@@ -261,11 +281,30 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
               type="button"
               variant="outline"
               disabled={isPending}
-              onClick={() => rodar(() => gerarBoletosDoContrato(contrato.id))}
+              onClick={() => rodar("sistema", "no sistema", () => gerarBoletosDoContrato(contrato.id))}
               className="h-11 sm:h-10"
             >
               <Sparkles className="w-4 h-4" />
-              {isPending ? "Gerando..." : `Gerar os que faltam (${semBoleto})`}
+              {acao === "sistema" ? "Gerando..." : `Gerar no sistema (${semBoleto})`}
+            </Button>
+          )}
+          {contrato && paraOBanco > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => {
+                if (
+                  confirm(
+                    `Gerar no banco (Cora) os ${paraOBanco} boleto(s) que estão só no sistema? Cada um passa a ter código de barras e Pix.`
+                  )
+                )
+                  rodar("banco", "no banco", () => gerarBoletoNoBanco(contrato.id, null));
+              }}
+              className="h-11 sm:h-10"
+            >
+              <Landmark className="w-4 h-4" />
+              {acao === "banco" ? "Gerando no banco..." : `Gerar todos no banco (${paraOBanco})`}
             </Button>
           )}
           {contrato && emAberto > 0 && (

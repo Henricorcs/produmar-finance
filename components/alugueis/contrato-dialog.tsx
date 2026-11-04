@@ -365,7 +365,7 @@ export function ContratoDialog({
       onClose();
       const { gerados, aviso } = r.boletos;
       const feitos =
-        gerados > 0 ? `${gerados} boleto${gerados === 1 ? "" : "s"} gerado${gerados === 1 ? "" : "s"} na Cora.` : "";
+        gerados > 0 ? `${gerados} boleto${gerados === 1 ? "" : "s"} gerado${gerados === 1 ? "" : "s"} no sistema. Se precisar registrar no banco, toque em "Gerar no banco".` : "";
       onSalvo?.(r.id, [feitos, aviso].filter(Boolean).join(" ") || null, true);
     });
   }

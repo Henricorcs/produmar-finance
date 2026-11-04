@@ -60,14 +60,33 @@ export function mesesDoContrato(
   return meses;
 }
 
+/**
+ * Os meses que ganham boleto quando se gera: do mês de hoje em diante (o
+ * vencido do mês corrente entra; meses antigos, não — já foram acertados).
+ */
+export function mesesParaGerar(
+  c: Pick<RentalContract, "start_date" | "end_date" | "months" | "due_day">,
+  hoje: string = localDateISO()
+): MesDoBoleto[] {
+  const inicioDoMes = `${hoje.slice(0, 7)}-01`;
+  return mesesDoContrato(c).filter((m) => m.due_date >= inicioDoMes);
+}
+
 /** O boleto que vale para o mês (o cancelado não vale). */
 export function boletoValendo(b: Pick<RentalBoleto, "cora_status">): boolean {
   return b.cora_status !== "CANCELLED";
 }
 
-/** Ainda dá para pagar (e para cancelar) na Cora. */
+/** Ainda dá para pagar (e para cancelar) — no sistema ou no banco. */
 export function boletoEmAberto(b: Pick<RentalBoleto, "cora_status">): boolean {
-  return b.cora_status === "OPEN" || b.cora_status === "LATE" || b.cora_status === "DRAFT";
+  return (
+    b.cora_status === "SISTEMA" || b.cora_status === "OPEN" || b.cora_status === "LATE" || b.cora_status === "DRAFT"
+  );
+}
+
+/** Já foi registrado no banco (tem código de barras e Pix). */
+export function boletoNoBanco(b: Pick<RentalBoleto, "cora_status" | "cora_invoice_id">): boolean {
+  return b.cora_status !== "SISTEMA" && !!b.cora_invoice_id;
 }
 
 /** O rótulo do boleto, do jeito que se fala. */
@@ -80,6 +99,10 @@ export function situacaoDoBoleto(
     return { label: "Pago", chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" };
   if (s === "CANCELLED")
     return { label: "Cancelado", chip: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" };
+  if (s === "SISTEMA")
+    return b.due_date < hoje
+      ? { label: "Vencido · só no sistema", chip: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" }
+      : { label: "Só no sistema", chip: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" };
   if (s === "IN_PAYMENT")
     return { label: "Pagando", chip: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400" };
   if (s === "LATE" || b.due_date < hoje)
