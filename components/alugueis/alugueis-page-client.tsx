@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -23,6 +23,9 @@ import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
 import { COBRANCA_META, cobrancasDoMes, type CobrancaDoMes } from "@/lib/alugueis";
 import { enderecoCurto } from "@/lib/alugueis-contrato";
+import { boletoEmAberto, boletoNoBanco } from "@/lib/alugueis-boletos";
+import { actionError } from "@/lib/action-result";
+import { conferirPagamentosNoBanco } from "@/app/(app)/alugueis/actions";
 import {
   enderecoCurto as enderecoCurtoCompra,
   enderecoDoImovel as enderecoDoImovelCompra,
@@ -135,6 +138,44 @@ export function AlugueisPageClient({
     setRecadoBoletos(recado);
     setBoletosDe(contractId);
   }
+
+  // ── pagamento no banco → baixa no sistema ──
+  // O webhook da Cora já dá a baixa na hora. Ao abrir a tela, o sistema
+  // confere também na Cora os boletos em aberto no banco, para pegar o
+  // pagamento cujo aviso se perdeu.
+  const temBoletoNoBanco = useMemo(
+    () => boletos.some((b) => boletoNoBanco(b) && boletoEmAberto(b)),
+    [boletos]
+  );
+  const [conferindo, setConferindo] = useState(false);
+  const [recadoBanco, setRecadoBanco] = useState<string | null>(null);
+
+  async function conferirNoBanco(agora: boolean) {
+    setConferindo(true);
+    if (agora) setRecadoBanco(null);
+    const r = await conferirPagamentosNoBanco(agora);
+    setConferindo(false);
+    const falha = actionError(r);
+    if (falha) {
+      if (agora) setRecadoBanco(falha);
+      return;
+    }
+    const baixados = r && "baixados" in r ? r.baixados ?? 0 : 0;
+    if (baixados > 0) {
+      setRecadoBanco(
+        `${baixados} pagamento${baixados === 1 ? "" : "s"} recebido${baixados === 1 ? "" : "s"} no banco e baixado${baixados === 1 ? "" : "s"} agora.`
+      );
+      router.refresh();
+    } else if (agora) {
+      setRecadoBanco("Conferido no banco: nenhum pagamento novo.");
+    }
+  }
+
+  useEffect(() => {
+    if (temBoletoNoBanco) void conferirNoBanco(false);
+    // só ao abrir a tela
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [year, monthNum] = month.split("-").map(Number);
   const mesLabel = new Date(year, monthNum - 1, 1).toLocaleDateString("pt-BR", {
@@ -358,9 +399,27 @@ export function AlugueisPageClient({
             </div>
           )}
 
+          {(temBoletoNoBanco || recadoBanco) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => conferirNoBanco(true)}
+                disabled={conferindo}
+                className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1 disabled:opacity-50"
+              >
+                <Landmark className="w-3.5 h-3.5" />
+                {conferindo ? "Conferindo no banco..." : "Conferir pagamentos no banco"}
+              </button>
+              {recadoBanco && (
+                <span className="text-[11px] text-slate-600 dark:text-slate-300">{recadoBanco}</span>
+              )}
+            </div>
+          )}
+
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
             O aluguel de cada mês nasce do contrato — não precisa lançar cobrança. Toque
-            na linha para dar baixa quando o inquilino pagar.
+            na linha para dar baixa quando o inquilino pagar. Boleto gerado no banco, quando
+            pago, é baixado sozinho.
           </p>
         </>
       ) : aba === "imoveis" ? (

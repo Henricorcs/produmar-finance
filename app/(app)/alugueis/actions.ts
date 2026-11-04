@@ -18,6 +18,7 @@ import {
   nomeDoMes,
 } from "@/lib/alugueis-boletos";
 import { vencimentoDoMes } from "@/lib/alugueis";
+import { conferirBoletosNaCora } from "@/lib/alugueis-baixa-cora";
 import { localDateISO } from "@/lib/utils";
 import type { RentalBoleto, RentalContractStatus, RentalContractView } from "@/lib/types";
 
@@ -660,6 +661,29 @@ export async function refazerBoletosDoContrato(contractId: string) {
   );
   revalidate();
   return { ok: true as const, gerados: r.gerados, aviso: [r.aviso, banco.aviso].filter(Boolean).join(" ") || null };
+}
+
+// a última conferência automática (por processo): abrir a tela várias vezes
+// seguidas não pergunta à Cora toda vez
+let ultimaConferencia = 0;
+
+/**
+ * Confere na Cora os boletos em aberto no banco e dá a baixa dos que o
+ * inquilino já pagou — pega o pagamento cujo aviso (webhook) se perdeu. A tela
+ * de Aluguéis chama sozinha ao abrir (no máximo a cada 5 minutos); o botão
+ * "Conferir pagamentos no banco" chama com `agora`.
+ */
+export async function conferirPagamentosNoBanco(agora = false) {
+  const supabase = createClient();
+  const user = await usuarioLogado(supabase);
+  if (!user) return { error: "Não autenticado" };
+  if (!agora && Date.now() - ultimaConferencia < 5 * 60 * 1000) return { ok: true as const, conferidos: 0, baixados: 0 };
+  ultimaConferencia = Date.now();
+  const r = await conferirBoletosNaCora(supabase);
+  if (r.baixados > 0) revalidate();
+  if (agora && r.erros.length > 0 && r.baixados === 0)
+    return { error: `Não consegui conferir no banco: ${r.erros[0]}` };
+  return { ok: true as const, conferidos: r.conferidos, baixados: r.baixados };
 }
 
 /** Cancela um boleto só (o inquilino pagou de outro jeito, por exemplo). */
