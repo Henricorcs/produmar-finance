@@ -1,9 +1,25 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { descartarAssinatura } from "@/lib/documentos-assinados";
-import type { RentalContractStatus } from "@/lib/types";
+import { criarBoleto, cancelarBoleto } from "@/lib/cora/client";
+import { validarCpfCnpj, tipoDocumento } from "@/lib/cpf-cnpj";
+import { enderecoCurto } from "@/lib/alugueis-contrato";
+import {
+  JUROS_PADRAO,
+  MAXIMO_DE_BOLETOS,
+  MULTA_PADRAO,
+  VALOR_MINIMO_BOLETO,
+  boletoEmAberto,
+  mesesDoContrato,
+  nomeDoMes,
+} from "@/lib/alugueis-boletos";
+import { vencimentoDoMes } from "@/lib/alugueis";
+import { localDateISO } from "@/lib/utils";
+import type { RentalBoleto, RentalContractStatus, RentalContractView } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ALUGUÉIS — imóveis, contratos e a baixa do aluguel de cada mês
@@ -277,13 +293,21 @@ export async function createRentalContract(input: RentalContractInput) {
   const falta = contractInvalido(input);
   if (falta) return { error: falta };
 
-  const { error } = await supabase
+  const { data: novo, error } = await supabase
     .from("rental_contracts")
-    .insert({ ...contractRow(input), created_by: user.id });
+    .insert({ ...contractRow(input), created_by: user.id })
+    .select("id")
+    .single();
 
-  if (error) return { error: aluguelError(error) };
+  if (error || !novo) return { error: aluguelError(error ?? { message: "Contrato não foi salvo" }) };
+
+  // Contrato fechado = boletos de todos os meses, já para entregar ao
+  // inquilino. Se a Cora falhar, o contrato fica salvo do mesmo jeito e a
+  // tela diz o que faltou (dá para gerar de novo em "Boletos").
+  const boletos = await emitirBoletos(supabase, novo.id, user.id);
+
   revalidate();
-  return { ok: true };
+  return { ok: true as const, id: novo.id as string, boletos };
 }
 
 export async function updateRentalContract(id: string, input: RentalContractInput) {
@@ -292,20 +316,45 @@ export async function updateRentalContract(id: string, input: RentalContractInpu
   const falta = contractInvalido(input);
   if (falta) return { error: falta };
 
+  const row = contractRow(input);
   const { error } = await supabase
     .from("rental_contracts")
-    .update(contractRow(input))
+    .update(row)
     .eq("id", id);
 
   if (error) return { error: aluguelError(error) };
   // editado: o PDF assinado tem o texto antigo
   await descartarAssinatura("aluguel", id);
+
+  // boleto já emitido não muda sozinho: avisa se ficou diferente do contrato
+  let aviso: string | null = null;
+  const { data: abertos } = await supabase
+    .from("rental_boletos")
+    .select("competencia, amount, due_date, cora_status")
+    .eq("contract_id", id)
+    .gte("due_date", localDateISO());
+  const diferentes = (
+    (abertos as Pick<RentalBoleto, "competencia" | "amount" | "due_date" | "cora_status">[]) ?? []
+  ).filter((b) => {
+    if (!boletoEmAberto(b)) return false;
+    const [y, m] = b.competencia.split("-").map(Number);
+    return (
+      Math.abs(Number(b.amount) - row.monthly_amount) > 0.005 ||
+      b.due_date !== vencimentoDoMes(row.due_day, y, m - 1)
+    );
+  });
+  if (diferentes.length > 0) {
+    aviso = `${diferentes.length} boleto(s) em aberto ainda estão com o valor ou o vencimento antigo. Abra "Boletos" no imóvel e toque em "Refazer os em aberto".`;
+  }
+
   revalidate();
-  return { ok: true };
+  return { ok: true as const, aviso };
 }
 
 export async function deleteRentalContract(id: string) {
   const supabase = createClient();
+  // os boletos em aberto morrem junto: o inquilino não pode pagar contrato apagado
+  await cancelarBoletosEmAberto(supabase, id, null);
   const { error } = await supabase.from("rental_contracts").delete().eq("id", id);
   if (error) return { error: aluguelError(error) };
   await descartarAssinatura("aluguel", id);
@@ -321,6 +370,234 @@ export async function setRentalContractStatus(id: string, status: RentalContract
     .update({ status: status === "encerrado" ? "encerrado" : "ativo" })
     .eq("id", id);
   if (error) return { error: aluguelError(error) };
+  // encerrado: os boletos dos meses que ainda não venceram são cancelados (os
+  // vencidos continuam valendo — é dívida do inquilino)
+  if (status === "encerrado") await cancelarBoletosEmAberto(supabase, id, localDateISO());
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OS BOLETOS DO CONTRATO (Cora)
+// ─────────────────────────────────────────────────────────────────────────────
+// Um boleto por mês do contrato, com Pix, multa e juros. O que a Cora devolve
+// fica em rental_boletos — é dali que sai o carnê para entregar ao inquilino.
+// Quando ele paga, o webhook da Cora dá a baixa do mês sozinho.
+
+export interface ResultadoBoletos {
+  /** Quantos boletos novos saíram agora. */
+  gerados: number;
+  /** O que não saiu e por quê — null quando deu tudo certo. */
+  aviso: string | null;
+}
+
+function boletoError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.message.includes("rental_boletos"))
+    return "Rode a migration 129 no Supabase para gerar os boletos do aluguel";
+  return error.message;
+}
+
+/** Emite na Cora os boletos dos meses do contrato que ainda não têm. */
+async function emitirBoletos(
+  supabase: SupabaseClient,
+  contractId: string,
+  userId: string
+): Promise<ResultadoBoletos> {
+  const { data: c } = await supabase.from("v_rental_contracts").select("*").eq("id", contractId).single();
+  const contrato = c as RentalContractView | null;
+  if (!contrato) return { gerados: 0, aviso: "Contrato não encontrado" };
+  if (contrato.status !== "ativo") return { gerados: 0, aviso: "Contrato encerrado não gera boleto" };
+
+  const doc = contrato.tenant_document ?? "";
+  const tipo = tipoDocumento(doc);
+  if (!tipo || !validarCpfCnpj(doc))
+    return {
+      gerados: 0,
+      aviso: "Os boletos não foram gerados: falta o CPF (ou CNPJ) certo do inquilino no contrato.",
+    };
+  const valor = Number(contrato.monthly_amount);
+  if (valor < VALOR_MINIMO_BOLETO)
+    return { gerados: 0, aviso: "A Cora só emite boleto a partir de R$ 5,00." };
+
+  const [boletosRes, pagosRes] = await Promise.all([
+    supabase.from("rental_boletos").select("competencia, cora_status").eq("contract_id", contractId),
+    supabase.from("rental_payments").select("competencia").eq("contract_id", contractId).not("paid_at", "is", null),
+  ]);
+  if (boletosRes.error) return { gerados: 0, aviso: boletoError(boletosRes.error) };
+
+  const temBoleto = new Set(
+    ((boletosRes.data as Pick<RentalBoleto, "competencia" | "cora_status">[]) ?? [])
+      .filter((b) => b.cora_status !== "CANCELLED")
+      .map((b) => b.competencia)
+  );
+  const pago = new Set(((pagosRes.data as { competencia: string }[]) ?? []).map((p) => p.competencia));
+
+  const hoje = localDateISO();
+  const todos = mesesDoContrato(contrato);
+  const faltam = todos.filter((m) => !temBoleto.has(m.competencia) && !pago.has(m.competencia));
+  // a Cora não emite boleto com vencimento no passado
+  const jaVencidos = faltam.filter((m) => m.due_date < hoje);
+  const aEmitir = faltam.filter((m) => m.due_date >= hoje).slice(0, MAXIMO_DE_BOLETOS);
+
+  const multa = contrato.late_fee_percent ?? MULTA_PADRAO;
+  const juros = contrato.interest_percent ?? JUROS_PADRAO;
+  const email = contrato.tenant_email?.trim();
+  const endereco = enderecoCurto(contrato);
+
+  let gerados = 0;
+  const falhas: string[] = [];
+
+  async function emitir(m: { competencia: string; due_date: string }) {
+    const id = randomUUID();
+    const mes = nomeDoMes(m.competencia);
+    let resposta;
+    try {
+      resposta = await criarBoleto({
+        code: id,
+        customer: {
+          name: contrato!.tenant_name.slice(0, 60),
+          email: email && email.includes("@") && email.length <= 60 ? email : undefined,
+          document: { identity: doc.replace(/\D/g, ""), type: tipo! },
+        },
+        services: [
+          {
+            name: `ALUGUEL ${mes.toUpperCase()}`.slice(0, 60),
+            description: `Aluguel de ${mes} - imóvel nº ${contrato!.property_code}${endereco ? ` - ${endereco}` : ""}`.slice(0, 100),
+            amount: Math.round(valor * 100),
+          },
+        ],
+        payment_terms: {
+          due_date: m.due_date,
+          ...(multa > 0 ? { fine: { rate: Number(multa) } } : {}),
+          ...(juros > 0 ? { interest: { rate: Number(juros) } } : {}),
+        },
+        payment_forms: ["BANK_SLIP", "PIX"],
+      });
+    } catch (e) {
+      falhas.push(`${mes}: ${(e as Error).message}`);
+      return;
+    }
+
+    const { error } = await supabase.from("rental_boletos").insert({
+      id,
+      contract_id: contractId,
+      competencia: m.competencia,
+      due_date: m.due_date,
+      amount: valor,
+      cora_invoice_id: resposta.id,
+      cora_status: resposta.status,
+      digitable_line: resposta.payment_options?.bank_slip?.digitable ?? null,
+      barcode: resposta.payment_options?.bank_slip?.barcode ?? null,
+      pdf_url: resposta.payment_options?.bank_slip?.url ?? null,
+      our_number: resposta.payment_options?.bank_slip?.our_number ?? null,
+      pix_emv: resposta.pix?.emv ?? null,
+      created_by: userId,
+    });
+    if (error) {
+      // não ficou guardado: cancela na Cora para não sobrar boleto solto
+      try {
+        await cancelarBoleto(resposta.id);
+      } catch {}
+      falhas.push(`${mes}: ${boletoError(error)}`);
+      return;
+    }
+    gerados++;
+  }
+
+  // de 3 em 3: mais rápido, sem afogar a Cora
+  for (let i = 0; i < aEmitir.length; i += 3) {
+    await Promise.all(aEmitir.slice(i, i + 3).map(emitir));
+  }
+
+  const avisos: string[] = [];
+  if (falhas.length > 0)
+    avisos.push(
+      `${falhas.length} boleto(s) não saíram na Cora. Primeiro erro — ${falhas[0]}`
+    );
+  if (jaVencidos.length > 0)
+    avisos.push(
+      `${jaVencidos.length} mês(es) com vencimento já passado ficaram sem boleto (a Cora não emite boleto vencido).`
+    );
+  if (faltam.length - jaVencidos.length > MAXIMO_DE_BOLETOS)
+    avisos.push(`Saíram os ${MAXIMO_DE_BOLETOS} primeiros; os outros saem depois, em "Gerar os que faltam".`);
+  if (todos.length === 0) avisos.push("Nenhum mês do contrato tem vencimento dentro do prazo.");
+
+  return { gerados, aviso: avisos.length > 0 ? avisos.join(" ") : null };
+}
+
+/**
+ * Cancela na Cora os boletos em aberto do contrato. `aPartirDe` = só os que
+ * vencem desse dia em diante (null = todos). Devolve quantos cancelou e o
+ * primeiro erro, se teve.
+ */
+async function cancelarBoletosEmAberto(
+  supabase: SupabaseClient,
+  contractId: string,
+  aPartirDe: string | null
+): Promise<{ cancelados: number; erro: string | null }> {
+  let q = supabase.from("rental_boletos").select("id, cora_invoice_id, cora_status").eq("contract_id", contractId);
+  if (aPartirDe) q = q.gte("due_date", aPartirDe);
+  const { data, error } = await q;
+  if (error) return { cancelados: 0, erro: null }; // sem a migration 129 não há boleto para cancelar
+
+  let cancelados = 0;
+  let erro: string | null = null;
+  for (const b of ((data as Pick<RentalBoleto, "id" | "cora_invoice_id" | "cora_status">[]) ?? []).filter(boletoEmAberto)) {
+    try {
+      await cancelarBoleto(b.cora_invoice_id);
+    } catch (e) {
+      erro ??= (e as Error).message;
+      continue;
+    }
+    await supabase.from("rental_boletos").update({ cora_status: "CANCELLED" }).eq("id", b.id);
+    cancelados++;
+  }
+  return { cancelados, erro };
+}
+
+/** "Gerar os que faltam": emite os meses do contrato que ainda não têm boleto. */
+export async function gerarBoletosDoContrato(contractId: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  const r = await emitirBoletos(supabase, contractId, user.id);
+  revalidate();
+  return { ok: true as const, ...r };
+}
+
+/**
+ * "Refazer os em aberto": cancela os que ainda não venceram e emite de novo
+ * com o valor e o vencimento de hoje do contrato (depois de um reajuste).
+ */
+export async function refazerBoletosDoContrato(contractId: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  const c = await cancelarBoletosEmAberto(supabase, contractId, localDateISO());
+  if (c.erro) return { error: `Não consegui cancelar na Cora: ${c.erro}` };
+  const r = await emitirBoletos(supabase, contractId, user.id);
+  revalidate();
+  return { ok: true as const, ...r };
+}
+
+/** Cancela um boleto só (o inquilino pagou de outro jeito, por exemplo). */
+export async function cancelarBoletoAluguel(id: string) {
+  const supabase = createClient();
+  const { data } = await supabase.from("rental_boletos").select("id, cora_invoice_id, cora_status").eq("id", id).single();
+  const b = data as Pick<RentalBoleto, "id" | "cora_invoice_id" | "cora_status"> | null;
+  if (!b) return { error: "Boleto não encontrado" };
+  if (!boletoEmAberto(b)) return { error: "Esse boleto não está mais em aberto na Cora" };
+  try {
+    await cancelarBoleto(b.cora_invoice_id);
+  } catch (e) {
+    return { error: `Não consegui cancelar na Cora: ${(e as Error).message}` };
+  }
+  const { error } = await supabase.from("rental_boletos").update({ cora_status: "CANCELLED" }).eq("id", id);
+  if (error) return { error: boletoError(error) };
   revalidate();
   return { ok: true };
 }

@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
     .eq("cora_invoice_id", resourceId)
     .maybeSingle();
 
-  // Não é um boleto nosso (ou o vínculo já foi removido) — nada a fazer.
-  if (!transaction) return NextResponse.json({ ok: true });
+  // Não é lançamento de Contas: pode ser o boleto de um aluguel.
+  if (!transaction) return baixarBoletoDeAluguel(supabase, resourceId);
 
   let invoice;
   try {
@@ -91,6 +91,79 @@ export async function POST(request: NextRequest) {
   if (error) {
     console.error("[webhook cora] falha ao atualizar transação", transaction.id, error);
     return NextResponse.json({ ok: false }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+/**
+ * O boleto do aluguel (rental_boletos, migration 129). Atualiza o status e,
+ * quando foi pago, dá a baixa do mês em rental_payments — menos se alguém já
+ * deu a baixa à mão (aí a baixa de quem lançou manda).
+ */
+async function baixarBoletoDeAluguel(supabase: ReturnType<typeof createAdminClient>, resourceId: string) {
+  const { data: boleto } = await supabase
+    .from("rental_boletos")
+    .select("id, contract_id, competencia, due_date, amount")
+    .eq("cora_invoice_id", resourceId)
+    .maybeSingle();
+
+  // Não é um boleto nosso (ou o vínculo já foi removido) — nada a fazer.
+  if (!boleto) return NextResponse.json({ ok: true });
+
+  let invoice;
+  try {
+    invoice = await consultarBoleto(resourceId);
+  } catch (e) {
+    console.error("[webhook cora] falha ao reconsultar boleto do aluguel", resourceId, e);
+    return NextResponse.json({ ok: false }, { status: 502 });
+  }
+
+  const pago = invoice.status === "PAID";
+  const pagamento = invoice.payments?.[0];
+  const paidAt = pago
+    ? pagamento?.finalized_at?.slice(0, 10) ?? invoice.occurrence_date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
+    : null;
+  const paidAmount = pago ? (invoice.total_paid || Math.round(Number(boleto.amount) * 100)) / 100 : null;
+
+  const { error } = await supabase
+    .from("rental_boletos")
+    .update({
+      cora_status: invoice.status,
+      ...(pago ? { paid_at: paidAt, paid_amount: paidAmount } : {}),
+    })
+    .eq("id", boleto.id);
+  if (error) {
+    console.error("[webhook cora] falha ao atualizar boleto do aluguel", boleto.id, error);
+    return NextResponse.json({ ok: false }, { status: 500 });
+  }
+
+  if (pago) {
+    const { data: baixa } = await supabase
+      .from("rental_payments")
+      .select("id, paid_at")
+      .eq("contract_id", boleto.contract_id)
+      .eq("competencia", boleto.competencia)
+      .maybeSingle();
+    if (!baixa?.paid_at) {
+      const { error: baixaError } = await supabase.from("rental_payments").upsert(
+        {
+          contract_id: boleto.contract_id,
+          competencia: boleto.competencia,
+          due_date: boleto.due_date,
+          amount: boleto.amount,
+          paid_at: paidAt,
+          paid_amount: paidAmount,
+          method: pagamento?.method === "PIX" ? "PIX" : "BOLETO",
+          notes: "BAIXA AUTOMÁTICA PELA CORA",
+        },
+        { onConflict: "contract_id,competencia" }
+      );
+      if (baixaError) {
+        console.error("[webhook cora] falha ao dar baixa no aluguel", boleto.id, baixaError);
+        return NextResponse.json({ ok: false }, { status: 500 });
+      }
+    }
   }
 
   return NextResponse.json({ ok: true });

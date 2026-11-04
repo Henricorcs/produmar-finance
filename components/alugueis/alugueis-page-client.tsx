@@ -12,6 +12,7 @@ import {
   Landmark,
   Plus,
   Printer,
+  Receipt,
   Search,
   TriangleAlert,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
 import { ImovelDialog } from "./imovel-dialog";
 import { ContratoDialog } from "./contrato-dialog";
 import { BaixaDialog } from "./baixa-dialog";
+import { BoletosDialog } from "./boletos-dialog";
 import { ModeloDialog } from "./modelo-dialog";
 import { CompraVendaDialog } from "./compra-venda-dialog";
 import { ProcuracaoDialog } from "./procuracao-dialog";
@@ -38,6 +40,7 @@ import {
   type PowerOfAttorney,
   type PropertyBuyer,
   type PropertySaleContract,
+  type RentalBoleto,
   type RentalContractTemplate,
   type RentalContractView,
   type RentalPayment,
@@ -60,6 +63,9 @@ interface Props {
   procuracaoPendente?: boolean;
   /** "tipo:id" dos documentos que já têm o PDF assinado com certificado (123). */
   assinados?: string[];
+  /** Boletos do aluguel emitidos na Cora, sem os cancelados (129). */
+  boletos?: RentalBoleto[];
+  boletosPendente?: boolean;
   month: string;
   migrationPendente?: boolean;
 }
@@ -91,6 +97,8 @@ export function AlugueisPageClient({
   procuracoes = [],
   procuracaoPendente = false,
   assinados = [],
+  boletos = [],
+  boletosPendente = false,
   month,
   migrationPendente = false,
 }: Props) {
@@ -112,6 +120,21 @@ export function AlugueisPageClient({
   const [editCompra, setEditCompra] = useState<PropertySaleContract | null>(null);
   const [procuracaoOpen, setProcuracaoOpen] = useState(false);
   const [editProcuracao, setEditProcuracao] = useState<PowerOfAttorney | null>(null);
+  // os boletos de qual contrato estão abertos, e o recado de quando acabou de salvar
+  const [boletosDe, setBoletosDe] = useState<string | null>(null);
+  const [recadoBoletos, setRecadoBoletos] = useState<string | null>(null);
+
+  /** O boleto de cada contrato + mês ("id|2026-11-01"). */
+  const boletoDoMes = useMemo(() => {
+    const map = new Map<string, RentalBoleto>();
+    for (const b of boletos) map.set(`${b.contract_id}|${b.competencia}`, b);
+    return map;
+  }, [boletos]);
+
+  function abrirBoletos(contractId: string, recado: string | null = null) {
+    setRecadoBoletos(recado);
+    setBoletosDe(contractId);
+  }
 
   const [year, monthNum] = month.split("-").map(Number);
   const mesLabel = new Date(year, monthNum - 1, 1).toLocaleDateString("pt-BR", {
@@ -294,6 +317,11 @@ export function AlugueisPageClient({
                         >
                           {meta.label.toUpperCase()}
                         </span>
+                        {boletoDoMes.has(`${c.contract.id}|${c.competencia}`) && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-produmar-50 text-produmar-700 dark:bg-produmar-900/30 dark:text-produmar-300">
+                            BOLETO
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
                         {c.contract.tenant_name}
@@ -433,6 +461,16 @@ export function AlugueisPageClient({
                           Imprimir
                         </a>
                       )}
+                      {contrato && (
+                        <button
+                          type="button"
+                          onClick={() => abrirBoletos(contrato.id)}
+                          className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                        >
+                          <Receipt className="w-3 h-3" />
+                          Boletos
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -485,8 +523,21 @@ export function AlugueisPageClient({
         contrato={editContrato}
         presetPropertyId={presetPropertyId}
         properties={properties}
+        onSalvo={(id, recado) => abrirBoletos(id, recado)}
       />
-      <BaixaDialog cobranca={baixa} onClose={() => setBaixa(null)} mesLabel={mesLabel} />
+      <BoletosDialog
+        contrato={boletosDe ? contracts.find((c) => c.id === boletosDe) ?? null : null}
+        boletos={boletos.filter((b) => b.contract_id === boletosDe)}
+        mensagem={recadoBoletos}
+        pendente={boletosPendente}
+        onClose={() => setBoletosDe(null)}
+      />
+      <BaixaDialog
+        cobranca={baixa}
+        onClose={() => setBaixa(null)}
+        mesLabel={mesLabel}
+        boleto={baixa ? boletoDoMes.get(`${baixa.contract.id}|${baixa.competencia}`) ?? null : null}
+      />
       <ModeloDialog
         open={modeloOpen}
         onClose={() => setModeloOpen(false)}

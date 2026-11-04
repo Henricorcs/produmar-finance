@@ -21,8 +21,12 @@ export interface CoraService {
 }
 
 export interface CoraPaymentTerms {
-  /** AAAA-MM-DD. */
+  /** AAAA-MM-DD. Não pode ser antes do dia da emissão. */
   due_date: string;
+  /** Multa do atraso, em percentual (0 a 100). Vale a partir do dia seguinte ao vencimento. */
+  fine?: { rate: number };
+  /** Juros do atraso, em percentual ao mês (0 a 100). */
+  interest?: { rate: number };
 }
 
 export interface CoraInvoiceRequest {

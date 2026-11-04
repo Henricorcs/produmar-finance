@@ -4,6 +4,7 @@ import type {
   PowerOfAttorney,
   PropertyBuyer,
   PropertySaleContract,
+  RentalBoleto,
   RentalContractTemplate,
   RentalContractView,
   RentalPayment,
@@ -35,7 +36,7 @@ export default async function AlugueisPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes, assinadosRes] =
+  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes, assinadosRes, boletosRes] =
     await Promise.all([
     supabase.from("rental_properties").select("*").order("code"),
     supabase.from("v_rental_contracts").select("*").order("property_code"),
@@ -68,6 +69,8 @@ export default async function AlugueisPage({
       .limit(500),
     // quais já têm o PDF assinado com certificado (123 — sem ela, nenhum)
     supabase.from("signed_documents").select("doc_type, doc_id"),
+    // os boletos do aluguel emitidos na Cora (129 — sem ela, nenhum)
+    supabase.from("rental_boletos").select("*").neq("cora_status", "CANCELLED").order("due_date"),
   ]);
 
   const templates = (templateRes.data as RentalContractTemplate[]) ?? [];
@@ -86,6 +89,8 @@ export default async function AlugueisPage({
       assinados={((assinadosRes.data as { doc_type: string; doc_id: string }[]) ?? []).map(
         (d) => `${d.doc_type}:${d.doc_id}`
       )}
+      boletos={(boletosRes.data as RentalBoleto[]) ?? []}
+      boletosPendente={!!boletosRes.error}
       month={month}
       migrationPendente={!!propertiesRes.error}
     />

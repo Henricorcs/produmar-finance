@@ -2520,6 +2520,30 @@ export interface RentalPayment {
   created_at: string;
 }
 
+/** Status bruto do boleto na Cora. */
+export type RentalBoletoStatus = "DRAFT" | "OPEN" | "IN_PAYMENT" | "LATE" | "PAID" | "CANCELLED";
+
+/** O boleto do aluguel de um mês, emitido na Cora (migration 129). */
+export interface RentalBoleto {
+  id: string;
+  contract_id: string;
+  /** O mês de referência, sempre no dia 1. */
+  competencia: string;
+  due_date: string;
+  amount: number;
+  cora_invoice_id: string;
+  cora_status: RentalBoletoStatus;
+  digitable_line: string | null;
+  barcode: string | null;
+  pdf_url: string | null;
+  our_number: string | null;
+  pix_emv: string | null;
+  paid_at: string | null;
+  paid_amount: number | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 /** O modelo do contrato, com os campos {{ASSIM}} trocados na impressão. */
 export interface RentalContractTemplate {
   id: string;

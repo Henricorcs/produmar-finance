@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { HandCoins, Undo2 } from "lucide-react";
+import { HandCoins, Receipt, Undo2 } from "lucide-react";
+import { boletoEmAberto, situacaoDoBoleto } from "@/lib/alugueis-boletos";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,7 @@ import { darBaixaAluguel, desfazerBaixaAluguel } from "@/app/(app)/alugueis/acti
 import { FOOTER_CANCEL, FOOTER_SUBMIT, STICKY_FOOTER } from "./alugueis-shared";
 import { RENTAL_METHODS } from "@/lib/types";
 import type { CobrancaDoMes } from "@/lib/alugueis";
+import type { RentalBoleto } from "@/lib/types";
 
 interface Props {
   /** A cobrança tocada na lista — null fecha a caixa. */
@@ -34,6 +36,8 @@ interface Props {
   onClose: () => void;
   /** "setembro de 2026" — o mês do aluguel. */
   mesLabel: string;
+  /** O boleto deste mês emitido na Cora, se tiver (129). */
+  boleto?: RentalBoleto | null;
 }
 
 /**
@@ -43,7 +47,7 @@ interface Props {
  * menos, é só corrigir aqui, e a tela mostra o que ficou faltando. Desfazer a
  * baixa devolve o mês para a lista de aberto.
  */
-export function BaixaDialog({ cobranca, onClose, mesLabel }: Props) {
+export function BaixaDialog({ cobranca, onClose, mesLabel, boleto = null }: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -137,6 +141,34 @@ export function BaixaDialog({ cobranca, onClose, mesLabel }: Props) {
                 {formatBRL(cobranca.amount)}
               </p>
             </div>
+
+            {boleto && (
+              <div className="rounded-lg border border-produmar-100 bg-produmar-50/60 dark:bg-produmar-900/20 dark:border-produmar-900/40 px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
+                <p className="flex items-center gap-1.5 flex-wrap">
+                  <Receipt className="w-3.5 h-3.5 text-produmar-600" />
+                  <span className="font-semibold">Boleto deste mês:</span>
+                  <span className={cn("font-semibold px-1.5 py-0.5 rounded", situacaoDoBoleto(boleto).chip)}>
+                    {situacaoDoBoleto(boleto).label.toUpperCase()}
+                  </span>
+                  {boleto.pdf_url && boletoEmAberto(boleto) && (
+                    <a
+                      href={boleto.pdf_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-produmar-600 dark:text-produmar-400 underline underline-offset-2"
+                    >
+                      abrir o PDF
+                    </a>
+                  )}
+                </p>
+                {boletoEmAberto(boleto) && (
+                  <p>
+                    Pago pelo boleto ou Pix, a baixa entra sozinha. Se ele pagou de outro jeito, dê a baixa aqui e
+                    cancele o boleto em Imóveis → Boletos.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label htmlFor="bx_valor">Quanto ele pagou (R$) *</Label>

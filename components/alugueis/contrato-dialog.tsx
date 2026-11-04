@@ -165,6 +165,12 @@ interface Props {
   /** Imóvel já escolhido (veio da ficha dele). */
   presetPropertyId?: string | null;
   properties: RentalProperty[];
+  /**
+   * Salvou. No contrato novo os boletos já foram gerados — `mensagem` diz
+   * quantos e o que faltou; na edição, avisa se os boletos ficaram com o valor
+   * antigo. A tela abre os boletos do contrato com a mensagem.
+   */
+  onSalvo?: (contractId: string, mensagem: string | null, novo: boolean) => void;
 }
 
 /**
@@ -182,6 +188,7 @@ export function ContratoDialog({
   contrato,
   presetPropertyId,
   properties,
+  onSalvo,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -337,15 +344,29 @@ export function ContratoDialog({
         months: parseInt(dados.months, 10) || null,
         status: encerrado ? ("encerrado" as const) : ("ativo" as const),
       };
-      const r = contrato
-        ? await updateRentalContract(contrato.id, input)
-        : await createRentalContract(input);
+      if (contrato) {
+        const r = await updateRentalContract(contrato.id, input);
+        const falha = actionError(r);
+        if (falha) {
+          setErro(falha);
+          return;
+        }
+        onClose();
+        const aviso = r && "aviso" in r ? r.aviso : null;
+        if (aviso) onSalvo?.(contrato.id, aviso, false);
+        return;
+      }
+      const r = await createRentalContract(input);
       const falha = actionError(r);
-      if (falha) {
-        setErro(falha);
+      if (falha || !r?.id || !r.boletos) {
+        setErro(falha ?? "O contrato não foi salvo");
         return;
       }
       onClose();
+      const { gerados, aviso } = r.boletos;
+      const feitos =
+        gerados > 0 ? `${gerados} boleto${gerados === 1 ? "" : "s"} gerado${gerados === 1 ? "" : "s"} na Cora.` : "";
+      onSalvo?.(r.id, [feitos, aviso].filter(Boolean).join(" ") || null, true);
     });
   }
 
@@ -487,7 +508,13 @@ export function ContratoDialog({
                 disabled={isPending}
                 className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}
               >
-                {isPending ? "Salvando..." : contrato ? "Salvar" : "Cadastrar"}
+                {isPending
+                  ? contrato
+                    ? "Salvando..."
+                    : "Gerando os boletos..."
+                  : contrato
+                    ? "Salvar"
+                    : "Cadastrar"}
               </Button>
             </DialogFooter>
           </div>
