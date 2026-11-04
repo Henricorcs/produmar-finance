@@ -21,8 +21,11 @@ export function CompartilharPdf({
 }: {
   gerar: () => Promise<File>;
   chave: string;
-  /** "barra" = botão branco da barra azul da impressão; "bloco" = largo, no diálogo. */
-  variante?: "barra" | "bloco";
+  /**
+   * "barra" = botão branco da barra azul da impressão; "bloco" = largo, no
+   * diálogo; "link" = pequeno, no meio de uma linha de lista.
+   */
+  variante?: "barra" | "bloco" | "link";
 }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -71,7 +74,9 @@ export function CompartilharPdf({
   const estilo =
     variante === "barra"
       ? "bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50"
-      : "w-full h-12 rounded-md bg-produmar-600 text-white text-base font-medium hover:bg-produmar-700";
+      : variante === "link"
+        ? "text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 [&_svg]:w-3 [&_svg]:h-3"
+        : "w-full h-12 rounded-md bg-produmar-600 text-white text-base font-medium hover:bg-produmar-700";
 
   if (erro) {
     return (

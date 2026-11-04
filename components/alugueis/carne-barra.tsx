@@ -1,7 +1,10 @@
 "use client";
 
-/** A barra de cima do carnê — não sai na impressão. */
-export function CarneBarra({ titulo }: { titulo: string }) {
+import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import { gerarCarnePdf, type CarneParaPdf } from "@/lib/carne-pdf";
+
+/** A barra de cima do carnê — não sai na impressão. Compartilha o PDF ou imprime. */
+export function CarneBarra({ titulo, carne }: { titulo: string; carne: CarneParaPdf }) {
   return (
     <>
       <div
@@ -19,6 +22,11 @@ export function CarneBarra({ titulo }: { titulo: string }) {
           >
             ← Voltar
           </button>
+          <CompartilharPdf
+            variante="barra"
+            chave={JSON.stringify(carne)}
+            gerar={() => gerarCarnePdf(carne)}
+          />
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"

@@ -14,6 +14,7 @@ import {
 } from "@/lib/alugueis-boletos";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { CarneBarra } from "@/components/alugueis/carne-barra";
+import { dadosDoCarne } from "@/lib/carne-pdf";
 import type { RentalBoleto, RentalContractView } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -77,7 +78,10 @@ export default async function ImprimirBoletosPage({ params }: { params: { id: st
         .qr svg { width: 100%; height: 100%; }
       `}</style>
 
-      <CarneBarra titulo={`Carnê · ${contrato.tenant_name} · ${boletos.length} boleto(s)`} />
+      <CarneBarra
+        titulo={`Carnê · ${contrato.tenant_name} · ${boletos.length} boleto(s)`}
+        carne={dadosDoCarne(contrato, boletos)}
+      />
 
       <div className="folha max-w-[794px] mx-auto my-6 bg-white shadow-xl p-6 print:p-0">
         {boletos.map((b, i) => (

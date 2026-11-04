@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Ban, Copy, ExternalLink, Landmark, Printer, Receipt, RefreshCw, Sparkles } from "lucide-react";
+import { Ban, Copy, ExternalLink, Landmark, Printer, Receipt, RefreshCw, Share2, Sparkles } from "lucide-react";
+import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import { dadosDoCarne, gerarCarnePdf } from "@/lib/carne-pdf";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +59,8 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
   const [erro, setErro] = useState<string | null>(null);
   const [recado, setRecado] = useState<string | null>(null);
   const [copiado, setCopiado] = useState<string | null>(null);
+  /** Qual PDF está sendo preparado para compartilhar: "carne" ou o id do boleto. */
+  const [pdfDe, setPdfDe] = useState<string | null>(null);
 
   const hoje = localDateISO();
   const lista = [...boletos].sort((a, b) => a.due_date.localeCompare(b.due_date));
@@ -72,8 +76,11 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
   function fechar() {
     setErro(null);
     setRecado(null);
+    setPdfDe(null);
     onClose();
   }
+
+  const abertos = lista.filter(boletoEmAberto);
 
   /** Roda a ação; `onde` é para o recado ("gerado no banco"). */
   function rodar(chave: string, onde: string, fazer: () => Promise<unknown>) {
@@ -179,6 +186,18 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                       </div>
                       {boletoEmAberto(b) && (
                         <div className="flex items-center gap-3 flex-wrap">
+                          {pdfDe === b.id ? (
+                            <CompartilharPdf
+                              variante="link"
+                              chave={`${b.id}|${b.cora_status}|${b.amount}|${b.due_date}`}
+                              gerar={() => gerarCarnePdf(dadosDoCarne(contrato, [b]))}
+                            />
+                          ) : (
+                            <button type="button" onClick={() => setPdfDe(b.id)} className={link}>
+                              <Share2 className="w-3 h-3" />
+                              Compartilhar
+                            </button>
+                          )}
                           {podeIrAoBanco(b) && (
                             <button
                               type="button"
@@ -247,6 +266,24 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
               {contrato.late_fee_percent ?? MULTA_PADRAO}% e juros de {contrato.interest_percent ?? JUROS_PADRAO}% ao
               mês — e aí a baixa do mês entra sozinha quando o inquilino paga.
             </p>
+
+            {abertos.length > 0 &&
+              (pdfDe === "carne" ? (
+                <CompartilharPdf
+                  variante="bloco"
+                  chave={abertos.map((b) => `${b.id}|${b.cora_status}|${b.amount}|${b.due_date}`).join(",")}
+                  gerar={() => gerarCarnePdf(dadosDoCarne(contrato, abertos))}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPdfDe("carne")}
+                  className="w-full h-11 rounded-md border border-produmar-200 text-produmar-700 dark:border-produmar-800 dark:text-produmar-300 text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-produmar-50 dark:hover:bg-produmar-900/20"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Compartilhar o carnê em PDF ({abertos.length} boleto{abertos.length === 1 ? "" : "s"})
+                </button>
+              ))}
 
             {erro && (
               <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
