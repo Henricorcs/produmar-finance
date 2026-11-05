@@ -45,9 +45,13 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Script da migração das fotos, para rodar uma vez pelo terminal do EasyPanel.
-# Não depende de nada instalado: usa só o fetch que o Node 20 já tem.
+# Scripts para rodar pelo terminal do EasyPanel (ícone >_). Não dependem de
+# nada instalado: usam só o fetch que o Node 20 já tem.
+#   · baixar-fotos-no-servidor.mjs ...... fotos do Supabase para o disco
+#   · puxar-fotos-do-servidor-antigo.mjs  fotos de um servidor para outro, na
+#                                         mudança de servidor (docs/migracao-servidor.md)
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/baixar-fotos-no-servidor.mjs ./scripts/
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/puxar-fotos-do-servidor-antigo.mjs ./scripts/
 
 # Sem USER: a partida precisa de root por um instante para acertar o dono do
 # volume e então rebaixa para `nextjs`. O site nunca chega a rodar como root.

@@ -175,16 +175,20 @@ direto do antigo, usando a mesma porta que o backup do escritório já usa
 (`/api/backup`, protegida pelo `BACKUP_TOKEN`). Servidor falando com servidor
 é muito mais rápido que subir 1,4 GB pela internet do escritório.
 
-Para isso falta um script, nos moldes do `baixar-fotos-no-servidor.mjs`:
-**`scripts/puxar-fotos-do-servidor-antigo.mjs`** (a fazer — ver "Próximos
-passos" no fim). Ele vai:
+Quem faz isso é o **`scripts/puxar-fotos-do-servidor-antigo.mjs`**, que já vem
+dentro da imagem (ver `Dockerfile`). Ele:
 
-- pedir ao antigo a lista de todos os arquivos (nome e tamanho)
-- baixar só o que **ainda não está** no disco novo, ou está com tamanho
-  diferente
-- **nunca apagar nada** — pode rodar quantas vezes quiser, e cada rodada
-  depois da primeira leva segundos
-- terminar mostrando "antigo: N arquivos / X MB · novo: N arquivos / X MB"
+- pede ao antigo a lista de todos os arquivos (nome e tamanho)
+- baixa só o que **ainda não está** no disco novo, ou está com tamanho
+  diferente (cópia que caiu no meio)
+- confere o tamanho de cada arquivo que chega e só o coloca no lugar depois
+  de inteiro — o site nunca entrega foto pela metade
+- **nunca apaga nada**, nem no novo nem no antigo — pode rodar quantas vezes
+  quiser, e cada rodada depois da primeira leva segundos
+- se o endereço apontar sem querer para o **próprio servidor novo** (o
+  domínio, depois da virada), percebe e para, em vez de dizer "tudo certo"
+- termina conferindo o disco de novo e dizendo se **todos os arquivos do
+  antigo estão aqui, com o mesmo tamanho**
 
 Uso, no terminal do contêiner novo (ícone **`>_`** no EasyPanel):
 
@@ -192,12 +196,27 @@ Uso, no terminal do contêiner novo (ícone **`>_`** no EasyPanel):
 node scripts/puxar-fotos-do-servidor-antigo.mjs http://170.0.124.7:3000
 ```
 
+Para só ver quantos faltam, sem baixar:
+
+```bash
+node scripts/puxar-fotos-do-servidor-antigo.mjs http://170.0.124.7:3000 --so-listar
+```
+
 > O endereço é o do **antigo pelo IP**, de propósito: depois da virada o
 > domínio vai apontar para o novo, e o script precisa continuar alcançando o
 > antigo para a última rodada.
 
-Rode a primeira vez agora (a demorada). Confira que os números do antigo e do
-novo batem, e abra no domínio provisório uma foto antiga de Patrimônio.
+A senha é o `BACKUP_TOKEN` do serviço novo — por isso a Fase 0 manda copiar o
+mesmo valor. Se por algum motivo o antigo tiver outro, passe o dele na frente:
+`TOKEN_DO_ANTIGO=<valor> node scripts/puxar-fotos-do-servidor-antigo.mjs ...`
+
+Se der erro, a mensagem diz o que fazer: **404** é o antigo sem
+`BACKUP_TOKEN`; **401** é senha diferente; **recusou a conexão** ou **não
+respondeu a tempo** é o antigo desligado ou a porta 3000 fechada no firewall.
+
+Rode a primeira vez agora (a demorada). Tem que terminar com **"Conferido: os
+N arquivos do antigo estão aqui, com o mesmo tamanho."** Depois abra no
+domínio provisório uma foto antiga de Patrimônio.
 
 ### Alternativa, se tiver SSH nos dois servidores
 
@@ -311,8 +330,9 @@ curto:
 1. **Ligar de novo** o serviço antigo.
 2. **Apontar o DNS de volta** para `170.0.124.7`.
 3. Fotos que tenham subido no servidor novo nesse meio-tempo ficam só lá —
-   dá para trazê-las com o mesmo script, rodado ao contrário (no antigo,
-   apontando para o novo).
+   dá para trazê-las com o mesmo script, rodado ao contrário: no terminal do
+   **antigo**, apontando para o **novo** pelo IP dele. (O antigo só tem o
+   script se tiver sido publicado depois que ele entrou no repositório.)
 
 O banco não precisa de nada: nunca saiu do Supabase.
 
@@ -321,7 +341,6 @@ O banco não precisa de nada: nunca saiu do Supabase.
 ## Próximos passos
 
 - [ ] Responder as 4 perguntas de "Antes de começar"
-- [ ] Escrever `scripts/puxar-fotos-do-servidor-antigo.mjs` e incluí-lo no
-      `Dockerfile` (como já é feito com `baixar-fotos-no-servidor.mjs`),
-      publicar, e só então seguir para a Fase 1
+- [x] Script `scripts/puxar-fotos-do-servidor-antigo.mjs`, já incluído no
+      `Dockerfile`
 - [ ] Marcar a data da virada
