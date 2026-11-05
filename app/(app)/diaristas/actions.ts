@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { PaymentMode, WorkerType } from "@/lib/types";
+import { erroDoHorimetro } from "@/lib/maquina-na-diaria";
 
 /**
  * O cadastro do colaborador é do chefe (/diaristas) e o calendário é do técnico
@@ -58,6 +59,16 @@ function diaristaError(error: { code?: string; message: string }): string {
   if (error.code === "23505" && error.message.includes("uq_diarista_acerto_mes"))
     return "O salário desse mês já foi pago. Desfaça o pagamento antes de pagar de novo.";
   if (error.code === "23505") return "Já existe um colaborador com esse nome";
+
+  // A máquina pesada na diária nasce na 132. O PostgREST responde PGRST204
+  // quando a coluna não está no cache dele; o Postgres, 42703.
+  if (
+    (error.code === "42703" || error.code === "PGRST204") &&
+    /machine_|hourmeter_|hourly_rate/.test(error.message)
+  )
+    return RECADO_132;
+  if (error.code === "23514" && error.message.includes("horimetro"))
+    return "O horímetro final tem que ser maior que o inicial";
 
   // O banco ainda só conhece diarista e empreiteiro: falta a 098.
   if (error.code === "23514" && error.message.includes("worker_type"))
@@ -322,7 +333,18 @@ export interface DiaristaDiaCreateInput {
   sector_id?: string | null;
   /** Veio só meio expediente: vale metade da diária (migration 064). */
   half_day?: boolean;
+  /**
+   * Máquina pesada usada no dia (migration 132). Só vem quando a resposta de
+   * "Usou máquina pesada?" foi Sim; aí os dois horímetros são obrigatórios.
+   */
+  machine_id?: string | null;
+  hourmeter_start?: number | null;
+  hourmeter_end?: number | null;
 }
+
+/** O banco ainda não tem as colunas da máquina na diária. */
+const RECADO_132 =
+  "Para lançar a máquina pesada na diária, falta rodar a migration 132 no Supabase. Por enquanto lance a diária sem a máquina.";
 
 /**
  * Lança UM dia — o clique no calendário abre a tela daquele dia e o serviço é
@@ -370,7 +392,37 @@ export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
   const half = input.half_day === true;
   const rate = normMoney(diarista.daily_rate as number);
 
+  // Máquina pesada (132): a conta é refeita aqui com a mesma regra da tela.
+  // O valor da hora vem do CADASTRO da máquina, nunca do que chegou da tela —
+  // quem lança o dia anota o horímetro, não o preço.
+  let maquina: Record<string, unknown> = {};
+  if (input.machine_id) {
+    const inicial = input.hourmeter_start ?? null;
+    const final = input.hourmeter_end ?? null;
+    const errHorimetro = erroDoHorimetro(inicial, final);
+    if (errHorimetro) return { error: errHorimetro };
+
+    const { data: machine, error: mErr } = await supabase
+      .from("machines")
+      .select("id, hourly_rate")
+      .eq("id", input.machine_id)
+      .maybeSingle();
+    if (mErr) return { error: diaristaError(mErr) };
+    if (!machine) return { error: "Máquina não encontrada. Escolha de novo." };
+
+    const valorHora = Number(machine.hourly_rate ?? 0);
+    maquina = {
+      machine_id: input.machine_id,
+      hourmeter_start: inicial,
+      hourmeter_end: final,
+      // sem valor da hora no cadastro, fica vazio: a obra passa a usar o do
+      // cadastro assim que ele for preenchido (ver a 132)
+      machine_hourly_rate: valorHora > 0 ? normMoney(valorHora) : null,
+    };
+  }
+
   const { error } = await supabase.from("diarista_dias").insert({
+    ...maquina,
     diarista_id: input.diarista_id,
     work_date: workDate,
     description: clean(input.description),

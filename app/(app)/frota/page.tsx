@@ -123,6 +123,21 @@ export default async function FrotaPage({
     }));
   }
 
+  // O valor da hora para a obra (migration 132) mora no cadastro da máquina,
+  // mas a v_machine_resumo foi criada antes da coluna e não a traz: vem à
+  // parte. Sem a 132 a consulta falha e a ficha mostra o aviso.
+  const taxasRes = await supabase.from("machines").select("id, hourly_rate");
+  const valorHoraPronto = !taxasRes.error;
+  if (valorHoraPronto) {
+    const taxa = new Map(
+      ((taxasRes.data as { id: string; hourly_rate: number | null }[]) ?? []).map((t) => [
+        t.id,
+        t.hourly_rate,
+      ])
+    );
+    machines = machines.map((m) => ({ ...m, hourly_rate: taxa.get(m.id) ?? null }));
+  }
+
   // Quem pode receber a OS no celular: operador, encarregado e também o outro
   // admin — o serviço às vezes é do chefe, e antes ele não aparecia na lista.
   // Usa o service-role porque a RLS de profiles só deixa o admin ver os outros.
@@ -165,6 +180,7 @@ export default async function FrotaPage({
       veiculosDeParceiro={(veiculosParceiroRes.data as MachineParceiroVeiculo[]) ?? []}
       month={month}
       migrationPendente={migrationPendente}
+      valorHoraPronto={valorHoraPronto}
       parceriaPendente={!!parceirosRes.error}
     />
   );

@@ -130,14 +130,19 @@ export function ObrasEstoqueTab({
     let material = 0;
     let maoDeObra = 0;
     let despesas = 0;
+    let maquinas = 0;
     for (const o of obras) {
       material += num(o.total_value);
       // diária e serviço são as duas formas de pagar gente: no número do topo
       // eles andam juntos, e o detalhe da obra é que separa um do outro
       maoDeObra += num(o.labor_value) + num(o.service_value);
       despesas += num(o.expense_value);
+      // a máquina pesada da diária (132) entra junto da despesa no topo; o
+      // detalhe da obra é que mostra ela separada
+      maquinas += num(o.machine_value);
     }
-    return { material, maoDeObra, despesas, total: material + maoDeObra + despesas };
+    despesas += maquinas;
+    return { material, maoDeObra, despesas, maquinas, total: material + maoDeObra + despesas };
   }, [obras]);
 
   /** Os grupos do filtro: cada local que tem obra, mais o "sem local". */
@@ -341,6 +346,7 @@ export function ObrasEstoqueTab({
               label="Despesas"
               value={formatBRL(totais.despesas)}
               tone="violet"
+              hint={totais.maquinas > 0 ? "despesas + máquinas" : undefined}
             />
           </div>
 

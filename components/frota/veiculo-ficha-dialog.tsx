@@ -36,6 +36,7 @@ import { FrotaCalendario, type DiaDaFrota } from "./frota-calendario";
 import { HistoricoOsDialog } from "./historico-os-dialog";
 import { ServicoDialog } from "./servico-dialog";
 import { DespesaDialog } from "./despesa-dialog";
+import { ValorDaHora } from "./valor-da-hora";
 import { Chip, Numero, categoryChip, contaDoServico, kindMeta, toneResultado } from "./frota-shared";
 import type {
   Machine,
@@ -82,6 +83,8 @@ interface Props {
   machine: MachineResumo;
   /** Todos os veículos — os diálogos de lançamento precisam da lista. */
   machines: Machine[];
+  /** Migration 132 já rodou: dá para cadastrar o valor da hora. */
+  valorHoraPronto?: boolean;
   /** As linhas da ficha DESTE veículo, no mês da tela. */
   linhas: MachineFichaLinha[];
   /** Os lançamentos crus do mês: é por eles que a linha abre para corrigir. */
@@ -116,6 +119,7 @@ export function VeiculoFichaDialog({
   onClose,
   machine,
   machines,
+  valorHoraPronto = false,
   linhas,
   servicos,
   despesas,
@@ -334,6 +338,12 @@ export function VeiculoFichaDialog({
                 {machine.tracking_type === "km" ? "Hodômetro (km)" : "Horímetro (horas)"}
               </span>
             </div>
+
+            {/* O preço da hora para a obra: é o que a máquina lançada junto
+                com a diária custa (132). Só nas máquinas de horímetro. */}
+            {machine.tracking_type !== "km" && (
+              <ValorDaHora key={machine.id} machine={machine} pronto={valorHoraPronto} />
+            )}
 
             {/* A conta do mês, seguindo o recorte escolhido */}
             <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">

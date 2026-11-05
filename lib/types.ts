@@ -210,6 +210,11 @@ export interface Machine {
   /** Categoria (caminhao, cacamba, trator, ...). Define quem pode fazer frete. */
   category: string | null;
   tracking_type: MachineTrackingType;
+  /**
+   * Valor da hora da máquina para a obra (migration 132): é o que a máquina
+   * pesada lançada junto com a diária custa por hora de horímetro.
+   */
+  hourly_rate?: number | null;
   notes: string | null;
   active: boolean;
   created_at: string;
@@ -1508,7 +1513,12 @@ export interface SupplyObraUsage extends SupplyObra {
   service_value?: number;
   last_service_date?: string | null;
 
-  /** O que a obra custou: material + diárias + despesas + serviços. */
+  /** Máquina pesada lançada nas diárias desta obra (migration 132). */
+  machine_uses_count?: number;
+  machine_hours?: number;
+  machine_value?: number;
+
+  /** O que a obra custou: material + diárias + despesas + serviços + máquinas. */
   total_cost?: number;
 }
 
@@ -1630,8 +1640,11 @@ export interface SupplyObraServicoView extends SupplyObraServico {
 export interface SupplyObraExtrato {
   id: string;
   obra_id: string;
-  /** As quatro origens de gasto da obra ("servico" veio na migration 069). */
-  kind: "material" | "diaria" | "despesa" | "servico";
+  /**
+   * As origens de gasto da obra ("servico" veio na migration 069; "maquina",
+   * a máquina pesada lançada junto com a diária, na 132).
+   */
+  kind: "material" | "diaria" | "despesa" | "servico" | "maquina";
   /** A data do fato (saída / dia trabalhado / compra), não a da digitação. */
   entry_date: string;
   /** Nome do material, "Diária" / "Meia diária", ou o que foi comprado. */
@@ -1981,6 +1994,18 @@ export interface DiaristaDia {
   acerto_id?: string | null;
   /** Nome de quem marcou o dia, gravado no lançamento. */
   registered_by_name: string | null;
+  /**
+   * Máquina pesada usada no dia (migration 132). As horas saem do horímetro
+   * (final − inicial) e o valor é custo da OBRA — não entra no que se paga ao
+   * colaborador.
+   */
+  machine_id?: string | null;
+  hourmeter_start?: number | null;
+  hourmeter_end?: number | null;
+  /** Gerada no banco: final − inicial. */
+  machine_hours?: number | null;
+  /** Valor da hora no dia do lançamento. Vazio = vale o do cadastro da máquina. */
+  machine_hourly_rate?: number | null;
   created_by: string | null;
   created_at: string;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Tractor } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,11 +9,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { cn, formatBRL, upperKeepingCaret } from "@/lib/utils";
+import { cn, formatBRL, machineCategoryLabel, upperKeepingCaret } from "@/lib/utils";
 import { createDiaristaDia } from "@/app/(app)/diaristas/actions";
+import {
+  erroDoHorimetro,
+  formatHoras,
+  horasDaMaquina,
+  lerHorimetro,
+  maquinasPesadas,
+  valorDaMaquina,
+} from "@/lib/maquina-na-diaria";
 import { longDay } from "./diarista-shared";
 import type { Diarista, SupplyObraSector } from "@/lib/types";
 
@@ -24,6 +33,21 @@ export interface DiaristaObra {
   client?: string | null;
 }
 
+/**
+ * Máquina do cadastro de Máquinas e Veículos, do jeito enxuto que a diária
+ * precisa para lançar a máquina pesada (migration 132).
+ */
+export interface DiaristaMaquina {
+  id: string;
+  name: string;
+  plate?: string | null;
+  category?: string | null;
+  tracking_type?: string | null;
+  /** Valor da hora para a obra. Vazio = ainda não cadastrado. */
+  hourly_rate?: number | null;
+  active?: boolean;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -32,6 +56,13 @@ interface Props {
   date: string | null;
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
+  /** O cadastro de Máquinas e Veículos; a tela mostra só as pesadas ativas. */
+  maquinas: DiaristaMaquina[];
+  /**
+   * O banco já tem as colunas da máquina na diária (migration 132)? Sem elas
+   * a pergunta aparece, mas o Sim avisa que falta rodar a migration.
+   */
+  maquinaPronta: boolean;
   /** Obra do lançamento anterior — quem está numa obra lança vários seguidos. */
   defaultObraId?: string | null;
   /** Deu certo: quem abriu limpa o dia pendente e guarda a obra usada. */
@@ -51,6 +82,8 @@ export function LancarDiaDialog({
   date,
   obras,
   sectors,
+  maquinas,
+  maquinaPronta,
   defaultObraId,
   onSaved,
 }: Props) {
@@ -62,6 +95,11 @@ export function LancarDiaDialog({
   const [sectorId, setSectorId] = useState("");
   /** Veio só meio expediente: vale metade e o dia fica amarelo no calendário. */
   const [halfDay, setHalfDay] = useState(false);
+  /** "Usou máquina pesada?" — Não é o padrão: quase todo dia é sem máquina. */
+  const [usouMaquina, setUsouMaquina] = useState(false);
+  const [machineId, setMachineId] = useState("");
+  const [horimetroIni, setHorimetroIni] = useState("");
+  const [horimetroFim, setHorimetroFim] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -69,6 +107,10 @@ export function LancarDiaDialog({
     setObraId(defaultObraId ?? "");
     setSectorId("");
     setHalfDay(false);
+    setUsouMaquina(false);
+    setMachineId("");
+    setHorimetroIni("");
+    setHorimetroFim("");
     setError(null);
     // o dia entra nas dependências porque a tela é reaproveitada: clicou noutro
     // dia sem fechar, o formulário começa limpo de novo
@@ -85,6 +127,18 @@ export function LancarDiaDialog({
     setSectorId(""); // o setor é de uma obra só
   }
 
+  const opcoesMaquina = useMemo(() => maquinasPesadas(maquinas), [maquinas]);
+
+  // A conta da máquina, ao vivo: é o que ele confere antes de lançar.
+  const maquina = maquinas.find((m) => m.id === machineId) ?? null;
+  const ini = lerHorimetro(horimetroIni);
+  const fim = lerHorimetro(horimetroFim);
+  const horas = horasDaMaquina(ini, fim);
+  const valorHora = Number(maquina?.hourly_rate ?? 0);
+  const valorMaquina = valorDaMaquina(horas, valorHora);
+  /** Só reclama do horímetro depois que os dois foram preenchidos. */
+  const avisoHorimetro = ini != null && fim != null ? erroDoHorimetro(ini, fim) : null;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -95,6 +149,15 @@ export function LancarDiaDialog({
     // sem obra o dia fica solto: não entra no custo de obra nenhuma, e depois
     // ninguém lembra de qual era
     if (!obraId) return setError("Diga em qual obra ele trabalhou");
+    if (usouMaquina) {
+      if (!maquinaPronta)
+        return setError(
+          "A máquina ainda não pode ser gravada: falta rodar a migration 132 no banco. Marque Não e lance a diária sem a máquina por enquanto."
+        );
+      if (!machineId) return setError("Escolha a máquina que ele usou");
+      const errHorimetro = erroDoHorimetro(ini, fim);
+      if (errHorimetro) return setError(errHorimetro);
+    }
 
     startTransition(async () => {
       const r = await createDiaristaDia({
@@ -104,6 +167,9 @@ export function LancarDiaDialog({
         obra_id: obraId || null,
         sector_id: obraId && sectorId ? sectorId : null,
         half_day: halfDay,
+        ...(usouMaquina
+          ? { machine_id: machineId, hourmeter_start: ini, hourmeter_end: fim }
+          : {}),
       });
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao lançar o dia");
@@ -228,6 +294,125 @@ export function LancarDiaDialog({
                 searchPlaceholder="Buscar setor..."
                 emptyMessage="Nenhum setor cadastrado nesta obra"
               />
+            </div>
+          )}
+
+          {/* Máquina pesada (132): só depois da obra, porque é a obra que leva
+              o custo das horas. Sim/Não do tamanho do dedo, Não por padrão. */}
+          {obraId && (
+            <div className="space-y-1.5">
+              <Label>Usou máquina pesada?</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[false, true].map((sim) => (
+                  <button
+                    key={String(sim)}
+                    type="button"
+                    onClick={() => setUsouMaquina(sim)}
+                    className={cn(
+                      "min-h-[52px] rounded-xl border text-sm font-semibold transition-colors active:scale-[0.97]",
+                      usouMaquina === sim
+                        ? sim
+                          ? "bg-produmar-600 border-produmar-600 text-white"
+                          : "bg-slate-600 border-slate-600 text-white dark:bg-slate-500 dark:border-slate-500"
+                        : "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-500"
+                    )}
+                  >
+                    {sim ? "Sim" : "Não"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {obraId && usouMaquina && !maquinaPronta && (
+            <p className="text-[12px] text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400">
+              A máquina na diária ainda não está liberada: falta rodar a migration 132 no
+              banco. Por enquanto marque Não e lance a diária sem a máquina.
+            </p>
+          )}
+
+          {obraId && usouMaquina && maquinaPronta && (
+            <div className="space-y-3 rounded-xl border border-produmar-100 dark:border-slate-700 bg-produmar-50/40 dark:bg-slate-800/40 p-3">
+              <div className="space-y-1.5">
+                <Label>Máquina *</Label>
+                <SearchableSelect
+                  items={opcoesMaquina}
+                  value={machineId}
+                  onChange={setMachineId}
+                  getId={(m) => m.id}
+                  getLabel={(m) => m.name}
+                  renderItem={(m) => (
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <span className="truncate">{m.name}</span>
+                      {m.category && (
+                        <span className="text-[10px] text-slate-400 flex-shrink-0">
+                          {machineCategoryLabel(m.category)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  placeholder="Toque para escolher a máquina..."
+                  searchPlaceholder="Buscar máquina..."
+                  emptyMessage="Nenhuma máquina cadastrada em Máquinas e Veículos"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="ld_hor_ini">Horímetro inicial *</Label>
+                  <Input
+                    id="ld_hor_ini"
+                    value={horimetroIni}
+                    onChange={(e) => setHorimetroIni(e.target.value)}
+                    placeholder="ex: 1250,5"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="h-11 tabular-nums"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ld_hor_fim">Horímetro final *</Label>
+                  <Input
+                    id="ld_hor_fim"
+                    value={horimetroFim}
+                    onChange={(e) => setHorimetroFim(e.target.value)}
+                    placeholder="ex: 1258"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="h-11 tabular-nums"
+                  />
+                </div>
+              </div>
+
+              {avisoHorimetro ? (
+                <p className="text-[12px] text-red-600 dark:text-red-400">{avisoHorimetro}</p>
+              ) : horas != null && horas > 0 ? (
+                <div className="rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-2 flex items-center gap-2.5">
+                  <Tractor className="w-4 h-4 text-produmar-600 dark:text-produmar-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
+                      {formatHoras(horas)}
+                      {valorHora > 0 && (
+                        <span className="font-normal text-slate-500 dark:text-slate-400">
+                          {" "}× {formatBRL(valorHora)}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {valorHora > 0
+                        ? "Vai para o custo da obra"
+                        : maquina
+                          ? "Esta máquina ainda não tem valor da hora — as horas ficam gravadas e o valor entra na obra quando ele for cadastrado em Máquinas e Veículos."
+                          : "Escolha a máquina para ver o valor"}
+                    </p>
+                  </div>
+                  {valorHora > 0 && (
+                    <p className="text-base font-bold text-produmar-700 dark:text-produmar-300 tabular-nums flex-shrink-0">
+                      {formatBRL(valorMaquina)}
+                    </p>
+                  )}
+                </div>
+              ) : null}
             </div>
           )}
 

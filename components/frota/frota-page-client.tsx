@@ -63,6 +63,8 @@ interface Props {
   migrationPendente?: boolean;
   /** Migration 076 ainda não rodou: a aba da parceria avisa. */
   parceriaPendente?: boolean;
+  /** Migration 132 já rodou: a ficha deixa cadastrar o valor da hora. */
+  valorHoraPronto?: boolean;
 }
 
 /**
@@ -121,6 +123,7 @@ export function FrotaPageClient({
   month,
   migrationPendente = false,
   parceriaPendente = false,
+  valorHoraPronto = false,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -541,6 +544,7 @@ export function FrotaPageClient({
           onClose={() => setFichaMachineId(null)}
           machine={fichaMachine}
           machines={machines}
+          valorHoraPronto={valorHoraPronto}
           linhas={fichaPorMaquina.get(fichaMachine.id) ?? []}
           servicos={servicos.filter((s) => s.machine_id === fichaMachine.id)}
           despesas={despesas.filter((d) => d.machine_id === fichaMachine.id)}

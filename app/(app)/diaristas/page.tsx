@@ -11,7 +11,11 @@ import type {
   SupplyObraSector,
   SupplyObraServicoView,
 } from "@/lib/types";
-import type { DiaristaObra } from "@/components/diaristas/lancar-dia-dialog";
+import type {
+  DiaristaMaquina,
+  DiaristaObra,
+} from "@/components/diaristas/lancar-dia-dialog";
+import { supabaseTemMaquinaNaDiaria } from "@/lib/maquina-na-diaria-db";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +32,8 @@ export default async function DiaristasPage() {
     servicosRes,
     vinculosRes,
     encarregados,
+    maquinasRes,
+    pronta132,
   ] = await Promise.all([
     // cadastro + quanto cada um já trabalhou (migration 059 — sem ela a tela
     // abre vazia com o aviso, em vez de quebrar)
@@ -62,6 +68,9 @@ export default async function DiaristasPage() {
     // alguém avisa para rodar a migration)
     supabase.from("diarista_tecnicos").select("diarista_id, tecnico_id"),
     listarEncarregadosDeObra(supabase),
+    // a máquina pesada que trabalhou junto na diária (migration 132)
+    supabase.from("machines").select("*").order("name", { ascending: true }),
+    supabaseTemMaquinaNaDiaria(supabase),
   ]);
 
   return (
@@ -70,6 +79,8 @@ export default async function DiaristasPage() {
       dias={(diasRes.data as DiaristaDia[]) ?? []}
       obras={(obrasRes.data as DiaristaObra[]) ?? []}
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
+      maquinas={(maquinasRes.data as DiaristaMaquina[]) ?? []}
+      maquinaPronta={pronta132}
       adiantamentos={(valesRes.data as DiaristaAdiantamento[]) ?? []}
       acertos={(acertosRes.data as DiaristaAcerto[]) ?? []}
       servicos={(servicosRes.data as SupplyObraServicoView[]) ?? []}

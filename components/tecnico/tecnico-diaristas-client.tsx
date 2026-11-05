@@ -7,6 +7,7 @@ import { formatBRL, formatDate, getInitials, localDateISO } from "@/lib/utils";
 import { DiaristaCalendar, monthRange } from "@/components/diaristas/diarista-shared";
 import {
   LancarDiaDialog,
+  type DiaristaMaquina,
   type DiaristaObra,
 } from "@/components/diaristas/lancar-dia-dialog";
 import { DiaDetailDialog } from "@/components/diaristas/dia-detail-dialog";
@@ -23,6 +24,10 @@ interface Props {
   dias: DiaristaDia[];
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
+  /** Cadastro de Máquinas e Veículos, para a máquina pesada da diária (132). */
+  maquinas?: DiaristaMaquina[];
+  /** A migration 132 já rodou? */
+  maquinaPronta?: boolean;
   /** Quem está usando a tela: ele só apaga o dia que ele mesmo marcou. */
   meId: string;
   /** A lista veio filtrada pela turma — muda o aviso de lista vazia. */
@@ -44,6 +49,8 @@ export function TecnicoDiaristasClient({
   dias,
   obras,
   sectors,
+  maquinas = [],
+  maquinaPronta = false,
   meId,
   soDaTurma = false,
 }: Props) {
@@ -232,6 +239,8 @@ export function TecnicoDiaristasClient({
         date={pendingDate}
         obras={obras}
         sectors={sectors}
+        maquinas={maquinas}
+        maquinaPronta={maquinaPronta}
         defaultObraId={ultimaObraId}
         onSaved={(obraId) => {
           setUltimaObraId(obraId || null);
@@ -248,6 +257,7 @@ export function TecnicoDiaristasClient({
         diaristaName={diarista.name}
         obras={obras}
         sectors={sectors}
+        maquinas={maquinas}
         canDelete={detalheDia?.created_by === meId}
       />
     </div>

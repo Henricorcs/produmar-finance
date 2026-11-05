@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { CalendarCheck, HardHat, MapPin, Pencil, Trash2, User, Wallet } from "lucide-react";
+import {
+  CalendarCheck,
+  Gauge,
+  HardHat,
+  MapPin,
+  Pencil,
+  Tractor,
+  Trash2,
+  User,
+  Wallet,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,11 +28,13 @@ import {
   formatBRL,
   formatBRLInput,
   formatDate,
+  formatQty,
   parseMoney,
   upperKeepingCaret,
 } from "@/lib/utils";
 import { deleteDiaristaDia, updateDiaristaDia } from "@/app/(app)/diaristas/actions";
-import type { DiaristaObra } from "./lancar-dia-dialog";
+import { formatHoras, valorDaMaquina } from "@/lib/maquina-na-diaria";
+import type { DiaristaMaquina, DiaristaObra } from "./lancar-dia-dialog";
 import type { DiaristaDia, SupplyObraSector } from "@/lib/types";
 
 interface Props {
@@ -32,6 +44,8 @@ interface Props {
   diaristaName: string;
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
+  /** Para mostrar o nome da máquina pesada do dia (132). */
+  maquinas?: DiaristaMaquina[];
   /** Só o chefe corrige o que já foi lançado (a diária vale dinheiro). */
   canEdit?: boolean;
   /** O chefe apaga qualquer um; o técnico só o que ele mesmo marcou. */
@@ -50,6 +64,7 @@ export function DiaDetailDialog({
   diaristaName,
   obras,
   sectors,
+  maquinas = [],
   canEdit,
   canDelete,
 }: Props) {
@@ -62,6 +77,13 @@ export function DiaDetailDialog({
   const [sectorId, setSectorId] = useState("");
   const [rate, setRate] = useState("");
   const [halfDay, setHalfDay] = useState(false);
+
+  // A máquina do dia e o valor da hora: o gravado no dia manda; sem ele, o do
+  // cadastro (é a mesma regra das views da obra, migration 132).
+  const maquinaDoDia = dia?.machine_id
+    ? maquinas.find((m) => m.id === dia.machine_id) ?? null
+    : null;
+  const valorHoraDoDia = Number(dia?.machine_hourly_rate ?? maquinaDoDia?.hourly_rate ?? 0);
 
   useEffect(() => {
     if (!open) return;
@@ -180,6 +202,32 @@ export function DiaDetailDialog({
               />
               {obraName && <Linha icon={HardHat} label="Obra" value={obraName} />}
               {sectorName && <Linha icon={MapPin} label="Setor" value={sectorName} />}
+              {/* Máquina pesada do dia (132): custo da obra, não do colaborador */}
+              {dia.machine_hours != null && (
+                <>
+                  <Linha
+                    icon={Tractor}
+                    label="Máquina"
+                    value={maquinaDoDia?.name ?? "Máquina apagada do cadastro"}
+                  />
+                  <Linha
+                    icon={Gauge}
+                    label="Horímetro"
+                    value={`${formatQty(Number(dia.hourmeter_start))} → ${formatQty(
+                      Number(dia.hourmeter_end)
+                    )} (${formatHoras(Number(dia.machine_hours))})`}
+                  />
+                  <Linha
+                    icon={HardHat}
+                    label="Máquina na obra"
+                    value={
+                      valorHoraDoDia > 0
+                        ? formatBRL(valorDaMaquina(Number(dia.machine_hours), valorHoraDoDia))
+                        : "sem valor da hora"
+                    }
+                  />
+                </>
+              )}
             </div>
 
             <div className="space-y-1">

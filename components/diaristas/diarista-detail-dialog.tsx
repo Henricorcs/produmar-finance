@@ -23,7 +23,11 @@ import { Button } from "@/components/ui/button";
 import { formatBRL, formatDate, getInitials, servicoConta } from "@/lib/utils";
 import { deleteDiarista, setDiaristaActive } from "@/app/(app)/diaristas/actions";
 import { DiaristaCalendar, monthRange } from "./diarista-shared";
-import { LancarDiaDialog, type DiaristaObra } from "./lancar-dia-dialog";
+import {
+  LancarDiaDialog,
+  type DiaristaMaquina,
+  type DiaristaObra,
+} from "./lancar-dia-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
 import {
   PAYMENT_MODE_LABEL,
@@ -47,6 +51,10 @@ interface Props {
   dias: DiaristaDia[];
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
+  /** Cadastro de Máquinas e Veículos, para a máquina pesada da diária (132). */
+  maquinas?: DiaristaMaquina[];
+  /** A migration 132 já rodou? */
+  maquinaPronta?: boolean;
   /** Serviços de todo mundo — o diálogo filtra os desta pessoa (069). */
   servicos?: SupplyObraServicoView[];
   /** Mês que está aberto na tela, para o calendário começar no mesmo lugar. */
@@ -73,6 +81,8 @@ export function DiaristaDetailDialog({
   dias,
   obras,
   sectors,
+  maquinas = [],
+  maquinaPronta = false,
   servicos = [],
   year,
   month,
@@ -535,6 +545,8 @@ export function DiaristaDetailDialog({
           date={pendingDate}
           obras={obras}
           sectors={sectors}
+          maquinas={maquinas}
+          maquinaPronta={maquinaPronta}
           onSaved={() => setPendingDate(null)}
         />
 
@@ -545,6 +557,7 @@ export function DiaristaDetailDialog({
           diaristaName={diarista?.name ?? ""}
           obras={obras}
           sectors={sectors}
+          maquinas={maquinas}
           canEdit
           canDelete
         />

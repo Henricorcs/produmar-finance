@@ -217,10 +217,12 @@ export function SupplyObraDetailDialog({
     let maoDeObra = 0;
     let despesas = 0;
     let servicoValor = 0;
+    let maquinas = 0;
     for (const l of linhas) {
       if (l.kind === "diaria") maoDeObra += num(l.value);
       else if (l.kind === "despesa") despesas += num(l.value);
       else if (l.kind === "servico") servicoValor += num(l.value);
+      else if (l.kind === "maquina") maquinas += num(l.value);
       else material += num(l.value);
     }
     return {
@@ -228,7 +230,8 @@ export function SupplyObraDetailDialog({
       maoDeObra,
       despesas,
       servicos: servicoValor,
-      total: material + maoDeObra + despesas + servicoValor,
+      maquinas,
+      total: material + maoDeObra + despesas + servicoValor + maquinas,
     };
   }, [linhas]);
 
@@ -287,8 +290,9 @@ export function SupplyObraDetailDialog({
       }
     >();
     for (const l of linhas) {
-      // a despesa fica de fora: ali "quem" é o fornecedor, não quem trabalhou
-      if (l.kind === "despesa") continue;
+      // a despesa fica de fora: ali "quem" é o fornecedor, não quem trabalhou;
+      // a máquina também — é custo da obra, não do colaborador que operou
+      if (l.kind === "despesa" || l.kind === "maquina") continue;
       const nome = (l.person ?? "").trim() || "Sem nome";
       const cur = map.get(nome) ?? {
         nome,
@@ -441,6 +445,22 @@ export function SupplyObraDetailDialog({
                   {num(obra.expenses_count) === 1 ? "lançamento" : "lançamentos"}
                 </p>
               </div>
+              {/* Máquina pesada lançada junto com a diária (132) — só aparece
+                  quando a obra usou alguma, para não encher de zero */}
+              {num(obra.machine_uses_count) > 0 && (
+                <div className="col-span-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5">
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                    Máquinas
+                  </p>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+                    {formatBRL(num(obra.machine_value))}
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    {formatQty(num(obra.machine_hours))} h em {num(obra.machine_uses_count)}{" "}
+                    {num(obra.machine_uses_count) === 1 ? "diária" : "diárias"}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="mt-3 grid grid-cols-3 gap-2">
@@ -795,16 +815,20 @@ export function SupplyObraDetailDialog({
                             ? "bg-emerald-400"
                             : l.kind === "servico"
                               ? "bg-teal-400"
-                              : ehDespesa
-                                ? "bg-violet-400"
-                                : "bg-orange-400"
+                              : l.kind === "maquina"
+                                ? "bg-amber-400"
+                                : ehDespesa
+                                  ? "bg-violet-400"
+                                  : "bg-orange-400"
                         }`}
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
                           {l.kind === "material"
                             ? `${formatQty(num(l.quantity))} ${l.unit ?? ""} · ${l.description}`
-                            : l.description}
+                            : l.kind === "maquina"
+                              ? `${formatQty(num(l.quantity))} h · ${l.description}`
+                              : l.description}
                         </p>
                         <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
                           {l.photo_path && <Paperclip className="w-3 h-3 flex-shrink-0" />}
@@ -826,8 +850,8 @@ export function SupplyObraDetailDialog({
             )}
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               Toque numa despesa ou num material para corrigir ou apagar — mexer no
-              material acerta o estoque junto. A diária se acerta em Colaboradores; o
-              serviço, em &quot;Serviços&quot;.
+              material acerta o estoque junto. A diária (e a máquina lançada com ela) se
+              acerta em Colaboradores; o serviço, em &quot;Serviços&quot;.
             </p>
           </div>
 
@@ -930,6 +954,12 @@ export function SupplyObraCard({
       valor: num(obra.expense_value),
       cor: "bg-violet-400",
       texto: "text-violet-600 dark:text-violet-400",
+    },
+    {
+      nome: "Máquinas",
+      valor: num(obra.machine_value),
+      cor: "bg-amber-400",
+      texto: "text-amber-600 dark:text-amber-400",
     },
   ].filter((p) => p.valor > 0);
 

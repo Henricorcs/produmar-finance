@@ -22,7 +22,7 @@ import { DiaDetailDialog } from "./dia-detail-dialog";
 import { RelatorioDialog } from "./relatorio-dialog";
 import { AcertoDialog } from "./acerto-dialog";
 import { EncarregadosDialog } from "./encarregados-dialog";
-import type { DiaristaObra } from "./lancar-dia-dialog";
+import type { DiaristaMaquina, DiaristaObra } from "./lancar-dia-dialog";
 import type {
   Diarista,
   DiaristaAcerto,
@@ -42,6 +42,10 @@ interface Props {
   dias: DiaristaDia[];
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
+  /** Cadastro de Máquinas e Veículos, para a máquina pesada da diária (132). */
+  maquinas?: DiaristaMaquina[];
+  /** A migration 132 já rodou? */
+  maquinaPronta?: boolean;
   /** Vales de todo mundo — o diálogo do acerto filtra os de cada um (068). */
   adiantamentos?: DiaristaAdiantamento[];
   /** Acertos já feitos, para o histórico e para desfazer (068). */
@@ -100,6 +104,8 @@ export function DiaristasPageClient({
   dias,
   obras,
   sectors,
+  maquinas = [],
+  maquinaPronta = false,
   adiantamentos = [],
   acertos = [],
   servicos = [],
@@ -806,6 +812,8 @@ export function DiaristasPageClient({
         dias={dias}
         obras={obras}
         sectors={sectors}
+        maquinas={maquinas}
+        maquinaPronta={maquinaPronta}
         servicos={servicos}
         year={year}
         month={month}
@@ -841,6 +849,7 @@ export function DiaristasPageClient({
         diaristaName={detalheDia ? nomePorId.get(detalheDia.diarista_id) ?? "" : ""}
         obras={obras}
         sectors={sectors}
+        maquinas={maquinas}
         canEdit
         canDelete
       />

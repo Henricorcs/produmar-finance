@@ -114,10 +114,20 @@ export async function createMachine(input: {
 
 export async function updateMachine(
   id: string,
-  input: Partial<Pick<Machine, "name" | "plate" | "type" | "category" | "tracking_type" | "notes" | "active">>
+  input: Partial<
+    Pick<
+      Machine,
+      "name" | "plate" | "type" | "category" | "tracking_type" | "notes" | "active" | "hourly_rate"
+    >
+  >
 ) {
   const supabase = createClient();
   const patch: Record<string, unknown> = {};
+  // valor da hora para a obra (132): vazio ou zero = sem valor cadastrado
+  if (input.hourly_rate !== undefined) {
+    const v = Math.round(Math.abs(Number(input.hourly_rate ?? 0)) * 100) / 100;
+    patch.hourly_rate = Number.isFinite(v) && v > 0 ? v : null;
+  }
   if (input.name !== undefined) patch.name = input.name.trim().toUpperCase();
   if (input.plate !== undefined) patch.plate = input.plate?.toString().trim().toUpperCase() || null;
   if (input.type !== undefined) patch.type = input.type?.toString().trim() || null;
@@ -127,8 +137,14 @@ export async function updateMachine(
   if (input.active !== undefined) patch.active = input.active;
 
   const { error } = await supabase.from("machines").update(patch).eq("id", id);
+  if (error && /hourly_rate/.test(error.message))
+    return { error: "Para guardar o valor da hora, falta rodar a migration 132 no Supabase." };
   if (error) return { error: error.message };
   revalidate();
+  // o valor da hora aparece na diária e no custo da obra
+  revalidatePath("/diaristas");
+  revalidatePath("/tecnico/diaristas");
+  revalidatePath("/obras");
   return { ok: true };
 }
 

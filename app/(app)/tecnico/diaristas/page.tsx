@@ -4,7 +4,11 @@ import { getProfile } from "@/lib/auth";
 import { TecnicoDiaristasClient } from "@/components/tecnico/tecnico-diaristas-client";
 import { localDateISO } from "@/lib/utils";
 import type { Diarista, DiaristaDia, SupplyObraSector } from "@/lib/types";
-import type { DiaristaObra } from "@/components/diaristas/lancar-dia-dialog";
+import type {
+  DiaristaMaquina,
+  DiaristaObra,
+} from "@/components/diaristas/lancar-dia-dialog";
+import { supabaseTemMaquinaNaDiaria } from "@/lib/maquina-na-diaria-db";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +31,8 @@ export default async function TecnicoDiaristasPage() {
     new Date(new Date().getFullYear(), new Date().getMonth() - 6, 1)
   );
 
-  const [diaristasRes, diasRes, obrasRes, sectorsRes, vinculosRes] = await Promise.all([
+  const [diaristasRes, diasRes, obrasRes, sectorsRes, vinculosRes, maquinasRes, pronta132Res] =
+    await Promise.all([
     // só quem está ativo: o técnico escolhe da lista, nunca cadastra
     // (migration 059 — sem ela a tela avisa que não há ninguém cadastrado)
     supabase
@@ -50,6 +55,9 @@ export default async function TecnicoDiaristasPage() {
     encarregado
       ? supabase.from("diarista_tecnicos").select("diarista_id").eq("tecnico_id", profile.id)
       : null,
+    // a máquina pesada que trabalhou junto na diária (migration 132)
+    supabase.from("machines").select("*").order("name", { ascending: true }),
+    supabaseTemMaquinaNaDiaria(supabase),
   ]);
 
   // SÓ A TURMA DELE. O admin vê todo mundo. Enquanto a 099 não roda a tabela
@@ -73,6 +81,8 @@ export default async function TecnicoDiaristasPage() {
       dias={dias}
       obras={(obrasRes.data as DiaristaObra[]) ?? []}
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
+      maquinas={(maquinasRes.data as DiaristaMaquina[]) ?? []}
+      maquinaPronta={pronta132Res}
       meId={profile.id}
       soDaTurma={filtrar}
     />
