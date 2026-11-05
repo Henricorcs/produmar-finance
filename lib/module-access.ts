@@ -55,8 +55,10 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   devedores: ["/devedores", "/emprestimos"],
   // Prefeitura: notas emitidas por secretaria e a baixa (migration 102)
   prefeitura: ["/prefeitura"],
-  // Medições: o lote marcado pelo GPS, com mapa e área (migration 131)
-  medicoes: ["/medicoes"],
+  // Medições: o lote marcado pelo GPS, com mapa e área (migration 131), e o
+  // Medir cerca. A cerca também fica em Obras, onde morava: quem tem só Obras
+  // não perde a tela — a rota abre para quem tem QUALQUER um dos dois.
+  medicoes: ["/medicoes", "/medir-cerca"],
 };
 
 /**
@@ -184,12 +186,14 @@ function matchesPrefix(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(prefix + "/");
 }
 
-/** Retorna o slug do módulo dono da rota, ou null se a rota não pertence a nenhum. */
-export function moduleSlugForPath(path: string): ModuleSlug | null {
-  for (const slug of ASSIGNABLE_MODULE_SLUGS) {
-    if (MODULE_ROUTE_PREFIXES[slug].some((p) => matchesPrefix(path, p))) return slug;
-  }
-  return null;
+/**
+ * Todos os módulos que abrem esta rota. Quase sempre é um só; o Medir cerca é
+ * de Obras e de Medições — basta ter um deles.
+ */
+export function moduleSlugsForPath(path: string): ModuleSlug[] {
+  return ASSIGNABLE_MODULE_SLUGS.filter((slug) =>
+    MODULE_ROUTE_PREFIXES[slug].some((p) => matchesPrefix(path, p))
+  );
 }
 
 /**
@@ -199,7 +203,7 @@ export function moduleSlugForPath(path: string): ModuleSlug | null {
 export function isModuleBlocked(path: string, allowedModules: string[] | undefined): boolean {
   if (!allowedModules || allowedModules.length === 0) return false;
   if (MODULE_EXEMPT_PREFIXES.some((p) => matchesPrefix(path, p))) return false;
-  const slug = moduleSlugForPath(path);
-  if (!slug) return false; // rota fora de qualquer módulo → não bloqueia
-  return !allowedModules.includes(slug);
+  const slugs = moduleSlugsForPath(path);
+  if (slugs.length === 0) return false; // rota fora de qualquer módulo → não bloqueia
+  return !slugs.some((s) => allowedModules.includes(s));
 }

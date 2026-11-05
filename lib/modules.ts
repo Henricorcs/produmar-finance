@@ -139,23 +139,26 @@ export const APP_MODULES: AppModule[] = [
     icon: HardHat,
     accentIcon:
       "bg-orange-50 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400",
-    tabs: [
-      { href: "/obras", label: "Obras", short: "Obras", icon: HardHat },
-      // a conta é no celular, pelo GPS: começo e fim da cerca → metragem
-      { href: "/medir-cerca", label: "Medir cerca", short: "Cerca", icon: Ruler },
-    ],
+    // O Medir cerca morava aqui; passou para Medições (pedido do dono, 05/11/2026).
+    // Quem tem só Obras continua abrindo /medir-cerca — ver lib/module-access.ts.
+    tabs: [{ href: "/obras", label: "Obras", short: "Obras", icon: HardHat }],
   },
   {
     // O lote medido pelo GPS: anda no terreno marcando os cantos e o sistema
-    // desenha o mapa e dá a área em m² e hectares — ver a migration 131.
+    // desenha o mapa e dá a área em m² e hectares — ver a migration 131. O
+    // Medir cerca (a metragem de uma cerca pelo GPS) mora aqui também.
     slug: "medicoes",
     name: "Medições",
-    description: "Marque os cantos do terreno pelo GPS: mapa do lote, lados, m² e hectares",
+    description: "Pelo GPS: o mapa do lote com m² e hectares, e a metragem da cerca",
     href: "/medicoes",
     icon: LandPlot,
     accentIcon:
       "bg-lime-50 text-lime-700 dark:bg-lime-900/40 dark:text-lime-400",
-    tabs: [{ href: "/medicoes", label: "Medições", short: "Medições", icon: LandPlot }],
+    tabs: [
+      { href: "/medicoes", label: "Lotes", short: "Lotes", icon: LandPlot },
+      // a conta é no celular, pelo GPS: começo e fim da cerca → metragem
+      { href: "/medir-cerca", label: "Medir cerca", short: "Cerca", icon: Ruler },
+    ],
   },
   {
     // Os imóveis alugados: cadastro com código, contrato preenchido e o

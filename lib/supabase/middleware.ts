@@ -7,7 +7,7 @@ import {
   isAvisoMaterialPath,
   isLeituraImpressorasPath,
   isModuleBlocked,
-  moduleSlugForPath,
+  moduleSlugsForPath,
 } from "@/lib/module-access";
 import { USER_ID_HEADER } from "@/lib/auth-header";
 
@@ -137,7 +137,7 @@ export async function updateSession(request: NextRequest) {
     // esses módulos. O encarregado é o mesmo caminho — o que muda é que ele
     // costuma ter módulo liberado, e por isso trabalha nas duas telas.
     if ((role === "operador" || role === "encarregado") && !isPublicRoute) {
-      const slug = moduleSlugForPath(path);
+      const slugs = moduleSlugsForPath(path);
       // A aba de avisar material é o único pedaço do painel que pede permissão
       // marcada no cadastro: nem todo operador descarrega material na obra.
       const ehAvisoMaterial = isAvisoMaterialPath(path);
@@ -153,7 +153,7 @@ export async function updateSession(request: NextRequest) {
         (hasHubModules(mods) &&
           (path.startsWith("/inicio") ||
             path.startsWith("/configuracoes") ||
-            (slug !== null && mods.includes(slug))));
+            slugs.some((s) => mods.includes(s))));
 
       let allowedModules = (user.user_metadata?.allowed_modules as string[] | undefined) ?? [];
       let canAccess = podeVer(allowedModules);

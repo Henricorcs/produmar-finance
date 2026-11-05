@@ -1,7 +1,7 @@
 import { MedidorDeCerca } from "@/components/obras/medidor-de-cerca";
 
 /**
- * MEDIR CERCA — na aba de Obras: marca o 1º ponto pelo GPS, anda até o 2º e
+ * MEDIR CERCA — aba do módulo Medições (e aberta a quem tem Obras): marca o 1º ponto pelo GPS, anda até o 2º e
  * marca de novo; a tela dá a metragem. A conta é toda no celular, nada é salvo
  * no banco (os pontos ficam só no aparelho, até começar uma medida nova).
  */
