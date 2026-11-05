@@ -17,6 +17,7 @@ export const ASSIGNABLE_MODULE_SLUGS = [
   "alugueis",
   "devedores",
   "prefeitura",
+  "medicoes",
 ] as const;
 
 export type ModuleSlug = (typeof ASSIGNABLE_MODULE_SLUGS)[number];
@@ -54,6 +55,8 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   devedores: ["/devedores", "/emprestimos"],
   // Prefeitura: notas emitidas por secretaria e a baixa (migration 102)
   prefeitura: ["/prefeitura"],
+  // Medições: o lote marcado pelo GPS, com mapa e área (migration 131)
+  medicoes: ["/medicoes"],
 };
 
 /**

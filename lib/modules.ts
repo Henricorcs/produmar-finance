@@ -21,6 +21,7 @@ import {
   Landmark,
   PenLine,
   Ruler,
+  LandPlot,
   type LucideIcon,
 } from "lucide-react";
 
@@ -143,6 +144,18 @@ export const APP_MODULES: AppModule[] = [
       // a conta é no celular, pelo GPS: começo e fim da cerca → metragem
       { href: "/medir-cerca", label: "Medir cerca", short: "Cerca", icon: Ruler },
     ],
+  },
+  {
+    // O lote medido pelo GPS: anda no terreno marcando os cantos e o sistema
+    // desenha o mapa e dá a área em m² e hectares — ver a migration 131.
+    slug: "medicoes",
+    name: "Medições",
+    description: "Marque os cantos do terreno pelo GPS: mapa do lote, lados, m² e hectares",
+    href: "/medicoes",
+    icon: LandPlot,
+    accentIcon:
+      "bg-lime-50 text-lime-700 dark:bg-lime-900/40 dark:text-lime-400",
+    tabs: [{ href: "/medicoes", label: "Medições", short: "Medições", icon: LandPlot }],
   },
   {
     // Os imóveis alugados: cadastro com código, contrato preenchido e o

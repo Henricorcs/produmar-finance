@@ -2920,3 +2920,20 @@ export interface PrefeituraNota {
   created_by: string | null;
   created_at: string;
 }
+
+// ── Medições (migration 131) ────────────────────────────────────────────────
+
+/** Um lote medido pelo GPS: os cantos em ordem e a conta gravada. */
+export interface Medicao {
+  id: string;
+  nome: string;
+  local: string | null;
+  observacao: string | null;
+  /** Os cantos como vieram do GPS, na ordem do contorno. */
+  pontos: import("./medir-cerca").PontoGps[];
+  area_m2: number | null;
+  perimetro_m: number | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
