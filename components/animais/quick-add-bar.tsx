@@ -10,6 +10,8 @@ import type { AnimalSex, AnimalSpecies } from "@/lib/types";
 interface Props {
   /** Tipo escolhido no filtro da tela (null = "todos os tipos"). */
   species: AnimalSpecies | null;
+  /** Raça escolhida no menu — o animal novo já entra nela (senão sumiria da tela). */
+  breedId?: string | null;
 }
 
 /**
@@ -17,7 +19,7 @@ interface Props {
  * Enter salva e o campo já espera o próximo. Raça, peso, foto, vacina e o
  * resto entram depois, abrindo a ficha do animal.
  */
-export function QuickAddBar({ species: filterSpecies }: Props) {
+export function QuickAddBar({ species: filterSpecies, breedId = null }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [tag, setTag] = useState("");
@@ -39,7 +41,9 @@ export function QuickAddBar({ species: filterSpecies }: Props) {
       return;
     }
     startTransition(async () => {
-      const r = await createAnimal({ tag, sex, species, breed_id: null, weight: null });
+      // a raça só vale se for do tipo que está na linha (a pessoa pode ter trocado o tipo)
+      const raca = breedId && filterSpecies === species ? breedId : null;
+      const r = await createAnimal({ tag, sex, species, breed_id: raca, weight: null });
       if (r && "error" in r) {
         setError(r.error ?? "Erro ao salvar");
         return;

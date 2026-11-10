@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -50,6 +50,15 @@ import { WeightDialog } from "./weight-dialog";
 import { AnimalFinanceiroTab } from "./animal-financeiro-tab";
 import { LotesTab } from "./lotes-tab";
 import { ProtocolosTab, type EtapaFeita } from "./protocolos-tab";
+import {
+  BotaoRacas,
+  GavetaRacas,
+  ListaRacas,
+  SEM_RACA,
+  animalNaEscolha,
+  nomeDaEscolha,
+  type EscolhaRaca,
+} from "./menu-racas";
 import {
   SPECIES_META,
   SPECIES_OPTIONS,
@@ -140,6 +149,29 @@ interface Props {
   etapasFeitas?: EtapaFeita[];
   /** Peso estimado pela foto (migration 109). */
   pesosFoto?: AnimalPesoFoto[];
+  /** ?tipo= e ?raca= da URL — a escolha do menu de raças ao abrir a página. */
+  tipoInicial?: string | null;
+  racaInicial?: string | null;
+}
+
+/**
+ * Lê ?tipo= e ?raca= da URL e confere: raça que não existe mais (ou tipo
+ * inventado) cai em "Todos os animais". A raça manda no tipo — é sempre o
+ * tipo dela, mesmo que a URL diga outro.
+ */
+function escolhaDaUrl(
+  tipo: string | null | undefined,
+  raca: string | null | undefined,
+  breeds: AnimalBreed[]
+): EscolhaRaca {
+  const species = tipo && tipo in SPECIES_META ? (tipo as AnimalSpecies) : null;
+  if (raca && raca !== SEM_RACA) {
+    const b = breeds.find((x) => x.id === raca);
+    if (b) return { species: speciesOf(b.species), breedId: b.id };
+  }
+  if (!species) return { species: "todos", breedId: null };
+  if (raca === SEM_RACA && !criacaoPorLote(species)) return { species, breedId: SEM_RACA };
+  return { species, breedId: null };
 }
 
 type Tab =
@@ -214,6 +246,8 @@ export function AnimaisPageClient({
   aplicacaoAnimais = [],
   etapasFeitas = [],
   pesosFoto = [],
+  tipoInicial = null,
+  racaInicial = null,
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -224,7 +258,39 @@ export function AnimaisPageClient({
   const [undoingExitId, setUndoingExitId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("rebanho");
   const [search, setSearch] = useState("");
-  const [species, setSpecies] = useState<SpeciesFilter>("todos");
+  /**
+   * O que está escolhido no menu de raças: o rebanho inteiro, um tipo inteiro
+   * ou uma raça. Vale para todas as seções — Rebanho, Nascimentos, Vacinação,
+   * Protocolos, Saídas e Ficha mostram só o que é dessa escolha.
+   */
+  const [escolha, setEscolha] = useState<EscolhaRaca>(() =>
+    escolhaDaUrl(tipoInicial, racaInicial, breeds)
+  );
+  const species: SpeciesFilter = escolha.species;
+  const breedId = escolha.breedId;
+  const [menuAberto, setMenuAberto] = useState(false);
+  const fecharMenu = useCallback(() => setMenuAberto(false), []);
+
+  /**
+   * Troca a escolha e grava na URL (?tipo=&raca=) sem recarregar a página —
+   * assim a escolha sobrevive ao recarregar e ao voltar para a tela.
+   */
+  const escolher = useCallback((e: EscolhaRaca) => {
+    setEscolha(e);
+    setMenuAberto(false);
+    try {
+      const url = new URL(window.location.href);
+      if (e.species === "todos") url.searchParams.delete("tipo");
+      else url.searchParams.set("tipo", e.species);
+      if (e.breedId) url.searchParams.set("raca", e.breedId);
+      else url.searchParams.delete("raca");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    } catch {
+      // sem URL a escolha continua valendo na tela — só não sobrevive ao recarregar
+    }
+  }, []);
+  /** Atalho para os botões que escolhem um tipo inteiro. */
+  const setSpecies = (sp: SpeciesFilter) => escolher({ species: sp, breedId: null });
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
   const [onlyPending, setOnlyPending] = useState(false);
   const [sort, setSort] = useState<SortKey>("tag");
@@ -306,13 +372,25 @@ export function AnimaisPageClient({
     [allAnimals]
   );
 
+  /** Tem tipo ou raça escolhida no menu? Sem escolha nada é filtrado. */
+  const temEscolha = species !== "todos";
+
+  /**
+   * Todo mundo (inclusive quem saiu) que é da escolha do menu. É por este
+   * conjunto que vacinação, pendências, protocolos e a ficha se filtram.
+   */
+  const idsNaEscolha = useMemo(
+    () => new Set(allAnimals.filter((a) => animalNaEscolha(a, escolha)).map((a) => a.id)),
+    [allAnimals, escolha]
+  );
+
   /** Quem saiu do rebanho, da saída mais nova para a mais velha. */
   const exits = useMemo(
     () =>
       allAnimals
-        .filter((a) => a.active === false)
+        .filter((a) => a.active === false && animalNaEscolha(a, escolha))
         .sort((a, b) => (a.exit_date ?? "").localeCompare(b.exit_date ?? "") * -1),
-    [allAnimals]
+    [allAnimals, escolha]
   );
 
   /** Quanto entrou de venda e quantos morreram — o resumo da aba Saídas. */
@@ -335,10 +413,15 @@ export function AnimaisPageClient({
     () => new Set(pendings.map((p) => `${p.animal_id}|${p.vaccine_id}`)),
     [pendings]
   );
-  /** Quantos animais têm alguma vacina marcada como pendente. */
+  /** Quantos animais (da escolha do menu) têm alguma vacina marcada como pendente. */
   const pendingAnimalIds = useMemo(
-    () => new Set(pendings.map((p) => p.animal_id)),
-    [pendings]
+    () =>
+      new Set(
+        pendings
+          .map((p) => p.animal_id)
+          .filter((id) => !temEscolha || idsNaEscolha.has(id))
+      ),
+    [pendings, temEscolha, idsNaEscolha]
   );
 
   /**
@@ -396,10 +479,10 @@ export function AnimaisPageClient({
     [speciesCounts]
   );
 
-  /** Animais do tipo escolhido — base das contagens e da planilha. */
+  /** Animais do tipo (e da raça) escolhidos no menu — base das contagens e da planilha. */
   const speciesAnimals = useMemo(
-    () => (species === "todos" ? animals : animals.filter((a) => speciesOf(a.species) === species)),
-    [animals, species]
+    () => (temEscolha ? animals.filter((a) => animalNaEscolha(a, escolha)) : animals),
+    [animals, temEscolha, escolha]
   );
 
   /**
@@ -447,7 +530,7 @@ export function AnimaisPageClient({
 
     // sem a migration 062 o cadastro é um só: um grupo com o rebanho inteiro
     if (!vaccinesHaveSpecies(vaccines))
-      return vaccines.length ? [{ species: null, rows: rowsFor(vaccines, animals) }] : [];
+      return vaccines.length ? [{ species: null, rows: rowsFor(vaccines, speciesAnimals) }] : [];
 
     // "todos os tipos" mostra o plano das criações QUE EXISTEM no rebanho —
     // senão a tela viraria um catálogo de vacina de bicho que ninguém tem.
@@ -463,11 +546,12 @@ export function AnimaisPageClient({
         species: sp,
         rows: rowsFor(
           vaccines.filter((v) => speciesOf(v.species) === sp),
-          animals.filter((a) => speciesOf(a.species) === sp)
+          // com uma raça escolhida, o "rebanho" da conta é só ela
+          speciesAnimals.filter((a) => speciesOf(a.species) === sp)
         ),
       }))
       .filter((g) => g.rows.length > 0);
-  }, [vaccines, animals, species, speciesPresent, lastByKey]);
+  }, [vaccines, speciesAnimals, species, speciesPresent, lastByKey]);
 
   /**
    * De quem são os nomes das categorias. Com um tipo escolhido (ou um rebanho
@@ -527,8 +611,78 @@ export function AnimaisPageClient({
         : filterPending
           ? "Ninguém marcado como pendente."
           : species !== "todos" && speciesAnimals.length === 0
-            ? `Nenhum ${SPECIES_META[species].label.toLowerCase()} no rebanho ainda — o cadastro aí em cima já está pronto para o primeiro.`
+            ? breedId && breedId !== SEM_RACA
+              ? `Nenhum animal da raça ${nomeDaEscolha(escolha, breeds)} no rebanho ainda — o cadastro aí em cima já entra nessa raça.`
+              : `Nenhum ${SPECIES_META[species].label.toLowerCase()} no rebanho ainda — o cadastro aí em cima já está pronto para o primeiro.`
             : "Nada encontrado com esse filtro.";
+
+  /** As vacinas aplicadas nos animais da escolha do menu. */
+  const vaccinationsNaEscolha = useMemo(
+    () => (temEscolha ? vaccinations.filter((v) => idsNaEscolha.has(v.animal_id)) : vaccinations),
+    [vaccinations, temEscolha, idsNaEscolha]
+  );
+
+  /**
+   * Os nascimentos enviados pelo vaqueiro que são da escolha do menu. O
+   * vaqueiro digita só o número da mãe (texto livre): é por ela que se chega
+   * à raça. Mãe que não se acha no cadastro só aparece no tipo inteiro (pelo
+   * bicho que o vaqueiro marcou) e em "Todos os animais".
+   */
+  const birthRequestsNaEscolha = useMemo(() => {
+    if (!temEscolha) return birthRequests;
+    const porNumero = new Map<string, AnimalWithInfo[]>();
+    for (const a of allAnimals) {
+      const k = a.tag.trim().toUpperCase();
+      const arr = porNumero.get(k);
+      if (arr) arr.push(a);
+      else porNumero.set(k, [a]);
+    }
+    return birthRequests.filter((r) => {
+      const sp = speciesOf(r.species);
+      const maes = porNumero.get(r.mother_tag.trim().toUpperCase()) ?? [];
+      // o mesmo número pode existir em dois tipos: fica a mãe do tipo da cria
+      const mae =
+        maes.find((a) => speciesOf(a.species) === sp && a.active !== false) ??
+        maes.find((a) => speciesOf(a.species) === sp) ??
+        null;
+      if (mae) return idsNaEscolha.has(mae.id);
+      return breedId === null && sp === species;
+    });
+  }, [temEscolha, birthRequests, allAnimals, idsNaEscolha, breedId, species]);
+
+  /**
+   * Protocolos: só as programações que têm animal da escolha, e dentro delas
+   * só esses animais — a etapa conta e lista o que é daquela raça.
+   */
+  const aplicacaoAnimaisNaEscolha = useMemo(
+    () =>
+      temEscolha ? aplicacaoAnimais.filter((x) => idsNaEscolha.has(x.animal_id)) : aplicacaoAnimais,
+    [aplicacaoAnimais, temEscolha, idsNaEscolha]
+  );
+  const aplicacoesNaEscolha = useMemo(() => {
+    if (!temEscolha) return aplicacoes;
+    const com = new Set(aplicacaoAnimaisNaEscolha.map((x) => x.aplicacao_id));
+    return aplicacoes.filter((ap) => com.has(ap.id));
+  }, [aplicacoes, temEscolha, aplicacaoAnimaisNaEscolha]);
+  const allAnimalsNaEscolha = useMemo(
+    () => (temEscolha ? allAnimals.filter((a) => idsNaEscolha.has(a.id)) : allAnimals),
+    [allAnimals, temEscolha, idsNaEscolha]
+  );
+
+  /**
+   * A ficha (receitas e despesas) da escolha. Com um tipo, tudo daquele tipo —
+   * inclusive a despesa "Geral do tipo (sem raça)". Com uma raça, só o que
+   * está amarrado a um animal dela: a despesa geral do tipo não é de raça
+   * nenhuma e fica de fora.
+   */
+  const financeiroNaEscolha = useMemo(() => {
+    if (!temEscolha) return financeiro;
+    return financeiro.filter((l) => {
+      if (speciesOf(l.species) !== species) return false;
+      if (breedId === null) return true;
+      return !!l.animal_id && idsNaEscolha.has(l.animal_id);
+    });
+  }, [financeiro, temEscolha, species, breedId, idsNaEscolha]);
 
   /**
    * Registro de vacinação: quem foi vacinado, quando, com qual vacina e
@@ -537,7 +691,7 @@ export function AnimaisPageClient({
    */
   const log = useMemo(() => {
     const byProtocol = new Map<string, VaccinationRow[]>();
-    for (const v of vaccinations) {
+    for (const v of vaccinationsNaEscolha) {
       const key = v.protocol_id ?? v.id;
       const arr = byProtocol.get(key);
       if (arr) arr.push(v);
@@ -560,17 +714,18 @@ export function AnimaisPageClient({
           : true
       )
       .sort((a, b) => (a.appliedAt < b.appliedAt ? 1 : -1));
-  }, [vaccinations, search]);
+  }, [vaccinationsNaEscolha, search]);
 
   /** Link da impressão do rebanho respeitando os filtros da tela. */
   const printHref = useMemo(() => {
     const params = new URLSearchParams();
     if (species !== "todos") params.set("tipo", species);
+    if (breedId) params.set("raca", breedId);
     if (categoryFilter !== "todos") params.set("categoria", categoryFilter);
     if (onlyPending) params.set("pendentes", "1");
     const qs = params.toString();
     return `/imprimir/animais${qs ? `?${qs}` : ""}`;
-  }, [species, categoryFilter, onlyPending]);
+  }, [species, breedId, categoryFilter, onlyPending]);
 
   // ── Ações auxiliares ────────────────────────────────────────────────────────
   function openNewAnimal() {
@@ -719,8 +874,10 @@ export function AnimaisPageClient({
     );
     const ativos = new Set(allAnimals.filter((a) => a.active !== false).map((a) => a.id));
     let n = 0;
-    for (const ap of aplicacoes) {
-      const doGrupo = aplicacaoAnimais.filter((x) => x.aplicacao_id === ap.id && ativos.has(x.animal_id));
+    for (const ap of aplicacoesNaEscolha) {
+      const doGrupo = aplicacaoAnimaisNaEscolha.filter(
+        (x) => x.aplicacao_id === ap.id && ativos.has(x.animal_id)
+      );
       for (const dia of new Set((ap.itens ?? []).map((i) => i.dia))) {
         const [y, m, d] = ap.start_date.split("-").map(Number);
         const data = new Date(Date.UTC(y, m - 1, d + dia)).toISOString().slice(0, 10);
@@ -728,7 +885,7 @@ export function AnimaisPageClient({
       }
     }
     return n;
-  }, [aplicacoes, aplicacaoAnimais, etapasFeitas, allAnimals]);
+  }, [aplicacoesNaEscolha, aplicacaoAnimaisNaEscolha, etapasFeitas, allAnimals]);
 
   const tabs: {
     value: Tab;
@@ -744,8 +901,8 @@ export function AnimaisPageClient({
       value: "nascimentos",
       label: "Nascimentos",
       icon: Baby,
-      count: birthRequests.length,
-      alert: birthRequests.length > 0,
+      count: birthRequestsNaEscolha.length,
+      alert: birthRequestsNaEscolha.length > 0,
     },
     {
       value: "vacinacao",
@@ -780,20 +937,6 @@ export function AnimaisPageClient({
   ];
 
   /**
-   * Filtro por tipo — manda em quem aparece na planilha. Todos os tipos ficam
-   * sempre à vista (mesmo zerados): é por aqui que se escolhe o rebanho que se
-   * quer ver, e é ele que a linha de cadastro segue.
-   */
-  const speciesFilters: { value: SpeciesFilter; label: string; count: number }[] = [
-    { value: "todos", label: "Todos os tipos", count: animals.length },
-    ...SPECIES_OPTIONS.map((s) => ({
-      value: s.value as SpeciesFilter,
-      label: SPECIES_META[s.value].plural,
-      count: speciesCounts.get(s.value) ?? 0,
-    })),
-  ];
-
-  /**
    * Peixe e ave se controlam por TANQUE, não bicho a bicho: não há brinco para
    * numerar, não há macho e fêmea, não há bezerro. Com o tipo desses escolhido,
    * a aba Rebanho troca o cadastro individual pela lista de tanques — o que
@@ -801,31 +944,17 @@ export function AnimaisPageClient({
    */
   const porLote = species !== "todos" && criacaoPorLote(species);
 
-  /** O seletor de criação, usado pelas duas versões do Rebanho. */
-  const seletorDeTipo = (
-    <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 dark:bg-slate-800/60">
-      {speciesFilters.map((f) => {
-        const active = species === f.value;
-        /* tipo que ninguém tem ainda: fica apagado, mas dá pra escolher */
-        const empty = f.count === 0 && !active;
-        return (
-          <button
-            key={f.value}
-            onClick={() => setSpecies(f.value)}
-            className={cn(
-              "h-9 px-3 rounded-lg text-xs font-semibold tracking-wide transition-colors active:scale-[0.97]",
-              active
-                ? "bg-produmar-600 text-white shadow-sm"
-                : empty
-                ? "text-slate-400 dark:text-slate-600"
-                : "text-slate-600 dark:text-slate-300"
-            )}
-          >
-            {f.label}
-          </button>
-        );
-      })}
-    </div>
+  /** O nome do que está escolhido no menu — vai no botão da gaveta. */
+  const nomeEscolha = nomeDaEscolha(escolha, breeds);
+
+  /**
+   * O menu de tipo e raça. Substituiu as abas de tipo (Todos os tipos,
+   * Bovinos, Equinos...): agora é por ele que se escolhe o que a tela mostra,
+   * e a escolha vale para todas as seções. No computador fica fixo à
+   * esquerda; no celular e no tablet abre como gaveta pelo botão "Tipo e raça".
+   */
+  const listaRacas = (
+    <ListaRacas breeds={breeds} animals={animals} value={escolha} onChange={escolher} />
   );
 
   return (
@@ -844,8 +973,25 @@ export function AnimaisPageClient({
         </Button>
       </div>
 
+      {/* Menu de tipo e raça à esquerda (só no computador) e a tela ao lado */}
+      <div className="lg:flex lg:items-start lg:gap-5">
+        <aside className="hidden lg:block lg:w-56 lg:flex-shrink-0 lg:sticky lg:top-16 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+          <p className="px-3 pt-1 pb-2 text-sm font-semibold text-produmar-800 dark:text-slate-100">
+            Tipo e raça
+          </p>
+          {listaRacas}
+        </aside>
+
+        <div className="min-w-0 flex-1 space-y-4">
+      {/* No celular: o botão que abre a gaveta, com o que está escolhido */}
+      <BotaoRacas
+        nome={nomeEscolha}
+        filtrado={temEscolha}
+        onClick={() => setMenuAberto(true)}
+      />
+
       {/* Abas — 4 por linha no celular, cabendo na largura da tela */}
-      <div className="grid grid-cols-4 gap-1 sm:flex sm:gap-1.5">
+      <div className="grid grid-cols-4 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = tab === t.value;
@@ -896,12 +1042,15 @@ export function AnimaisPageClient({
               a da cabeça de quem olha: em cima o TIPO (qual rebanho eu quero
               ver), no meio a CONTAGEM desse rebanho — que já é o filtro por
               categoria — e embaixo o que se faz com a lista. */}
-          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
-            {/* Tipo do animal: todos ficam à vista mesmo zerados (é por aqui
-                que se escolhe o rebanho, e é ele que manda na linha de
-                cadastro); os vazios ficam apagados. Sem número aqui — a
-                contagem é uma só, a da faixa logo abaixo. */}
-            {seletorDeTipo}
+          <div
+            className={cn(
+              "rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900",
+              // peixe e ave não têm contagem nem busca: a caixa nem aparece
+              porLote && "hidden"
+            )}
+          >
+            {/* O tipo e a raça saíram daqui: agora se escolhe no menu "Tipo
+                e raça" (fixo à esquerda no computador, gaveta no celular). */}
 
             {/* Contagem por categoria, busca por número, ordem e guia impressa:
                 tudo isso pressupõe bicho cadastrado um a um. No tanque não há
@@ -910,7 +1059,7 @@ export function AnimaisPageClient({
               <>
             {/* Contagem do rebanho — e o filtro por categoria no mesmo toque.
                 Uma faixa dividida em quatro, não quatro caixas soltas. */}
-            <div className="grid grid-cols-4 divide-x divide-slate-100 border-y border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+            <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 dark:divide-slate-800 dark:border-slate-800">
               {categoryFilters.map((f) => {
                 const active = categoryFilter === f.value;
                 return (
@@ -1075,7 +1224,10 @@ export function AnimaisPageClient({
           {porLote ? null : view === "numeros" ? (
             <>
               {/* Cadastro rápido: nº + F/M e Enter — o resto é na ficha */}
-              <QuickAddBar species={species === "todos" ? null : species} />
+              <QuickAddBar
+                species={species === "todos" ? null : species}
+                breedId={breedId && breedId !== SEM_RACA ? breedId : null}
+              />
 
               <RebanhoGrid
                 animals={filtered}
@@ -1099,6 +1251,7 @@ export function AnimaisPageClient({
                 animals={filtered}
                 breeds={breeds}
                 quickAddSpecies={species === "todos" ? null : species}
+                quickAddBreedId={breedId && breedId !== SEM_RACA ? breedId : null}
                 vaccines={tableVaccines}
                 lastByKey={lastByKey}
                 birthsByMother={birthsByMother}
@@ -1123,7 +1276,8 @@ export function AnimaisPageClient({
                 >
                   <Syringe className="w-4 h-4 flex-shrink-0" />
                   <span className="flex-1">
-                    Escolha o tipo aí em cima para ver as vacinas — cada criação tem as suas
+                    Escolha o tipo no menu &quot;Tipo e raça&quot; para ver as vacinas — cada
+                    criação tem as suas
                   </span>
                   <ChevronRight className="w-4 h-4 flex-shrink-0" />
                 </button>
@@ -1140,7 +1294,7 @@ export function AnimaisPageClient({
                   Digite na primeira linha para cadastrar (Enter salva); na coluna &quot;Cat.&quot;
                   escolha o tipo do animal — bovino, equino, caprino, ovino ou suíno — e ele manda
                   no nome da categoria, nas raças da lista e nas vacinas. As colunas de vacina só
-                  aparecem com UM tipo escolhido lá em cima: cada criação toma as suas, e
+                  aparecem com UM tipo (ou raça) escolhido no menu &quot;Tipo e raça&quot;: cada criação toma as suas, e
                   misturadas a planilha não caberia na tela. Em &quot;Pariu&quot;, a data do parto
                   pede M ou F e o número da cria — ela entra no rebanho atrelada à mãe, do mesmo tipo;
                   toque na coluna para ver os partos da mãe e apagar o que entrou errado. Toque no
@@ -1163,29 +1317,11 @@ export function AnimaisPageClient({
               faltando. Antes esta aba só tinha o registro do passado — não
               dava para saber o que o rebanho ainda deve. */}
           <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
-            {/* Mesmo seletor de tipo da planilha — a escolha vale nas duas abas */}
-            <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 dark:bg-slate-800/60">
-              {speciesFilters.map((f) => {
-                const active = species === f.value;
-                const empty = f.count === 0 && !active;
-                return (
-                  <button
-                    key={f.value}
-                    onClick={() => setSpecies(f.value)}
-                    className={cn(
-                      "h-9 px-3 rounded-lg text-xs font-semibold tracking-wide transition-colors active:scale-[0.97]",
-                      active
-                        ? "bg-produmar-600 text-white shadow-sm"
-                        : empty
-                          ? "text-slate-400 dark:text-slate-600"
-                          : "text-slate-600 dark:text-slate-300"
-                    )}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
+            {/* O tipo e a raça vêm do menu "Tipo e raça" — a escolha vale em
+                todas as seções. Aqui só se diz de quem é o plano. */}
+            <p className="bg-slate-50 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+              Plano de vacinação · {nomeEscolha}
+            </p>
 
             {vaccinePlan.length === 0 ? (
               <div className="flex flex-col items-center text-center gap-1 px-4 py-8">
@@ -1215,7 +1351,8 @@ export function AnimaisPageClient({
                         key={row.vaccine.id}
                         row={row}
                         onOpenHerd={() => {
-                          if (group.species) setSpecies(group.species);
+                          // com a raça já escolhida fica nela; senão vai para o tipo
+                          if (group.species && group.species !== species) setSpecies(group.species);
                           setOnlyPending(false);
                           setTab("rebanho");
                         }}
@@ -1273,7 +1410,7 @@ export function AnimaisPageClient({
               )}
             </div>
 
-            {vaccinations.length > 0 && (
+            {vaccinationsNaEscolha.length > 0 && (
               <SearchField
                 value={search}
                 onChange={setSearch}
@@ -1285,12 +1422,12 @@ export function AnimaisPageClient({
               <EmptyState
                 icon={Syringe}
                 text={
-                  vaccinations.length === 0
+                  vaccinationsNaEscolha.length === 0
                     ? "Nenhuma vacina aplicada ainda."
                     : "Nada encontrado com essa busca."
                 }
                 hint={
-                  vaccinations.length === 0
+                  vaccinationsNaEscolha.length === 0
                     ? "O que for aplicado aparece aqui: animal, vacina, ml e marca."
                     : undefined
                 }
@@ -1339,15 +1476,19 @@ export function AnimaisPageClient({
             <Pencil className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
           </button>
 
-          {birthRequests.length === 0 ? (
+          {birthRequestsNaEscolha.length === 0 ? (
             <EmptyState
               icon={Baby}
-              text="Nenhum nascimento para conferir."
+              text={
+                temEscolha
+                  ? `Nenhum nascimento de ${nomeEscolha.toLowerCase()} para conferir.`
+                  : "Nenhum nascimento para conferir."
+              }
               hint="O que o vaqueiro enviar pelo celular aparece aqui — mais antigo primeiro."
             />
           ) : (
             <div className="space-y-2">
-              {birthRequests.map((r) => (
+              {birthRequestsNaEscolha.map((r) => (
                 <BirthRequestCard
                   key={r.id}
                   request={r}
@@ -1360,19 +1501,36 @@ export function AnimaisPageClient({
               ))}
             </div>
           )}
+
+          {/* Nascimento de outro tipo/raça não some sem aviso: é trabalho
+              parado do vaqueiro esperando conferência. */}
+          {birthRequests.length > birthRequestsNaEscolha.length && (
+            <button
+              type="button"
+              onClick={() => escolher({ species: "todos", breedId: null })}
+              className="w-full flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-slate-200 bg-white text-left text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 active:scale-[0.98] transition-transform"
+            >
+              <Baby className="w-4 h-4 flex-shrink-0" />
+              <span className="flex-1">
+                {birthRequests.length - birthRequestsNaEscolha.length} nascimento(s) de outro tipo ou
+                raça para conferir — ver todos os animais
+              </span>
+              <ChevronRight className="w-4 h-4 flex-shrink-0" />
+            </button>
+          )}
         </>
       )}
 
       {/* ── Aba: Saídas — quem foi vendido ou morreu ─────────────────────── */}
       {tab === "protocolos" && (
         <ProtocolosTab
-          animals={allAnimals}
+          animals={allAnimalsNaEscolha}
           breeds={breeds}
           medicamentos={medicamentos}
           protocolos={protocolos}
           protocoloItens={protocoloItens}
-          aplicacoes={aplicacoes}
-          aplicacaoAnimais={aplicacaoAnimais}
+          aplicacoes={aplicacoesNaEscolha}
+          aplicacaoAnimais={aplicacaoAnimaisNaEscolha}
           etapasFeitas={etapasFeitas}
         />
       )}
@@ -1382,7 +1540,11 @@ export function AnimaisPageClient({
           {exits.length === 0 ? (
             <EmptyState
               icon={HandCoins}
-              text="Ninguém saiu do rebanho ainda."
+              text={
+                temEscolha
+                  ? `Nenhuma saída de ${nomeEscolha.toLowerCase()} ainda.`
+                  : "Ninguém saiu do rebanho ainda."
+              }
               hint="Abra o animal na planilha e use 'Vender ou dar baixa'. O que for vendido cai no financeiro na hora."
             />
           ) : (
@@ -1441,19 +1603,28 @@ export function AnimaisPageClient({
           despesas={despesas}
           vendas={vendas}
           animals={allAnimals}
+          // com Piscicultura ou Aves escolhido no menu, só os tanques/galpões dele
+          speciesFixa={porLote ? species : undefined}
         />
       )}
 
       {/* ── Aba: Ficha — receitas e despesas, separadas por espécie ────── */}
       {tab === "financeiro" && (
         <AnimalFinanceiroTab
-          linhas={financeiro}
+          linhas={financeiroNaEscolha}
           despesas={despesas}
           vendas={vendas}
           lotes={lotes}
-          animals={allAnimals}
+          animals={allAnimalsNaEscolha}
+          especieFixa={temEscolha ? (species as AnimalSpecies) : null}
         />
       )}
+        </div>
+      </div>
+
+      <GavetaRacas open={menuAberto} onClose={fecharMenu}>
+        {listaRacas}
+      </GavetaRacas>
 
       {/* Dialogs */}
       <AnimalDialog
@@ -1462,6 +1633,7 @@ export function AnimaisPageClient({
         animal={editAnimal}
         breeds={breeds}
         defaultSpecies={species === "todos" ? null : species}
+        defaultBreedId={breedId && breedId !== SEM_RACA ? breedId : null}
       />
       <AnimalDetailDialog
         open={!!detailAnimal}
@@ -1587,6 +1759,7 @@ function RebanhoTable({
   animals,
   breeds,
   quickAddSpecies,
+  quickAddBreedId,
   vaccines,
   lastByKey,
   birthsByMother,
@@ -1605,6 +1778,8 @@ function RebanhoTable({
   breeds: AnimalBreed[];
   /** Tipo escolhido no filtro — a linha de cadastro já entra nele. */
   quickAddSpecies: AnimalSpecies | null;
+  /** Raça escolhida no menu — o animal novo já entra nela. */
+  quickAddBreedId?: string | null;
   /** Só as vacinas que viram coluna — já filtradas pelo tipo escolhido. */
   vaccines: AnimalVaccine[];
   /** Última aplicação de cada `animalId|vaccineId` (vem pronta da página). */
@@ -1736,6 +1911,7 @@ function RebanhoTable({
           <QuickAddRow
             breeds={breeds}
             species={quickAddSpecies}
+            breedId={quickAddBreedId ?? null}
             vaccinesCount={vaccines.length}
           />
 

@@ -41,9 +41,18 @@ interface Props {
   breeds: AnimalBreed[];
   /** Tipo que o cadastro novo já vem marcado (o filtro da tela). */
   defaultSpecies?: AnimalSpecies | null;
+  /** Raça que o cadastro novo já vem marcado (a escolhida no menu de raças). */
+  defaultBreedId?: string | null;
 }
 
-export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: Props) {
+export function AnimalDialog({
+  open,
+  onClose,
+  animal,
+  breeds,
+  defaultSpecies,
+  defaultBreedId = null,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -65,13 +74,13 @@ export function AnimalDialog({ open, onClose, animal, breeds, defaultSpecies }: 
     setSex(animal?.sex ?? "femea");
     setSpecies(speciesOf(animal ? animal.species : defaultSpecies));
     setBirthDate(animal?.birth_date ?? "");
-    setBreedId(animal?.breed_id ?? "");
+    setBreedId(animal ? animal.breed_id ?? "" : defaultBreedId ?? "");
     setWeight(animal && animal.weight ? String(animal.weight).replace(".", ",") : "");
     setNotes(animal?.notes ?? "");
     setAbcz(animal?.abcz_code ?? "");
     setPhotos([]);
     setError(null);
-  }, [open, animal, defaultSpecies]);
+  }, [open, animal, defaultSpecies, defaultBreedId]);
 
   /** Cada raça é de um tipo — a lista segue o tipo escolhido. */
   const speciesBreeds = useMemo(

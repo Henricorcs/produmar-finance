@@ -17,14 +17,15 @@ export const dynamic = "force-dynamic";
 const CATEGORIES: AnimalCategory[] = ["boi", "vaca", "bezerro"];
 
 interface Props {
-  searchParams: { tipo?: string; categoria?: string; pendentes?: string };
+  searchParams: { tipo?: string; raca?: string; categoria?: string; pendentes?: string };
 }
 
 /**
  * Guia de vacinação do rebanho — lista com uma linha por animal e uma coluna
  * por vacina. Aceita os mesmos filtros da tela: ?tipo=bovino|equino|caprino|
- * ovino|suino, ?categoria=vaca|boi|bezerro e ?pendentes=1 (só quem tem vacina
- * MARCADA NA MÃO como pendente).
+ * ovino|suino, ?raca=<id da raça> (ou "sem" = sem raça no cadastro),
+ * ?categoria=vaca|boi|bezerro e ?pendentes=1 (só quem tem vacina MARCADA NA
+ * MÃO como pendente).
  */
 export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   const supabase = createClient();
@@ -37,6 +38,8 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   const tipo = searchParams.tipo as AnimalSpecies | undefined;
   const especie = tipo && tipo in SPECIES_META ? tipo : null;
   const onlyPending = searchParams.pendentes === "1";
+  /** A raça escolhida no menu da tela — "sem" = quem não tem raça no cadastro. */
+  const raca = searchParams.raca || null;
 
   // só o rebanho de hoje: quem foi vendido ou morreu não vai para a guia
   let query = supabase
@@ -46,6 +49,8 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
     .order("tag", { ascending: true });
   if (categoria && CATEGORIES.includes(categoria)) query = query.eq("category", categoria);
   if (especie) query = query.eq("species", especie);
+  if (raca === "sem") query = query.is("breed_id", null);
+  else if (raca) query = query.eq("breed_id", raca);
 
   const [animalsRes, vaccinesRes, vaccinationsRes, birthsRes, pendingRes] = await Promise.all([
     query,
@@ -72,6 +77,7 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
 
   const filterLabel = [
     especie ? SPECIES_META[especie].plural : null,
+    raca === "sem" ? "sem raça" : raca ? animals[0]?.breed_name ?? null : null,
     categoria && CATEGORIES.includes(categoria) ? categoryPlural(categoria, especie) : null,
     onlyPending ? "só os marcados como pendente" : null,
   ]

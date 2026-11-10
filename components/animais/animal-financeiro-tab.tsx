@@ -45,6 +45,11 @@ interface Props {
   lotes?: AnimalLoteResumo[];
   /** Rebanho inteiro (inclusive quem já saiu), para amarrar a despesa. */
   animals: AnimalWithInfo[];
+  /**
+   * Tipo escolhido no menu de raças da tela. Com ele, a ficha fica presa nesse
+   * tipo e os botões de tipo daqui somem — quem escolhe é o menu.
+   */
+  especieFixa?: AnimalSpecies | null;
 }
 
 type Filtro = "todos" | AnimalSpecies;
@@ -77,10 +82,16 @@ export function AnimalFinanceiroTab({
   vendas = [],
   lotes = [],
   animals,
+  especieFixa = null,
 }: Props) {
   /** Extrato (o que já existia) ou o relatório por raça, mês a mês e do ano. */
   const [visao, setVisao] = useState<"extrato" | "raca">("extrato");
-  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [filtro, setFiltro] = useState<Filtro>(especieFixa ?? "todos");
+
+  // Trocou o tipo no menu da tela: a ficha acompanha.
+  useEffect(() => {
+    setFiltro(especieFixa ?? "todos");
+  }, [especieFixa]);
   /** Recorte por tanque, dentro da criação escolhida. "" = todos. */
   const [tanqueFiltro, setTanqueFiltro] = useState("");
 
@@ -284,7 +295,9 @@ export function AnimalFinanceiroTab({
         </Button>
       </div>
 
-      {/* Filtro por espécie — é o recorte que a ficha existe para dar */}
+      {/* Filtro por espécie — é o recorte que a ficha existe para dar. Com um
+          tipo escolhido no menu da tela, quem manda é o menu. */}
+      {!especieFixa && (
       <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
         <Chip
           label="Todos"
@@ -300,6 +313,7 @@ export function AnimalFinanceiroTab({
           />
         ))}
       </div>
+      )}
 
       {/* Peixe e ave: dá para descer até o tanque. Os três números do topo e
           o extrato acompanham a escolha — é assim que se responde "quanto o

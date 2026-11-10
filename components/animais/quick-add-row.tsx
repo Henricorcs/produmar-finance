@@ -18,6 +18,8 @@ interface Props {
   breeds: AnimalBreed[];
   /** Tipo escolhido no filtro da tela (null = "todos os tipos"). */
   species?: AnimalSpecies | null;
+  /** Raça escolhida no menu — o animal novo já entra nela (senão sumiria da tela). */
+  breedId?: string | null;
   /** Quantas colunas de vacina a planilha tem (ficam vazias nesta linha). */
   vaccinesCount: number;
 }
@@ -31,7 +33,12 @@ interface Props {
  * Enter salva. Tipo, sexo e raça ficam para o próximo — um lote entra só
  * digitando número e peso.
  */
-export function QuickAddRow({ breeds, species: filterSpecies, vaccinesCount }: Props) {
+export function QuickAddRow({
+  breeds,
+  species: filterSpecies,
+  breedId: filterBreedId = null,
+  vaccinesCount,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -60,8 +67,9 @@ export function QuickAddRow({ breeds, species: filterSpecies, vaccinesCount }: P
   useEffect(() => {
     if (!filterSpecies) return;
     setSpecies(filterSpecies);
-    setBreedId("");
-  }, [filterSpecies]);
+    // com uma raça escolhida no menu, a linha já vem nela
+    setBreedId(filterBreedId ?? "");
+  }, [filterSpecies, filterBreedId]);
 
   /** Trocou o tipo: a raça de antes é de outro bicho, sai da frente. */
   function pickSpecies(v: AnimalSpecies) {

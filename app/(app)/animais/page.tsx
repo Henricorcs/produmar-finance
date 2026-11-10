@@ -28,7 +28,15 @@ import type { EtapaFeita } from "@/components/animais/protocolos-tab";
 
 export const dynamic = "force-dynamic";
 
-export default async function AnimaisPage() {
+/**
+ * ?tipo=bovino&raca=<id> — o que está escolhido no menu de raças. Fica na URL
+ * para a escolha sobreviver ao recarregar a página.
+ */
+export default async function AnimaisPage({
+  searchParams,
+}: {
+  searchParams: { tipo?: string; raca?: string };
+}) {
   const supabase = createClient();
 
   const [
@@ -184,6 +192,8 @@ export default async function AnimaisPage() {
       aplicacaoAnimais={(aplicacaoAnimaisRes.data as AnimalProtocoloAplicacaoAnimal[]) ?? []}
       etapasFeitas={(etapasFeitasRes.data as EtapaFeita[]) ?? []}
       pesosFoto={(pesosFotoRes.data as AnimalPesoFoto[]) ?? []}
+      tipoInicial={searchParams.tipo ?? null}
+      racaInicial={searchParams.raca ?? null}
     />
   );
 }
