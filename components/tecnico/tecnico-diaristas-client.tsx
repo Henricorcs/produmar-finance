@@ -11,6 +11,7 @@ import {
   type DiaristaObra,
 } from "@/components/diaristas/lancar-dia-dialog";
 import { DiaDetailDialog } from "@/components/diaristas/dia-detail-dialog";
+import { temServicoAberto } from "@/lib/maquina-na-diaria";
 import type { Diarista, DiaristaDia, SupplyObraSector } from "@/lib/types";
 import { useAtualizarAoVoltar } from "./use-atualizar-ao-voltar";
 
@@ -26,7 +27,7 @@ interface Props {
   sectors: SupplyObraSector[];
   /** Cadastro de Máquinas e Veículos, para a máquina pesada da diária (132). */
   maquinas?: DiaristaMaquina[];
-  /** A migration 132 já rodou? */
+  /** A migration 133 já rodou? */
   maquinaPronta?: boolean;
   /** Quem está usando a tela: ele só apaga o dia que ele mesmo marcou. */
   meId: string;
@@ -91,6 +92,12 @@ export function TecnicoDiaristasClient({
     }
     return count;
   }, [dias, from, to]);
+
+  /** Quem tem serviço de máquina esperando o horímetro final, em qualquer mês. */
+  const comServicoAberto = useMemo(
+    () => new Set(dias.filter(temServicoAberto).map((d) => d.diarista_id)),
+    [dias]
+  );
 
   function abrir(id: string) {
     setOpenId(id);
@@ -166,6 +173,11 @@ export function TecnicoDiaristasClient({
                           : "Diária não combinada"}
                         {n > 0 && ` · ${n === 1 ? "1 dia" : `${n} dias`} este mês`}
                       </span>
+                      {comServicoAberto.has(d.id) && (
+                        <span className="block text-[11px] font-semibold text-orange-600 dark:text-orange-400">
+                          Serviço de máquina aberto
+                        </span>
+                      )}
                     </span>
                     <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" />
                   </button>
@@ -242,10 +254,13 @@ export function TecnicoDiaristasClient({
         maquinas={maquinas}
         maquinaPronta={maquinaPronta}
         defaultObraId={ultimaObraId}
-        onSaved={(obraId) => {
+        onSaved={(obraId, emAberto) => {
           setUltimaObraId(obraId || null);
+          const data = pendingDate ? formatDate(pendingDate) : "";
           setSuccess(
-            `Dia ${pendingDate ? formatDate(pendingDate) : ""} lançado para ${diarista.name}.`
+            emAberto
+              ? `Serviço iniciado em ${data}. No fim, toque no dia laranja para colocar o horímetro final.`
+              : `Dia ${data} lançado para ${diarista.name}.`
           );
         }}
       />
@@ -253,11 +268,13 @@ export function TecnicoDiaristasClient({
       <DiaDetailDialog
         open={!!detalheDia}
         onClose={() => setDetalheDia(null)}
-        dia={detalheDia}
+        // o dia atualizado: fechar um serviço precisa aparecer na hora
+        dia={detalheDia ? launched.get(detalheDia.work_date) ?? detalheDia : null}
         diaristaName={diarista.name}
         obras={obras}
         sectors={sectors}
         maquinas={maquinas}
+        maquinaPronta={maquinaPronta}
         canDelete={detalheDia?.created_by === meId}
       />
     </div>

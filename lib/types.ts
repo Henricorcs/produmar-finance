@@ -1995,17 +1995,33 @@ export interface DiaristaDia {
   /** Nome de quem marcou o dia, gravado no lançamento. */
   registered_by_name: string | null;
   /**
-   * Máquina pesada usada no dia (migration 132). As horas saem do horímetro
-   * (final − inicial) e o valor é custo da OBRA — não entra no que se paga ao
-   * colaborador.
+   * Os serviços de máquina do dia (migration 133). Não é coluna: a página busca
+   * na tabela própria e junta aqui.
    */
-  machine_id?: string | null;
-  hourmeter_start?: number | null;
-  hourmeter_end?: number | null;
-  /** Gerada no banco: final − inicial. */
-  machine_hours?: number | null;
-  /** Valor da hora no dia do lançamento. Vazio = vale o do cadastro da máquina. */
-  machine_hourly_rate?: number | null;
+  servicos_maquina?: DiaristaDiaMaquina[];
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Um serviço de máquina pesada dentro da diária (migration 133). Sem horímetro
+ * final o serviço está ABERTO. As horas saem do horímetro e o valor é custo da
+ * OBRA do serviço — não entra no que se paga ao colaborador.
+ */
+export interface DiaristaDiaMaquina {
+  id: string;
+  dia_id: string;
+  machine_id: string | null;
+  obra_id: string | null;
+  sector_id: string | null;
+  description: string | null;
+  hourmeter_start: number;
+  hourmeter_end: number | null;
+  /** Gerada no banco: final − inicial. Vazia enquanto o serviço está aberto. */
+  machine_hours: number | null;
+  /** Valor da hora no lançamento. Vazio = vale o do cadastro da máquina. */
+  machine_hourly_rate: number | null;
+  closed_at: string | null;
   created_by: string | null;
   created_at: string;
 }

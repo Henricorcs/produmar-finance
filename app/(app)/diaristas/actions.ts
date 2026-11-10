@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { PaymentMode, WorkerType } from "@/lib/types";
-import { erroDoHorimetro } from "@/lib/maquina-na-diaria";
+import { erroDoHorimetro, erroDoNovoServico } from "@/lib/maquina-na-diaria";
 
 /**
  * O cadastro do colaborador é do chefe (/diaristas) e o calendário é do técnico
@@ -60,13 +60,15 @@ function diaristaError(error: { code?: string; message: string }): string {
     return "O salário desse mês já foi pago. Desfaça o pagamento antes de pagar de novo.";
   if (error.code === "23505") return "Já existe um colaborador com esse nome";
 
-  // A máquina pesada na diária nasce na 132. O PostgREST responde PGRST204
-  // quando a coluna não está no cache dele; o Postgres, 42703.
+  // Os serviços de máquina nascem na 133. O PostgREST responde PGRST205 quando
+  // a tabela não está no cache dele; o Postgres, 42P01.
   if (
-    (error.code === "42703" || error.code === "PGRST204") &&
-    /machine_|hourmeter_|hourly_rate/.test(error.message)
+    (error.code === "42P01" || error.code === "PGRST205") &&
+    error.message.includes("diarista_dia_maquinas")
   )
-    return RECADO_132;
+    return RECADO_133;
+  if (error.code === "23505" && error.message.includes("uq_diarista_dia_maquina_aberta"))
+    return SERVICO_JA_ABERTO;
   if (error.code === "23514" && error.message.includes("horimetro"))
     return "O horímetro final tem que ser maior que o inicial";
 
@@ -334,17 +336,69 @@ export interface DiaristaDiaCreateInput {
   /** Veio só meio expediente: vale metade da diária (migration 064). */
   half_day?: boolean;
   /**
-   * Máquina pesada usada no dia (migration 132). Só vem quando a resposta de
-   * "Usou máquina pesada?" foi Sim; aí os dois horímetros são obrigatórios.
+   * Máquina pesada usada no dia (migration 133). Só vem quando a resposta de
+   * "Usou máquina pesada?" foi Sim; aí o horímetro inicial é obrigatório e o
+   * final pode ficar para quando o serviço terminar.
    */
   machine_id?: string | null;
   hourmeter_start?: number | null;
   hourmeter_end?: number | null;
 }
 
-/** O banco ainda não tem as colunas da máquina na diária. */
-const RECADO_132 =
-  "Para lançar a máquina pesada na diária, falta rodar a migration 132 no Supabase. Por enquanto lance a diária sem a máquina.";
+/** O banco ainda não tem a tabela dos serviços de máquina. */
+const RECADO_133 =
+  "Para lançar a máquina pesada na diária, falta rodar a migration 133 no Supabase. Por enquanto lance a diária sem a máquina.";
+
+const SERVICO_JA_ABERTO = "Já tem um serviço aberto neste dia. Feche ele antes de começar outro.";
+
+interface ServicoDeMaquinaInput {
+  machine_id: string;
+  obra_id: string | null;
+  sector_id?: string | null;
+  description?: string | null;
+  hourmeter_start: number | null;
+  hourmeter_end?: number | null;
+}
+
+/**
+ * Grava um serviço de máquina na diária e devolve o erro, se houver. O valor
+ * da hora vem do CADASTRO da máquina, nunca do que chegou da tela: quem lança
+ * anota o horímetro, não o preço.
+ */
+async function gravarServicoDeMaquina(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  diaId: string,
+  input: ServicoDeMaquinaInput
+): Promise<string | null> {
+  const { data: machine, error: mErr } = await supabase
+    .from("machines")
+    .select("id, hourly_rate")
+    .eq("id", input.machine_id)
+    .maybeSingle();
+  if (mErr) return diaristaError(mErr);
+  if (!machine) return "Máquina não encontrada. Escolha de novo.";
+
+  const valorHora = Number(machine.hourly_rate ?? 0);
+  const final = input.hourmeter_end ?? null;
+  const { error } = await supabase.from("diarista_dia_maquinas").insert({
+    dia_id: diaId,
+    machine_id: input.machine_id,
+    obra_id: input.obra_id,
+    sector_id: input.sector_id || null,
+    description: clean(input.description),
+    hourmeter_start: input.hourmeter_start,
+    hourmeter_end: final,
+    // sem valor da hora no cadastro, fica vazio: a obra passa a usar o do
+    // cadastro assim que ele for preenchido
+    machine_hourly_rate: valorHora > 0 ? normMoney(valorHora) : null,
+    closed_at: final != null ? new Date().toISOString() : null,
+    created_by: userId,
+  });
+  if (error && (error.code === "42501" || /row.level security/i.test(error.message)))
+    return "Este colaborador não está liberado para você. Peça ao chefe para liberar em Colaboradores.";
+  return error ? diaristaError(error) : null;
+}
 
 /**
  * Lança UM dia — o clique no calendário abre a tela daquele dia e o serviço é
@@ -392,37 +446,16 @@ export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
   const half = input.half_day === true;
   const rate = normMoney(diarista.daily_rate as number);
 
-  // Máquina pesada (132): a conta é refeita aqui com a mesma regra da tela.
-  // O valor da hora vem do CADASTRO da máquina, nunca do que chegou da tela —
-  // quem lança o dia anota o horímetro, não o preço.
-  let maquina: Record<string, unknown> = {};
+  // Máquina pesada (133): a conta é refeita aqui com a mesma regra da tela.
   if (input.machine_id) {
-    const inicial = input.hourmeter_start ?? null;
-    const final = input.hourmeter_end ?? null;
-    const errHorimetro = erroDoHorimetro(inicial, final);
+    const errHorimetro = erroDoNovoServico(
+      input.hourmeter_start ?? null,
+      input.hourmeter_end ?? null
+    );
     if (errHorimetro) return { error: errHorimetro };
-
-    const { data: machine, error: mErr } = await supabase
-      .from("machines")
-      .select("id, hourly_rate")
-      .eq("id", input.machine_id)
-      .maybeSingle();
-    if (mErr) return { error: diaristaError(mErr) };
-    if (!machine) return { error: "Máquina não encontrada. Escolha de novo." };
-
-    const valorHora = Number(machine.hourly_rate ?? 0);
-    maquina = {
-      machine_id: input.machine_id,
-      hourmeter_start: inicial,
-      hourmeter_end: final,
-      // sem valor da hora no cadastro, fica vazio: a obra passa a usar o do
-      // cadastro assim que ele for preenchido (ver a 132)
-      machine_hourly_rate: valorHora > 0 ? normMoney(valorHora) : null,
-    };
   }
 
-  const { error } = await supabase.from("diarista_dias").insert({
-    ...maquina,
+  const { data: novoDia, error } = await supabase.from("diarista_dias").insert({
     diarista_id: input.diarista_id,
     work_date: workDate,
     description: clean(input.description),
@@ -434,7 +467,7 @@ export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
     ...(half ? { half_day: true } : {}),
     registered_by_name: clean(profile?.full_name),
     created_by: user.id,
-  });
+  }).select("id").single();
 
   // Quem manda no módulo nunca é barrado aqui: o "não" do RLS neste insert é o
   // encarregado de obra lançando para alguém que não é da turma dele (099).
@@ -443,7 +476,122 @@ export async function createDiaristaDia(input: DiaristaDiaCreateInput) {
       error:
         "Este colaborador não está liberado para você. Peça ao chefe para liberar em Colaboradores.",
     };
+  if (error || !novoDia)
+    return { error: error ? diaristaError(error) : "Erro ao lançar o dia" };
+
+  if (input.machine_id) {
+    const errServico = await gravarServicoDeMaquina(supabase, user.id, novoDia.id as string, {
+      machine_id: input.machine_id,
+      obra_id: input.obra_id,
+      sector_id: input.sector_id,
+      description: input.description,
+      hourmeter_start: input.hourmeter_start ?? null,
+      hourmeter_end: input.hourmeter_end ?? null,
+    });
+    // a diária sem o serviço enganaria quem marcou que usou máquina: desfaz e
+    // deixa a pessoa lançar de novo
+    if (errServico) {
+      await supabase.from("diarista_dias").delete().eq("id", novoDia.id);
+      return { error: errServico };
+    }
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Mais um serviço de máquina numa diária que já existe: de manhã gradeou um
+ * piquete, à tarde foi jogar calcário em outra área. A diária continua uma só;
+ * cada serviço leva o seu custo para a sua obra.
+ */
+export async function iniciarServicoDeMaquina(input: ServicoDeMaquinaInput & { dia_id: string }) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (!input.machine_id) return { error: "Escolha a máquina que ele usou" };
+  if (!input.obra_id) return { error: "Diga em qual obra foi o serviço" };
+  if (!clean(input.description)) return { error: "Escreva o que ele fez neste serviço" };
+
+  const inicial = input.hourmeter_start ?? null;
+  const errHorimetro = erroDoNovoServico(inicial, input.hourmeter_end ?? null);
+  if (errHorimetro) return { error: errHorimetro };
+
+  const { data: doDia, error: lerErr } = await supabase
+    .from("diarista_dia_maquinas")
+    .select("machine_id, hourmeter_end")
+    .eq("dia_id", input.dia_id);
+  if (lerErr) return { error: diaristaError(lerErr) };
+
+  if ((doDia ?? []).some((s) => s.hourmeter_end == null)) return { error: SERVICO_JA_ABERTO };
+
+  // A mesma máquina não anda para trás no mesmo dia: começar antes do final do
+  // serviço anterior contaria as mesmas horas duas vezes na obra.
+  const ultimoFinal = Math.max(
+    0,
+    ...(doDia ?? [])
+      .filter((s) => s.machine_id === input.machine_id)
+      .map((s) => Number(s.hourmeter_end))
+  );
+  if (inicial != null && inicial < ultimoFinal)
+    return {
+      error: `O horímetro inicial não pode ser menor que o final do serviço anterior (${ultimoFinal.toLocaleString("pt-BR")})`,
+    };
+
+  const err = await gravarServicoDeMaquina(supabase, user.id, input.dia_id, input);
+  if (err) return { error: err };
+  revalidate();
+  return { ok: true };
+}
+
+/** Anota o horímetro final: o serviço fecha e as horas entram no custo da obra. */
+export async function fecharServicoDeMaquina(id: string, final: number | null) {
+  const supabase = createClient();
+
+  const { data: servico, error: lerErr } = await supabase
+    .from("diarista_dia_maquinas")
+    .select("hourmeter_start, hourmeter_end")
+    .eq("id", id)
+    .maybeSingle();
+  if (lerErr) return { error: diaristaError(lerErr) };
+  if (!servico) return { error: "Serviço não encontrado. Ele pode ter sido apagado." };
+  if (servico.hourmeter_end != null) return { error: "Este serviço já foi fechado." };
+
+  const errHorimetro = erroDoHorimetro(Number(servico.hourmeter_start), final);
+  if (errHorimetro) return { error: errHorimetro };
+
+  // só fecha se continuar aberto: dois aparelhos não gravam um por cima do outro
+  const { data, error } = await supabase
+    .from("diarista_dia_maquinas")
+    .update({ hourmeter_end: final, closed_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("hourmeter_end", null)
+    .select("id");
   if (error) return { error: diaristaError(error) };
+  if ((data ?? []).length === 0)
+    return {
+      error:
+        "Não deu para fechar: este colaborador não está liberado para você, ou o serviço já foi fechado.",
+    };
+
+  revalidate();
+  return { ok: true };
+}
+
+/** Lançou errado: apaga o serviço e a diária continua. */
+export async function apagarServicoDeMaquina(id: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("diarista_dia_maquinas")
+    .delete()
+    .eq("id", id)
+    .select("id");
+  if (error) return { error: diaristaError(error) };
+  if ((data ?? []).length === 0)
+    return { error: "Só o chefe ou quem lançou este serviço pode apagar." };
   revalidate();
   return { ok: true };
 }
@@ -661,7 +809,7 @@ export async function createDiaristaAcerto(input: {
   const [diasRes, valesRes, servicosRes] = await Promise.all([
     supabase
       .from("diarista_dias")
-      .select("id, daily_rate")
+      .select("id, daily_rate, work_date")
       .eq("diarista_id", input.diarista_id)
       .is("acerto_id", null)
       .lte("work_date", ate),
@@ -685,6 +833,26 @@ export async function createDiaristaAcerto(input: {
   if (valesRes.error) return { error: diaristaError(valesRes.error) };
 
   const dias = diasRes.data ?? [];
+
+  // Diária com serviço de máquina aberto ainda não fechou: pagar agora deixaria
+  // as horas da máquina esquecidas. Sem a 133 a consulta falha e nada trava.
+  if (dias.length > 0) {
+    const { data: abertos } = await supabase
+      .from("diarista_dia_maquinas")
+      .select("dia_id")
+      .is("hourmeter_end", null)
+      .in("dia_id", dias.map((d) => d.id));
+    const idsAbertos = new Set((abertos ?? []).map((a) => a.dia_id as string));
+    const diaAberto = dias.find((d) => idsAbertos.has(d.id as string));
+    if (diaAberto)
+      return {
+        error: `A diária de ${String(diaAberto.work_date)
+          .split("-")
+          .reverse()
+          .join("/")} está com serviço de máquina aberto. Coloque o horímetro final antes do acerto.`,
+      };
+  }
+
   const vales = valesRes.data ?? [];
   // a tabela pode não existir ainda (migration 069 não rodada) — nesse caso o
   // acerto continua funcionando com o que existia antes, sem quebrar a tela

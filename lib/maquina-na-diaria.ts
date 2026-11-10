@@ -63,6 +63,24 @@ export function erroDoHorimetro(inicial: number | null, final: number | null): s
 }
 
 /**
+ * Um serviço que está começando: o inicial é obrigatório e o final pode ficar
+ * para depois. Quando o final vem junto, valem as regras completas.
+ */
+export function erroDoNovoServico(inicial: number | null, final: number | null): string | null {
+  if (final != null) return erroDoHorimetro(inicial, final);
+  if (inicial == null) return "Preencha o horímetro inicial da máquina";
+  if (inicial < 0) return "O horímetro não pode ser negativo";
+  return null;
+}
+
+/** A diária tem serviço de máquina esperando o horímetro final? */
+export function temServicoAberto(dia: {
+  servicos_maquina?: { hourmeter_end: number | null }[];
+}): boolean {
+  return (dia.servicos_maquina ?? []).some((s) => s.hourmeter_end == null);
+}
+
+/**
  * As máquinas que aparecem na pergunta "Usou máquina pesada?": as ativas que
  * marcam HORÍMETRO (caminhão e caçamba marcam km — não são o caso aqui). Se o
  * cadastro não tiver nenhuma de horímetro, mostra todas as ativas, para a

@@ -845,11 +845,13 @@ export function DiaristasPageClient({
       <DiaDetailDialog
         open={!!detalheDia}
         onClose={() => setDetalheDia(null)}
-        dia={detalheDia}
+        // o dia atualizado: fechar um serviço precisa aparecer na hora
+        dia={detalheDia ? dias.find((d) => d.id === detalheDia.id) ?? detalheDia : null}
         diaristaName={detalheDia ? nomePorId.get(detalheDia.diarista_id) ?? "" : ""}
         obras={obras}
         sectors={sectors}
         maquinas={maquinas}
+        maquinaPronta={maquinaPronta}
         canEdit
         canDelete
       />

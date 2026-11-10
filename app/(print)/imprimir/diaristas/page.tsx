@@ -45,8 +45,23 @@ export default async function ImprimirDiaristasPage({ searchParams }: Props) {
   if (searchParams.diarista) query = query.eq("diarista_id", searchParams.diarista);
   if (searchParams.obra) query = query.eq("obra_id", searchParams.obra);
 
-  const { data } = await query;
-  const dias = (data as DiaristaDiaRow[]) ?? [];
+  // os outros serviços de máquina do dia entram no texto: o relatório é onde o
+  // chefe lê o que foi feito (sem a 133 volta erro e o texto fica como estava)
+  const [{ data }, { data: servicos }] = await Promise.all([
+    query,
+    supabase
+      .from("diarista_dia_maquinas")
+      .select("dia_id, description, diarista_dias!inner(work_date)")
+      .gte("diarista_dias.work_date", from)
+      .lte("diarista_dias.work_date", to)
+      .order("created_at", { ascending: true }),
+  ]);
+  const dias = ((data as DiaristaDiaRow[]) ?? []).map((d) => {
+    const textos = (servicos ?? [])
+      .filter((s) => s.dia_id === d.id && s.description && s.description !== d.description)
+      .map((s) => s.description as string);
+    return { ...d, description: [d.description, ...textos].filter(Boolean).join(" · ") || null };
+  });
 
   // o rótulo do filtro sai do próprio resultado: sem consulta extra e sem
   // mentir (se o filtro não achou nada, não há nome para mostrar)

@@ -3,11 +3,9 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   CalendarCheck,
-  Gauge,
   HardHat,
   MapPin,
   Pencil,
-  Tractor,
   Trash2,
   User,
   Wallet,
@@ -28,12 +26,12 @@ import {
   formatBRL,
   formatBRLInput,
   formatDate,
-  formatQty,
   parseMoney,
   upperKeepingCaret,
 } from "@/lib/utils";
 import { deleteDiaristaDia, updateDiaristaDia } from "@/app/(app)/diaristas/actions";
-import { formatHoras, valorDaMaquina } from "@/lib/maquina-na-diaria";
+import { temServicoAberto } from "@/lib/maquina-na-diaria";
+import { ServicosDeMaquina } from "./servicos-de-maquina";
 import type { DiaristaMaquina, DiaristaObra } from "./lancar-dia-dialog";
 import type { DiaristaDia, SupplyObraSector } from "@/lib/types";
 
@@ -44,8 +42,10 @@ interface Props {
   diaristaName: string;
   obras: DiaristaObra[];
   sectors: SupplyObraSector[];
-  /** Para mostrar o nome da máquina pesada do dia (132). */
+  /** Para abrir e fechar os serviços de máquina do dia (133). */
   maquinas?: DiaristaMaquina[];
+  /** A migration 133 já rodou? */
+  maquinaPronta?: boolean;
   /** Só o chefe corrige o que já foi lançado (a diária vale dinheiro). */
   canEdit?: boolean;
   /** O chefe apaga qualquer um; o técnico só o que ele mesmo marcou. */
@@ -65,6 +65,7 @@ export function DiaDetailDialog({
   obras,
   sectors,
   maquinas = [],
+  maquinaPronta = false,
   canEdit,
   canDelete,
 }: Props) {
@@ -78,13 +79,6 @@ export function DiaDetailDialog({
   const [rate, setRate] = useState("");
   const [halfDay, setHalfDay] = useState(false);
 
-  // A máquina do dia e o valor da hora: o gravado no dia manda; sem ele, o do
-  // cadastro (é a mesma regra das views da obra, migration 132).
-  const maquinaDoDia = dia?.machine_id
-    ? maquinas.find((m) => m.id === dia.machine_id) ?? null
-    : null;
-  const valorHoraDoDia = Number(dia?.machine_hourly_rate ?? maquinaDoDia?.hourly_rate ?? 0);
-
   useEffect(() => {
     if (!open) return;
     setEditing(false);
@@ -94,7 +88,10 @@ export function DiaDetailDialog({
     setSectorId(dia?.sector_id ?? "");
     setRate(dia ? formatBRLInput(Number(dia.daily_rate)) : "");
     setHalfDay(dia?.half_day === true);
-  }, [open, dia]);
+    // depende do ID: fechar um serviço devolve um objeto novo do mesmo dia, e
+    // isso não pode tirar a tela do lugar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, dia?.id]);
 
   /**
    * Trocar entre dia inteiro e meia diária já ajusta o valor na tela (metade ou
@@ -181,6 +178,11 @@ export function DiaDetailDialog({
                 meia diária
               </span>
             )}
+            {dia && temServicoAberto(dia) && (
+              <span className="ml-1 px-2 py-0.5 rounded-md bg-orange-500 text-white text-[11px] font-semibold">
+                em aberto
+              </span>
+            )}
             {/* Dia já pago: quem for mexer aqui precisa saber que o acerto já
                 foi feito — o recibo daquele acerto não muda junto */}
             {dia?.acerto_id && (
@@ -202,33 +204,18 @@ export function DiaDetailDialog({
               />
               {obraName && <Linha icon={HardHat} label="Obra" value={obraName} />}
               {sectorName && <Linha icon={MapPin} label="Setor" value={sectorName} />}
-              {/* Máquina pesada do dia (132): custo da obra, não do colaborador */}
-              {dia.machine_hours != null && (
-                <>
-                  <Linha
-                    icon={Tractor}
-                    label="Máquina"
-                    value={maquinaDoDia?.name ?? "Máquina apagada do cadastro"}
-                  />
-                  <Linha
-                    icon={Gauge}
-                    label="Horímetro"
-                    value={`${formatQty(Number(dia.hourmeter_start))} → ${formatQty(
-                      Number(dia.hourmeter_end)
-                    )} (${formatHoras(Number(dia.machine_hours))})`}
-                  />
-                  <Linha
-                    icon={HardHat}
-                    label="Máquina na obra"
-                    value={
-                      valorHoraDoDia > 0
-                        ? formatBRL(valorDaMaquina(Number(dia.machine_hours), valorHoraDoDia))
-                        : "sem valor da hora"
-                    }
-                  />
-                </>
-              )}
             </div>
+
+            {/* A chave troca junto com o dia: o formulário de um dia não vaza para outro */}
+            <ServicosDeMaquina
+              key={dia.id}
+              dia={dia}
+              maquinas={maquinas}
+              obras={obras}
+              sectors={sectors}
+              pronta={maquinaPronta}
+              podeApagar={!!canDelete}
+            />
 
             <div className="space-y-1">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400">

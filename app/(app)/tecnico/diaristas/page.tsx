@@ -8,7 +8,7 @@ import type {
   DiaristaMaquina,
   DiaristaObra,
 } from "@/components/diaristas/lancar-dia-dialog";
-import { supabaseTemMaquinaNaDiaria } from "@/lib/maquina-na-diaria-db";
+import { juntarServicosDeMaquina, lerServicosDeMaquina } from "@/lib/maquina-na-diaria-db";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,7 @@ export default async function TecnicoDiaristasPage() {
     new Date(new Date().getFullYear(), new Date().getMonth() - 6, 1)
   );
 
-  const [diaristasRes, diasRes, obrasRes, sectorsRes, vinculosRes, maquinasRes, pronta132Res] =
+  const [diaristasRes, diasRes, obrasRes, sectorsRes, vinculosRes, maquinasRes, servicosDeMaquina] =
     await Promise.all([
     // só quem está ativo: o técnico escolhe da lista, nunca cadastra
     // (migration 059 — sem ela a tela avisa que não há ninguém cadastrado)
@@ -57,7 +57,7 @@ export default async function TecnicoDiaristasPage() {
       : null,
     // a máquina pesada que trabalhou junto na diária (migration 132)
     supabase.from("machines").select("*").order("name", { ascending: true }),
-    supabaseTemMaquinaNaDiaria(supabase),
+    lerServicosDeMaquina(supabase),
   ]);
 
   // SÓ A TURMA DELE. O admin vê todo mundo. Enquanto a 099 não roda a tabela
@@ -78,11 +78,11 @@ export default async function TecnicoDiaristasPage() {
   return (
     <TecnicoDiaristasClient
       diaristas={diaristas}
-      dias={dias}
+      dias={juntarServicosDeMaquina(dias, servicosDeMaquina.servicos)}
       obras={(obrasRes.data as DiaristaObra[]) ?? []}
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
       maquinas={(maquinasRes.data as DiaristaMaquina[]) ?? []}
-      maquinaPronta={pronta132Res}
+      maquinaPronta={servicosDeMaquina.pronta}
       meId={profile.id}
       soDaTurma={filtrar}
     />

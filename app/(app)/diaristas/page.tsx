@@ -15,7 +15,7 @@ import type {
   DiaristaMaquina,
   DiaristaObra,
 } from "@/components/diaristas/lancar-dia-dialog";
-import { supabaseTemMaquinaNaDiaria } from "@/lib/maquina-na-diaria-db";
+import { juntarServicosDeMaquina, lerServicosDeMaquina } from "@/lib/maquina-na-diaria-db";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ export default async function DiaristasPage() {
     vinculosRes,
     encarregados,
     maquinasRes,
-    pronta132,
+    servicosDeMaquina,
   ] = await Promise.all([
     // cadastro + quanto cada um já trabalhou (migration 059 — sem ela a tela
     // abre vazia com o aviso, em vez de quebrar)
@@ -70,17 +70,20 @@ export default async function DiaristasPage() {
     listarEncarregadosDeObra(supabase),
     // a máquina pesada que trabalhou junto na diária (migration 132)
     supabase.from("machines").select("*").order("name", { ascending: true }),
-    supabaseTemMaquinaNaDiaria(supabase),
+    lerServicosDeMaquina(supabase),
   ]);
 
   return (
     <DiaristasPageClient
       diaristas={(diaristasRes.data as DiaristaResumo[]) ?? []}
-      dias={(diasRes.data as DiaristaDia[]) ?? []}
+      dias={juntarServicosDeMaquina(
+        (diasRes.data as DiaristaDia[]) ?? [],
+        servicosDeMaquina.servicos
+      )}
       obras={(obrasRes.data as DiaristaObra[]) ?? []}
       sectors={(sectorsRes.data as SupplyObraSector[]) ?? []}
       maquinas={(maquinasRes.data as DiaristaMaquina[]) ?? []}
-      maquinaPronta={pronta132}
+      maquinaPronta={servicosDeMaquina.pronta}
       adiantamentos={(valesRes.data as DiaristaAdiantamento[]) ?? []}
       acertos={(acertosRes.data as DiaristaAcerto[]) ?? []}
       servicos={(servicosRes.data as SupplyObraServicoView[]) ?? []}

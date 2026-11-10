@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn, localDateISO } from "@/lib/utils";
+import { temServicoAberto } from "@/lib/maquina-na-diaria";
 import type { DiaristaDia } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,6 +110,9 @@ interface CalendarProps {
  * Depois do acerto o dia fica CINZA (migration 068): cor forte quer dizer "ainda
  * devo esse dia", cinza quer dizer "já paguei".
  *
+ * LARANJA é serviço de máquina aberto (migration 133): falta o horímetro final.
+ * Ganha de todas as outras cores, porque é o único dia que pede uma ação.
+ *
  * Dia futuro fica apagado e não aceita toque: ninguém trabalhou amanhã.
  */
 export function DiaristaCalendar({
@@ -162,6 +166,7 @@ export function DiaristaCalendar({
           if (!iso) return <span key={`v${i}`} />;
 
           const dia = launched.get(iso);
+          const aberto = !!dia && temServicoAberto(dia);
           const isSelected = selected.has(iso);
           const isToday = iso === today;
           const isFuture = iso > today;
@@ -175,7 +180,9 @@ export function DiaristaCalendar({
               onClick={() => (dia ? onOpenLaunched(dia) : onToggle(iso))}
               aria-label={`Dia ${numero}${
                 dia
-                  ? dia.acerto_id
+                  ? aberto
+                    ? " — serviço de máquina aberto"
+                    : dia.acerto_id
                     ? " — já acertado"
                     : dia.half_day
                       ? " — meia diária lançada"
@@ -191,7 +198,9 @@ export function DiaristaCalendar({
                 "aspect-square rounded-lg border text-sm font-semibold tabular-nums flex items-center justify-center transition-colors active:scale-95",
                 isFuture && "opacity-30",
                 dia
-                  ? dia.acerto_id
+                  ? aberto
+                    ? "bg-orange-500 border-orange-500 text-white"
+                    : dia.acerto_id
                     ? // já acertado: cinza. A cor forte quer dizer "ainda devo"
                       // — depois de pago o dia apaga e some do que se deve
                       "bg-slate-300 border-slate-300 text-slate-600 dark:bg-slate-600 dark:border-slate-600 dark:text-slate-200"
@@ -216,6 +225,7 @@ export function DiaristaCalendar({
         <Legenda className="bg-produmar-600" label="marcado agora" />
         <Legenda className="bg-emerald-500" label="dia inteiro" />
         <Legenda className="bg-amber-400" label="meia diária" />
+        <Legenda className="bg-orange-500" label="serviço aberto" />
         <Legenda className="bg-slate-300 dark:bg-slate-600" label="já acertado" />
       </div>
     </div>

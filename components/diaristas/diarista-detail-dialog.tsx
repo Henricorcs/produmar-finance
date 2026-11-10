@@ -29,6 +29,7 @@ import {
   type DiaristaObra,
 } from "./lancar-dia-dialog";
 import { DiaDetailDialog } from "./dia-detail-dialog";
+import { temServicoAberto } from "@/lib/maquina-na-diaria";
 import {
   PAYMENT_MODE_LABEL,
   PAYMENT_MODE_RATE_LABEL,
@@ -53,7 +54,7 @@ interface Props {
   sectors: SupplyObraSector[];
   /** Cadastro de Máquinas e Veículos, para a máquina pesada da diária (132). */
   maquinas?: DiaristaMaquina[];
-  /** A migration 132 já rodou? */
+  /** A migration 133 já rodou? */
   maquinaPronta?: boolean;
   /** Serviços de todo mundo — o diálogo filtra os desta pessoa (069). */
   servicos?: SupplyObraServicoView[];
@@ -416,6 +417,11 @@ export function DiaristaDetailDialog({
                               meia
                             </span>
                           )}
+                          {temServicoAberto(d) && (
+                            <span className="block text-[10px] font-semibold text-orange-600 dark:text-orange-400">
+                              em aberto
+                            </span>
+                          )}
                         </span>
                       </button>
                     </li>
@@ -553,11 +559,13 @@ export function DiaristaDetailDialog({
         <DiaDetailDialog
           open={!!detalheDia}
           onClose={() => setDetalheDia(null)}
-          dia={detalheDia}
+          // o dia atualizado: fechar um serviço precisa aparecer na hora
+          dia={detalheDia ? launched.get(detalheDia.work_date) ?? detalheDia : null}
           diaristaName={diarista?.name ?? ""}
           obras={obras}
           sectors={sectors}
           maquinas={maquinas}
+          maquinaPronta={maquinaPronta}
           canEdit
           canDelete
         />
