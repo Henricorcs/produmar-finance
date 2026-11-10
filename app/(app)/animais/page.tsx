@@ -90,12 +90,13 @@ export default async function AnimaisPage() {
       .select("*")
       .order("created_at", { ascending: true }),
     // a ficha de receitas e despesas por espécie (migration 072 — sem ela a
-    // aba abre vazia e o resto da tela segue igual)
+    // aba abre vazia e o resto da tela segue igual). O limite é folgado porque
+    // o relatório por raça soma o ano inteiro a partir destas linhas.
     supabase
       .from("v_animal_financeiro")
       .select("*")
       .order("entry_date", { ascending: false })
-      .limit(2000),
+      .limit(5000),
     // as despesas cruas: é por elas que a ficha abre uma na correção
     supabase
       .from("animal_despesas")

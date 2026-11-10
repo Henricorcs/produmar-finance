@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  BarChart3,
   Calculator,
   HandCoins,
   Hash,
@@ -23,6 +24,7 @@ import {
 } from "./animal-shared";
 import { AnimalDespesaDialog } from "./animal-despesa-dialog";
 import { AnimalVendaDialog } from "./animal-venda-dialog";
+import { AnimalRelatorioRaca } from "./animal-relatorio-raca";
 import type {
   AnimalDespesa,
   AnimalFinanceiroLinha,
@@ -76,6 +78,8 @@ export function AnimalFinanceiroTab({
   lotes = [],
   animals,
 }: Props) {
+  /** Extrato (o que já existia) ou o relatório por raça, mês a mês e do ano. */
+  const [visao, setVisao] = useState<"extrato" | "raca">("extrato");
   const [filtro, setFiltro] = useState<Filtro>("todos");
   /** Recorte por tanque, dentro da criação escolhida. "" = todos. */
   const [tanqueFiltro, setTanqueFiltro] = useState("");
@@ -202,8 +206,45 @@ export function AnimalFinanceiroTab({
     setVendaOpen(true);
   }
 
+  const seletorVisao = (
+    <div className="grid grid-cols-2 gap-2">
+      {(
+        [
+          ["extrato", "Lançamentos", Receipt],
+          ["raca", "Por raça", BarChart3],
+        ] as const
+      ).map(([v, label, Icone]) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => setVisao(v)}
+          className={cn(
+            "h-10 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 transition-colors",
+            visao === v
+              ? "bg-produmar-600 border-produmar-600 text-white"
+              : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
+          )}
+        >
+          <Icone className="w-4 h-4" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (visao === "raca") {
+    return (
+      <div className="space-y-4">
+        {seletorVisao}
+        <AnimalRelatorioRaca linhas={linhas} animals={animals} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {seletorVisao}
+
       {/* O que entrou, o que saiu e o que sobrou no recorte escolhido */}
       <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
         <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
