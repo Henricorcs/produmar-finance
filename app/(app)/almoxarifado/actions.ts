@@ -701,6 +701,52 @@ export async function getSupplyObraExtrato(obraId: string) {
   return { extrato: data ?? [] };
 }
 
+/** Uma linha enxuta do extrato — só o que o relatório mensal soma. */
+export interface GastoDaObraLinha {
+  obra_id: string;
+  kind: "material" | "diaria" | "despesa" | "servico" | "maquina";
+  entry_date: string;
+  value: number;
+}
+
+/**
+ * Os gastos de TODAS as obras num ano, para o relatório de gastos mensais.
+ * Vem do mesmo extrato do detalhe da obra (view recriada na 133), então os
+ * números batem com o que a obra mostra aberta. O banco entrega no máximo mil
+ * linhas por pedido: busca em páginas até acabar.
+ *
+ * Também devolve o primeiro ano com lançamento, para o seletor de ano.
+ */
+export async function getGastosDasObrasNoAno(ano: number) {
+  const supabase = createClient();
+  const PAGINA = 1000;
+  const linhas: GastoDaObraLinha[] = [];
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await supabase
+      .from("v_supply_obra_extrato")
+      .select("obra_id, kind, entry_date, value")
+      .gte("entry_date", `${ano}-01-01`)
+      .lte("entry_date", `${ano}-12-31`)
+      .order("entry_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(de, de + PAGINA - 1);
+    if (error) return { error: supplyError(error) };
+    linhas.push(...((data ?? []) as GastoDaObraLinha[]));
+    if (!data || data.length < PAGINA) break;
+  }
+
+  const { data: primeira } = await supabase
+    .from("v_supply_obra_extrato")
+    .select("entry_date")
+    .not("entry_date", "is", null)
+    .order("entry_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const primeiroAno = Number(primeira?.entry_date?.slice(0, 4)) || ano;
+
+  return { linhas, primeiroAno };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DESPESA AVULSA DA OBRA (migration 067)
 // ─────────────────────────────────────────────────────────────────────────────

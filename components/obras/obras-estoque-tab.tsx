@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  BarChart3,
   CalendarDays,
   HardHat,
   MapPin,
@@ -15,7 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatBRL } from "@/lib/utils";
+import { cn, formatBRL } from "@/lib/utils";
+import { ObrasRelatorioMensal } from "./obras-relatorio-mensal";
 import { num } from "@/components/almoxarifado/supply-shared";
 import { SupplyObraDialog } from "./estoque-obra-dialog";
 import { SupplyObraCard, SupplyObraDetailDialog } from "./estoque-obra-detail-dialog";
@@ -111,6 +113,7 @@ export function ObrasEstoqueTab({
   const [soltasOpen, setSoltasOpen] = useState(false);
   const [soltasObraId, setSoltasObraId] = useState<string | null>(null);
 
+  const [visao, setVisao] = useState<"lista" | "relatorio">("lista");
   const [search, setSearch] = useState("");
   /** Local escolhido no filtro — "" = todos. */
   const [localFiltro, setLocalFiltro] = useState("");
@@ -210,6 +213,34 @@ export function ObrasEstoqueTab({
     });
   }, [filtradas]);
 
+  /** A lista de obras (o que já existia) ou o relatório de gastos mês a mês. */
+  const seletorVisao =
+    obras.length > 0 ? (
+      <div className="grid grid-cols-2 gap-2">
+        {(
+          [
+            ["lista", "Obras", HardHat],
+            ["relatorio", "Gastos por mês", BarChart3],
+          ] as const
+        ).map(([v, label, Icone]) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setVisao(v)}
+            className={cn(
+              "h-10 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 transition-colors",
+              visao === v
+                ? "bg-produmar-600 border-produmar-600 text-white"
+                : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
+            )}
+          >
+            <Icone className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
   function openSectors(obraId: string | null) {
     setSectorsObraId(obraId);
     setSectorsOpen(true);
@@ -267,8 +298,19 @@ export function ObrasEstoqueTab({
     if (soltasObraId) setDetailObraId(soltasObraId);
   }
 
+  if (visao === "relatorio" && obras.length > 0) {
+    return (
+      <div className="space-y-4">
+        {seletorVisao}
+        <ObrasRelatorioMensal obras={obras} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {seletorVisao}
+
       {/* Ações */}
       <div className="flex items-center justify-end gap-2 flex-wrap">
         <Button variant="outline" size="sm" onClick={() => setLocaisOpen(true)}>
