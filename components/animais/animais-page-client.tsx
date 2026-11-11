@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ClipboardList,
   HandCoins,
+  Hash,
   LayoutGrid,
   Plus,
   Printer,
@@ -51,13 +52,16 @@ import { WeightDialog } from "./weight-dialog";
 import { AnimalFinanceiroTab } from "./animal-financeiro-tab";
 import { LotesTab } from "./lotes-tab";
 import { GruposTab } from "./grupos-tab";
+import { CodigoPODialog } from "./codigo-po-dialog";
 import { ProtocolosTab, type EtapaFeita } from "./protocolos-tab";
 import {
   BotaoRacas,
   GavetaRacas,
   ListaRacas,
+  GRUPO_PO,
   SEM_RACA,
   animalNaEscolha,
+  racaDaEscolha,
   nomeDaEscolha,
   type EscolhaRaca,
 } from "./menu-racas";
@@ -74,6 +78,7 @@ import {
   pariuLabel,
   recurrenceLabel,
   criacaoPorLote,
+  ehRacaPO,
   speciesOf,
   suggestedDoseMl,
   vaccineStatusFor,
@@ -178,6 +183,7 @@ function escolhaDaUrl(
   }
   if (!species) return { species: "todos", breedId: null };
   if (raca === SEM_RACA && !criacaoPorLote(species)) return { species, breedId: SEM_RACA };
+  if (raca === GRUPO_PO && species === "bovino") return { species, breedId: GRUPO_PO };
   return { species, breedId: null };
 }
 
@@ -328,6 +334,7 @@ export function AnimaisPageClient({
   const [birthPresetId, setBirthPresetId] = useState<string | null>(null);
   const [weightOpen, setWeightOpen] = useState(false);
   const [weightPresetId, setWeightPresetId] = useState<string | null>(null);
+  const [codigoPOOpen, setCodigoPOOpen] = useState(false);
   const [birthRequestThumbs, setBirthRequestThumbs] = useState<Record<string, string>>({});
   const [resolveRequest, setResolveRequest] = useState<AnimalBirthRequest | null>(null);
   const [detailRequest, setDetailRequest] = useState<AnimalBirthRequest | null>(null);
@@ -496,6 +503,30 @@ export function AnimaisPageClient({
   );
 
   /**
+   * O gado PO aberto na tela (o grupo "Gado PO" ou uma raça PO): são estes
+   * que podem trocar o número pelo código de compra. Fora disso, vazio — e o
+   * botão "Código de compra" nem aparece.
+   */
+  const codigoPOAnimais = useMemo(() => {
+    const ehPO =
+      breedId === GRUPO_PO ||
+      (!!racaDaEscolha(breedId) && ehRacaPO(breeds.find((b) => b.id === breedId)?.name));
+    return ehPO ? speciesAnimals : [];
+  }, [breedId, breeds, speciesAnimals]);
+
+  /**
+   * A raça em que o cadastro novo já entra. No grupo "Gado PO", se só existe
+   * uma raça PO de bovino (hoje a nelore po), é ela — senão o animal novo
+   * entraria sem raça e sumiria do próprio grupo.
+   */
+  const racaDoCadastro = useMemo(() => {
+    const r = racaDaEscolha(breedId);
+    if (r || breedId !== GRUPO_PO) return r;
+    const po = breeds.filter((b) => speciesOf(b.species) === "bovino" && ehRacaPO(b.name));
+    return po.length === 1 ? po[0].id : null;
+  }, [breedId, breeds]);
+
+  /**
    * As vacinas que viram COLUNA da planilha — e a planilha só ganha coluna de
    * vacina quando a lista é de UMA criação só.
    *
@@ -593,6 +624,8 @@ export function AnimaisPageClient({
       if (!q) return true;
       return (
         a.tag.includes(q) ||
+        // o PO que virou código de compra ainda é achado pelo número antigo
+        (a.tag_antigo ?? "").toUpperCase().includes(q) ||
         (a.breed_name ?? "").toUpperCase().includes(q) ||
         // procurar por "equino" ou por "égua" também acha
         SPECIES_META[speciesOf(a.species)].plural.toUpperCase().includes(q) ||
@@ -621,7 +654,7 @@ export function AnimaisPageClient({
         : filterPending
           ? "Ninguém marcado como pendente."
           : species !== "todos" && speciesAnimals.length === 0
-            ? breedId && breedId !== SEM_RACA
+            ? racaDaEscolha(breedId)
               ? `Nenhum animal da raça ${nomeDaEscolha(escolha, breeds)} no rebanho ainda — o cadastro aí em cima já entra nessa raça.`
               : `Nenhum ${SPECIES_META[species].label.toLowerCase()} no rebanho ainda — o cadastro aí em cima já está pronto para o primeiro.`
             : "Nada encontrado com esse filtro.";
@@ -1188,6 +1221,19 @@ export function AnimaisPageClient({
                 Peso pela foto
               </button>
 
+              {/* Gado PO: trocar o número pelo código de compra (GSC 7893,
+                  CSCN 21368...) de vários de uma vez */}
+              {codigoPOAnimais.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCodigoPOOpen(true)}
+                  className="flex items-center justify-center gap-1.5 h-11 px-3 rounded-xl border border-produmar-200 bg-white text-xs font-semibold text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
+                >
+                  <Hash className="w-4 h-4" />
+                  Código de compra
+                </button>
+              )}
+
               {/* Só aparece quando existe pendência marcada na mão */}
               {pendingCount > 0 && (
                 <button
@@ -1237,7 +1283,7 @@ export function AnimaisPageClient({
               {/* Cadastro rápido: nº + F/M e Enter — o resto é na ficha */}
               <QuickAddBar
                 species={species === "todos" ? null : species}
-                breedId={breedId && breedId !== SEM_RACA ? breedId : null}
+                breedId={racaDoCadastro}
               />
 
               <RebanhoGrid
@@ -1262,7 +1308,7 @@ export function AnimaisPageClient({
                 animals={filtered}
                 breeds={breeds}
                 quickAddSpecies={species === "todos" ? null : species}
-                quickAddBreedId={breedId && breedId !== SEM_RACA ? breedId : null}
+                quickAddBreedId={racaDoCadastro}
                 vaccines={tableVaccines}
                 lastByKey={lastByKey}
                 birthsByMother={birthsByMother}
@@ -1655,7 +1701,7 @@ export function AnimaisPageClient({
         animal={editAnimal}
         breeds={breeds}
         defaultSpecies={species === "todos" ? null : species}
-        defaultBreedId={breedId && breedId !== SEM_RACA ? breedId : null}
+        defaultBreedId={racaDoCadastro}
       />
       <AnimalDetailDialog
         open={!!detailAnimal}
@@ -1701,6 +1747,11 @@ export function AnimaisPageClient({
         presetAnimalId={protocolPreset.animalId}
         presetVaccineIds={protocolPreset.vaccineIds}
         especie={species === "todos" ? null : species}
+      />
+      <CodigoPODialog
+        open={codigoPOOpen}
+        onClose={() => setCodigoPOOpen(false)}
+        animals={codigoPOAnimais}
       />
       <WeightDialog
         open={weightOpen}

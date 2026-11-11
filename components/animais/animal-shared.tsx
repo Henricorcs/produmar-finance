@@ -232,6 +232,28 @@ export function ehNelorePO(raca?: string | null): boolean {
 }
 
 /**
+ * Qualquer raça PO (puro de origem): "NELORE PO", "GIR P.O.", "GUZERÁ (PO)".
+ * É o que forma o grupo "Gado PO" do menu — o gado identificado pelo código
+ * de compra (GSC 7893, CSCN 21368...) em vez do número de brinco.
+ */
+export function ehRacaPO(raca?: string | null): boolean {
+  return /(^|[\s(])P\.?\s*O\.?($|[\s)])/i.test((raca ?? "").trim());
+}
+
+/**
+ * O código de compra do jeito que fica guardado: caixa alta e um espaço só
+ * entre as letras e o número ("gsc  7893" → "GSC 7893", "cscn21368" →
+ * "CSCN 21368").
+ */
+export function normalizarCodigoPO(codigo: string): string {
+  return codigo
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .replace(/^([A-Z]+)(\d)/, "$1 $2");
+}
+
+/**
  * Só os animais da criação aberta na tela (aba Ovinos → só ovinos). Sem
  * criação ("todos os tipos"), a lista inteira.
  */

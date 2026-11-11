@@ -3074,3 +3074,77 @@ function addDaysISO(dateISO: string, days: number): string {
   const [y, m, d] = dateISO.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
+
+// ── Gado PO: o número vira o código de compra ────────────────────────────────
+
+/** "gsc  7893" → "GSC 7893"; "cscn21368" → "CSCN 21368". */
+function codigoPO(codigo: string): string | null {
+  const v = codigo
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .replace(/^([A-Z]+)(\d)/, "$1 $2");
+  return v || null;
+}
+
+/**
+ * Troca o número de vários animais PO pelo código de compra (GSC 7893, CSCN
+ * 21368...). O número de antes fica guardado em `tag_antigo` — o PRIMEIRO
+ * número, se o código for corrigido de novo — para a busca e a ficha ainda
+ * acharem o animal pelo brinco velho. Cada animal é gravado sozinho: um código
+ * repetido barra só aquele, os outros passam.
+ */
+export async function trocarCodigosPO(itens: { animal_id: string; codigo: string }[]) {
+  const supabase = createClient();
+
+  const novos = itens
+    .map((i) => ({ animal_id: i.animal_id, tag: codigoPO(i.codigo) }))
+    .filter((i): i is { animal_id: string; tag: string } => !!i.tag);
+  if (novos.length === 0) return { error: "Preencha o código de pelo menos um animal" };
+
+  // o mesmo código digitado em dois animais: nem tenta
+  const vistos = new Map<string, number>();
+  for (const n of novos) vistos.set(n.tag, (vistos.get(n.tag) ?? 0) + 1);
+  const repetidos = Array.from(vistos.entries()).filter(([, c]) => c > 1).map(([t]) => t);
+  if (repetidos.length > 0)
+    return { error: `O código ${repetidos.join(", ")} foi digitado em mais de um animal` };
+
+  const { data: atuais, error: errLer } = await supabase
+    .from("animals")
+    .select("id, tag, tag_antigo, species")
+    .in(
+      "id",
+      novos.map((n) => n.animal_id)
+    );
+  if (errLer) {
+    if (errLer.message.includes("tag_antigo"))
+      return { error: "Rode a migration 136 no Supabase para trocar o número pelo código de compra" };
+    return { error: errLer.message };
+  }
+  const porId = new Map(
+    ((atuais ?? []) as { id: string; tag: string; tag_antigo: string | null; species: AnimalSpecies }[]).map(
+      (a) => [a.id, a]
+    )
+  );
+
+  let trocados = 0;
+  const falhas: string[] = [];
+  for (const n of novos) {
+    const a = porId.get(n.animal_id);
+    if (!a || a.tag === n.tag) continue;
+    const { error } = await supabase
+      .from("animals")
+      .update({ tag: n.tag, tag_antigo: a.tag_antigo ?? a.tag })
+      .eq("id", n.animal_id);
+    if (error) falhas.push(`${a.tag} → ${n.tag}: ${dupTagError(error, a.species)}`);
+    else trocados++;
+  }
+
+  if (trocados > 0) revalidate();
+  if (falhas.length > 0)
+    return {
+      error: `${trocados} trocado(s). Não deu em ${falhas.length}: ${falhas.join("; ")}`,
+      trocados,
+    };
+  return { ok: true, trocados };
+}

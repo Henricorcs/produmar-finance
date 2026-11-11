@@ -73,7 +73,12 @@ export function RebanhoGrid({
                           : `Abrir a ficha do animal ${a.tag}`
                       }
                       className={cn(
-                        "flex items-center justify-center min-h-[56px] px-1 rounded-xl border text-[19px] font-bold tabular-nums transition-colors active:scale-[0.96]",
+                        "flex items-center justify-center min-h-[56px] px-1 rounded-xl border font-bold tabular-nums transition-colors active:scale-[0.96]",
+                        // código de compra do PO (CSCN 21368) não cabe em 19px
+                        // no quadradinho do iPhone: letra menor e quebra no espaço
+                        a.tag.length > 6
+                          ? "text-[15px] leading-tight text-center break-words"
+                          : "text-[19px]",
                         pending
                           ? "border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                           : "border-slate-200 bg-white text-slate-800 hover:bg-produmar-50 hover:border-produmar-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"

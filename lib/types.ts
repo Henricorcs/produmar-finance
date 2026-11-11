@@ -845,6 +845,8 @@ export interface Animal {
   notes: string | null;
   /** Registro na ABCZ — só do Nelore PO (migration 128). */
   abcz_code?: string | null;
+  /** Número de antes de virar o código de compra — gado PO (migration 136). */
+  tag_antigo?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

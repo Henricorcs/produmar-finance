@@ -50,7 +50,8 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   if (categoria && CATEGORIES.includes(categoria)) query = query.eq("category", categoria);
   if (especie) query = query.eq("species", especie);
   if (raca === "sem") query = query.is("breed_id", null);
-  else if (raca) query = query.eq("breed_id", raca);
+  // "po" = o grupo Gado PO do menu: todas as raças PO, filtradas pelo nome abaixo
+  else if (raca && raca !== "po") query = query.eq("breed_id", raca);
 
   const [animalsRes, vaccinesRes, vaccinationsRes, birthsRes, pendingRes] = await Promise.all([
     query,
@@ -67,6 +68,11 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
   ]);
 
   let animals = (animalsRes.data as AnimalWithInfo[]) ?? [];
+  // mesma regra do ehRacaPO da tela ("NELORE PO", "GIR P.O.", "GUZERÁ (PO)")
+  if (raca === "po")
+    animals = animals.filter((a) =>
+      /(^|[\s(])P\.?\s*O\.?($|[\s)])/i.test((a.breed_name ?? "").trim())
+    );
   if (onlyPending) {
     // pendente = o que foi marcado na mão, não o que o sistema calculou
     const marked = new Set(
@@ -77,7 +83,7 @@ export default async function ImprimirRebanhoPage({ searchParams }: Props) {
 
   const filterLabel = [
     especie ? SPECIES_META[especie].plural : null,
-    raca === "sem" ? "sem raça" : raca ? animals[0]?.breed_name ?? null : null,
+    raca === "sem" ? "sem raça" : raca === "po" ? "gado PO" : raca ? animals[0]?.breed_name ?? null : null,
     categoria && CATEGORIES.includes(categoria) ? categoryPlural(categoria, especie) : null,
     onlyPending ? "só os marcados como pendente" : null,
   ]

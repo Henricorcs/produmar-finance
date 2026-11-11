@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { ChevronRight, ListFilter, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SPECIES_META, SPECIES_OPTIONS, criacaoPorLote, speciesOf } from "./animal-shared";
+import { SPECIES_META, SPECIES_OPTIONS, criacaoPorLote, ehRacaPO, speciesOf } from "./animal-shared";
 import type { AnimalBreed, AnimalSpecies, AnimalWithInfo } from "@/lib/types";
 
 /**
@@ -13,6 +13,7 @@ import type { AnimalBreed, AnimalSpecies, AnimalWithInfo } from "@/lib/types";
  *   species "bovino", breedId null → todos os bovinos
  *   species "bovino", breedId id   → só aquela raça
  *   species "bovino", breedId "sem"→ os bovinos sem raça no cadastro
+ *   species "bovino", breedId "po" → o gado PO (todas as raças PO juntas)
  *
  * A raça sempre vem junto com o tipo dela: cada raça pertence a um tipo
  * (animal_breeds.species), e é o tipo que manda nas vacinas, nos nomes das
@@ -26,11 +27,23 @@ export interface EscolhaRaca {
 /** O id de mentira que quer dizer "sem raça no cadastro". */
 export const SEM_RACA = "sem";
 
+/**
+ * O id de mentira do grupo "Gado PO": todos os bovinos de raça PO (puro de
+ * origem), seja Nelore PO, Gir PO ou outra — o gado do código de compra.
+ */
+export const GRUPO_PO = "po";
+
+/** A raça de verdade da escolha (para o cadastro já entrar nela), ou null. */
+export function racaDaEscolha(breedId: string | null): string | null {
+  return breedId && breedId !== SEM_RACA && breedId !== GRUPO_PO ? breedId : null;
+}
+
 /** O animal entra na escolha do menu? */
 export function animalNaEscolha(a: AnimalWithInfo, e: EscolhaRaca): boolean {
   if (e.species !== "todos" && speciesOf(a.species) !== e.species) return false;
   if (e.breedId === null) return true;
   if (e.breedId === SEM_RACA) return !a.breed_id;
+  if (e.breedId === GRUPO_PO) return ehRacaPO(a.breed_name);
   return a.breed_id === e.breedId;
 }
 
@@ -40,6 +53,7 @@ export function nomeDaEscolha(e: EscolhaRaca, breeds: AnimalBreed[]): string {
   const plural = SPECIES_META[e.species].plural;
   if (e.breedId === null) return criacaoPorLote(e.species) ? plural : `Todos os ${plural.toLowerCase()}`;
   if (e.breedId === SEM_RACA) return `${plural} sem raça`;
+  if (e.breedId === GRUPO_PO) return "Gado PO";
   return breeds.find((b) => b.id === e.breedId)?.name ?? plural;
 }
 
@@ -62,13 +76,15 @@ export function ListaRacas({ breeds, animals, value, onChange }: ListaProps) {
     const porTipo = new Map<AnimalSpecies, number>();
     const porRaca = new Map<string, number>();
     const semRaca = new Map<AnimalSpecies, number>();
+    let po = 0;
     for (const a of animals) {
       const s = speciesOf(a.species);
+      if (s === "bovino" && ehRacaPO(a.breed_name)) po++;
       porTipo.set(s, (porTipo.get(s) ?? 0) + 1);
       if (a.breed_id) porRaca.set(a.breed_id, (porRaca.get(a.breed_id) ?? 0) + 1);
       else semRaca.set(s, (semRaca.get(s) ?? 0) + 1);
     }
-    return { porTipo, porRaca, semRaca };
+    return { porTipo, porRaca, semRaca, po };
   }, [animals]);
 
   const racasPorTipo = useMemo(() => {
@@ -120,6 +136,18 @@ export function ListaRacas({ breeds, animals, value, onChange }: ListaProps) {
                 onClick={() => onChange({ species: sp, breedId: null })}
                 destaque={porLote}
               />
+              {/* o gado PO junto, qualquer que seja a raça: é nele que o
+                  número vira o código de compra (GSC 7893, CSCN 21368...) */}
+              {sp === "bovino" && (racas.some((b) => ehRacaPO(b.name)) || contagem.po > 0) && (
+                <Item
+                  label="Gado PO (código de compra)"
+                  count={contagem.po}
+                  vazio={contagem.po === 0}
+                  ativo={ativo(sp, GRUPO_PO)}
+                  onClick={() => onChange({ species: sp, breedId: GRUPO_PO })}
+                  recuo
+                />
+              )}
               {racas.map((b) => {
                 const n = contagem.porRaca.get(b.id) ?? 0;
                 return (

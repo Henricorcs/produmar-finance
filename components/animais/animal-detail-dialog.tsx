@@ -569,6 +569,8 @@ export function AnimalDetailDialog({
               {/* Informações */}
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-base">
                 <InfoRow label="Número" value={animal.tag} />
+                {/* o PO que virou código de compra: o brinco de antes */}
+                {animal.tag_antigo && <InfoRow label="Nº antigo" value={animal.tag_antigo} />}
                 <InfoRow label="Tipo" value={names.label} />
                 <InfoRow label="Sexo" value={SEX_LABELS[animal.sex]} />
                 <InfoRow label="Raça" value={animal.breed_name ?? "—"} />
