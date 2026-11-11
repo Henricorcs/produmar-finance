@@ -506,10 +506,9 @@ async function registrarNoBanco(
   async function registrar(b: RentalBoleto) {
     const mes = tituloDoBoleto(b);
     const avulso = boletoAvulso(b);
-    let resposta;
-    try {
-      resposta = await criarBoleto({
-        code: b.id,
+    const pedido = (code: string) =>
+      criarBoleto({
+        code,
         customer: {
           name: contrato!.tenant_name.slice(0, 60),
           email: email && email.includes("@") && email.length <= 60 ? email : undefined,
@@ -517,8 +516,9 @@ async function registrarNoBanco(
         },
         services: [
           {
-            name: (avulso ? mes.toUpperCase() : `ALUGUEL ${mes.toUpperCase()}`).slice(0, 60),
-            description: `${avulso ? mes.toUpperCase() : `Aluguel de ${mes}`} - imóvel nº ${contrato!.property_code}${endereco ? ` - ${endereco}` : ""}`.slice(0, 100),
+            // o avulso no mesmo formato do mês: "CAUÇÃO DO ALUGUEL"
+            name: (avulso ? `${mes.toUpperCase()} DO ALUGUEL` : `ALUGUEL ${mes.toUpperCase()}`).slice(0, 60),
+            description: `${avulso ? `${mes.toUpperCase()} do aluguel` : `Aluguel de ${mes}`} - imóvel nº ${contrato!.property_code}${endereco ? ` - ${endereco}` : ""}`.slice(0, 100),
             amount: Math.round(Number(b.amount) * 100),
           },
         ],
@@ -529,7 +529,20 @@ async function registrarNoBanco(
         },
         payment_forms: ["BANK_SLIP", "PIX"],
       });
+    let resposta;
+    try {
+      try {
+        resposta = await pedido(b.id);
+      } catch (e) {
+        // o código (id do boleto) já usado numa tentativa que a Cora guardou
+        // e depois foi cancelada: tenta de novo com um código novo. A baixa
+        // acha o boleto pelo id da Cora, não por esse código.
+        if (!/code|c[óo]digo/i.test((e as Error).message)) throw e;
+        resposta = await pedido(`${b.id.slice(0, 8)}-${Date.now()}`);
+      }
     } catch (e) {
+      // fica no log do servidor (EasyPanel) para descobrir o motivo depois
+      console.error("[alugueis] boleto não saiu na Cora", b.id, avulso ? "avulso" : b.competencia, (e as Error).message);
       falhas.push(`${mes}: ${(e as Error).message}`);
       return;
     }
@@ -551,6 +564,7 @@ async function registrarNoBanco(
       try {
         await cancelarBoleto(resposta.id);
       } catch {}
+      console.error("[alugueis] boleto saiu na Cora mas não foi guardado", b.id, error.message);
       falhas.push(`${mes}: ${boletoError(error)}`);
       return;
     }

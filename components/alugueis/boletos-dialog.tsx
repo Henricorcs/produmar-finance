@@ -74,6 +74,8 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
   const [isPending, startTransition] = useTransition();
   const [acao, setAcao] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  /** Qual ação deu o erro ("b<id>" = gerar no banco aquele boleto). */
+  const [erroDe, setErroDe] = useState<string | null>(null);
   const [recado, setRecado] = useState<string | null>(null);
   const [copiado, setCopiado] = useState<string | null>(null);
   /** Qual PDF está sendo preparado para compartilhar: "carne" ou o id do boleto. */
@@ -128,26 +130,39 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
 
   function salvarAvulso() {
     if (!contrato) return;
+    // o erro do avulso aparece no topo, logo abaixo do formulário
+    const falhou = (m: string) => {
+      setErro(m);
+      setErroDe("avulso");
+    };
     const descricao = avDescricao.trim();
-    if (!descricao) return setErro("Escreva o que o boleto cobra (ENTRADA, CAUÇÃO...).");
-    if (!(avValorNum > 0)) return setErro("Informe o valor do boleto.");
-    if (!avVencimento) return setErro("Informe o vencimento.");
+    if (!descricao) return falhou("Escreva o que o boleto cobra (ENTRADA, CAUÇÃO...).");
+    if (!(avValorNum > 0)) return falhou("Informe o valor do boleto.");
+    if (!avVencimento) return falhou("Informe o vencimento.");
     const noBanco = avNoBanco && !bancoBarrado;
     setErro(null);
+    setErroDe(null);
     setRecado(null);
     setAcao("avulso");
     startTransition(async () => {
-      const r = await gerarBoletoAvulso({
-        contract_id: contrato.id,
-        descricao,
-        amount: avValorNum,
-        due_date: avVencimento,
-        no_banco: noBanco,
-      });
+      let r: Awaited<ReturnType<typeof gerarBoletoAvulso>>;
+      try {
+        r = await gerarBoletoAvulso({
+          contract_id: contrato.id,
+          descricao,
+          amount: avValorNum,
+          due_date: avVencimento,
+          no_banco: noBanco,
+        });
+      } catch (e) {
+        setAcao(null);
+        falhou(`Não deu certo: ${(e as Error)?.message || "falha de conexão"}. Tente de novo.`);
+        return;
+      }
       setAcao(null);
       const falha = actionError(r);
       if (falha || !("id" in r) || !r.id) {
-        setErro(falha ?? "O boleto não foi gerado.");
+        falhou(falha ?? "O boleto não foi gerado.");
         return;
       }
       setAvulsoAberto(false);
@@ -165,14 +180,23 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
   /** Roda a ação; `onde` é para o recado ("gerado no banco"). */
   function rodar(chave: string, onde: string, fazer: () => Promise<unknown>) {
     setErro(null);
+    setErroDe(null);
     setRecado(null);
     setAcao(chave);
     startTransition(async () => {
-      const r = await fazer();
+      let r: unknown;
+      try {
+        r = await fazer();
+      } catch (e) {
+        r = { error: `Não deu certo: ${(e as Error)?.message || "falha de conexão"}. Tente de novo.` };
+      }
       setAcao(null);
       const falha = actionError(r);
       if (falha) {
+        // aparece na própria linha do boleto (e no topo): no celular o fim
+        // da caixa fica fora da tela e parecia que o botão não fazia nada
         setErro(falha);
+        setErroDe(chave);
         return;
       }
       if (r && typeof r === "object" && "gerados" in r) {
@@ -368,6 +392,12 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
               </p>
             )}
 
+            {erro && erroDe && (
+              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+                {erro}
+              </p>
+            )}
+
             {lista.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-6">
                 Nenhum boleto gerado ainda.
@@ -492,6 +522,9 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                           </button>
                         </div>
                       )}
+                      {erro && (erroDe === `b${b.id}` || erroDe === `c${b.id}`) && (
+                        <p className="text-[11px] font-medium text-red-600 dark:text-red-400">{erro}</p>
+                      )}
                     </div>
                   );
                 })}
@@ -523,7 +556,7 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                 </button>
               ))}
 
-            {erro && (
+            {erro && !erroDe && (
               <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
                 {erro}
               </p>
