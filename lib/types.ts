@@ -1260,6 +1260,34 @@ export interface AnimalLoteMovimento {
 }
 
 /**
+ * Lote do rebanho (migration 134): bicho com brinco separado por lote — "LOTE
+ * DA ENGORDA", "VACAS PARIDAS". Não confundir com AnimalLote, que é o ciclo do
+ * tanque de peixe e do galpão de ave.
+ */
+export interface AnimalGrupo {
+  id: string;
+  species: AnimalSpecies;
+  name: string;
+  /** Desativado some da hora de escolher, mas o histórico dele fica. */
+  active: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Um animal num lote do rebanho: o dia em que entrou e, se saiu, o dia em que saiu. */
+export interface AnimalGrupoAnimal {
+  id: string;
+  grupo_id: string;
+  animal_id: string;
+  joined_on: string;
+  /** Null = está no lote hoje. */
+  left_on: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
  * A conta do ciclo, pronta (view v_animal_lotes): quanto está vivo, quanto
  * morreu, e o bruto e o líquido daquele tanque.
  */

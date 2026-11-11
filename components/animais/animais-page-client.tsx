@@ -19,6 +19,7 @@ import {
   Syringe,
   Table2,
   Layers,
+  Users,
   Wallet,
   X,
 } from "lucide-react";
@@ -49,6 +50,7 @@ import { RebanhoGrid } from "./rebanho-grid";
 import { WeightDialog } from "./weight-dialog";
 import { AnimalFinanceiroTab } from "./animal-financeiro-tab";
 import { LotesTab } from "./lotes-tab";
+import { GruposTab } from "./grupos-tab";
 import { ProtocolosTab, type EtapaFeita } from "./protocolos-tab";
 import {
   BotaoRacas,
@@ -87,6 +89,8 @@ import type {
   AnimalCategory,
   AnimalDespesa,
   AnimalFinanceiroLinha,
+  AnimalGrupo,
+  AnimalGrupoAnimal,
   AnimalLoteMovimento,
   AnimalLoteResumo,
   AnimalMedicamento,
@@ -149,6 +153,9 @@ interface Props {
   etapasFeitas?: EtapaFeita[];
   /** Peso estimado pela foto (migration 109). */
   pesosFoto?: AnimalPesoFoto[];
+  /** Lotes do rebanho e quem está em cada um (migration 134). */
+  grupos?: AnimalGrupo[];
+  grupoAnimais?: AnimalGrupoAnimal[];
   /** ?tipo= e ?raca= da URL — a escolha do menu de raças ao abrir a página. */
   tipoInicial?: string | null;
   racaInicial?: string | null;
@@ -180,6 +187,7 @@ type Tab =
   | "protocolos"
   | "nascimentos"
   | "saidas"
+  | "lotes"
   | "tanques"
   | "financeiro";
 type CategoryFilter = "todos" | AnimalCategory;
@@ -246,6 +254,8 @@ export function AnimaisPageClient({
   aplicacaoAnimais = [],
   etapasFeitas = [],
   pesosFoto = [],
+  grupos = [],
+  grupoAnimais = [],
   tipoInicial = null,
   racaInicial = null,
 }: Props) {
@@ -921,6 +931,7 @@ export function AnimaisPageClient({
       alert: etapasPendentes > 0,
     },
     { value: "saidas", label: "Saídas", icon: HandCoins },
+    { value: "lotes", label: "Lotes", icon: Users },
     { value: "tanques", label: "Tanques", icon: Layers },
     { value: "financeiro", label: "Ficha", icon: Wallet },
   ];
@@ -1592,6 +1603,17 @@ export function AnimaisPageClient({
             </>
           )}
         </>
+      )}
+
+      {/* ── Aba: Lotes — o rebanho separado por lote, com o dia de entrada ── */}
+      {tab === "lotes" && (
+        <GruposTab
+          grupos={grupos}
+          membros={grupoAnimais}
+          animals={allAnimals}
+          breeds={breeds}
+          speciesFixa={temEscolha ? (species as AnimalSpecies) : null}
+        />
       )}
 
       {/* ── Aba: Tanques — o ciclo de cada tanque, do alevino ao resultado ── */}

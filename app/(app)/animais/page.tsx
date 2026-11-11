@@ -7,6 +7,8 @@ import type {
   AnimalBreed,
   AnimalDespesa,
   AnimalFinanceiroLinha,
+  AnimalGrupo,
+  AnimalGrupoAnimal,
   AnimalLoteMovimento,
   AnimalMedicamento,
   AnimalProtocolo,
@@ -63,6 +65,8 @@ export default async function AnimaisPage({
     aplicacaoAnimaisRes,
     etapasFeitasRes,
     pesosFotoRes,
+    gruposRes,
+    grupoAnimaisRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -165,6 +169,14 @@ export default async function AnimaisPage({
       .select("*")
       .order("created_at", { ascending: false })
       .limit(2000),
+    // lotes do rebanho e quem está em cada um (migration 134 — sem ela a aba
+    // Lotes abre vazia e o resto da tela segue igual)
+    supabase.from("animal_grupos").select("*").order("name", { ascending: true }),
+    supabase
+      .from("animal_grupo_animais")
+      .select("*")
+      .order("joined_on", { ascending: false })
+      .limit(20000),
   ]);
 
   return (
@@ -192,6 +204,8 @@ export default async function AnimaisPage({
       aplicacaoAnimais={(aplicacaoAnimaisRes.data as AnimalProtocoloAplicacaoAnimal[]) ?? []}
       etapasFeitas={(etapasFeitasRes.data as EtapaFeita[]) ?? []}
       pesosFoto={(pesosFotoRes.data as AnimalPesoFoto[]) ?? []}
+      grupos={(gruposRes.data as AnimalGrupo[]) ?? []}
+      grupoAnimais={(grupoAnimaisRes.data as AnimalGrupoAnimal[]) ?? []}
       tipoInicial={searchParams.tipo ?? null}
       racaInicial={searchParams.raca ?? null}
     />

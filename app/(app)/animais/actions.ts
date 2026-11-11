@@ -2100,6 +2100,217 @@ export async function deleteAnimalLoteMovimento(id: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LOTES DO REBANHO (migration 134)
+// ─────────────────────────────────────────────────────────────────────────────
+// Bicho com brinco separado por lote, com o dia em que cada um entrou. Um
+// animal fica em um lote por vez: pôr num lote novo fecha a entrada no antigo.
+// (O "lote" de tanque e galpão, mais acima, é outra coisa.)
+
+function grupoError(error: { code?: string; message: string }): string {
+  // tabela que não existe: a migration ainda não rodou
+  if (error.code === "42P01" || error.code === "PGRST205")
+    return "Rode a migration 134 no Supabase para separar o rebanho em lotes";
+  if (error.message.includes("uq_animal_grupos_nome"))
+    return "Já existe um lote com esse nome neste tipo de animal";
+  if (error.message.includes("uq_animal_grupo_aberto"))
+    return "Algum desses animais já está em outro lote. Recarregue a página e tente de novo.";
+  if (error.message.includes("animal_grupo_animais_datas_check"))
+    return "A data de saída não pode ser antes da data de entrada no lote";
+  if (error.code === "42501" || /row.level security/i.test(error.message))
+    return "Seu usuário não tem permissão para mexer nos lotes.";
+  return error.code ? `${error.message} (código ${error.code})` : error.message;
+}
+
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+export interface AnimalGrupoInput {
+  species: AnimalSpecies;
+  name: string;
+  notes?: string | null;
+  active?: boolean;
+}
+
+export async function createAnimalGrupo(input: AnimalGrupoInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!clean(input.name)) return { error: "Dê um nome ao lote" };
+  if (input.species === "piscicultura" || input.species === "aves")
+    return { error: "Peixe e ave já se separam por tanque e galpão" };
+
+  const { data, error } = await supabase
+    .from("animal_grupos")
+    .insert({
+      species: normSpecies(input.species),
+      name: clean(input.name),
+      notes: clean(input.notes),
+      active: input.active ?? true,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error) return { error: grupoError(error) };
+  revalidate();
+  return { ok: true, id: data.id as string };
+}
+
+/** O tipo do lote não muda: os animais dentro dele são daquele tipo. */
+export async function updateAnimalGrupo(id: string, input: AnimalGrupoInput) {
+  const supabase = createClient();
+  if (!clean(input.name)) return { error: "Dê um nome ao lote" };
+
+  const { error } = await supabase
+    .from("animal_grupos")
+    .update({
+      name: clean(input.name),
+      notes: clean(input.notes),
+      active: input.active ?? true,
+    })
+    .eq("id", id);
+
+  if (error) return { error: grupoError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Apaga o lote e o histórico de quem passou por ele. Os animais ficam. */
+export async function deleteAnimalGrupo(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_grupos").delete().eq("id", id);
+  if (error) return { error: grupoError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Põe os animais no lote, a partir do dia `joined_on`. Quem estava em outro
+ * lote sai dele nesse mesmo dia (ou no dia em que entrou lá, se a entrada lá
+ * for depois — a saída nunca fica antes da entrada). Quem já está neste lote
+ * fica como está.
+ */
+export async function addAnimaisAoGrupo(input: {
+  grupo_id: string;
+  animal_ids: string[];
+  joined_on: string;
+}) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const ids = Array.from(new Set(input.animal_ids.filter(Boolean)));
+  if (ids.length === 0) return { error: "Escolha os animais" };
+  if (!DATA_ISO.test(input.joined_on)) return { error: "Escolha a data de entrada" };
+
+  const { data: grupo, error: gErr } = await supabase
+    .from("animal_grupos")
+    .select("id, species, name")
+    .eq("id", input.grupo_id)
+    .single();
+  if (gErr || !grupo) return { error: gErr ? grupoError(gErr) : "Lote não encontrado" };
+
+  const { data: bichos, error: aErr } = await supabase
+    .from("animals")
+    .select("id, tag, species, active")
+    .in("id", ids);
+  if (aErr) return { error: aErr.message };
+  const outroTipo = (bichos ?? []).filter(
+    (a) => normSpecies(a.species as AnimalSpecies | null) !== grupo.species
+  );
+  if (outroTipo.length > 0)
+    return {
+      error: `O lote ${grupo.name} é de ${SPECIES_LABEL[grupo.species as AnimalSpecies]}. Tire da escolha: ${outroTipo
+        .map((a) => a.tag)
+        .join(", ")}`,
+    };
+
+  // onde cada um está hoje
+  const { data: abertas, error: oErr } = await supabase
+    .from("animal_grupo_animais")
+    .select("id, grupo_id, animal_id, joined_on")
+    .in("animal_id", ids)
+    .is("left_on", null);
+  if (oErr) return { error: grupoError(oErr) };
+
+  const jaAqui = new Set(
+    (abertas ?? []).filter((m) => m.grupo_id === grupo.id).map((m) => m.animal_id as string)
+  );
+  const mudam = (abertas ?? []).filter((m) => m.grupo_id !== grupo.id);
+
+  // fecha a entrada no lote antigo
+  const noDia = mudam.filter((m) => (m.joined_on as string) <= input.joined_on).map((m) => m.id);
+  if (noDia.length > 0) {
+    const { error } = await supabase
+      .from("animal_grupo_animais")
+      .update({ left_on: input.joined_on })
+      .in("id", noDia);
+    if (error) return { error: grupoError(error) };
+  }
+  for (const m of mudam.filter((m) => (m.joined_on as string) > input.joined_on)) {
+    const { error } = await supabase
+      .from("animal_grupo_animais")
+      .update({ left_on: m.joined_on })
+      .eq("id", m.id);
+    if (error) return { error: grupoError(error) };
+  }
+
+  const novos = ids.filter((id) => !jaAqui.has(id));
+  if (novos.length > 0) {
+    const { error } = await supabase.from("animal_grupo_animais").insert(
+      novos.map((animal_id) => ({
+        grupo_id: grupo.id,
+        animal_id,
+        joined_on: input.joined_on,
+        created_by: user.id,
+      }))
+    );
+    if (error) return { error: grupoError(error) };
+  }
+
+  revalidate();
+  return { ok: true, adicionados: novos.length, mudaramDeLote: mudam.length };
+}
+
+/** Tira o animal do lote no dia `left_on` — a passagem dele fica no histórico. */
+export async function tirarAnimalDoGrupo(membroId: string, left_on: string) {
+  const supabase = createClient();
+  if (!DATA_ISO.test(left_on)) return { error: "Escolha a data de saída" };
+  const { error } = await supabase
+    .from("animal_grupo_animais")
+    .update({ left_on })
+    .eq("id", membroId);
+  if (error) return { error: grupoError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Corrige o dia em que o animal entrou no lote. */
+export async function updateEntradaNoGrupo(membroId: string, joined_on: string) {
+  const supabase = createClient();
+  if (!DATA_ISO.test(joined_on)) return { error: "Escolha a data de entrada" };
+  const { error } = await supabase
+    .from("animal_grupo_animais")
+    .update({ joined_on })
+    .eq("id", membroId);
+  if (error) return { error: grupoError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+/** Apaga a passagem pelo lote — para o animal que foi posto ali por engano. */
+export async function deleteEntradaNoGrupo(membroId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("animal_grupo_animais").delete().eq("id", membroId);
+  if (error) return { error: grupoError(error) };
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PROTOCOLOS DE MEDICAMENTO (migration 108)
 // ─────────────────────────────────────────────────────────────────────────────
 // Medicamento (com a regra de dose) → protocolo (quais e em que dia) →
