@@ -105,7 +105,8 @@ export async function POST(request: NextRequest) {
 async function baixarBoletoDeAluguel(supabase: ReturnType<typeof createAdminClient>, resourceId: string) {
   const { data: boleto } = await supabase
     .from("rental_boletos")
-    .select("id, contract_id, competencia, due_date, amount")
+    // "*" traz o avulso (135) quando existe — o avulso pago não dá baixa em mês
+    .select("*")
     .eq("cora_invoice_id", resourceId)
     .maybeSingle();
 

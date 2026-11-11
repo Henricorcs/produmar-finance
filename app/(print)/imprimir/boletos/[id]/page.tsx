@@ -9,8 +9,10 @@ import {
   barrasDoBoleto,
   boletoEmAberto,
   boletoNoBanco,
+  boletoAvulso,
   linhaDigitavelFormatada,
-  nomeDoMes,
+  rotuloDoTitulo,
+  tituloDoBoleto,
 } from "@/lib/alugueis-boletos";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { CarneBarra } from "@/components/alugueis/carne-barra";
@@ -25,7 +27,14 @@ export const dynamic = "force-dynamic";
  * código de barras (o banco lê) e o QR do Pix. O PDF oficial de cada boleto
  * continua na Cora (link na tela de Boletos).
  */
-export default async function ImprimirBoletosPage({ params }: { params: { id: string } }) {
+export default async function ImprimirBoletosPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  /** ?b=<id do boleto> imprime só ele (o avulso, por exemplo). */
+  searchParams: { b?: string };
+}) {
   const supabase = createClient();
   const userId = await getCurrentUserId();
   if (!userId) redirect("/login");
@@ -36,7 +45,10 @@ export default async function ImprimirBoletosPage({ params }: { params: { id: st
   ]);
 
   const contrato = contratoRes.data as RentalContractView | null;
-  const boletos = ((boletosRes.data as RentalBoleto[]) ?? []).filter(boletoEmAberto);
+  const boletos = ((boletosRes.data as RentalBoleto[]) ?? []).filter(
+    // sem ?b: o carnê das mensalidades (o avulso sai pelo botão dele)
+    (b) => boletoEmAberto(b) && (searchParams.b ? b.id === searchParams.b : !boletoAvulso(b))
+  );
 
   if (!contrato || boletos.length === 0) {
     return (
@@ -79,7 +91,11 @@ export default async function ImprimirBoletosPage({ params }: { params: { id: st
       `}</style>
 
       <CarneBarra
-        titulo={`Carnê · ${contrato.tenant_name} · ${boletos.length} boleto(s)`}
+        titulo={
+          boletos.length === 1 && searchParams.b
+            ? `Boleto · ${tituloDoBoleto(boletos[0])} · ${contrato.tenant_name}`
+            : `Carnê · ${contrato.tenant_name} · ${boletos.length} boleto(s)`
+        }
         carne={dadosDoCarne(contrato, boletos)}
       />
 
@@ -90,13 +106,19 @@ export default async function ImprimirBoletosPage({ params }: { params: { id: st
               <div className="flex items-start justify-between gap-3 border-b border-slate-300 pb-1.5">
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-wide text-slate-500">
-                    {boletoNoBanco(b) ? "Beneficiário" : "Carnê de aluguel · pagar a"}
+                    {boletoNoBanco(b)
+                      ? "Beneficiário"
+                      : boletoAvulso(b)
+                        ? "Boleto avulso · pagar a"
+                        : "Carnê de aluguel · pagar a"}
                   </p>
                   <p className="text-sm font-bold">PRODUMAR SERVIÇOS LTDA</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Aluguel de</p>
-                  <p className="text-sm font-bold capitalize">{nomeDoMes(b.competencia)}</p>
+                <div className="text-right min-w-0">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">{rotuloDoTitulo(b)}</p>
+                  <p className={`text-sm font-bold truncate ${boletoAvulso(b) ? "" : "capitalize"}`}>
+                    {tituloDoBoleto(b)}
+                  </p>
                 </div>
               </div>
 

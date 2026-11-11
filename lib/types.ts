@@ -2613,6 +2613,10 @@ export interface RentalBoleto {
   pix_emv: string | null;
   paid_at: string | null;
   paid_amount: number | null;
+  /** Boleto avulso (entrada, caução...), fora do carnê (migration 135 — sem ela, ausente). */
+  avulso?: boolean;
+  /** O que o avulso cobra ("ENTRADA", "CAUÇÃO"...). */
+  descricao?: string | null;
   created_by: string | null;
   created_at: string;
 }

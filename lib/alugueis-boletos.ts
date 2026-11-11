@@ -116,6 +116,24 @@ export function nomeDoMes(competencia: string): string {
   return new Date(y, m - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
+/** Boleto avulso (entrada, caução...) — fora do carnê das mensalidades. */
+export function boletoAvulso(b: Pick<RentalBoleto, "avulso">): boolean {
+  return b.avulso === true;
+}
+
+/** O que o boleto cobra: a descrição do avulso ("CAUÇÃO") ou o mês ("novembro de 2026"). */
+export function tituloDoBoleto(b: Pick<RentalBoleto, "avulso" | "descricao" | "competencia">): string {
+  return boletoAvulso(b) ? (b.descricao?.trim() || "BOLETO AVULSO") : nomeDoMes(b.competencia);
+}
+
+/** O rótulo em cima do título no boleto impresso. */
+export function rotuloDoTitulo(b: Pick<RentalBoleto, "avulso">): string {
+  return boletoAvulso(b) ? "Referente a" : "Aluguel de";
+}
+
+/** Sugestões de descrição do boleto avulso. */
+export const DESCRICOES_AVULSO = ["ENTRADA", "CAUÇÃO"] as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // O CÓDIGO DE BARRAS DO BOLETO (Intercalado 2 de 5, 44 dígitos)
 // ─────────────────────────────────────────────────────────────────────────────

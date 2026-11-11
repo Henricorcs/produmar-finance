@@ -130,7 +130,8 @@ export function AlugueisPageClient({
   /** O boleto de cada contrato + mês ("id|2026-11-01"). */
   const boletoDoMes = useMemo(() => {
     const map = new Map<string, RentalBoleto>();
-    for (const b of boletos) map.set(`${b.contract_id}|${b.competencia}`, b);
+    // o avulso (entrada, caução) não é boleto de mês
+    for (const b of boletos) if (!b.avulso) map.set(`${b.contract_id}|${b.competencia}`, b);
     return map;
   }, [boletos]);
 

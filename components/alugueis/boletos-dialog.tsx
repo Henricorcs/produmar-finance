@@ -1,7 +1,21 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Ban, Copy, ExternalLink, Landmark, Printer, Receipt, RefreshCw, Share2, Sparkles } from "lucide-react";
+import {
+  Ban,
+  Copy,
+  ExternalLink,
+  FilePlus2,
+  Landmark,
+  Printer,
+  Receipt,
+  RefreshCw,
+  Share2,
+  Sparkles,
+  X,
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
 import { dadosDoCarne, gerarCarnePdf } from "@/lib/carne-pdf";
 import {
@@ -13,19 +27,22 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { actionError } from "@/lib/action-result";
-import { cn, formatBRL, formatDate, localDateISO } from "@/lib/utils";
+import { cn, formatBRL, formatBRLInput, formatDate, localDateISO, parseMoney } from "@/lib/utils";
 import {
+  DESCRICOES_AVULSO,
   JUROS_PADRAO,
   MULTA_PADRAO,
   VALOR_MINIMO_BOLETO,
+  boletoAvulso,
   boletoEmAberto,
   boletoNoBanco,
   mesesParaGerar,
-  nomeDoMes,
   situacaoDoBoleto,
+  tituloDoBoleto,
 } from "@/lib/alugueis-boletos";
 import {
   cancelarBoletoAluguel,
+  gerarBoletoAvulso,
   gerarBoletoNoBanco,
   gerarBoletosDoContrato,
   refazerBoletosDoContrato,
@@ -62,12 +79,21 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
   /** Qual PDF está sendo preparado para compartilhar: "carne" ou o id do boleto. */
   const [pdfDe, setPdfDe] = useState<string | null>(null);
 
+  // ── o boleto avulso (entrada, caução...) ──
+  const [avulsoAberto, setAvulsoAberto] = useState(false);
+  const [avDescricao, setAvDescricao] = useState("");
+  const [avValor, setAvValor] = useState("");
+  const [avVencimento, setAvVencimento] = useState("");
+  const [avNoBanco, setAvNoBanco] = useState(false);
+
   const hoje = localDateISO();
   const lista = [...boletos].sort((a, b) => a.due_date.localeCompare(b.due_date));
-  const comBoleto = new Set(lista.map((b) => b.competencia));
+  /** Só as mensalidades: o avulso não entra no carnê nem ocupa a vaga do mês. */
+  const doCarne = lista.filter((b) => !boletoAvulso(b));
+  const comBoleto = new Set(doCarne.map((b) => b.competencia));
   const semBoleto = contrato ? mesesParaGerar(contrato, hoje).filter((m) => !comBoleto.has(m.competencia)).length : 0;
-  const abertosFuturos = lista.filter((b) => boletoEmAberto(b) && b.due_date >= hoje).length;
-  const emAberto = lista.filter(boletoEmAberto).length;
+  const abertosFuturos = doCarne.filter((b) => boletoEmAberto(b) && b.due_date >= hoje).length;
+  const emAberto = doCarne.filter(boletoEmAberto).length;
   /** Só no sistema e ainda dá para mandar ao banco (não venceu, valor mínimo). */
   const podeIrAoBanco = (b: RentalBoleto) =>
     b.cora_status === "SISTEMA" && b.due_date >= hoje && Number(b.amount) >= VALOR_MINIMO_BOLETO;
@@ -77,10 +103,64 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
     setErro(null);
     setRecado(null);
     setPdfDe(null);
+    setAvulsoAberto(false);
     onClose();
   }
 
-  const abertos = lista.filter(boletoEmAberto);
+  function abrirAvulso() {
+    setErro(null);
+    setRecado(null);
+    setAvDescricao("");
+    setAvValor("");
+    setAvVencimento(hoje);
+    setAvNoBanco(false);
+    setAvulsoAberto(true);
+  }
+
+  const avValorNum = parseMoney(avValor);
+  /** O que impede o avulso de ir ao banco agora (null = pode). */
+  const bancoBarrado =
+    avVencimento && avVencimento < hoje
+      ? "O banco não registra boleto com vencimento no passado."
+      : avValorNum > 0 && avValorNum < VALOR_MINIMO_BOLETO
+        ? "O banco não registra boleto abaixo de R$ 5,00."
+        : null;
+
+  function salvarAvulso() {
+    if (!contrato) return;
+    const descricao = avDescricao.trim();
+    if (!descricao) return setErro("Escreva o que o boleto cobra (ENTRADA, CAUÇÃO...).");
+    if (!(avValorNum > 0)) return setErro("Informe o valor do boleto.");
+    if (!avVencimento) return setErro("Informe o vencimento.");
+    const noBanco = avNoBanco && !bancoBarrado;
+    setErro(null);
+    setRecado(null);
+    setAcao("avulso");
+    startTransition(async () => {
+      const r = await gerarBoletoAvulso({
+        contract_id: contrato.id,
+        descricao,
+        amount: avValorNum,
+        due_date: avVencimento,
+        no_banco: noBanco,
+      });
+      setAcao(null);
+      const falha = actionError(r);
+      if (falha || !("id" in r) || !r.id) {
+        setErro(falha ?? "O boleto não foi gerado.");
+        return;
+      }
+      setAvulsoAberto(false);
+      setPdfDe(r.id);
+      setRecado(
+        r.aviso ??
+          `Boleto avulso de ${descricao.toUpperCase()} gerado ${r.noBanco ? "no banco" : "só no sistema"}. Use "Imprimir" ou "Compartilhar" nele, na lista.`
+      );
+    });
+  }
+
+  /** O carnê leva só as mensalidades em aberto. */
+  const abertos = doCarne.filter(boletoEmAberto);
 
   /** Roda a ação; `onde` é para o recado ("gerado no banco"). */
   function rodar(chave: string, onde: string, fazer: () => Promise<unknown>) {
@@ -141,6 +221,141 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
               </p>
             </div>
 
+            {!pendente &&
+              (avulsoAberto ? (
+                <div className="rounded-xl border border-violet-200 dark:border-violet-900/50 bg-violet-50/50 dark:bg-violet-950/20 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Boleto avulso</p>
+                    <button
+                      type="button"
+                      onClick={() => setAvulsoAberto(false)}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      aria-label="Fechar o boleto avulso"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-2">
+                    Entrada, caução ou outra cobrança fora das mensalidades. Fica na lista marcado como AVULSO e não
+                    entra no carnê.
+                  </p>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="av_desc">O que cobra *</Label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {DESCRICOES_AVULSO.map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setAvDescricao(d)}
+                          className={cn(
+                            "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                            avDescricao.trim().toUpperCase() === d
+                              ? "bg-produmar-600 border-produmar-600 text-white"
+                              : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
+                          )}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                    <Input
+                      id="av_desc"
+                      value={avDescricao}
+                      onChange={(e) => setAvDescricao(e.target.value.toUpperCase())}
+                      placeholder="ou escreva (ex.: SEGUNDA PARCELA DA CAUÇÃO)"
+                      maxLength={60}
+                      className="h-11 sm:h-10 uppercase"
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="av_valor">Valor (R$) *</Label>
+                      <Input
+                        id="av_valor"
+                        value={avValor}
+                        onChange={(e) => setAvValor(formatBRLInput(e.target.value))}
+                        placeholder="0,00"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        className="h-11 sm:h-10 tabular-nums font-semibold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="av_venc">Vencimento *</Label>
+                      <Input
+                        id="av_venc"
+                        type="date"
+                        value={avVencimento}
+                        onChange={(e) => setAvVencimento(e.target.value)}
+                        className="h-11 sm:h-10 tabular-nums"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Onde gerar</Label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { v: false, label: "Só no sistema", sub: "recibo, paga direto" },
+                        { v: true, label: "No banco (Cora)", sub: "código de barras e Pix" },
+                      ].map((o) => (
+                        <button
+                          key={o.label}
+                          type="button"
+                          disabled={o.v && !!bancoBarrado}
+                          onClick={() => setAvNoBanco(o.v)}
+                          className={cn(
+                            "rounded-lg border px-2 py-1.5 text-left transition-colors disabled:opacity-40",
+                            avNoBanco === o.v && !(o.v && bancoBarrado)
+                              ? "border-produmar-500 bg-produmar-50 dark:bg-produmar-900/30 dark:border-produmar-700"
+                              : "border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-700"
+                          )}
+                        >
+                          <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">
+                            {o.label}
+                          </span>
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400">{o.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {avNoBanco && bancoBarrado && (
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">{bancoBarrado} Vai só no sistema.</p>
+                    )}
+                    {avNoBanco && !bancoBarrado && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Pago no banco, ele fica PAGO sozinho (não dá baixa em mês do aluguel).
+                      </p>
+                    )}
+                  </div>
+
+                  <Button
+                    type="button"
+                    disabled={isPending}
+                    onClick={salvarAvulso}
+                    className="w-full h-11 sm:h-10"
+                  >
+                    <FilePlus2 className="w-4 h-4" />
+                    {acao === "avulso"
+                      ? avNoBanco && !bancoBarrado
+                        ? "Gerando no banco..."
+                        : "Gerando..."
+                      : `Gerar boleto avulso${avValorNum > 0 ? ` de ${formatBRL(avValorNum)}` : ""}`}
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={abrirAvulso}
+                  className="w-full h-10 rounded-md border border-dashed border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300 text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+                >
+                  <FilePlus2 className="w-4 h-4" />
+                  Boleto avulso (entrada, caução...)
+                </button>
+              ))}
+
             {pendente && (
               <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400">
                 Rode a migration 129 no Supabase para gerar os boletos do aluguel.
@@ -162,12 +377,24 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                 {lista.map((b) => {
                   const s = situacaoDoBoleto(b, hoje);
                   const banco = boletoNoBanco(b);
+                  const avulso = boletoAvulso(b);
                   return (
-                    <div key={b.id} className="px-3 py-2.5 bg-white dark:bg-slate-900 space-y-1">
+                    <div
+                      key={b.id}
+                      className={cn(
+                        "px-3 py-2.5 space-y-1",
+                        avulso ? "bg-violet-50/60 dark:bg-violet-950/20" : "bg-white dark:bg-slate-900"
+                      )}
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100 capitalize truncate">
-                            {nomeDoMes(b.competencia)}
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-1.5 min-w-0">
+                            {avulso && (
+                              <span className="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                                AVULSO
+                              </span>
+                            )}
+                            <span className={cn("truncate", !avulso && "capitalize")}>{tituloDoBoleto(b)}</span>
                           </p>
                           <p className="text-[11px] text-slate-400 dark:text-slate-500">
                             vence {formatDate(b.due_date)}
@@ -198,6 +425,17 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                               Compartilhar
                             </button>
                           )}
+                          {avulso && (
+                            <a
+                              href={`/imprimir/boletos/${contrato.id}?b=${b.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={link}
+                            >
+                              <Printer className="w-3 h-3" />
+                              Imprimir
+                            </a>
+                          )}
                           {podeIrAoBanco(b) && (
                             <button
                               type="button"
@@ -205,7 +443,7 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                               onClick={() => {
                                 if (
                                   confirm(
-                                    `Gerar no banco (Cora) o boleto de ${nomeDoMes(b.competencia)}, ${formatBRL(Number(b.amount))}? Ele passa a ter código de barras e Pix.`
+                                    `Gerar no banco (Cora) o boleto de ${tituloDoBoleto(b)}, ${formatBRL(Number(b.amount))}? Ele passa a ter código de barras e Pix.`
                                   )
                                 )
                                   rodar(`b${b.id}`, "no banco", () => gerarBoletoNoBanco(contrato.id, b.id));
@@ -241,8 +479,8 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                               if (
                                 confirm(
                                   banco
-                                    ? `Cancelar no banco o boleto de ${nomeDoMes(b.competencia)}? O inquilino não vai mais conseguir pagar por ele.`
-                                    : `Cancelar o boleto de ${nomeDoMes(b.competencia)}?`
+                                    ? `Cancelar no banco o boleto de ${tituloDoBoleto(b)}? O inquilino não vai mais conseguir pagar por ele.`
+                                    : `Cancelar o boleto de ${tituloDoBoleto(b)}?`
                                 )
                               )
                                 rodar(`c${b.id}`, "", () => cancelarBoletoAluguel(b.id));

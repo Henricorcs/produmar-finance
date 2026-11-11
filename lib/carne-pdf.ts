@@ -13,8 +13,10 @@ import {
   MULTA_PADRAO,
   barrasDoBoleto,
   boletoNoBanco,
+  boletoAvulso,
   linhaDigitavelFormatada,
-  nomeDoMes,
+  rotuloDoTitulo,
+  tituloDoBoleto,
 } from "./alugueis-boletos";
 import { enderecoCurto } from "./alugueis-contrato";
 import { paraNomeDeArquivo } from "./contrato-pdf";
@@ -38,6 +40,8 @@ export interface CarneParaPdf {
     | "barcode"
     | "our_number"
     | "pix_emv"
+    | "avulso"
+    | "descricao"
   >[];
 }
 
@@ -103,13 +107,18 @@ export async function gerarCarnePdf(c: CarneParaPdf): Promise<File> {
     doc.setTextColor(100);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text(banco ? "BENEFICIÁRIO" : "CARNÊ DE ALUGUEL · PAGAR A", x + 4, y + 5);
-    doc.text("ALUGUEL DE", x + largura - 4, y + 5, { align: "right" });
+    doc.text(banco ? "BENEFICIÁRIO" : boletoAvulso(b) ? "BOLETO AVULSO · PAGAR A" : "CARNÊ DE ALUGUEL · PAGAR A", x + 4, y + 5);
+    doc.text(rotuloDoTitulo(b).toUpperCase(), x + largura - 4, y + 5, { align: "right" });
     doc.setTextColor(15);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text("PRODUMAR SERVIÇOS LTDA", x + 4, y + 10);
-    doc.text(limpar(primeiraMaiuscula(nomeDoMes(b.competencia))), x + largura - 4, y + 10, { align: "right" });
+    doc.text(
+      doc.splitTextToSize(limpar(primeiraMaiuscula(tituloDoBoleto(b))), 90)[0] ?? "",
+      x + largura - 4,
+      y + 10,
+      { align: "right" }
+    );
     doc.setDrawColor(190);
     doc.setLineWidth(0.2);
     doc.line(x + 3, y + 12.5, x + largura - 3, y + 12.5);
@@ -230,7 +239,7 @@ export async function gerarCarnePdf(c: CarneParaPdf): Promise<File> {
   const nomeBase = paraNomeDeArquivo(c.inquilino) || "inquilino";
   const nome =
     c.boletos.length === 1
-      ? `boleto-aluguel-${paraNomeDeArquivo(nomeDoMes(c.boletos[0].competencia))}-${nomeBase}.pdf`
+      ? `boleto-${boletoAvulso(c.boletos[0]) ? "" : "aluguel-"}${paraNomeDeArquivo(tituloDoBoleto(c.boletos[0]))}-${nomeBase}.pdf`
       : `carne-aluguel-${nomeBase}.pdf`;
   const blob = doc.output("blob");
   return new File([blob], nome, { type: "application/pdf" });

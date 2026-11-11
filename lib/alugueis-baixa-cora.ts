@@ -15,7 +15,7 @@ import type { RentalBoleto } from "./types";
 // dia e o valor que o banco recebeu (com multa e juros, se pagou atrasado).
 // Se alguém já deu a baixa à mão, a de quem lançou fica valendo.
 
-type Boleto = Pick<RentalBoleto, "id" | "contract_id" | "competencia" | "due_date" | "amount">;
+type Boleto = Pick<RentalBoleto, "id" | "contract_id" | "competencia" | "due_date" | "amount" | "avulso">;
 
 /** "2026-11-05T02:10:00Z" → o dia em São Paulo ("2026-11-04"). */
 function diaEmSaoPaulo(iso: string | undefined | null): string | null {
@@ -55,6 +55,9 @@ export async function aplicarStatusDaCora(
     .eq("id", boleto.id);
   if (error) return { erro: error.message };
   if (!pago) return { resultado: "atualizado" };
+  // o avulso (entrada, caução) não é mês do aluguel: a baixa é o próprio
+  // boleto ficar PAGO, com o dia e o valor — não mexe em rental_payments
+  if (boleto.avulso) return { resultado: "baixado" };
 
   const { data: baixa } = await supabase
     .from("rental_payments")
@@ -95,7 +98,8 @@ export async function conferirBoletosNaCora(
   });
   const { data, error } = await supabase
     .from("rental_boletos")
-    .select("id, contract_id, competencia, due_date, amount, cora_invoice_id")
+    // "*": a coluna avulso (135) pode ainda não existir — pedir por nome quebraria
+    .select("*")
     .in("cora_status", ["OPEN", "LATE", "IN_PAYMENT", "DRAFT"])
     .not("cora_invoice_id", "is", null)
     .lte("due_date", limite)

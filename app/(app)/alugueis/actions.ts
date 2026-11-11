@@ -12,10 +12,11 @@ import {
   MAXIMO_DE_BOLETOS,
   MULTA_PADRAO,
   VALOR_MINIMO_BOLETO,
+  boletoAvulso,
   boletoEmAberto,
   boletoValendo,
   mesesParaGerar,
-  nomeDoMes,
+  tituloDoBoleto,
 } from "@/lib/alugueis-boletos";
 import { vencimentoDoMes } from "@/lib/alugueis";
 import { conferirBoletosNaCora } from "@/lib/alugueis-baixa-cora";
@@ -331,13 +332,12 @@ export async function updateRentalContract(id: string, input: RentalContractInpu
   let aviso: string | null = null;
   const { data: abertos } = await supabase
     .from("rental_boletos")
-    .select("competencia, amount, due_date, cora_status")
+    .select("*")
     .eq("contract_id", id)
     .gte("due_date", localDateISO());
-  const diferentes = (
-    (abertos as Pick<RentalBoleto, "competencia" | "amount" | "due_date" | "cora_status">[]) ?? []
-  ).filter((b) => {
-    if (!boletoEmAberto(b)) return false;
+  const diferentes = ((abertos as RentalBoleto[]) ?? []).filter((b) => {
+    // o avulso (entrada, caução) tem valor e vencimento próprios
+    if (!boletoEmAberto(b) || boletoAvulso(b)) return false;
     const [y, m] = b.competencia.split("-").map(Number);
     return (
       Math.abs(Number(b.amount) - row.monthly_amount) > 0.005 ||
@@ -398,6 +398,8 @@ function boletoError(error: { code?: string; message: string }): string {
   if (error.code === "42P01") return "Rode a migration 129 no Supabase para gerar os boletos do aluguel";
   if (error.code === "23502" && error.message.includes("cora_invoice_id"))
     return "Rode a migration 130 no Supabase para gerar os boletos só no sistema";
+  if ((error.code === "42703" || error.code === "PGRST204") && /avulso|descricao/.test(error.message))
+    return "Rode a migration 135 no Supabase para gerar boleto avulso";
   return error.message;
 }
 
@@ -419,14 +421,15 @@ async function criarNoSistema(
   if (!(valor > 0)) return { gerados: 0, aviso: "O contrato está sem o valor do aluguel." };
 
   const [boletosRes, pagosRes] = await Promise.all([
-    supabase.from("rental_boletos").select("competencia, cora_status").eq("contract_id", contractId),
+    supabase.from("rental_boletos").select("*").eq("contract_id", contractId),
     supabase.from("rental_payments").select("competencia").eq("contract_id", contractId).not("paid_at", "is", null),
   ]);
   if (boletosRes.error) return { gerados: 0, aviso: boletoError(boletosRes.error) };
 
   const temBoleto = new Set(
-    ((boletosRes.data as Pick<RentalBoleto, "competencia" | "cora_status">[]) ?? [])
-      .filter(boletoValendo)
+    ((boletosRes.data as RentalBoleto[]) ?? [])
+      // o avulso (entrada, caução) não ocupa a vaga do mês
+      .filter((b) => boletoValendo(b) && !boletoAvulso(b))
       .map((b) => b.competencia)
   );
   const pago = new Set(((pagosRes.data as { competencia: string }[]) ?? []).map((p) => p.competencia));
@@ -501,7 +504,8 @@ async function registrarNoBanco(
   const falhas: string[] = [];
 
   async function registrar(b: RentalBoleto) {
-    const mes = nomeDoMes(b.competencia);
+    const mes = tituloDoBoleto(b);
+    const avulso = boletoAvulso(b);
     let resposta;
     try {
       resposta = await criarBoleto({
@@ -513,8 +517,8 @@ async function registrarNoBanco(
         },
         services: [
           {
-            name: `ALUGUEL ${mes.toUpperCase()}`.slice(0, 60),
-            description: `Aluguel de ${mes} - imóvel nº ${contrato!.property_code}${endereco ? ` - ${endereco}` : ""}`.slice(0, 100),
+            name: (avulso ? mes.toUpperCase() : `ALUGUEL ${mes.toUpperCase()}`).slice(0, 60),
+            description: `${avulso ? mes.toUpperCase() : `Aluguel de ${mes}`} - imóvel nº ${contrato!.property_code}${endereco ? ` - ${endereco}` : ""}`.slice(0, 100),
             amount: Math.round(Number(b.amount) * 100),
           },
         ],
@@ -574,9 +578,11 @@ async function registrarNoBanco(
 async function cancelarBoletosEmAberto(
   supabase: SupabaseClient,
   contractId: string,
-  aPartirDe: string | null
+  aPartirDe: string | null,
+  /** false = só os do carnê (o "Refazer" não mexe na entrada nem no caução). */
+  comAvulsos = true
 ): Promise<{ cancelados: number; noBanco: string[]; erro: string | null }> {
-  let q = supabase.from("rental_boletos").select("id, competencia, cora_invoice_id, cora_status").eq("contract_id", contractId);
+  let q = supabase.from("rental_boletos").select("*").eq("contract_id", contractId);
   if (aPartirDe) q = q.gte("due_date", aPartirDe);
   const { data, error } = await q;
   if (error) return { cancelados: 0, noBanco: [], erro: null }; // sem a migration 129 não há boleto
@@ -584,8 +590,8 @@ async function cancelarBoletosEmAberto(
   let cancelados = 0;
   let erro: string | null = null;
   const noBanco: string[] = [];
-  const lista = ((data as Pick<RentalBoleto, "id" | "competencia" | "cora_invoice_id" | "cora_status">[]) ?? []).filter(
-    boletoEmAberto
+  const lista = ((data as RentalBoleto[]) ?? []).filter(
+    (b) => boletoEmAberto(b) && (comAvulsos || !boletoAvulso(b))
   );
   for (const b of lista) {
     if (b.cora_invoice_id && b.cora_status !== "SISTEMA") {
@@ -631,6 +637,70 @@ export async function gerarBoletoNoBanco(contractId: string, boletoId: string | 
   return { ok: true as const, ...r };
 }
 
+export interface BoletoAvulsoInput {
+  contract_id: string;
+  /** "ENTRADA", "CAUÇÃO" ou o que for. */
+  descricao: string;
+  amount: number;
+  /** AAAA-MM-DD */
+  due_date: string;
+  /** true = já registra na Cora (código de barras + Pix); false = só no sistema. */
+  no_banco: boolean;
+}
+
+/**
+ * "Boleto avulso": a entrada, o caução ou outra cobrança do contrato que não
+ * é mês do aluguel — gerada depois, quando não deu para imprimir na data do
+ * contrato. Fica junto dos boletos do contrato, marcado como AVULSO, fora do
+ * carnê das mensalidades (não ocupa a vaga de mês nenhum). Pago no banco, o
+ * boleto fica PAGO sozinho, sem dar baixa em mês.
+ */
+export async function gerarBoletoAvulso(input: BoletoAvulsoInput) {
+  const supabase = createClient();
+  const user = await usuarioLogado(supabase);
+  if (!user) return { error: "Não autenticado" };
+
+  const descricao = (input.descricao ?? "").trim().toUpperCase().slice(0, 60);
+  const valor = Math.round(Number(input.amount) * 100) / 100;
+  if (!descricao) return { error: "Escreva o que o boleto cobra (ENTRADA, CAUÇÃO...)" };
+  if (!(valor > 0)) return { error: "Informe o valor do boleto" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.due_date ?? "")) return { error: "Informe o vencimento" };
+  if (input.no_banco) {
+    if (input.due_date < localDateISO()) return { error: "O banco não registra boleto com vencimento no passado." };
+    if (valor < VALOR_MINIMO_BOLETO) return { error: "O banco não registra boleto abaixo de R$ 5,00." };
+  }
+
+  const contrato = await contratoDosBoletos(supabase, input.contract_id);
+  if (!contrato) return { error: "Contrato não encontrado" };
+
+  const { data, error } = await supabase
+    .from("rental_boletos")
+    .insert({
+      contract_id: input.contract_id,
+      // a coluna é obrigatória: guarda o mês do vencimento (quem manda é a descrição)
+      competencia: `${input.due_date.slice(0, 7)}-01`,
+      due_date: input.due_date,
+      amount: valor,
+      cora_status: "SISTEMA",
+      avulso: true,
+      descricao,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { error: boletoError(error ?? { message: "O boleto não foi salvo" }) };
+  const id = (data as { id: string }).id;
+
+  let aviso: string | null = null;
+  if (input.no_banco) {
+    const r = await registrarNoBanco(supabase, input.contract_id, [id]);
+    if (r.gerados === 0)
+      aviso = `O boleto ficou só no sistema — não saiu no banco. ${r.aviso ?? ""} Dá para tentar de novo em "Gerar no banco".`.trim();
+  }
+  revalidate();
+  return { ok: true as const, id, noBanco: input.no_banco && !aviso, aviso };
+}
+
 /**
  * "Refazer os em aberto": cancela os que ainda não venceram e cria de novo
  * com o valor e o vencimento de hoje do contrato (depois de um reajuste). O
@@ -641,7 +711,7 @@ export async function refazerBoletosDoContrato(contractId: string) {
   const supabase = createClient();
   const user = await usuarioLogado(supabase);
   if (!user) return { error: "Não autenticado" };
-  const c = await cancelarBoletosEmAberto(supabase, contractId, localDateISO());
+  const c = await cancelarBoletosEmAberto(supabase, contractId, localDateISO(), false);
   if (c.erro) return { error: `Não consegui cancelar na Cora: ${c.erro}` };
   const r = await criarNoSistema(supabase, contractId, user.id);
   if (c.noBanco.length === 0) {
@@ -650,14 +720,14 @@ export async function refazerBoletosDoContrato(contractId: string) {
   }
   const { data } = await supabase
     .from("rental_boletos")
-    .select("id")
+    .select("*")
     .eq("contract_id", contractId)
     .eq("cora_status", "SISTEMA")
     .in("competencia", c.noBanco);
   const banco = await registrarNoBanco(
     supabase,
     contractId,
-    ((data as { id: string }[]) ?? []).map((b) => b.id)
+    ((data as RentalBoleto[]) ?? []).filter((b) => !boletoAvulso(b)).map((b) => b.id)
   );
   revalidate();
   return { ok: true as const, gerados: r.gerados, aviso: [r.aviso, banco.aviso].filter(Boolean).join(" ") || null };
