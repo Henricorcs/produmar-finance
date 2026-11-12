@@ -53,6 +53,14 @@ export interface DividaParaConfissao {
   payments: LoanPayment[];
 }
 
+/** "2 (duas)", "21 (vinte e uma)" — "parcela" é palavra feminina. */
+function numeroNoFeminino(n: number): string {
+  return numeroComExtenso(n)
+    .replace(/\bum\b/g, "uma")
+    .replace(/\bdois\b/g, "duas")
+    .replace(/entos\b/g, "entas");
+}
+
 function reais(v: number): string {
   return `${formatBRL(v)} (${valorPorExtenso(v)})`;
 }
@@ -119,7 +127,7 @@ function formaDePagamento(d: DividaParaConfissao, saldo: number): string[] {
   if (abertas.length > 1) {
     const soma = abertas.reduce((s, i) => s + Number(i.amount), 0);
     return [
-      `O(A) DEVEDOR(A) pagará o valor confessado em ${numeroComExtenso(abertas.length)} parcelas mensais e sucessivas, que somam ${reais(Math.round(soma * 100) / 100)}, com os valores e vencimentos abaixo:${meio}`,
+      `O(A) DEVEDOR(A) pagará o valor confessado em ${numeroNoFeminino(abertas.length)} parcelas mensais e sucessivas, que somam ${reais(Math.round(soma * 100) / 100)}, com os valores e vencimentos abaixo:${meio}`,
       ...abertas.map(
         (i) => `${i.number}ª parcela: ${formatBRL(Number(i.amount))}, com vencimento em ${formatDate(i.due_date)};`
       ),
