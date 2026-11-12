@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Camera, X, Settings2 } from "lucide-react";
+import { Camera, ChevronDown, X, Settings2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +27,7 @@ import {
   formatDecimalInput,
   speciesOf,
   ehNelorePO,
+  ehRacaPO,
 } from "./animal-shared";
 import { AnimalBreedsDialog } from "./animal-breeds-dialog";
 import type { Animal, AnimalBreed, AnimalSex, AnimalSpecies } from "@/lib/types";
@@ -64,6 +65,10 @@ export function AnimalDialog({
   const [weight, setWeight] = useState("");
   const [notes, setNotes] = useState("");
   const [abcz, setAbcz] = useState("");
+  const [mae, setMae] = useState("");
+  const [pai, setPai] = useState("");
+  /** O tipo fica num botão só; as opções só abrem quando ele toca. */
+  const [tipoAberto, setTipoAberto] = useState(false);
   const [photos, setPhotos] = useState<File[]>([]);
   const [breedsOpen, setBreedsOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -78,6 +83,9 @@ export function AnimalDialog({
     setWeight(animal && animal.weight ? String(animal.weight).replace(".", ",") : "");
     setNotes(animal?.notes ?? "");
     setAbcz(animal?.abcz_code ?? "");
+    setMae(animal?.mae ?? "");
+    setPai(animal?.pai ?? "");
+    setTipoAberto(false);
     setPhotos([]);
     setError(null);
   }, [open, animal, defaultSpecies, defaultBreedId]);
@@ -90,10 +98,13 @@ export function AnimalDialog({
 
   /** O registro da ABCZ só existe para o Nelore PO. */
   const nelorePO = ehNelorePO(breeds.find((b) => b.id === breedId)?.name);
+  /** Mãe e pai só no gado PO — é ele que tem genealogia para guardar. */
+  const racaPO = ehRacaPO(breeds.find((b) => b.id === breedId)?.name);
 
   /** Trocou o tipo: a raça de antes é de outro bicho, sai da frente. */
   function pickSpecies(v: AnimalSpecies) {
     setSpecies(v);
+    setTipoAberto(false);
     if (breedId && !breeds.some((b) => b.id === breedId && speciesOf(b.species) === v)) {
       setBreedId("");
     }
@@ -119,6 +130,10 @@ export function AnimalDialog({
         notes,
         // outra raça: o registro da ABCZ não vale e sai (se tinha); sem ele, nem vai
         abcz_code: nelorePO ? abcz : animal?.abcz_code ? null : undefined,
+        // mãe e pai: só o PO manda; o que não é PO e não tinha, nem vai
+        // (assim o cadastro não depende da migration 137 para quem não é PO)
+        mae: racaPO ? mae : animal?.mae ? null : undefined,
+        pai: racaPO ? pai : animal?.pai ? null : undefined,
       };
       const r = animal ? await updateAnimal(animal.id, input) : await createAnimal(input);
       if (r && "error" in r) {
@@ -163,9 +178,26 @@ export function AnimalDialog({
             />
           </div>
 
+          {/* TIPO num botão só: as 7 opções na tela poluíam o cadastro, e
+              quase nunca se troca. Toca e as opções abrem; escolheu, fecha. */}
           <div className="space-y-1.5">
             <Label>Tipo *</Label>
-            <SpeciesPicker value={species} onChange={pickSpecies} />
+            {tipoAberto ? (
+              <SpeciesPicker value={species} onChange={pickSpecies} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setTipoAberto(true)}
+                aria-expanded={false}
+                className="w-full h-11 sm:h-10 flex items-center justify-between gap-2 rounded-lg border border-produmar-300 bg-produmar-50 px-3 text-sm font-medium text-produmar-700 dark:border-produmar-700 dark:bg-produmar-950/40 dark:text-produmar-300 active:scale-[0.99] transition-transform"
+              >
+                {SPECIES_META[species].label}
+                <span className="flex items-center gap-1 text-xs font-normal text-produmar-600/80 dark:text-produmar-400/80">
+                  trocar
+                  <ChevronDown className="w-4 h-4" />
+                </span>
+              </button>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -239,6 +271,36 @@ export function AnimalDialog({
                 autoComplete="off"
                 className="h-11 sm:h-10"
               />
+            </div>
+          )}
+
+          {/* GENEALOGIA — só do gado PO */}
+          {racaPO && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="animal_mae">Mãe</Label>
+                <Input
+                  id="animal_mae"
+                  value={mae}
+                  onChange={(e) => setMae(upperKeepingCaret(e))}
+                  placeholder="nome ou registro"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  className="h-11 sm:h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="animal_pai">Pai</Label>
+                <Input
+                  id="animal_pai"
+                  value={pai}
+                  onChange={(e) => setPai(upperKeepingCaret(e))}
+                  placeholder="nome ou registro"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  className="h-11 sm:h-10"
+                />
+              </div>
             </div>
           )}
 

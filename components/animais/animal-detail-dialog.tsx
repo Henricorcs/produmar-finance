@@ -43,6 +43,7 @@ import {
   categoryLabel,
   doseRuleLabel,
   ehNelorePO,
+  ehRacaPO,
   formatAge,
   formatMl,
   formatPeriod,
@@ -576,6 +577,13 @@ export function AnimalDetailDialog({
                 <InfoRow label="Raça" value={animal.breed_name ?? "—"} />
                 {ehNelorePO(animal.breed_name) && animal.abcz_code && (
                   <InfoRow label="ABCZ" value={animal.abcz_code} />
+                )}
+                {/* Genealogia do gado PO (migration 137) */}
+                {ehRacaPO(animal.breed_name) && (
+                  <>
+                    <InfoRow label="Mãe" value={animal.mae || "—"} />
+                    <InfoRow label="Pai" value={animal.pai || "—"} />
+                  </>
                 )}
                 <InfoRow
                   label="Nascimento"

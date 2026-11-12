@@ -109,11 +109,18 @@ export interface AnimalInput {
   notes?: string | null;
   /** Registro na ABCZ (Nelore PO). Sem o campo (undefined) = não mexe. */
   abcz_code?: string | null;
+  /** Mãe e pai do animal PO (migration 137). Sem o campo (undefined) = não mexe. */
+  mae?: string | null;
+  pai?: string | null;
 }
 
-/** O registro da ABCZ só entra quando a tela mandou (migration 128). */
+/** O registro da ABCZ e a mãe/pai só entram quando a tela mandou (128 e 137). */
 function abczDoInput(input: AnimalInput) {
-  return input.abcz_code === undefined ? {} : { abcz_code: clean(input.abcz_code) };
+  return {
+    ...(input.abcz_code === undefined ? {} : { abcz_code: clean(input.abcz_code) }),
+    ...(input.mae === undefined ? {} : { mae: clean(input.mae) }),
+    ...(input.pai === undefined ? {} : { pai: clean(input.pai) }),
+  };
 }
 
 export async function createAnimal(input: AnimalInput) {

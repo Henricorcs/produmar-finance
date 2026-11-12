@@ -847,6 +847,9 @@ export interface Animal {
   abcz_code?: string | null;
   /** Número de antes de virar o código de compra — gado PO (migration 136). */
   tag_antigo?: string | null;
+  /** Mãe e pai do animal PO — nome, número ou registro (migration 137). */
+  mae?: string | null;
+  pai?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
