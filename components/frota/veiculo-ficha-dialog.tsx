@@ -555,9 +555,23 @@ export function VeiculoFichaDialog({
                         </span>
 
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                            {l.description}
-                          </p>
+                          {/* Na OS, quem bate o olho quer saber PRA QUEM foi:
+                              o contratante vem na frente, em destaque, e o
+                              serviço logo abaixo. Na despesa, o que foi. */}
+                          {receita && l.person ? (
+                            <>
+                              <p className="text-[15px] font-bold text-slate-900 dark:text-slate-50 truncate leading-snug">
+                                {l.person}
+                              </p>
+                              <p className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">
+                                {l.description}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                              {l.description}
+                            </p>
+                          )}
                           {conta && (
                             <p className="text-[11px] font-medium text-produmar-700 dark:text-produmar-400 tabular-nums truncate">
                               {conta} = {formatBRL(Number(l.value))}
@@ -565,7 +579,8 @@ export function VeiculoFichaDialog({
                           )}
                           <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
                             {formatDate(l.entry_date)}
-                            {l.person ? ` · ${l.person}` : ""}
+                            {/* o contratante já está no alto; o fornecedor da despesa fica aqui */}
+                            {l.person && !receita ? ` · ${l.person}` : ""}
                             {trecho ? ` · ${trecho}` : ""}
                             {l.operator ? ` · ${l.operator}` : ""}
                             {l.category ? ` · ${l.category}` : ""}
