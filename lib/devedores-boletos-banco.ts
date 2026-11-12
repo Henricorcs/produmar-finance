@@ -62,10 +62,31 @@ export async function criarBoletosDaDividaNoSistema(
   const parcelas = (parcelasRes.data as LoanInstallment[]) ?? [];
 
   if (parcelas.length > 0) {
+    // Boleto que não aponta mais para parcela nenhuma: o do total (a dívida
+    // virou parcelada) ou de uma parcela que foi refeita. O que está só no
+    // sistema é cancelado aqui — senão a cobrança sairia em dobro. O que já
+    // está no banco não é mexido sem o dono ver: vira aviso.
+    const orfaos = boletos.filter((b) => !b.installment_id && boletoEmAberto(b));
+    const orfaosNoSistema = orfaos.filter((b) => b.cora_status === "SISTEMA");
+    if (orfaosNoSistema.length > 0) {
+      await supabase
+        .from("loan_boletos")
+        .update({ cora_status: "CANCELLED" })
+        .in(
+          "id",
+          orfaosNoSistema.map((b) => b.id)
+        );
+    }
+    const avisoOrfaos =
+      orfaos.length > orfaosNoSistema.length
+        ? `Há ${orfaos.length - orfaosNoSistema.length} boleto(s) antigo(s) no banco que não batem mais com as parcelas — cancele na tela da dívida.`
+        : null;
+
     // um boleto por parcela em aberto que ainda não tem boleto valendo
     const cobertas = new Set(boletos.map((b) => b.installment_id).filter(Boolean));
     const faltam = parcelas.filter((p) => !p.paid && !cobertas.has(p.id));
-    if (faltam.length === 0) return { gerados: 0, aviso: "Toda parcela em aberto já tem boleto." };
+    if (faltam.length === 0)
+      return { gerados: 0, aviso: avisoOrfaos ?? "Toda parcela em aberto já tem boleto." };
     const agora = faltam.slice(0, MAXIMO_DE_BOLETOS);
     const { error } = await supabase.from("loan_boletos").insert(
       agora.map((p) => ({
@@ -79,7 +100,7 @@ export async function criarBoletosDaDividaNoSistema(
       }))
     );
     if (error) return { gerados: 0, aviso: boletoDividaError(error) };
-    return { gerados: agora.length, aviso: null };
+    return { gerados: agora.length, aviso: avisoOrfaos };
   }
 
   // Pagamentos avulsos: um boleto só, com o saldo, no vencimento da dívida

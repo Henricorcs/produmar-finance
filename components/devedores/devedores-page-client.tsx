@@ -366,7 +366,7 @@ export function DevedoresPageClient({ loans }: Props) {
         )}
       </Card>
 
-      <LoanDialog open={dialogOpen} onClose={() => setDialogOpen(false)} loan={editing} />
+      <LoanDialog open={dialogOpen} onClose={() => setDialogOpen(false)} loan={editing} dividas={loans} />
       <LoanCalculatorDialog open={calcOpen} onClose={() => setCalcOpen(false)} />
       <LoanDetailDialog
         open={detailLive !== null}

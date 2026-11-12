@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useRef } from "react";
+import { useState, useTransition, useEffect, useMemo, useRef } from "react";
 import {
   Camera,
   Paperclip,
@@ -8,6 +8,9 @@ import {
   FileText,
   Image as ImageIcon,
   File as FileIcon,
+  ChevronLeft,
+  ChevronRight,
+  Check,
 } from "lucide-react";
 import {
   Dialog,
@@ -27,15 +30,20 @@ import {
   uploadLoanAttachments,
   type LoanInput,
 } from "@/app/(app)/devedores/actions";
-import { loanTotalDue, formatBRL, formatBRLInput } from "@/lib/utils";
+import { cn, loanTotalDue, formatBRL, formatBRLInput, formatDate, localDateISO } from "@/lib/utils";
 import { LOAN_PAYMENT_METHODS, LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
 import type { Loan, LoanPaymentMethod, LoanRepaymentType } from "@/lib/types";
+import type { LoanWithDetails } from "@/app/(app)/devedores/page";
 import { comprimirImagens } from "@/lib/comprimir-imagem";
+import { STICKY_FOOTER, FOOTER_CANCEL, FOOTER_SUBMIT } from "@/components/frota/frota-shared";
+import { LoanBoletos } from "./loan-boletos";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   loan?: Loan | null;
+  /** As dívidas da tela — para mostrar os boletos que acabaram de ser gerados. */
+  dividas?: LoanWithDetails[];
 }
 
 function parseBRL(value: string): number {
@@ -43,26 +51,61 @@ function parseBRL(value: string): number {
   return isNaN(n) ? 0 : n;
 }
 
-const todayStr = () => new Date().toISOString().split("T")[0];
-
 const MAX_SIZE_MB = 10;
 const MAX_SIZE = MAX_SIZE_MB * 1024 * 1024;
 
-export function LoanDialog({ open, onClose, loan }: Props) {
+/** Soma meses a AAAA-MM-DD — a mesma conta do servidor que gera as parcelas. */
+function somarMeses(iso: string, meses: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return localDateISO(new Date(y, m - 1 + meses, d));
+}
+
+type TipoJuros = "percent" | "fixed" | "nenhum";
+
+/**
+ * A DÍVIDA EM ETAPAS — uma pergunta por tela, como a OS da máquina:
+ *   quem deve → quanto → juros → como vai pagar (parcelas) → forma → conferir.
+ * Com boleto, no fim aparecem os boletos gerados e o botão "Gerar no banco",
+ * do mesmo jeito dos aluguéis.
+ */
+type Passo = "devedor" | "valor" | "juros" | "parcelas" | "forma" | "conferir" | "boletos";
+
+const TITULO: Record<Passo, string> = {
+  devedor: "Quem está devendo",
+  valor: "Quanto deve",
+  juros: "Tem juros?",
+  parcelas: "Como vai pagar",
+  forma: "Forma de pagamento",
+  conferir: "Conferir e lançar",
+  boletos: "Boletos gerados",
+};
+
+const ETAPAS: Passo[] = ["devedor", "valor", "juros", "parcelas", "forma", "conferir"];
+
+export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [passo, setPasso] = useState<Passo>("devedor");
 
-  const [repaymentType, setRepaymentType] = useState<LoanRepaymentType>("avulso");
-  /** Boleto, pix, cartão ou dinheiro — em branco enquanto não se escolhe. */
-  const [paymentMethod, setPaymentMethod] = useState<LoanPaymentMethod | null>(null);
+  const [nome, setNome] = useState("");
+  const [documento, setDocumento] = useState("");
+  const [telefone, setTelefone] = useState("");
   const [amount, setAmount] = useState("");
-  const [interestType, setInterestType] = useState<"percent" | "fixed">("percent");
+  const [loanDate, setLoanDate] = useState(localDateISO());
+  const [interestType, setInterestType] = useState<TipoJuros>("percent");
   const [interestRate, setInterestRate] = useState("");
   const [termMonths, setTermMonths] = useState("");
   const [interestAmount, setInterestAmount] = useState("");
+  const [repaymentType, setRepaymentType] = useState<LoanRepaymentType>("avulso");
   const [installments, setInstallments] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  /** Mexeu no "como vai pagar"? Então a sugestão pelo prazo não mexe mais. */
+  const [parcelasNaMao, setParcelasNaMao] = useState(false);
+  /** Boleto, pix, cartão ou dinheiro — em branco enquanto não se escolhe. */
+  const [paymentMethod, setPaymentMethod] = useState<LoanPaymentMethod | null>(null);
   /** Forma "Boleto": já cria os boletos no sistema ao salvar (migration 139). */
   const [criarBoletos, setCriarBoletos] = useState(true);
+  const [notes, setNotes] = useState("");
 
   // Comprovantes anexados já na criação (ex.: print do PIX)
   const [files, setFiles] = useState<File[]>([]);
@@ -70,34 +113,46 @@ export function LoanDialog({ open, onClose, loan }: Props) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const savedIdRef = useRef<string | null>(null);
+  const [salvoId, setSalvoId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setRepaymentType(loan?.repayment_type ?? "avulso");
-      setPaymentMethod(loan?.payment_method ?? null);
-      setAmount(loan?.principal ? formatBRLInput(loan.principal) : "");
-      if (loan?.interest_amount) {
-        setInterestType("fixed");
-        setInterestAmount(formatBRLInput(loan.interest_amount));
-        setInterestRate("");
-        setTermMonths("");
-      } else {
-        setInterestType("percent");
-        setInterestAmount("");
-        setInterestRate(loan?.interest_rate != null ? String(loan.interest_rate) : "");
-        setTermMonths(loan?.term_months != null ? String(loan.term_months) : "");
-      }
-      setInstallments(loan?.installments_count != null ? String(loan.installments_count) : "");
-      // dívida nova já sai com boleto; editar não cria sem ele pedir
-      setCriarBoletos(!loan);
-      setError(null);
-      setFiles([]);
-      setFileError(null);
-      savedIdRef.current = loan?.id ?? null;
+    if (!open) return;
+    setPasso("devedor");
+    setNome(loan?.borrower_name ?? "");
+    setDocumento(loan?.borrower_document ?? "");
+    setTelefone(loan?.borrower_phone ?? "");
+    setAmount(loan?.principal ? formatBRLInput(loan.principal) : "");
+    setLoanDate(loan?.loan_date ?? localDateISO());
+    if (loan?.interest_amount) {
+      setInterestType("fixed");
+      setInterestAmount(formatBRLInput(loan.interest_amount));
+      setInterestRate("");
+    } else if (loan && !loan.interest_rate) {
+      setInterestType("nenhum");
+      setInterestAmount("");
+      setInterestRate("");
+    } else {
+      setInterestType("percent");
+      setInterestAmount("");
+      setInterestRate(loan?.interest_rate != null ? String(loan.interest_rate) : "");
     }
+    setTermMonths(loan?.term_months != null ? String(loan.term_months) : "");
+    setRepaymentType(loan?.repayment_type ?? "avulso");
+    setInstallments(loan?.installments_count != null ? String(loan.installments_count) : "");
+    setDueDate(loan?.due_date ?? "");
+    setParcelasNaMao(!!loan);
+    setPaymentMethod(loan?.payment_method ?? null);
+    // dívida nova já sai com boleto; editar não cria sem ele pedir
+    setCriarBoletos(!loan);
+    setNotes(loan?.notes ?? "");
+    setError(null);
+    setFiles([]);
+    setFileError(null);
+    setSalvoId(null);
+    savedIdRef.current = loan?.id ?? null;
   }, [open, loan]);
 
-  // Prévia do total a receber
+  // As contas da dívida
   const principal = parseBRL(amount);
   const rate = parseFloat(interestRate.replace(",", ".")) || 0;
   const months = parseInt(termMonths, 10) || 0;
@@ -109,6 +164,54 @@ export function LoanDialog({ open, onClose, loan }: Props) {
     interest_amount: interestType === "fixed" ? fixedInterest : null,
   });
   const interest = total - principal;
+  const nParcelas = repaymentType === "parcelado" ? parseInt(installments, 10) || 0 : 0;
+  const primeiroVencimento = dueDate || somarMeses(loanDate || localDateISO(), 1);
+
+  /** As parcelas como o servidor vai criar: centavos para baixo, a última fecha a conta. */
+  const previa = useMemo(() => {
+    if (nParcelas < 1 || !(total > 0)) return [];
+    const base = Math.floor((total / nParcelas) * 100) / 100;
+    return Array.from({ length: nParcelas }, (_, i) => ({
+      numero: i + 1,
+      valor: i === nParcelas - 1 ? Math.round((total - base * (nParcelas - 1)) * 100) / 100 : base,
+      vencimento: somarMeses(primeiroVencimento, i),
+    }));
+  }, [nParcelas, total, primeiroVencimento]);
+
+  const indice = ETAPAS.indexOf(passo);
+
+  function irPara(p: Passo) {
+    setError(null);
+    // Chegando em "como vai pagar" de uma dívida nova: o prazo dos juros já
+    // diz em quantos meses ele paga — sugere dividir nas mesmas parcelas.
+    if (p === "parcelas" && !parcelasNaMao && interestType === "percent" && months > 1) {
+      setRepaymentType("parcelado");
+      setInstallments(String(months));
+    }
+    setPasso(p);
+  }
+
+  /** O que cada etapa exige antes de seguir. */
+  function problemaDaEtapa(p: Passo): string | null {
+    if (p === "devedor" && !nome.trim()) return "Escreva o nome de quem está devendo";
+    if (p === "valor") {
+      if (!(principal > 0)) return "Informe o valor devido";
+      if (!loanDate) return "Informe a data da dívida";
+    }
+    if (p === "juros") {
+      if (interestType === "percent" && rate > 0 && months < 1) return "Informe o prazo em meses para calcular os juros";
+      if (interestType === "fixed" && !(fixedInterest > 0)) return "Informe o valor dos juros";
+    }
+    if (p === "parcelas" && repaymentType === "parcelado" && nParcelas < 1)
+      return "Informe em quantas parcelas";
+    return null;
+  }
+
+  function proximo() {
+    const problema = problemaDaEtapa(passo);
+    if (problema) return setError(problema);
+    irPara(ETAPAS[indice + 1]);
+  }
 
   async function addFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
@@ -125,56 +228,49 @@ export function LoanDialog({ open, onClose, loan }: Props) {
     if (accepted.length) setFiles((prev) => [...prev, ...accepted]);
   }
 
-  function removeFile(idx: number) {
-    setFiles((prev) => prev.filter((_, i) => i !== idx));
-  }
-
   function fileIcon(f: File) {
     if (f.type.startsWith("image/")) return <ImageIcon className="w-4 h-4" />;
     if (f.type.includes("pdf")) return <FileText className="w-4 h-4 text-red-500" />;
     return <FileIcon className="w-4 h-4" />;
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+  function salvar() {
+    for (const p of ETAPAS) {
+      const problema = problemaDaEtapa(p);
+      if (problema) {
+        setPasso(p);
+        return setError(problema);
+      }
+    }
 
     const input: LoanInput = {
-      borrower_name: String(fd.get("borrower_name") ?? ""),
-      borrower_document: String(fd.get("borrower_document") ?? "") || null,
-      borrower_phone: String(fd.get("borrower_phone") ?? "") || null,
+      borrower_name: nome,
+      borrower_document: documento.trim() || null,
+      borrower_phone: telefone.trim() || null,
       principal,
       interest_rate: interestType === "percent" && rate > 0 ? rate : null,
       term_months: interestType === "percent" && months > 0 ? months : null,
       interest_amount: interestType === "fixed" && fixedInterest > 0 ? fixedInterest : null,
       repayment_type: repaymentType,
-      installments_count:
-        repaymentType === "parcelado" ? parseInt(installments, 10) || null : null,
+      installments_count: repaymentType === "parcelado" ? nParcelas || null : null,
       payment_method: paymentMethod,
-      loan_date: String(fd.get("loan_date") ?? ""),
-      due_date: String(fd.get("due_date") ?? "") || null,
-      notes: String(fd.get("notes") ?? "") || null,
+      loan_date: loanDate,
+      due_date: dueDate || null,
+      notes: notes || null,
     };
 
+    setError(null);
     startTransition(async () => {
       // Cria/atualiza a dívida. savedIdRef evita recriar caso o upload
       // do comprovante falhe e o usuário tente enviar novamente.
       let loanId = savedIdRef.current;
 
       if (loanId) {
-        if (loan) {
-          const result = await updateLoan(loanId, input);
-          if (result && "error" in result) {
-            setError(result.error ?? "Erro inesperado");
-            return;
-          }
-        }
+        const result = await updateLoan(loanId, input);
+        if (result && "error" in result) return setError(result.error ?? "Erro inesperado");
       } else {
         const result = await createLoan(input);
-        if (result && "error" in result) {
-          setError(result.error ?? "Erro inesperado");
-          return;
-        }
+        if (result && "error" in result) return setError(result.error ?? "Erro inesperado");
         loanId = (result as { id?: string }).id ?? null;
         savedIdRef.current = loanId;
       }
@@ -185,375 +281,435 @@ export function LoanDialog({ open, onClose, loan }: Props) {
         files.forEach((f) => upload.append("files", f));
         const up = await uploadLoanAttachments(loanId, upload);
         if (up && "error" in up) {
-          setError(
-            `Dívida salva, mas falha ao anexar o comprovante: ${up.error}. Tente enviar de novo.`
-          );
-          return;
+          return setError(`Dívida salva, mas falha ao anexar o comprovante: ${up.error}. Tente enviar de novo.`);
         }
+        setFiles([]);
       }
 
-      // Os boletos no sistema (só cria os que faltam — repetir não duplica)
+      // Os boletos no sistema (só cria os que faltam — repetir não duplica) e
+      // a última tela mostra eles, com o "Gerar no banco", como nos aluguéis.
       if (loanId && paymentMethod === "boleto" && criarBoletos) {
         const b = await gerarBoletosDaDivida(loanId);
-        if (b && "error" in b && b.error) {
-          setError(
-            `Dívida salva, mas os boletos não saíram: ${b.error} Dá para gerar depois, na tela da dívida.`
-          );
-          return;
-        }
+        setSalvoId(loanId);
+        setPasso("boletos");
+        if (b && "error" in b && b.error) setError(b.error);
+        return;
       }
 
       onClose();
     });
   }
 
+  const dividaSalva = salvoId ? dividas.find((d) => d.id === salvoId) ?? null : null;
+  const seletor = (ativo: boolean) =>
+    cn(
+      "min-h-[48px] px-2 text-sm rounded-xl border font-medium transition-colors",
+      ativo
+        ? "bg-produmar-50 dark:bg-produmar-950/40 border-produmar-300 dark:border-produmar-800 text-produmar-700 dark:text-produmar-400"
+        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+    );
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{loan ? "Editar dívida" : "Nova dívida"}</DialogTitle>
+          <DialogTitle>
+            {passo === "boletos" ? TITULO.boletos : loan ? "Editar dívida" : "Nova dívida"}
+          </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Devedor */}
-          <div className="space-y-1.5">
-            <Label htmlFor="borrower_name">Devedor *</Label>
-            <Input
-              id="borrower_name"
-              name="borrower_name"
-              defaultValue={loan?.borrower_name ?? ""}
-              placeholder="nome de quem deve"
-              autoCapitalize="characters"
-              data-caixa="uppercase"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="borrower_document">CPF/CNPJ</Label>
-              <Input
-                id="borrower_document"
-                name="borrower_document"
-                defaultValue={loan?.borrower_document ?? ""}
-                placeholder="opcional"
-                inputMode="numeric"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="borrower_phone">Telefone</Label>
-              <Input
-                id="borrower_phone"
-                name="borrower_phone"
-                defaultValue={loan?.borrower_phone ?? ""}
-                placeholder="opcional"
-                inputMode="tel"
-              />
-            </div>
-          </div>
-
-          {/* Valor devido */}
-          <div className="space-y-1.5">
-            <Label htmlFor="amount">Valor devido *</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none">
-                R$
-              </span>
-              <Input
-                id="amount"
-                type="text"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(formatBRLInput(e.target.value))}
-                placeholder="0,00"
-                className="pl-9 tabular-nums"
-                autoComplete="off"
-                required
-              />
-            </div>
-          </div>
-
-          {/* Juros */}
-          <div className="space-y-2">
-            <Label>Juros</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["percent", "fixed"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setInterestType(t)}
-                  className={`py-2 text-xs rounded-lg border font-medium transition-colors ${
-                    interestType === t
-                      ? "bg-produmar-50 dark:bg-produmar-950/40 border-produmar-300 dark:border-produmar-800 text-produmar-700 dark:text-produmar-400"
-                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  {t === "percent" ? "% ao mês" : "Valor fixo (R$)"}
-                </button>
+        {passo !== "boletos" && (
+          <div className="space-y-1.5 -mt-1">
+            <div className="flex gap-1">
+              {ETAPAS.map((p, i) => (
+                <span
+                  key={p}
+                  className={cn(
+                    "h-1.5 flex-1 rounded-full",
+                    i <= indice ? "bg-produmar-500" : "bg-slate-200 dark:bg-slate-700"
+                  )}
+                />
               ))}
             </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Passo {indice + 1} de {ETAPAS.length} ·{" "}
+              <span className="font-semibold text-slate-700 dark:text-slate-200">{TITULO[passo]}</span>
+            </p>
+          </div>
+        )}
 
-            {interestType === "percent" ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="interest_rate" className="text-xs text-slate-500 dark:text-slate-400">Taxa (% ao mês)</Label>
-                  <Input
-                    id="interest_rate"
-                    type="text"
-                    inputMode="decimal"
-                    value={interestRate}
-                    onChange={(e) => setInterestRate(e.target.value.replace(/[^\d.,]/g, ""))}
-                    placeholder="opcional"
-                    className="tabular-nums"
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="term_months" className="text-xs text-slate-500 dark:text-slate-400">Prazo (meses)</Label>
-                  <Input
-                    id="term_months"
-                    type="number"
-                    min={0}
-                    value={termMonths}
-                    onChange={(e) => setTermMonths(e.target.value)}
-                    placeholder="ex: 6"
-                    className="tabular-nums"
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-            ) : (
+        <div className="space-y-4">
+          {/* 1. QUEM DEVE */}
+          {passo === "devedor" && (
+            <>
               <div className="space-y-1.5">
-                <Label htmlFor="interest_fixed" className="text-xs text-slate-500 dark:text-slate-400">
-                  Valor dos juros
-                </Label>
+                <Label htmlFor="borrower_name">Nome de quem deve *</Label>
+                <Input
+                  id="borrower_name"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value.toUpperCase())}
+                  placeholder="nome completo"
+                  autoCapitalize="characters"
+                  className="h-12 text-base"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="borrower_document">CPF ou CNPJ</Label>
+                <Input
+                  id="borrower_document"
+                  value={documento}
+                  onChange={(e) => setDocumento(e.target.value)}
+                  placeholder="só os números"
+                  inputMode="numeric"
+                  className="h-12 text-base"
+                />
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Precisa do CPF (ou CNPJ) certo para o boleto ir para o banco e para a confissão de dívida.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="borrower_phone">Telefone</Label>
+                <Input
+                  id="borrower_phone"
+                  value={telefone}
+                  onChange={(e) => setTelefone(e.target.value)}
+                  placeholder="opcional"
+                  inputMode="tel"
+                  className="h-12 text-base"
+                />
+              </div>
+            </>
+          )}
+
+          {/* 2. QUANTO */}
+          {passo === "valor" && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="amount">Valor devido *</Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base text-slate-400 pointer-events-none">
                     R$
                   </span>
                   <Input
-                    id="interest_fixed"
-                    type="text"
+                    id="amount"
                     inputMode="decimal"
-                    value={interestAmount}
-                    onChange={(e) => setInterestAmount(formatBRLInput(e.target.value))}
+                    value={amount}
+                    onChange={(e) => setAmount(formatBRLInput(e.target.value))}
                     placeholder="0,00"
-                    className="pl-9 tabular-nums"
+                    className="pl-10 h-14 text-2xl font-bold tabular-nums"
                     autoComplete="off"
                   />
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Prévia do total */}
-          {principal > 0 && (
-            <div className="rounded-lg bg-produmar-50 dark:bg-produmar-950/30 border border-produmar-100 dark:border-produmar-900/40 px-3 py-2 text-xs space-y-0.5">
-              <div className="flex justify-between text-slate-500 dark:text-slate-400">
-                <span>Juros</span>
-                <span className="tabular-nums">{formatBRL(interest)}</span>
+              <div className="space-y-1.5">
+                <Label htmlFor="loan_date">Data da dívida *</Label>
+                <Input
+                  id="loan_date"
+                  type="date"
+                  value={loanDate}
+                  onChange={(e) => setLoanDate(e.target.value)}
+                  className="h-12"
+                />
               </div>
-              <div className="flex justify-between font-semibold text-produmar-800 dark:text-produmar-300">
-                <span>Total a receber</span>
-                <span className="tabular-nums">{formatBRL(total)}</span>
-              </div>
-            </div>
+            </>
           )}
 
-          {/* COMO O DINHEIRO ENTRA — é a primeira pergunta de quem vai cobrar:
-              boleto se manda, pix se pede a chave, dinheiro alguém busca.
-              Toque de novo no escolhido para deixar em branco. */}
-          <div className="space-y-1.5">
-            <Label>Forma de pagamento</Label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {LOAN_PAYMENT_METHODS.map((m) => (
+          {/* 3. JUROS */}
+          {passo === "juros" && (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    ["nenhum", "Sem juros"],
+                    ["percent", "% ao mês"],
+                    ["fixed", "Valor fixo"],
+                  ] as [TipoJuros, string][]
+                ).map(([t, rotulo]) => (
+                  <button key={t} type="button" onClick={() => setInterestType(t)} className={seletor(interestType === t)}>
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+
+              {interestType === "percent" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="interest_rate">Taxa (% ao mês)</Label>
+                    <Input
+                      id="interest_rate"
+                      inputMode="decimal"
+                      value={interestRate}
+                      onChange={(e) => setInterestRate(e.target.value.replace(/[^\d.,]/g, ""))}
+                      placeholder="ex: 6"
+                      className="h-12 text-base tabular-nums"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="term_months">Prazo (meses)</Label>
+                    <Input
+                      id="term_months"
+                      type="number"
+                      min={0}
+                      value={termMonths}
+                      onChange={(e) => setTermMonths(e.target.value)}
+                      placeholder="ex: 3"
+                      className="h-12 text-base tabular-nums"
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+              )}
+              {interestType === "fixed" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="interest_fixed">Valor dos juros</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none">
+                      R$
+                    </span>
+                    <Input
+                      id="interest_fixed"
+                      inputMode="decimal"
+                      value={interestAmount}
+                      onChange={(e) => setInterestAmount(formatBRLInput(e.target.value))}
+                      placeholder="0,00"
+                      className="pl-9 h-12 text-base tabular-nums"
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <Totais principal={principal} interest={interest} total={total} />
+            </>
+          )}
+
+          {/* 4. COMO VAI PAGAR */}
+          {passo === "parcelas" && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    ["avulso", "De uma vez"],
+                    ["parcelado", "Parcelado"],
+                  ] as [LoanRepaymentType, string][]
+                ).map(([t, rotulo]) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      setParcelasNaMao(true);
+                      setRepaymentType(t);
+                      if (t === "parcelado" && !installments && months > 1) setInstallments(String(months));
+                    }}
+                    className={seletor(repaymentType === t)}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+
+              {/* a dívida antiga lançada "avulsa" com prazo: oferece dividir */}
+              {repaymentType === "avulso" && interestType === "percent" && months > 1 && (
                 <button
-                  key={m}
                   type="button"
-                  onClick={() => setPaymentMethod(paymentMethod === m ? null : m)}
-                  className={`min-h-[44px] px-1 text-sm rounded-lg border font-medium transition-colors ${
-                    paymentMethod === m
-                      ? "bg-produmar-50 dark:bg-produmar-950/40 border-produmar-300 dark:border-produmar-800 text-produmar-700 dark:text-produmar-400"
-                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
-                  }`}
+                  onClick={() => {
+                    setParcelasNaMao(true);
+                    setRepaymentType("parcelado");
+                    setInstallments(String(months));
+                  }}
+                  className="w-full text-left text-sm rounded-xl border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300 px-3 py-2.5"
                 >
-                  {LOAN_PAYMENT_METHOD_LABEL[m]}
+                  O prazo é de {months} meses — toque para dividir em {months} parcelas (um boleto por mês).
                 </button>
-              ))}
-            </div>
-            {/* No boleto: já cria os boletos no sistema ao salvar (um por
-                parcela, ou um com o saldo). Ir para o banco é depois, na tela
-                da dívida, com confirmação — como nos aluguéis. */}
-            {paymentMethod === "boleto" && (
-              <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={criarBoletos}
-                  onChange={(e) => setCriarBoletos(e.target.checked)}
-                  className="mt-0.5 w-5 h-5 accent-produmar-600 flex-shrink-0"
+              )}
+
+              {repaymentType === "parcelado" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="installments">Em quantas parcelas? *</Label>
+                  <Input
+                    id="installments"
+                    type="number"
+                    min={1}
+                    value={installments}
+                    onChange={(e) => {
+                      setParcelasNaMao(true);
+                      setInstallments(e.target.value);
+                    }}
+                    placeholder="ex: 3"
+                    className="h-12 text-base tabular-nums"
+                    autoComplete="off"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="due_date">{repaymentType === "parcelado" ? "1º vencimento" : "Vencimento"}</Label>
+                <Input
+                  id="due_date"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="h-12"
                 />
-                <span className="text-sm text-slate-700 dark:text-slate-200">
-                  Criar os boletos no sistema ao salvar
-                  <span className="block text-[11px] text-slate-400 dark:text-slate-500">
-                    {repaymentType === "parcelado"
-                      ? "Um boleto para cada parcela."
-                      : "Um boleto com o total, no vencimento."}{" "}
-                    Depois, na dívida, você confere e toca em Gerar no banco.
-                  </span>
-                </span>
-              </label>
-            )}
-          </div>
+                {!dueDate && (
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                    Em branco: um mês depois da data da dívida ({formatDate(primeiroVencimento)}).
+                  </p>
+                )}
+              </div>
 
-          {/* Parcelamento — quantas vezes, não por qual meio. Isto já se
-              chamou "Forma de pagamento"; o nome mudou quando o meio do
-              pagamento ganhou campo próprio, para não haver dois iguais. */}
-          <div className="space-y-1.5">
-            <Label>Parcelamento</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["avulso", "parcelado"] as LoanRepaymentType[]).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setRepaymentType(t)}
-                  className={`py-2.5 text-sm rounded-lg border font-medium transition-colors ${
-                    repaymentType === t
-                      ? "bg-produmar-50 dark:bg-produmar-950/40 border-produmar-300 dark:border-produmar-800 text-produmar-700 dark:text-produmar-400"
-                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  {t === "avulso" ? "Pagamentos avulsos" : "Parcelado"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {repaymentType === "parcelado" && (
-            <div className="space-y-1.5">
-              <Label htmlFor="installments">Número de parcelas *</Label>
-              <Input
-                id="installments"
-                type="number"
-                min={1}
-                value={installments}
-                onChange={(e) => setInstallments(e.target.value)}
-                placeholder="ex: 6"
-                className="tabular-nums"
-                autoComplete="off"
-              />
-              {total > 0 && parseInt(installments, 10) > 0 && (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  ~{formatBRL(total / parseInt(installments, 10))} por parcela, mensais a partir
-                  do vencimento.
+              {previa.length > 0 && (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                  {previa.map((p) => (
+                    <div key={p.numero} className="flex items-center justify-between px-3 py-2 text-sm tabular-nums">
+                      <span className="text-slate-500 dark:text-slate-400">
+                        {p.numero}ª · {formatDate(p.vencimento)}
+                      </span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">{formatBRL(p.valor)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {repaymentType === "avulso" && total > 0 && (
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  {formatBRL(total)} de uma vez, até {formatDate(primeiroVencimento)}.
                 </p>
               )}
-            </div>
+            </>
           )}
 
-          {/* Datas */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="loan_date">Data da dívida *</Label>
-              <Input
-                id="loan_date"
-                name="loan_date"
-                type="date"
-                defaultValue={loan?.loan_date ?? todayStr()}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="due_date">
-                {repaymentType === "parcelado" ? "1º vencimento" : "Vencimento"}
-              </Label>
-              <Input
-                id="due_date"
-                name="due_date"
-                type="date"
-                defaultValue={loan?.due_date ?? ""}
-              />
-            </div>
-          </div>
-
-          {/* O combinado com o dono: aqui é controle de quem deve, e o caixa é
-             lançado por ele na mão. Dito na tela para ninguém abrir Finanças
-             procurando um lançamento que o sistema não faz mais. */}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Esta tela é só o controle da dívida: nada aqui mexe no caixa — nem lançar, nem
-            editar, nem excluir. A saída e os recebimentos você lança em Finanças, na mão.
-          </p>
-
-          {/* Observações */}
-          <div className="space-y-1.5">
-            <Label htmlFor="notes">Observações</Label>
-            <Textarea
-              id="notes"
-              name="notes"
-              defaultValue={loan?.notes ?? ""}
-              placeholder="observações opcionais..."
-              rows={2}
-              autoCapitalize="characters"
-              data-caixa="uppercase"
-            />
-          </div>
-
-          {/* Comprovante (print do PIX / transferência) */}
-          <div className="space-y-1.5">
-            <Label>Comprovante</Label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => cameraRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-              >
-                <Camera className="w-4 h-4" />
-                Câmera
-              </button>
-              <input
-                ref={cameraRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => {
-                  addFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => fileRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-              >
-                <Paperclip className="w-4 h-4" />
-                Anexar arquivo
-              </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*,.pdf,application/pdf"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  addFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-            </div>
-
-            {fileError && (
-              <p className="text-[11px] text-red-600 dark:text-red-400">{fileError}</p>
-            )}
-
-            {files.length === 0 ? (
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                Print do PIX/transferência, foto ou PDF · até {MAX_SIZE_MB} MB cada
+          {/* 5. FORMA DE PAGAMENTO */}
+          {passo === "forma" && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                {LOAN_PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setPaymentMethod(paymentMethod === m ? null : m)}
+                    className={seletor(paymentMethod === m)}
+                  >
+                    {LOAN_PAYMENT_METHOD_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+              {paymentMethod === "boleto" && (
+                <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={criarBoletos}
+                    onChange={(e) => setCriarBoletos(e.target.checked)}
+                    className="mt-0.5 w-5 h-5 accent-produmar-600 flex-shrink-0"
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-200">
+                    Gerar os boletos no sistema ao lançar
+                    <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                      {repaymentType === "parcelado" && nParcelas > 0
+                        ? `${nParcelas} boleto(s), um por parcela.`
+                        : "Um boleto com o total, no vencimento."}{" "}
+                      No fim você confere e toca em Gerar no banco.
+                    </span>
+                  </span>
+                </label>
+              )}
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Toque de novo no escolhido para deixar em branco.
               </p>
-            ) : (
+            </>
+          )}
+
+          {/* 6. CONFERIR */}
+          {passo === "conferir" && (
+            <>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                <Linha rotulo="Devedor" valor={nome || "—"} onEditar={() => irPara("devedor")} />
+                <Linha rotulo="CPF/CNPJ" valor={documento || "—"} onEditar={() => irPara("devedor")} />
+                <Linha rotulo="Valor devido" valor={formatBRL(principal)} onEditar={() => irPara("valor")} />
+                <Linha
+                  rotulo="Juros"
+                  valor={interest > 0 ? `${formatBRL(interest)}${interestType === "percent" ? ` (${rate}% × ${months} meses)` : ""}` : "Sem juros"}
+                  onEditar={() => irPara("juros")}
+                />
+                <Linha rotulo="Total a receber" valor={formatBRL(total)} forte onEditar={() => irPara("juros")} />
+                <Linha
+                  rotulo="Como paga"
+                  valor={
+                    repaymentType === "parcelado"
+                      ? `${nParcelas}x a partir de ${formatDate(primeiroVencimento)}`
+                      : `De uma vez, até ${formatDate(primeiroVencimento)}`
+                  }
+                  onEditar={() => irPara("parcelas")}
+                />
+                <Linha
+                  rotulo="Forma"
+                  valor={
+                    paymentMethod
+                      ? `${LOAN_PAYMENT_METHOD_LABEL[paymentMethod]}${paymentMethod === "boleto" && criarBoletos ? " · gera os boletos" : ""}`
+                      : "—"
+                  }
+                  onEditar={() => irPara("forma")}
+                />
+              </div>
+
               <div className="space-y-1.5">
+                <Label htmlFor="notes">Observações</Label>
+                <Textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value.toUpperCase())}
+                  placeholder="opcional"
+                  rows={2}
+                  autoCapitalize="characters"
+                />
+              </div>
+
+              {/* Comprovante (print do PIX / transferência) */}
+              <div className="space-y-1.5">
+                <Label>Comprovante</Label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => cameraRef.current?.click()}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-50"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Câmera
+                  </button>
+                  <input
+                    ref={cameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => {
+                      addFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => fileRef.current?.click()}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-50"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                    Anexar arquivo
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*,.pdf,application/pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      addFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                {fileError && <p className="text-[11px] text-red-600 dark:text-red-400">{fileError}</p>}
                 {files.map((f, idx) => (
                   <div
                     key={idx}
@@ -562,19 +718,10 @@ export function LoanDialog({ open, onClose, loan }: Props) {
                     <div className="w-7 h-7 rounded-md bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 flex-shrink-0">
                       {fileIcon(f)}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                        {f.name}
-                      </p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                        {f.size < 1024 * 1024
-                          ? `${(f.size / 1024).toFixed(0)} kB`
-                          : `${(f.size / 1024 / 1024).toFixed(1)} MB`}
-                      </p>
-                    </div>
+                    <p className="flex-1 min-w-0 text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{f.name}</p>
                     <button
                       type="button"
-                      onClick={() => removeFile(idx)}
+                      onClick={() => setFiles((prev) => prev.filter((_, i) => i !== idx))}
                       disabled={isPending}
                       title="Remover"
                       className="p-1.5 text-slate-400 hover:text-red-600 disabled:opacity-50"
@@ -584,25 +731,116 @@ export function LoanDialog({ open, onClose, loan }: Props) {
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Esta tela é só o controle da dívida: nada aqui mexe no caixa. A saída e os recebimentos você
+                lança em Finanças, na mão.
+              </p>
+            </>
+          )}
+
+          {/* 7. OS BOLETOS GERADOS — como nos aluguéis: a lista e o Gerar no banco */}
+          {passo === "boletos" && (
+            <>
+              <p className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                <Check className="w-4 h-4" />
+                Dívida {loan ? "salva" : "lançada"}. Confira os boletos e, se estiver certo, gere no banco.
+              </p>
+              {dividaSalva ? (
+                <LoanBoletos loan={dividaSalva} />
+              ) : (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Carregando os boletos...</p>
+              )}
+            </>
+          )}
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/40 px-3 py-2 rounded-lg border border-red-100 dark:border-red-900/50">
               {error}
             </p>
           )}
+        </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
-              Cancelar
+        <DialogFooter className={STICKY_FOOTER}>
+          {passo === "boletos" ? (
+            <Button type="button" onClick={onClose} className="flex-1 h-11">
+              Concluir
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Salvando..." : loan ? "Salvar alterações" : "Lançar dívida"}
-            </Button>
-          </DialogFooter>
-        </form>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => (indice === 0 ? onClose() : irPara(ETAPAS[indice - 1]))}
+                disabled={isPending}
+                className={cn(FOOTER_CANCEL, "h-11")}
+              >
+                {indice === 0 ? (
+                  "Cancelar"
+                ) : (
+                  <>
+                    <ChevronLeft className="w-4 h-4" />
+                    Voltar
+                  </>
+                )}
+              </Button>
+              {passo === "conferir" ? (
+                <Button type="button" onClick={salvar} disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11")}>
+                  {isPending ? "Salvando..." : loan ? "Salvar alterações" : "Lançar dívida"}
+                </Button>
+              ) : (
+                <Button type="button" onClick={proximo} disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11")}>
+                  Próximo
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              )}
+            </>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Totais({ principal, interest, total }: { principal: number; interest: number; total: number }) {
+  if (!(principal > 0)) return null;
+  return (
+    <div className="rounded-xl bg-produmar-50 dark:bg-produmar-950/30 border border-produmar-100 dark:border-produmar-900/40 px-3 py-2.5 text-sm space-y-0.5">
+      <div className="flex justify-between text-slate-500 dark:text-slate-400">
+        <span>Juros</span>
+        <span className="tabular-nums">{formatBRL(interest)}</span>
+      </div>
+      <div className="flex justify-between font-semibold text-produmar-800 dark:text-produmar-300">
+        <span>Total a receber</span>
+        <span className="tabular-nums">{formatBRL(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+function Linha({
+  rotulo,
+  valor,
+  forte,
+  onEditar,
+}: {
+  rotulo: string;
+  valor: string;
+  forte?: boolean;
+  onEditar: () => void;
+}) {
+  return (
+    <button type="button" onClick={onEditar} className="w-full flex items-center gap-3 px-3 py-2 text-left">
+      <span className="w-28 flex-shrink-0 text-xs text-slate-500 dark:text-slate-400">{rotulo}</span>
+      <span
+        className={cn(
+          "flex-1 min-w-0 truncate tabular-nums",
+          forte ? "font-bold text-slate-900 dark:text-slate-50" : "text-slate-700 dark:text-slate-200"
+        )}
+      >
+        {valor}
+      </span>
+      <span className="text-[11px] text-produmar-600 dark:text-produmar-400 flex-shrink-0">mudar</span>
+    </button>
   );
 }
