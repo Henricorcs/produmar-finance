@@ -31,6 +31,48 @@ let dialogIdCounter = 0;
 // haver diálogo empilhado: só o último a fechar limpa as variáveis.
 let bandWatchers = 0;
 
+// ── O campo em que se digita fica sempre à vista ─────────────────────────────
+// Ao abrir o teclado, a caixa encolhe para caber na faixa de cima. O iPhone
+// rola até o campo tocado, mas NÃO desconta o rodapé grudado embaixo
+// (Cancelar / Próximo): o campo ficava atrás dos botões e não se via o que
+// estava sendo digitado — o nome do contratante na OS, por exemplo.
+// Aqui a caixa rola sozinha até o campo ficar entre o que está grudado em cima
+// e o que está grudado embaixo. Só mexe quando o campo está escondido.
+const CAMPO_DE_DIGITAR =
+  'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="range"]):not([type="file"]):not([type="hidden"]), textarea, [contenteditable="true"]';
+
+function mostrarCampoEmFoco() {
+  const campo = document.activeElement as HTMLElement | null;
+  if (!campo || !campo.matches?.(CAMPO_DE_DIGITAR)) return;
+  const caixa = campo.closest<HTMLElement>('[role="dialog"]');
+  if (!caixa || caixa.scrollHeight <= caixa.clientHeight + 1) return;
+
+  const c = caixa.getBoundingClientRect();
+  let topo = c.top + 8;
+  let fundo = c.bottom - 8;
+  // o que está grudado (rodapé dos botões, busca presa no alto) tampa o campo
+  caixa.querySelectorAll<HTMLElement>(".sticky").forEach((s) => {
+    if (s.contains(campo) || getComputedStyle(s).position !== "sticky") return;
+    const r = s.getBoundingClientRect();
+    if (r.height === 0) return;
+    if (r.top > c.top + c.height / 2) fundo = Math.min(fundo, r.top - 8);
+    else topo = Math.max(topo, r.bottom + 8);
+  });
+
+  const e = campo.getBoundingClientRect();
+  if (e.bottom > fundo) {
+    // campo mais alto que o espaço (observação grande): mostra o começo dele
+    caixa.scrollTop += Math.min(e.bottom - fundo, e.top - topo);
+  } else if (e.top < topo) {
+    caixa.scrollTop -= topo - e.top;
+  }
+}
+
+/** Espera o layout assentar (variáveis da faixa, animação do teclado). */
+function mostrarCampoDepois() {
+  requestAnimationFrame(() => requestAnimationFrame(mostrarCampoEmFoco));
+}
+
 function useVisibleBand(open: boolean | undefined) {
   React.useEffect(() => {
     if (!open) return;
@@ -48,14 +90,28 @@ function useVisibleBand(open: boolean | undefined) {
       }
       root.style.setProperty("--dialog-band-top", `${vv.offsetTop}px`);
       root.style.setProperty("--dialog-band-h", `${vv.height}px`);
+      // o teclado abriu (ou mudou de altura): a caixa encolheu — traz o campo
+      mostrarCampoDepois();
+    };
+
+    // Tocou num campo: com o teclado já aberto não há "resize", então confere
+    // agora e de novo quando a animação do teclado tiver acabado.
+    let espera: ReturnType<typeof setTimeout> | undefined;
+    const aoFocar = () => {
+      mostrarCampoDepois();
+      clearTimeout(espera);
+      espera = setTimeout(mostrarCampoEmFoco, 400);
     };
 
     bandWatchers++;
     update();
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
+    document.addEventListener("focusin", aoFocar);
 
     return () => {
+      clearTimeout(espera);
+      document.removeEventListener("focusin", aoFocar);
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
       if (--bandWatchers === 0) {
