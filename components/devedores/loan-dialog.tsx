@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  FileSignature,
 } from "lucide-react";
 import {
   Dialog,
@@ -77,7 +78,7 @@ const TITULO: Record<Passo, string> = {
   parcelas: "Como vai pagar",
   forma: "Forma de pagamento",
   conferir: "Conferir e lançar",
-  boletos: "Boletos gerados",
+  boletos: "Pronto",
 };
 
 const ETAPAS: Passo[] = ["devedor", "valor", "juros", "parcelas", "forma", "conferir"];
@@ -286,17 +287,19 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
         setFiles([]);
       }
 
-      // Os boletos no sistema (só cria os que faltam — repetir não duplica) e
-      // a última tela mostra eles, com o "Gerar no banco", como nos aluguéis.
+      // Os boletos no sistema (só cria os que faltam — repetir não duplica).
+      let avisoBoletos: string | null = null;
       if (loanId && paymentMethod === "boleto" && criarBoletos) {
         const b = await gerarBoletosDaDivida(loanId);
-        setSalvoId(loanId);
-        setPasso("boletos");
-        if (b && "error" in b && b.error) setError(b.error);
-        return;
+        if (b && "error" in b && b.error) avisoBoletos = b.error;
       }
 
-      onClose();
+      // A última tela: os boletos (com o "Gerar no banco", como nos aluguéis)
+      // e a confissão de dívida, pronta para mandar ao devedor assinar.
+      if (!loanId) return onClose();
+      setSalvoId(loanId);
+      setPasso("boletos");
+      setError(avisoBoletos);
     });
   }
 
@@ -739,18 +742,46 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
             </>
           )}
 
-          {/* 7. OS BOLETOS GERADOS — como nos aluguéis: a lista e o Gerar no banco */}
+          {/* 7. PRONTO — os boletos gerados (como nos aluguéis: a lista e o
+              Gerar no banco) e a confissão de dívida para mandar ao devedor */}
           {passo === "boletos" && (
             <>
               <p className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                 <Check className="w-4 h-4" />
-                Dívida {loan ? "salva" : "lançada"}. Confira os boletos e, se estiver certo, gere no banco.
+                Dívida {loan ? "salva" : "lançada"}.
+                {paymentMethod === "boleto" && criarBoletos
+                  ? " Confira os boletos e, se estiver certo, gere no banco."
+                  : ""}
               </p>
-              {dividaSalva ? (
-                <LoanBoletos loan={dividaSalva} />
-              ) : (
-                <p className="text-sm text-slate-500 dark:text-slate-400">Carregando os boletos...</p>
+
+              {/* A CONFISSÃO DE DÍVIDA — abre o documento; lá o "Compartilhar PDF"
+                  manda pelo WhatsApp para o devedor assinar */}
+              {salvoId && (
+                <a
+                  href={`/imprimir/confissao/${salvoId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-3 rounded-xl border-2 border-produmar-200 dark:border-produmar-800 bg-produmar-50/60 dark:bg-produmar-950/30 px-4 py-3"
+                >
+                  <FileSignature className="w-6 h-6 text-produmar-600 dark:text-produmar-400 flex-shrink-0" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">
+                      Confissão de dívida
+                    </span>
+                    <span className="block text-[12px] text-slate-600 dark:text-slate-300">
+                      Abrir e tocar em Compartilhar PDF para mandar ao devedor assinar (WhatsApp), ou imprimir.
+                    </span>
+                  </span>
+                  <ChevronRight className="w-5 h-5 text-produmar-500 flex-shrink-0" />
+                </a>
               )}
+
+              {paymentMethod === "boleto" &&
+                (dividaSalva ? (
+                  <LoanBoletos loan={dividaSalva} />
+                ) : (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Carregando os boletos...</p>
+                ))}
             </>
           )}
 
