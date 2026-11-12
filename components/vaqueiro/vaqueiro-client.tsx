@@ -637,7 +637,7 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [], pendencias
               alt="Foto da mãe"
               url={fotoMaeUrl}
               onChange={handleFotoMaeChange}
-              ajuda="Opcional — vai para a ficha da mãe."
+              ajuda={`Opcional — fica na ficha do ${filhote}, e na da mãe se ela ainda não tiver foto.`}
             />
 
             <div className="space-y-1.5">

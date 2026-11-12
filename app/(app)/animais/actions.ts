@@ -216,6 +216,26 @@ export async function updateAnimal(id: string, input: AnimalInput) {
   return { ok: true };
 }
 
+/**
+ * Das fotos que vão ser apagadas, só as que NENHUM outro animal usa. A foto da
+ * mãe que o vaqueiro tirou fica na ficha do bezerro e, às vezes, na da mãe —
+ * o mesmo arquivo nas duas. Apagar numa não pode fazer sumir na outra.
+ */
+async function semOutroDono(
+  supabase: ReturnType<typeof createClient>,
+  paths: string[],
+  animalId: string
+): Promise<string[]> {
+  if (paths.length === 0) return [];
+  const { data: outros } = await supabase
+    .from("animal_photos")
+    .select("path")
+    .in("path", paths)
+    .neq("animal_id", animalId);
+  const usados = new Set((outros ?? []).map((o) => o.path as string));
+  return paths.filter((p) => !usados.has(p));
+}
+
 /** Exclui o animal, as fotos e o histórico de vacinação (cascade). */
 export async function deleteAnimal(id: string) {
   const supabase = createClient();
@@ -232,8 +252,10 @@ export async function deleteAnimal(id: string) {
     .eq("id", id)
     .maybeSingle();
   if (animal?.photo_path && !paths.includes(animal.photo_path)) paths.push(animal.photo_path);
-  if (paths.length) {
-    await removerArquivos(paths);
+  // a foto da mãe que também está na ficha do bezerro não pode sumir da outra
+  const soDeste = await semOutroDono(supabase, paths, id);
+  if (soDeste.length) {
+    await removerArquivos(soDeste);
   }
 
   const { error } = await supabase.from("animals").delete().eq("id", id);
@@ -328,7 +350,10 @@ export async function deleteAnimalPhoto(photoId: string) {
     .maybeSingle();
   if (!photo) return { error: "Foto não encontrada" };
 
-  await removerArquivos([photo.path]);
+  // o arquivo só sai se nenhuma outra ficha usa a mesma foto (a da mãe que
+  // também está na ficha do bezerro)
+  const soDeste = await semOutroDono(supabase, [photo.path], photo.animal_id);
+  if (soDeste.length) await removerArquivos(soDeste);
   const { error } = await supabase.from("animal_photos").delete().eq("id", photoId);
   if (error) return { error: error.message };
 
@@ -1013,23 +1038,38 @@ export async function resolveBirthRequest(requestId: string, input: ResolveBirth
     await supabase.from("animal_treatments").insert(tratamentos);
   }
 
-  // A FOTO DA MÃE que o vaqueiro tirou entra na ficha da mãe escolhida pelo
-  // patrão; vira a foto principal só se ela ainda não tinha (migration 138).
+  // A FOTO DA MÃE que o vaqueiro tirou (migration 138):
+  //   - entra SEMPRE na ficha do bezerro, junto com a foto dele (a do bezerro
+  //     continua sendo a principal) — é o registro de quem é a mãe;
+  //   - entra na ficha da MÃE só se ela ainda não tem foto nenhuma, e aí vira
+  //     a principal dela. Mãe que já tem foto fica como está.
+  // O mesmo arquivo nas duas fichas: apagar numa não apaga na outra.
   if (request.mother_photo_path) {
+    const fotoDaMae = request.mother_photo_path as string;
+    const quem = (request.created_by as string | null) ?? user.id;
+
     await supabase.from("animal_photos").insert({
-      animal_id: input.mother_id,
-      path: request.mother_photo_path as string,
-      created_by: (request.created_by as string | null) ?? user.id,
+      animal_id: result.calfAnimalId,
+      path: fotoDaMae,
+      created_by: quem,
     });
-    const { data: mae } = await supabase
-      .from("animals")
-      .select("photo_path")
-      .eq("id", input.mother_id)
-      .maybeSingle();
-    if (mae && !mae.photo_path) {
+
+    const [{ data: mae }, { count: fotosDaMae }] = await Promise.all([
+      supabase.from("animals").select("photo_path").eq("id", input.mother_id).maybeSingle(),
+      supabase
+        .from("animal_photos")
+        .select("id", { count: "exact", head: true })
+        .eq("animal_id", input.mother_id),
+    ]);
+    if (mae && !mae.photo_path && (fotosDaMae ?? 0) === 0) {
+      await supabase.from("animal_photos").insert({
+        animal_id: input.mother_id,
+        path: fotoDaMae,
+        created_by: quem,
+      });
       await supabase
         .from("animals")
-        .update({ photo_path: request.mother_photo_path })
+        .update({ photo_path: fotoDaMae })
         .eq("id", input.mother_id);
     }
   }

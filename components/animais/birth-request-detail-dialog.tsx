@@ -99,7 +99,8 @@ export function BirthRequestDetailDialog({
           </p>
         )}
 
-        {/* A FOTO DA MÃE (migration 138) — entra na ficha da mãe ao lançar */}
+        {/* A FOTO DA MÃE (migration 138) — ao lançar, entra na ficha da cria e,
+            se a mãe ainda não tem foto, na dela também */}
         {motherPhotoUrl && (
           <a href={motherPhotoUrl} target="_blank" rel="noreferrer" className="block relative -mt-2 mb-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
