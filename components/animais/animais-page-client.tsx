@@ -1294,6 +1294,20 @@ export function AnimaisPageClient({
                 emptyMessage={emptyMessage}
               />
 
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded border-2 border-sky-300 bg-sky-100 dark:border-sky-700 dark:bg-sky-900/40" />
+                  macho
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded border-2 border-pink-300 bg-pink-100 dark:border-pink-700 dark:bg-pink-900/40" />
+                  fêmea
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-amber-500" />
+                  vacina pendente
+                </span>
+              </div>
               <p className="normal-case text-sm text-slate-500 dark:text-slate-400">
                 Toque no número para abrir a ficha do animal — vacina, peso, parto, foto e
                 tratamento entram por lá. Para vacinar o lote no curral, troque para

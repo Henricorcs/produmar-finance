@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { SPECIES_META, SPECIES_OPTIONS, speciesOf } from "./animal-shared";
+import { SPECIES_META, SPECIES_OPTIONS, criacaoPorLote, speciesOf } from "./animal-shared";
 import type { AnimalSpecies, AnimalWithInfo } from "@/lib/types";
 
 interface Props {
@@ -62,29 +62,46 @@ export function RebanhoGrid({
               <div className="grid grid-cols-4 gap-1.5 p-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
                 {g.animals.map((a) => {
                   const pending = pendingAnimalIds.has(a.id);
+                  // O SEXO dá a cor do quadro: macho azul, fêmea rosa. Peixe e
+                  // ave (controle por lote) não têm sexo e ficam brancos.
+                  const sexo = criacaoPorLote(a.species) ? null : a.sex;
+                  const nomeSexo = sexo === "macho" ? "macho" : sexo === "femea" ? "fêmea" : "";
                   return (
                     <button
                       key={a.id}
                       type="button"
                       onClick={() => onOpen(a.id)}
+                      aria-label={`Animal ${a.tag}${nomeSexo ? `, ${nomeSexo}` : ""}${
+                        pending ? ", com vacina pendente" : ""
+                      }. Abrir a ficha`}
                       title={
                         pending
-                          ? `Animal ${a.tag} — tem vacina marcada como pendente (toque para abrir a ficha)`
-                          : `Abrir a ficha do animal ${a.tag}`
+                          ? `Animal ${a.tag}${nomeSexo ? ` (${nomeSexo})` : ""} — tem vacina marcada como pendente (toque para abrir a ficha)`
+                          : `Abrir a ficha do animal ${a.tag}${nomeSexo ? ` (${nomeSexo})` : ""}`
                       }
                       className={cn(
-                        "flex items-center justify-center min-h-[56px] px-1 rounded-xl border font-bold tabular-nums transition-colors active:scale-[0.96]",
+                        "relative flex items-center justify-center min-h-[56px] px-1 rounded-xl border-2 font-bold tabular-nums transition-colors active:scale-[0.96]",
                         // código de compra do PO (CSCN 21368) não cabe em 19px
                         // no quadradinho do iPhone: letra menor e quebra no espaço
                         a.tag.length > 6
                           ? "text-[15px] leading-tight text-center break-words"
                           : "text-[19px]",
-                        pending
-                          ? "border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                          : "border-slate-200 bg-white text-slate-800 hover:bg-produmar-50 hover:border-produmar-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                        sexo === "macho"
+                          ? "border-sky-300 bg-sky-100 text-sky-900 hover:bg-sky-200 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
+                          : sexo === "femea"
+                            ? "border-pink-300 bg-pink-100 text-pink-900 hover:bg-pink-200 dark:border-pink-700 dark:bg-pink-900/40 dark:text-pink-100 dark:hover:bg-pink-900/60"
+                            : "border-slate-200 bg-white text-slate-800 hover:bg-produmar-50 hover:border-produmar-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                       )}
                     >
                       {a.tag}
+                      {/* Vacina pendente: a bolinha laranja no canto (a cor do
+                          quadro agora é do sexo) */}
+                      {pending && (
+                        <span
+                          aria-hidden
+                          className="absolute top-1 right-1 w-3 h-3 rounded-full bg-amber-500 ring-2 ring-white dark:ring-slate-900"
+                        />
+                      )}
                     </button>
                   );
                 })}
