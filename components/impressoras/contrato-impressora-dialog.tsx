@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { actionError } from "@/lib/action-result";
-import { cn, localDateISO, upperKeepingCaret } from "@/lib/utils";
+import { cn, localDateISO, mascaraCpfCnpj, mascaraTelefone, upperKeepingCaret } from "@/lib/utils";
 import {
   createPrinterContract,
   setPrinterContractStatus,
@@ -167,7 +167,7 @@ export function ContratoImpressoraDialog({ open, onClose, contract, onCreated }:
               <Input
                 id="ci_doc"
                 value={documento}
-                onChange={(e) => setDocumento(e.target.value)}
+                onChange={(e) => setDocumento(mascaraCpfCnpj(e.target.value))}
                 placeholder="opcional"
                 inputMode="numeric"
                 autoComplete="off"
@@ -301,7 +301,7 @@ export function ContratoImpressoraDialog({ open, onClose, contract, onCreated }:
                 <Input
                   id="ci_tel_assina"
                   value={telefoneAssinante}
-                  onChange={(e) => setTelefoneAssinante(e.target.value)}
+                  onChange={(e) => setTelefoneAssinante(mascaraTelefone(e.target.value))}
                   placeholder="(99)99999-9999"
                   inputMode="tel"
                   autoComplete="off"

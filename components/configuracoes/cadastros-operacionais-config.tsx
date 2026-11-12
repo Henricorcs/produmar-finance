@@ -16,7 +16,7 @@ import {
   deletePickupLocation,
 } from "@/app/(app)/operacoes/actions";
 import { createContact, updateContact, deleteContact } from "@/app/(app)/obras/actions";
-import { formatBRLInput, machineCategoryLabel } from "@/lib/utils";
+import { formatBRLInput, machineCategoryLabel, mascaraCpfCnpj, mascaraTelefone } from "@/lib/utils";
 import {
   MACHINE_CATEGORIES,
   PRODUCT_UNITS,
@@ -497,13 +497,13 @@ function LocationsList({ locations }: { locations: PickupLocation[] }) {
           <div className="grid grid-cols-2 gap-2">
             <Input
               value={docNumber}
-              onChange={(e) => setDocNumber(e.target.value)}
+              onChange={(e) => setDocNumber(mascaraCpfCnpj(e.target.value))}
               placeholder="CNPJ/CPF (opcional)"
               className="h-9 text-sm"
             />
             <Input
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(mascaraTelefone(e.target.value))}
               placeholder="telefone (opcional)"
               className="h-9 text-sm"
             />
@@ -614,13 +614,13 @@ function ContactsList({ contacts }: { contacts: Contact[] }) {
           <div className="grid grid-cols-2 gap-2">
             <Input
               value={docNumber}
-              onChange={(e) => setDocNumber(e.target.value)}
+              onChange={(e) => setDocNumber(mascaraCpfCnpj(e.target.value))}
               placeholder="CNPJ/CPF (opcional)"
               className="h-9 text-sm"
             />
             <Input
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(mascaraTelefone(e.target.value))}
               placeholder="telefone (opcional)"
               className="h-9 text-sm"
             />

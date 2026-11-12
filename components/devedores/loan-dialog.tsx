@@ -31,7 +31,16 @@ import {
   uploadLoanAttachments,
   type LoanInput,
 } from "@/app/(app)/devedores/actions";
-import { cn, loanTotalDue, formatBRL, formatBRLInput, formatDate, localDateISO } from "@/lib/utils";
+import {
+  cn,
+  loanTotalDue,
+  formatBRL,
+  formatBRLInput,
+  formatDate,
+  localDateISO,
+  mascaraCpfCnpj,
+  mascaraTelefone,
+} from "@/lib/utils";
 import { LOAN_PAYMENT_METHODS, LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
 import type { Loan, LoanPaymentMethod, LoanRepaymentType } from "@/lib/types";
 import type { LoanWithDetails } from "@/app/(app)/devedores/page";
@@ -132,8 +141,9 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
     if (!open) return;
     setPasso("devedor");
     setNome(loan?.borrower_name ?? "");
-    setDocumento(loan?.borrower_document ?? "");
-    setTelefone(loan?.borrower_phone ?? "");
+    // o que foi salvo sem pontos já aparece formatado
+    setDocumento(mascaraCpfCnpj(loan?.borrower_document ?? ""));
+    setTelefone(mascaraTelefone(loan?.borrower_phone ?? ""));
     // dívida nova já vem "brasileiro(a)" — o caso de quase todo devedor
     setNacionalidade(loan ? loan.borrower_nationality ?? "" : "BRASILEIRO(A)");
     setEstadoCivil(loan?.borrower_marital_status ?? "");
@@ -141,7 +151,7 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
     setRg(loan?.borrower_rg ?? "");
     setEndereco(loan?.borrower_address ?? "");
     setRepNome(loan?.borrower_rep_name ?? "");
-    setRepDoc(loan?.borrower_rep_document ?? "");
+    setRepDoc(mascaraCpfCnpj(loan?.borrower_rep_document ?? ""));
     setAmount(loan?.principal ? formatBRLInput(loan.principal) : "");
     setLoanDate(loan?.loan_date ?? localDateISO());
     if (loan?.interest_amount) {
@@ -390,7 +400,7 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                 <Input
                   id="borrower_document"
                   value={documento}
-                  onChange={(e) => setDocumento(e.target.value)}
+                  onChange={(e) => setDocumento(mascaraCpfCnpj(e.target.value))}
                   placeholder="só os números"
                   inputMode="numeric"
                   className="h-12 text-base"
@@ -404,7 +414,7 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                 <Input
                   id="borrower_phone"
                   value={telefone}
-                  onChange={(e) => setTelefone(e.target.value)}
+                  onChange={(e) => setTelefone(mascaraTelefone(e.target.value))}
                   placeholder="opcional"
                   inputMode="tel"
                   className="h-12 text-base"
@@ -450,7 +460,7 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                     <Input
                       id="borrower_rep_document"
                       value={repDoc}
-                      onChange={(e) => setRepDoc(e.target.value)}
+                      onChange={(e) => setRepDoc(mascaraCpfCnpj(e.target.value))}
                       placeholder="só os números"
                       inputMode="numeric"
                       className="h-12 text-base"

@@ -39,7 +39,7 @@ import {
   listServiceOrderAttachments,
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel, formatBRLInput, upperKeepingCaret } from "@/lib/utils";
+import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel, formatBRLInput, mascaraCpfCnpj, mascaraTelefone, upperKeepingCaret } from "@/lib/utils";
 import { AvisoDoCelular } from "@/components/operador/aviso-do-celular";
 import { actionError } from "@/lib/action-result";
 import { avisoNaoEntregue, recadoDoAvisoNaoEntregue } from "@/lib/aviso-do-envio";
@@ -1078,7 +1078,7 @@ export function ServiceOrderDialog({
                   <Input
                     id="client_doc"
                     value={clientDocument}
-                    onChange={(e) => setClientDocument(e.target.value)}
+                    onChange={(e) => setClientDocument(mascaraCpfCnpj(e.target.value))}
                     placeholder="00.000.000/0000-00"
                   />
                 </div>
@@ -1087,7 +1087,7 @@ export function ServiceOrderDialog({
                   <Input
                     id="client_phone"
                     value={clientPhone}
-                    onChange={(e) => setClientPhone(e.target.value)}
+                    onChange={(e) => setClientPhone(mascaraTelefone(e.target.value))}
                     placeholder="(99) 99999-9999"
                   />
                 </div>

@@ -124,6 +124,42 @@ export function lowerKeepingCaret(e: ChangeEvent<CampoTexto>): string {
   return digitarSemAtrapalhar(e, (texto) => texto.toLowerCase(), "lowercase");
 }
 
+/**
+ * CPF ou CNPJ enquanto se digita: até 11 dígitos sai como CPF
+ * (000.000.000-00); do 12º em diante vira CNPJ (00.000.000/0000-00). Quem
+ * lê o número (banco, validação) tira os pontos antes.
+ */
+export function mascaraCpfCnpj(bruto: string): string {
+  const d = (bruto ?? "").replace(/\D/g, "").slice(0, 14);
+  if (d.length <= 11) {
+    return d
+      .replace(/^(\d{3})(\d)/, "$1.$2")
+      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/\.(\d{3})(\d{1,2})$/, ".$1-$2");
+  }
+  return d
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2")
+    .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+}
+
+/**
+ * Telefone enquanto se digita: (99) 99999-9999 no celular (11 dígitos) e
+ * (99) 9999-9999 no fixo (10).
+ */
+export function mascaraTelefone(bruto: string): string {
+  const d = (bruto ?? "").replace(/\D/g, "").slice(0, 11);
+  if (d.length === 0) return "";
+  if (d.length <= 2) return `(${d}`;
+  const ddd = d.slice(0, 2);
+  const resto = d.slice(2);
+  if (resto.length <= 4) return `(${ddd}) ${resto}`;
+  // 9 dígitos depois do DDD = celular (5 + 4); senão, fixo (4 + 4)
+  const corte = resto.length === 9 ? 5 : 4;
+  return `(${ddd}) ${resto.slice(0, corte)}-${resto.slice(corte)}`;
+}
+
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",

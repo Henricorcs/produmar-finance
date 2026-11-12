@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createContact } from "@/app/(app)/obras/actions";
 import type { Contact } from "@/lib/types";
-import { upperKeepingCaret } from "@/lib/utils";
+import { mascaraCpfCnpj, mascaraTelefone, upperKeepingCaret } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -81,7 +81,7 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="ct_doc"
               value={document}
-              onChange={(e) => setDocument(e.target.value)}
+              onChange={(e) => setDocument(mascaraCpfCnpj(e.target.value))}
               placeholder="opcional"
               autoComplete="off"
             />
@@ -92,7 +92,7 @@ export function QuickCreateContactDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="ct_phone"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(mascaraTelefone(e.target.value))}
               placeholder="opcional"
               autoComplete="off"
             />

@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { cn, formatBRLInput, formatDate } from "@/lib/utils";
+import { cn, formatBRLInput, formatDate, mascaraCpfCnpj, mascaraTelefone } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FORMULÁRIO PASSO A PASSO — uma pergunta por vez
@@ -461,6 +461,10 @@ function CampoDoPasso<C extends string>({
         return formatBRLInput(bruto);
       case "cep":
         return mascaraCep(bruto);
+      case "documento":
+        return mascaraCpfCnpj(bruto);
+      case "telefone":
+        return mascaraTelefone(bruto);
       case "numero":
         return bruto.replace(/\D/g, "").slice(0, passo.maxDigitos ?? 4);
       case "medida":
@@ -477,7 +481,8 @@ function CampoDoPasso<C extends string>({
     <Input
       id="pp_campo"
       ref={campoRef}
-      value={valor}
+      // CPF/CNPJ e telefone salvos antes da máscara já aparecem formatados
+      value={passo.tipo === "documento" || passo.tipo === "telefone" ? formatar(valor) : valor}
       onChange={(e) => onMudar(formatar(e.target.value))}
       placeholder={passo.placeholder}
       inputMode={inputMode}

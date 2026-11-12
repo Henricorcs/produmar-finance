@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { actionError } from "@/lib/action-result";
-import { cn, upperKeepingCaret } from "@/lib/utils";
+import { cn, mascaraTelefone, upperKeepingCaret } from "@/lib/utils";
 import {
   createMachineParceiro,
   deleteMachineParceiro,
@@ -118,7 +118,7 @@ export function ParceiroDialog({ open, onClose, parceiro }: Props) {
             <Input
               id="pc_fone"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(mascaraTelefone(e.target.value))}
               placeholder="opcional"
               className="h-11 sm:h-10"
               inputMode="tel"

@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createDiarista, updateDiarista } from "@/app/(app)/diaristas/actions";
-import { formatBRL, formatBRLInput, parseMoney, upperKeepingCaret } from "@/lib/utils";
+import { formatBRL, formatBRLInput, mascaraTelefone, parseMoney, upperKeepingCaret } from "@/lib/utils";
 import {
   PAYMENT_MODE_LABEL,
   PROFISSOES_SUGERIDAS,
@@ -434,7 +434,7 @@ export function DiaristaDialog({ open, onClose, diarista, onCreated }: Props) {
             <Input
               id="di_phone"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(mascaraTelefone(e.target.value))}
               placeholder="opcional"
               inputMode="tel"
               autoComplete="off"
