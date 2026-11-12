@@ -579,12 +579,23 @@ export function AnimalDetailDialog({
                 {ehNelorePO(animal.breed_name) && animal.abcz_code && (
                   <InfoRow label="ABCZ" value={animal.abcz_code} />
                 )}
-                {/* Genealogia do gado PO (migration 137) */}
+                {/* A MÃE numa linha só, com o Pai logo abaixo. Vale o que foi
+                    escrito no cadastro do PO (migration 137); sem isso, a mãe do
+                    parto lançado aqui. Se a mãe está no rebanho, toca e abre a
+                    ficha dela. */}
+                {(ehRacaPO(animal.breed_name) || motherBirth) && (
+                  <InfoLinkRow
+                    label="Mãe"
+                    value={animal.mae || (motherTag ? `Nº ${motherTag}` : "—")}
+                    onOpen={
+                      motherBirth && motherTag
+                        ? () => onOpenAnimal(motherBirth.mother_id)
+                        : undefined
+                    }
+                  />
+                )}
                 {ehRacaPO(animal.breed_name) && (
-                  <>
-                    <InfoRow label="Mãe" value={animal.mae || "—"} />
-                    <InfoRow label="Pai" value={animal.pai || "—"} />
-                  </>
+                  <InfoRow label="Pai" value={animal.pai || "—"} />
                 )}
                 <InfoRow
                   label="Nascimento"
@@ -609,16 +620,6 @@ export function AnimalDetailDialog({
                     value={`${sortedWeights.length} em ${formatPeriod(
                       lifeGain?.days ?? 0
                     )}`}
-                  />
-                )}
-                {/* Bezerro cadastrado pelo parto: de quem ele é */}
-                {motherBirth && (
-                  <InfoLinkRow
-                    label="Mãe"
-                    value={motherTag ? `Nº ${motherTag}` : "—"}
-                    onOpen={
-                      motherTag ? () => onOpenAnimal(motherBirth.mother_id) : undefined
-                    }
                   />
                 )}
                 {animal.sex === "femea" && (
