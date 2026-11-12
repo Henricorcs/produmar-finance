@@ -61,6 +61,8 @@ interface Props {
   presetDate?: string | null;
   /** Operadores com login — a OS pode ser enviada para o celular de um deles. */
   operators?: { id: string; name: string }[];
+  /** As OS já lançadas — para mostrar o que o dia já tem na mesma máquina. */
+  servicosExistentes?: MachineServico[];
 }
 
 /** Uma frase do que cada cobrança quer dizer — para escolher sem dúvida. */
@@ -71,6 +73,18 @@ const KIND_HINT: Record<MachineServicoKind, string> = {
   km: "pelo km rodado",
   servico: "um valor só pelo serviço",
 };
+
+/** Uma OS numa linha: "FULANO · Hora 4 horas", "BELTRANO · Viagem (a contar)". */
+function textoDaOs(contratante: string | null | undefined, kind: string, quantity: number): string {
+  const m = kindMeta(kind);
+  const conta =
+    m.value === "servico"
+      ? ""
+      : quantity > 0
+        ? ` ${formatQty(quantity)} ${quantity === 1 ? m.unit : m.unitPlural}`
+        : " (a contar)";
+  return `${contratante?.trim() || "SEM CONTRATANTE"} · ${m.label}${conta}`;
+}
 
 /** As telas da OS nova, na ordem em que aparecem. */
 type Passo = "maquina" | "cobranca" | "valor" | "contratante" | "servico" | "data" | "enviar" | "resumo";
@@ -111,9 +125,16 @@ export function ServicoDialog({
   contratantes = [],
   presetDate,
   operators = [],
+  servicosExistentes = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  /** "OS de FULANO lançada" — aparece depois do "Lançar e abrir outra". */
+  const [lancada, setLancada] = useState<string | null>(null);
+  /** As OS que esta caixa lançou agora — a lista da ficha demora a chegar. */
+  const [lancadasAgora, setLancadasAgora] = useState<
+    { id: string; machine_id: string; service_date: string; texto: string }[]
+  >([]);
 
   const [machineId, setMachineId] = useState("");
   const [kind, setKind] = useState<MachineServicoKind>("diaria");
@@ -156,6 +177,8 @@ export function ServicoDialog({
     setNotes(servico?.notes ?? "");
     setPassoIdx(0);
     setError(null);
+    setLancada(null);
+    setLancadasAgora([]);
   }, [open, servico, presetMachineId, presetDate]);
 
   const meta = kindMeta(kind);
@@ -219,9 +242,33 @@ export function ServicoDialog({
     irPara(passoIdx + 1);
   }
 
+  /**
+   * As OS que o dia já tem nesta máquina — um dia pode ter várias (4 h de
+   * manhã para um, 2 h à tarde para outro; uma carrada para cada um). Junta as
+   * que vieram da ficha com as que esta caixa acabou de lançar.
+   */
+  const osDoDia = useMemo(() => {
+    const lista = servicosExistentes
+      .filter(
+        (s) => s.machine_id === machineId && s.service_date === date && s.id !== servico?.id
+      )
+      .map((s) => ({ id: s.id, texto: textoDaOs(s.contratante, s.kind, Number(s.quantity)) }));
+    for (const l of lancadasAgora) {
+      if (l.machine_id !== machineId || l.service_date !== date) continue;
+      if (!lista.some((x) => x.id === l.id)) lista.push({ id: l.id, texto: l.texto });
+    }
+    return lista;
+  }, [servicosExistentes, lancadasAgora, machineId, date, servico?.id]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    salvar(false);
+  }
+
+  /** `outra`: lança e já recomeça uma OS nova da mesma máquina, no mesmo dia. */
+  function salvar(outra: boolean) {
     setError(null);
+    setLancada(null);
 
     // No passo a passo, o Enter do teclado (e o "Próximo") só anda uma tela
     if (novo && !ultimoPasso) {
@@ -288,7 +335,27 @@ export function ServicoDialog({
           )
         );
       }
-      onClose();
+      if (!outra || servico) {
+        onClose();
+        return;
+      }
+
+      // A PRÓXIMA OS do mesmo dia: fica a máquina, o dia, a cobrança, o valor
+      // e o operador (quase sempre os mesmos); o resto começa em branco.
+      const texto = textoDaOs(contratante, kind, semQuantidade ? 0 : qtd);
+      const novoId = (r as { id?: string }).id ?? `agora-${Date.now()}`;
+      setLancadasAgora((l) => [
+        ...l,
+        { id: novoId, machine_id: machineId, service_date: date, texto },
+      ]);
+      setLancada(`OS de ${contratante || "sem contratante"} lançada. Agora a próxima do mesmo dia.`);
+      setContratante("");
+      setDescription("");
+      setOrigin("");
+      setDestination("");
+      setQuantity("");
+      setNotes("");
+      irPara(passos.indexOf("cobranca"));
     });
   }
 
@@ -756,7 +823,42 @@ export function ServicoDialog({
               </h3>
             </div>
 
+            {/* Acabou de lançar com "Lançar e abrir outra" */}
+            {lancada && passo === "cobranca" && (
+              <p className="text-sm rounded-lg px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/40">
+                {lancada}
+              </p>
+            )}
+
+            {/* O que o dia já tem nesta máquina — no começo e na conferência */}
+            {(passo === "cobranca" || passo === "resumo") && osDoDia.length > 0 && (
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 space-y-1">
+                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  {date ? formatDate(date) : "Este dia"} já tem {osDoDia.length} OS nesta
+                  máquina — esta será mais uma:
+                </p>
+                {osDoDia.map((o) => (
+                  <p key={o.id} className="text-xs text-slate-600 dark:text-slate-300 truncate">
+                    • {o.texto}
+                  </p>
+                ))}
+              </div>
+            )}
+
             <div key={passo}>{CORPO_DO_PASSO[passo]}</div>
+
+            {/* Mais de um serviço no mesmo dia: lança este e já abre o próximo */}
+            {passo === "resumo" && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => salvar(true)}
+                disabled={isPending}
+                className="w-full h-11 sm:h-10 border-produmar-300 text-produmar-700 dark:border-produmar-700 dark:text-produmar-300"
+              >
+                Lançar e abrir outra no mesmo dia
+              </Button>
+            )}
 
             {caixaDeErro}
 

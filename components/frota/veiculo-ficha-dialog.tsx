@@ -697,6 +697,7 @@ export function VeiculoFichaDialog({
         machines={machines}
         contratantes={contratantes}
         operators={operators}
+        servicosExistentes={servicos}
       />
       <DespesaDialog
         open={despesaOpen}

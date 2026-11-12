@@ -117,7 +117,9 @@ export default async function OperadorPage({
         .select("*, machines(name, plate, tracking_type)")
         .eq("assigned_to", userId)
         .eq("status", "aberta")
-        .order("service_date", { ascending: true }),
+        .order("service_date", { ascending: true })
+        // várias no mesmo dia: na ordem em que foram lançadas (manhã, tarde...)
+        .order("created_at", { ascending: true }),
       // e o histórico: o que ELE mesmo finalizou na máquina (só leitura)
       supabase
         .from("machine_servicos")
@@ -137,20 +139,69 @@ export default async function OperadorPage({
   // da migration 094 a tabela não existe, e pendurada ali ela derrubaria a
   // lista inteira. Assim, sem a 094, as OS aparecem do mesmo jeito, só sem pausa.
   let pausasDaFrota: MachineServicoPausa[] = [];
+  // Onde cada máquina parou: a maior leitura já anotada em qualquer OS dela
+  // (o horímetro e o hodômetro só andam para frente). Com várias OS no mesmo
+  // dia — 4 h de manhã para um, 2 h à tarde para outro —, a OS seguinte já
+  // oferece começar de onde a anterior terminou. Best-effort, como as pausas.
+  const ultimaLeitura = new Map<string, { horimetro: number | null; km: number | null }>();
   if (frotaSemPausas.length > 0) {
-    const { data, error } = await supabase
-      .from("machine_servico_pausas")
-      .select("*")
-      .in(
-        "machine_servico_id",
-        frotaSemPausas.map((s) => s.id)
-      )
-      .order("pause_number", { ascending: true });
-    if (!error) pausasDaFrota = (data as MachineServicoPausa[]) ?? [];
+    const maquinas = [...new Set(frotaSemPausas.map((s) => s.machine_id))];
+    const [pausasRes, leiturasRes] = await Promise.all([
+      supabase
+        .from("machine_servico_pausas")
+        .select("*")
+        .in(
+          "machine_servico_id",
+          frotaSemPausas.map((s) => s.id)
+        )
+        .order("pause_number", { ascending: true }),
+      supabase
+        .from("machine_servicos")
+        .select("machine_id, hourmeter_start, hourmeter_end, km_start, km_end")
+        .in("machine_id", maquinas)
+        .order("service_date", { ascending: false })
+        .limit(500),
+    ]);
+    if (!pausasRes.error) pausasDaFrota = (pausasRes.data as MachineServicoPausa[]) ?? [];
+    if (!leiturasRes.error) {
+      const maior = (a: number | null, b: unknown) => {
+        const n = b === null || b === undefined ? NaN : Number(b);
+        if (!Number.isFinite(n)) return a;
+        return a === null || n > a ? n : a;
+      };
+      for (const r of (leiturasRes.data ?? []) as {
+        machine_id: string;
+        hourmeter_start: number | null;
+        hourmeter_end: number | null;
+        km_start: number | null;
+        km_end: number | null;
+      }[]) {
+        const cur = ultimaLeitura.get(r.machine_id) ?? { horimetro: null, km: null };
+        cur.horimetro = maior(maior(cur.horimetro, r.hourmeter_start), r.hourmeter_end);
+        cur.km = maior(maior(cur.km, r.km_start), r.km_end);
+        ultimaLeitura.set(r.machine_id, cur);
+      }
+    }
+    // a leitura da pausa também conta: a máquina parou ali
+    for (const p of pausasDaFrota) {
+      const os = frotaSemPausas.find((s) => s.id === p.machine_servico_id);
+      if (!os || p.pause_reading == null) continue;
+      const cur = ultimaLeitura.get(os.machine_id) ?? { horimetro: null, km: null };
+      const n = Number(p.pause_reading);
+      // a mesma regra do celular: hora é horímetro; km e viagem, o km do painel
+      const medeKm =
+        os.kind === "km" ||
+        os.kind === "viagem" ||
+        (os.kind !== "hora" && os.machines?.tracking_type === "km");
+      if (medeKm) cur.km = cur.km === null || n > cur.km ? n : cur.km;
+      else cur.horimetro = cur.horimetro === null || n > cur.horimetro ? n : cur.horimetro;
+      ultimaLeitura.set(os.machine_id, cur);
+    }
   }
   const frotaOS = frotaSemPausas.map((s) => ({
     ...s,
     pausas: pausasDaFrota.filter((p) => p.machine_servico_id === s.id),
+    ultima_leitura: ultimaLeitura.get(s.machine_id),
   }));
   const frotaFinalizadas = (frotaFeitasRes.data as MachineServicoDoOperador[]) ?? [];
 

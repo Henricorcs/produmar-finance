@@ -205,7 +205,7 @@ export async function createMachineServico(input: MachineServicoInput) {
     : null;
 
   revalidate();
-  return { ok: true, avisoNaoEntregue: aviso?.motivo ?? null };
+  return { ok: true, id: criado.id as string, avisoNaoEntregue: aviso?.motivo ?? null };
 }
 
 export async function updateMachineServico(id: string, input: MachineServicoInput) {

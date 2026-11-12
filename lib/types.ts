@@ -2285,6 +2285,11 @@ export interface MachineServicoDoOperador extends MachineServico {
   machines: { name: string; plate: string | null; tracking_type: string | null } | null;
   /** As paradas desta OS — vêm à parte, e vazias antes da migration 094. */
   pausas?: MachineServicoPausa[];
+  /**
+   * Onde a máquina parou na última leitura anotada (de qualquer OS dela) —
+   * a OS da tarde começa de onde a da manhã terminou. Nulo quando não há.
+   */
+  ultima_leitura?: { horimetro: number | null; km: number | null };
 }
 
 /** Gasto de uma máquina/veículo. Litros e marcação só no abastecimento. */

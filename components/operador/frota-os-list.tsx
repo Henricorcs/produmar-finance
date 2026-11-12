@@ -108,6 +108,17 @@ function agoraHHMM(): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/** Onde a máquina parou na última leitura anotada — vale para qualquer OS dela. */
+function ondeParou(os: MachineServicoDoOperador | null, medicao: Medicao): number | null {
+  const v = medicao === "horimetro" ? os?.ultima_leitura?.horimetro : os?.ultima_leitura?.km;
+  return v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v);
+}
+
+/** O número como vai no campo (sem ponto de milhar, vírgula decimal). */
+function leituraNoCampo(n: number): string {
+  return String(Math.round(n * 10) / 10).replace(".", ",");
+}
+
 /** A leitura de partida desta OS, conforme o que ela mede. */
 function leituraInicial(os: MachineServicoDoOperador, medicao: Medicao): number | null {
   const v = medicao === "horimetro" ? os.hourmeter_start : os.km_start;
@@ -143,7 +154,11 @@ export function FrotaOSList({ items }: { items: MachineServicoDoOperador[] }) {
         />
       ))}
 
-      <IniciarFrotaOSDialog os={iniciando} onClose={() => setIniciando(null)} />
+      <IniciarFrotaOSDialog
+        os={iniciando}
+        todas={items}
+        onClose={() => setIniciando(null)}
+      />
       <PausarFrotaOSDialog os={pausando} onClose={() => setPausando(null)} />
       <RetomarFrotaOSDialog alvo={retomando} onClose={() => setRetomando(null)} />
       <FinalizarFrotaOSDialog os={finalizando} onClose={() => setFinalizando(null)} />
@@ -483,9 +498,12 @@ function Maquina({ os }: { os: MachineServicoDoOperador | null }) {
 
 function IniciarFrotaOSDialog({
   os,
+  todas,
   onClose,
 }: {
   os: MachineServicoDoOperador | null;
+  /** As outras OS dele — para avisar se a mesma máquina já está rodando outra. */
+  todas: MachineServicoDoOperador[];
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -493,6 +511,19 @@ function IniciarFrotaOSDialog({
   const [valor, setValor] = useState("");
 
   const medicao: Medicao = os ? medicaoDaOs(os) : "horimetro";
+  /** Onde a máquina parou — a OS da tarde começa de onde a da manhã terminou. */
+  const parou = ondeParou(os, medicao);
+  // Mais de uma OS no dia é normal (4 h para um, 2 h para outro), mas uma de
+  // cada vez: com duas rodando juntas, as mesmas horas contam duas vezes.
+  const rodandoJunto = os
+    ? todas.find(
+        (o) =>
+          o.id !== os.id &&
+          o.machine_id === os.machine_id &&
+          !!o.started_at &&
+          !(o.pausas ?? []).some((p) => !p.resume_time)
+      ) ?? null
+    : null;
 
   useEffect(() => {
     if (!os) return;
@@ -544,6 +575,24 @@ function IniciarFrotaOSDialog({
             valor={valor}
             onChange={setValor}
           />
+          {parou !== null && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-12 text-base"
+              onClick={() => setValor(leituraNoCampo(parou))}
+            >
+              Usar {mostrarLeitura(parou, medicao)} — onde a máquina parou
+            </Button>
+          )}
+          {rodandoJunto && (
+            <p className="text-sm rounded-xl px-3 py-2 bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/50">
+              A OS {rodandoJunto.contratante ? `de ${rodandoJunto.contratante} ` : ""}
+              nesta máquina ainda está em andamento. Finalize ela antes de começar
+              esta — senão as mesmas {medicao === "horimetro" ? "horas" : "km"} contam
+              duas vezes.
+            </p>
+          )}
           <Erro texto={erro} />
         </div>
 
@@ -952,6 +1001,16 @@ function FinalizarFrotaOSDialog({
                   : "Quanto marcava o painel quando o veículo saiu."
               }
             />
+          )}
+          {semPartida && ondeParou(os, medicao) !== null && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-12 text-base -mt-2"
+              onClick={() => setLeituraInicialDigitada(leituraNoCampo(ondeParou(os, medicao)!))}
+            >
+              Usar {mostrarLeitura(ondeParou(os, medicao), medicao)} — onde a máquina parou
+            </Button>
           )}
 
           <CampoLeitura

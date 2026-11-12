@@ -160,7 +160,7 @@ export function FrotaCalendario({
         <Legenda className="bg-emerald-500" label="OS aberta" />
         <Legenda className="bg-slate-300 dark:bg-slate-600" label="tudo concluído" />
         <span className="text-[11px] text-slate-400 dark:text-slate-500">
-          toque no dia para lançar uma OS
+          toque no dia para lançar uma OS — pode ter várias no mesmo dia
         </span>
       </div>
     </div>
