@@ -8,6 +8,7 @@ import { LOAN_PAYMENT_METHODS } from "@/lib/types";
 import type { LoanPaymentMethod, LoanRepaymentType, LoanStatus } from "@/lib/types";
 import { loanTotalDue } from "@/lib/utils";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
+import { descartarAssinatura } from "@/lib/documentos-assinados";
 import {
   cancelarBoletoDaDivida,
   conferirBoletosDasDividasNaCora,
@@ -290,6 +291,9 @@ export async function updateLoan(id: string, input: LoanInput) {
   }
 
   await recomputeStatus(supabase, id);
+  // A confissão de dívida assinada com certificado tem o texto de antes: com a
+  // dívida mudada ela não vale mais — como no contrato de aluguel editado.
+  await descartarAssinatura("confissao_divida", id);
   revalidate();
   return { ok: true };
 }
@@ -315,6 +319,8 @@ export async function deleteLoan(id: string) {
   // installments + payments + attachments caem por cascade
   const { error } = await supabase.from("loans").delete().eq("id", id);
   if (error) return { error: error.message };
+  // a confissão assinada desta dívida vira lixo sem ela
+  await descartarAssinatura("confissao_divida", id);
 
   revalidate();
   return { ok: true };

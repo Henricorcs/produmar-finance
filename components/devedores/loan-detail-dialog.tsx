@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
-import { Trash2, CheckCircle2, Plus, Pencil } from "lucide-react";
+import { Trash2, CheckCircle2, Plus, Pencil, FileSignature } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -166,6 +166,25 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
               dívida de {formatDate(loan.loan_date)}
             </span>
           </div>
+
+          {/* O papel para o devedor assinar: a confissão de dívida, com o valor
+              e as parcelas desta dívida, para imprimir ou mandar em PDF */}
+          <a
+            href={`/imprimir/confissao/${loan.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <FileSignature className="w-5 h-5 text-produmar-600 dark:text-produmar-400 flex-shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Confissão de dívida
+              </span>
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                Documento para o devedor assinar, com duas testemunhas — imprimir ou PDF
+              </span>
+            </span>
+          </a>
 
           <div className="rounded-xl border border-produmar-100 dark:border-slate-800 bg-produmar-50/60 dark:bg-slate-800/50 px-4 py-3 flex items-center justify-between">
             <span className="text-sm font-medium text-produmar-800 dark:text-slate-200">

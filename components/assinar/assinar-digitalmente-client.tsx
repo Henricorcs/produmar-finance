@@ -41,6 +41,7 @@ const ORIGEM: Record<string, string> = {
   aluguel: "Contrato de aluguel",
   compra_venda: "Compra e venda",
   procuracao: "Procuração",
+  confissao_divida: "Confissão de dívida",
 };
 
 function documentoFormatado(d: string | null): string {
