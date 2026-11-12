@@ -149,6 +149,14 @@ export interface LoanInput {
   borrower_name: string;
   borrower_document?: string | null;
   borrower_phone?: string | null;
+  /** A qualificação para a confissão de dívida (141) — undefined = não mexe. */
+  borrower_nationality?: string | null;
+  borrower_marital_status?: string | null;
+  borrower_profession?: string | null;
+  borrower_rg?: string | null;
+  borrower_address?: string | null;
+  borrower_rep_name?: string | null;
+  borrower_rep_document?: string | null;
   principal: number;
   interest_rate?: number | null;
   term_months?: number | null;
@@ -193,11 +201,35 @@ function validate(input: LoanInput): string | null {
   return null;
 }
 
+/**
+ * Os campos da qualificação (migration 141), em caixa alta. Só entram os que
+ * a tela mandou: sem eles (undefined), a dívida salva como antes.
+ */
+function qualificacao(input: LoanInput) {
+  const campos = [
+    "borrower_nationality",
+    "borrower_marital_status",
+    "borrower_profession",
+    "borrower_rg",
+    "borrower_address",
+    "borrower_rep_name",
+    "borrower_rep_document",
+  ] as const;
+  const out: Partial<Record<(typeof campos)[number], string | null>> = {};
+  for (const c of campos) {
+    if (input[c] === undefined) continue;
+    const v = input[c]?.trim();
+    out[c] = v ? v.toUpperCase() : null;
+  }
+  return out;
+}
+
 function sanitize(input: LoanInput) {
   return {
     borrower_name: input.borrower_name.trim().toUpperCase(),
     borrower_document: input.borrower_document?.trim() || null,
     borrower_phone: input.borrower_phone?.trim() || null,
+    ...qualificacao(input),
     principal: input.principal,
     interest_rate:
       input.interest_rate != null && !isNaN(input.interest_rate) && input.interest_rate > 0

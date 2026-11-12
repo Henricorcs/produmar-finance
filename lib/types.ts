@@ -515,6 +515,18 @@ export interface Loan {
   borrower_name: string;
   borrower_document: string | null;
   borrower_phone: string | null;
+  /**
+   * A qualificação do devedor para a confissão de dívida (migration 141) —
+   * pessoa física: nacionalidade, estado civil, profissão, RG e endereço;
+   * empresa: endereço da sede e quem assina por ela. Tudo opcional.
+   */
+  borrower_nationality?: string | null;
+  borrower_marital_status?: string | null;
+  borrower_profession?: string | null;
+  borrower_rg?: string | null;
+  borrower_address?: string | null;
+  borrower_rep_name?: string | null;
+  borrower_rep_document?: string | null;
 
   principal: number;
   interest_rate: number | null;   // % ao mês (juros simples)

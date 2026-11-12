@@ -28,9 +28,9 @@ import type { Loan, LoanInstallment, LoanPayment } from "./types";
 //     antecipado e o foro.
 // A credora é a PRODUMAR — a qualificação sai do parágrafo "LOCADOR:" do
 // modelo do contrato de aluguel, como na compra e venda.
-// O que a dívida não guarda do devedor (nacionalidade, estado civil,
-// profissão, RG, endereço) sai como linha para completar à caneta antes de
-// assinar.
+// A qualificação do devedor (nacionalidade, estado civil, profissão, RG,
+// endereço — ou a sede e o representante da empresa) vem do cadastro da
+// dívida (141). O que ficou em branco sai como linha para a caneta.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export { MARCA_ASSINATURAS };
@@ -76,22 +76,31 @@ export function saldoConfessado(d: DividaParaConfissao): number {
   return Math.max(0, Math.round((loanTotalDue(d.loan) - pago) * 100) / 100);
 }
 
-/** A qualificação do devedor — pessoa física ou empresa (CNPJ). */
+/**
+ * A qualificação do devedor — pessoa física ou empresa (CNPJ). Vem do
+ * cadastro da dívida (migration 141); o que ficou em branco sai como linha
+ * para completar à caneta antes de assinar.
+ */
 function qualificacaoDoDevedor(l: Loan): string {
   const nome = l.borrower_name.trim();
   const doc = l.borrower_document?.trim();
   const fone = l.borrower_phone?.trim();
+  const ou = (v: string | null | undefined, linha = LINHA) => v?.trim() || linha;
   if (ehCnpj(doc)) {
     return (
-      `${nome}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${doc}, com sede em ${LINHA_LONGA}, ` +
-      `neste ato representada por ${LINHA_LONGA}, portador(a) do CPF nº ${LINHA}` +
+      `${nome}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${doc}, com sede em ${ou(l.borrower_address, LINHA_LONGA)}, ` +
+      `neste ato representada por ${ou(l.borrower_rep_name, LINHA_LONGA)}, portador(a) do CPF nº ${ou(l.borrower_rep_document)}` +
       (fone ? `, telefone ${fone}` : "")
     );
   }
   return (
-    `${nome}, nacionalidade ${LINHA}, estado civil ${LINHA}, profissão ${LINHA}, ` +
-    `portador(a) do RG nº ${LINHA}, inscrito(a) no CPF sob o nº ${doc || LINHA}, ` +
-    `residente e domiciliado(a) em ${LINHA_LONGA}` +
+    // preenchido: "brasileiro, casado, agricultor"; em branco, a linha leva
+    // o nome do campo para quem completar à caneta
+    `${nome}, ${ou(l.borrower_nationality, `nacionalidade ${LINHA}`)}, ` +
+    `${ou(l.borrower_marital_status, `estado civil ${LINHA}`)}, ` +
+    `${ou(l.borrower_profession, `profissão ${LINHA}`)}, ` +
+    `portador(a) do RG nº ${ou(l.borrower_rg)}, inscrito(a) no CPF sob o nº ${doc || LINHA}, ` +
+    `residente e domiciliado(a) em ${ou(l.borrower_address, LINHA_LONGA)}` +
     (fone ? `, telefone ${fone}` : "")
   );
 }
