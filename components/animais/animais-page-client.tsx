@@ -89,6 +89,7 @@ import {
 import type {
   AnimalBirth,
   AnimalBirthRequest,
+  ProtocoloPendencia,
   ProtocoloNascimentoItem,
   AnimalBreed,
   AnimalCategory,
@@ -135,6 +136,8 @@ interface Props {
   weights?: AnimalWeight[];
   /** Nascimentos enviados pelo vaqueiro, aguardando o patrão conferir. */
   birthRequests: AnimalBirthRequest[];
+  /** O protocolo que o vaqueiro deixou pendente nesses envios (migration 138). */
+  pendenciasDoNascimento?: ProtocoloPendencia[];
   /** A ficha de receitas e despesas — venda, despesa e tratamento (072). */
   financeiro?: AnimalFinanceiroLinha[];
   /** As despesas cruas, para corrigir uma a partir da ficha. */
@@ -246,6 +249,7 @@ export function AnimaisPageClient({
   pendings,
   weights = [],
   birthRequests,
+  pendenciasDoNascimento = [],
   financeiro = [],
   despesas = [],
   vendas = [],
@@ -800,7 +804,10 @@ export function AnimaisPageClient({
   // aberta, para não gastar signed URLs que o patrão nunca vai olhar.
   useEffect(() => {
     if (tab !== "nascimentos") return;
-    const paths = birthRequests.map((r) => r.photo_path).filter((p): p is string => !!p);
+    // a foto do filhote e a da mãe (migration 138)
+    const paths = birthRequests
+      .flatMap((r) => [r.photo_path, r.mother_photo_path])
+      .filter((p): p is string => !!p);
     if (paths.length === 0) return;
     let cancelled = false;
     getAnimalThumbnails(paths).then((r) => {
@@ -1800,6 +1807,14 @@ export function AnimaisPageClient({
         photoUrl={
           detailRequest?.photo_path ? birthRequestThumbs[detailRequest.photo_path] ?? null : null
         }
+        motherPhotoUrl={
+          detailRequest?.mother_photo_path
+            ? birthRequestThumbs[detailRequest.mother_photo_path] ?? null
+            : null
+        }
+        pendentes={pendenciasDoNascimento.filter(
+          (p) => p.birth_request_id === detailRequest?.id
+        )}
         mothers={females}
         discarding={discardingRequestId === detailRequest?.id}
         onResolve={() => {

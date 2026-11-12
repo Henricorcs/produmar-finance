@@ -904,6 +904,30 @@ export interface AnimalBirthRequest {
    * lista estava na hora (migration 095). Vazio em envio antigo.
    */
   protocolo_aplicado?: ProtocoloItemAplicado[] | null;
+  /** Foto da MÃE que o vaqueiro tirou (migration 138) — vai para a ficha dela. */
+  mother_photo_path?: string | null;
+  /** Características da cria escritas pelo vaqueiro (migration 138). */
+  caracteristicas?: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Um item do protocolo do nascimento que o vaqueiro NÃO aplicou na hora
+ * (migration 138). Fica pendente para ele até tocar em "Apliquei".
+ */
+export interface ProtocoloPendencia {
+  id: string;
+  birth_request_id: string | null;
+  calf_animal_id: string | null;
+  mother_tag: string | null;
+  species: AnimalSpecies | null;
+  calf_sex: AnimalSex | null;
+  birth_date: string | null;
+  medicine: string;
+  dose: string | null;
+  applied_at: string | null;
+  applied_by: string | null;
   created_by: string | null;
   created_at: string;
 }

@@ -44,6 +44,13 @@ export interface NascimentoGuardado {
    * estava na hora (migration 095). Vazio no que ficou guardado antes.
    */
   protocolo?: ProtocoloItemAplicado[];
+  /** O que ele NÃO aplicou na hora — vira pendência dele (migration 138). */
+  protocolo_pendente?: ProtocoloItemAplicado[];
+  /** As características da cria: pinta na testa, mancha no lombo... */
+  caracteristicas?: string;
+  /** A foto da MÃE, já encolhida (opcional). Some junto com a do filhote. */
+  foto_mae?: Blob | null;
+  foto_mae_nome?: string;
   /** A foto, já encolhida. Some depois que o envio confirma, para não entupir
    *  o celular guardando o que já está no servidor. */
   foto: Blob | null;

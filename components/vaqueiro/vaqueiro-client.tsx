@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Baby,
   Camera,
@@ -19,9 +20,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn, formatDate, localDateISO, upperKeepingCaret } from "@/lib/utils";
-import { requestCalfBirth } from "@/app/(app)/vaqueiro/actions";
+import { aplicarPendencia, requestCalfBirth } from "@/app/(app)/vaqueiro/actions";
 import {
   PARTO_SPECIES_OPTIONS,
   SPECIES_META,
@@ -34,6 +36,7 @@ import type {
   AnimalSpecies,
   ProtocoloItemAplicado,
   ProtocoloNascimentoItem,
+  ProtocoloPendencia,
 } from "@/lib/types";
 import { comprimirImagem } from "@/lib/comprimir-imagem";
 import {
@@ -62,6 +65,8 @@ interface Props {
    * mostra só o do bicho escolhido e não deixa salvar sem marcar tudo.
    */
   protocolo?: ProtocoloNascimentoItem[];
+  /** O protocolo que ELE deixou de aplicar e ainda não deu baixa (migration 138). */
+  pendencias?: ProtocoloPendencia[];
 }
 
 type ResultadoEnvio = { ok: true } | { erro: string } | { semRede: true };
@@ -79,11 +84,23 @@ async function enviarNascimento(registro: NascimentoGuardado): Promise<Resultado
   if (registro.protocolo && registro.protocolo.length > 0) {
     fd.append("protocolo", JSON.stringify(registro.protocolo));
   }
+  if (registro.protocolo_pendente && registro.protocolo_pendente.length > 0) {
+    fd.append("protocolo_pendente", JSON.stringify(registro.protocolo_pendente));
+  }
+  if (registro.caracteristicas) fd.append("caracteristicas", registro.caracteristicas);
   if (registro.foto) {
     fd.append(
       "photo",
       new File([registro.foto], registro.foto_nome || "foto.jpg", {
         type: registro.foto.type || "image/jpeg",
+      })
+    );
+  }
+  if (registro.foto_mae) {
+    fd.append(
+      "mother_photo",
+      new File([registro.foto_mae], registro.foto_mae_nome || "mae.jpg", {
+        type: registro.foto_mae.type || "image/jpeg",
       })
     );
   }
@@ -109,7 +126,8 @@ function nomeDoNascimento(r: NascimentoGuardado): string {
   return `${nomes.youngMale} ${r.calf_sex === "macho" ? "macho" : "fêmea"}`;
 }
 
-export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
+export function VaqueiroClient({ podeOffline = false, protocolo = [], pendencias = [] }: Props) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -126,8 +144,17 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
   const [aplicados, setAplicados] = useState<Set<string>>(new Set());
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const galleryRef = useRef<HTMLInputElement>(null);
+  /** A foto da MÃE — opcional, vai para a ficha dela quando o patrão lançar. */
+  const [fotoMae, setFotoMae] = useState<File | null>(null);
+  const [fotoMaeUrl, setFotoMaeUrl] = useState<string | null>(null);
+  /** Como reconhecer a cria: pinta na testa, mancha no lombo... */
+  const [caracteristicas, setCaracteristicas] = useState("");
+
+  /** As pendências que ele já deu baixa agora (somem da tela na hora). */
+  const [baixadas, setBaixadas] = useState<Set<string>>(new Set());
+  const [baixando, setBaixando] = useState<string | null>(null);
+  const [erroPendencia, setErroPendencia] = useState<string | null>(null);
+  const pendenciasAbertas = pendencias.filter((p) => !baixadas.has(p.id));
 
   /** Tudo que está no celular: o que espera rede e o que já subiu. */
   const [fila, setFila] = useState<NascimentoGuardado[]>([]);
@@ -178,6 +205,11 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
       if (photoUrl) URL.revokeObjectURL(photoUrl);
     };
   }, [photoUrl]);
+  useEffect(() => {
+    return () => {
+      if (fotoMaeUrl) URL.revokeObjectURL(fotoMaeUrl);
+    };
+  }, [fotoMaeUrl]);
 
   // ── Sinal: a tela avisa quando está sem rede, para ele não achar que travou ─
   useEffect(() => {
@@ -209,6 +241,7 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
     if (enviando.current) return;
     enviando.current = true;
     setEnviandoFila(true);
+    let subiuAlgum = false;
     try {
       const guardados = await filaListar();
       for (const registro of guardados) {
@@ -227,16 +260,20 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
           continue;
         }
 
-        // Subiu: guarda o comprovante e joga a foto fora — ela já está no
+        // Subiu: guarda o comprovante e joga as fotos fora — elas já estão no
         // servidor, e foto guardada à toa enche o celular do vaqueiro.
         await filaGuardar({
           ...registro,
           foto: null,
+          foto_mae: null,
           enviado_em: Date.now(),
           erro: null,
         });
+        subiuAlgum = true;
       }
       setFila(await filaListar());
+      // O que subiu pode ter deixado protocolo pendente: busca a lista nova
+      if (subiuAlgum) router.refresh();
     } catch {
       // Fila quebrada no meio do caminho: o que está gravado continua gravado
       // e a próxima tentativa pega tudo de novo.
@@ -244,7 +281,7 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
       enviando.current = false;
       setEnviandoFila(false);
     }
-  }, []);
+  }, [router]);
 
   // ── Ao abrir: lê o que ficou de ontem e tenta mandar ───────────────────────
   useEffect(() => {
@@ -306,11 +343,39 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
     setPhotoUrl(foto ? URL.createObjectURL(foto) : null);
   }
 
+  async function handleFotoMaeChange(file: File | null) {
+    const foto = file ? await comprimirImagem(file) : null;
+    if (fotoMaeUrl) URL.revokeObjectURL(fotoMaeUrl);
+    setFotoMae(foto);
+    setFotoMaeUrl(foto ? URL.createObjectURL(foto) : null);
+  }
+
+  /** "APLIQUEI": dá baixa na pendência — precisa de rede. */
+  async function darBaixa(p: ProtocoloPendencia) {
+    setErroPendencia(null);
+    setBaixando(p.id);
+    try {
+      const r = await aplicarPendencia(p.id, localDateISO());
+      if (r && "error" in r && r.error) {
+        setErroPendencia(r.error);
+        return;
+      }
+      setBaixadas((atual) => new Set(atual).add(p.id));
+      router.refresh();
+    } catch {
+      setErroPendencia("Sem rede agora. Toque em APLIQUEI de novo quando pegar sinal.");
+    } finally {
+      setBaixando(null);
+    }
+  }
+
   function resetForm() {
     setMotherTag("");
     setCalfSex("femea");
     setAplicados(new Set());
+    setCaracteristicas("");
     handlePhotoChange(null);
+    handleFotoMaeChange(null);
     // O bicho escolhido FICA: quem está no curral das ovelhas anota um cordeiro
     // atrás do outro, e voltar para bovino a cada envio só faria ele errar.
   }
@@ -331,13 +396,18 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
 
     if (!motherTag.trim()) return setError("Informe o número da mãe");
     if (!photo) return setError(`Coloque uma foto do ${filhote}`);
-    // A EXIGÊNCIA: sem aplicar o protocolo inteiro, o nascimento não sai.
-    if (faltaAplicar.length > 0) {
-      return setError(
-        `Aplique no ${filhote} e marque: ${faltaAplicar.map((i) => i.medicine).join(", ")}`
-      );
-    }
+    // O protocolo NÃO trava mais o envio: o que ele não marcou vai junto como
+    // pendência dele, e fica na tela até ele aplicar e dar baixa.
     const protocoloDoEnvio = protocoloMarcado();
+    const protocoloPendente: ProtocoloItemAplicado[] = faltaAplicar.map((i) => ({
+      medicine: i.medicine,
+      dose: i.dose,
+    }));
+    const caracteristicasDoEnvio = caracteristicas.trim().toUpperCase();
+    const ficouPendente =
+      protocoloPendente.length > 0
+        ? ` Ficou pendente para você: ${protocoloPendente.map((i) => i.medicine).join(", ")}.`
+        : "";
 
     // ── O caminho normal: GRAVA NO CELULAR, e só então tenta a rede ──────────
     // O formulário só é limpo depois que o nascimento está seguro no aparelho.
@@ -350,8 +420,12 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
         species,
         birth_date: today,
         protocolo: protocoloDoEnvio,
+        protocolo_pendente: protocoloPendente,
+        caracteristicas: caracteristicasDoEnvio,
         foto: photo,
         foto_nome: photo.name || "foto.jpg",
+        foto_mae: fotoMae,
+        foto_mae_nome: fotoMae?.name || "mae.jpg",
         criado_em: Date.now(),
         enviado_em: null,
         erro: null,
@@ -363,9 +437,10 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
         setFila(await filaListar());
         resetForm();
         setSuccess(
-          temRede
+          (temRede
             ? `${filhoteMaiusculo} da mãe ${registro.mother_tag} anotado! Enviando para o patrão...`
-            : `${filhoteMaiusculo} da mãe ${registro.mother_tag} anotado no celular! Sem rede agora — vai sozinho quando o sinal voltar.`
+            : `${filhoteMaiusculo} da mãe ${registro.mother_tag} anotado no celular! Sem rede agora — vai sozinho quando o sinal voltar.`) +
+            ficouPendente
         );
         esvaziarFila();
         return;
@@ -384,7 +459,11 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
     fd.append("calf_sex", calfSex);
     fd.append("species", species);
     if (protocoloDoEnvio.length > 0) fd.append("protocolo", JSON.stringify(protocoloDoEnvio));
+    if (protocoloPendente.length > 0)
+      fd.append("protocolo_pendente", JSON.stringify(protocoloPendente));
+    if (caracteristicasDoEnvio) fd.append("caracteristicas", caracteristicasDoEnvio);
     fd.append("photo", photo);
+    if (fotoMae) fd.append("mother_photo", fotoMae);
 
     startTransition(async () => {
       try {
@@ -394,7 +473,8 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
           return;
         }
         setSuccess(
-          `${filhoteMaiusculo} da mãe ${motherTag.toUpperCase()} enviado! O patrão dá o número e lança no rebanho.`
+          `${filhoteMaiusculo} da mãe ${motherTag.toUpperCase()} enviado! O patrão dá o número e lança no rebanho.` +
+            ficouPendente
         );
         resetForm();
       } catch {
@@ -438,6 +518,61 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
         <div className="flex items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3">
           <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
           <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{success}</p>
+        </div>
+      )}
+
+      {/* O QUE FICOU PENDENTE — o protocolo que ele não aplicou no nascimento.
+          Fica aqui no alto até ele aplicar e tocar em APLIQUEI. */}
+      {pendenciasAbertas.length > 0 && (
+        <div className="space-y-2 rounded-xl border-2 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+          <div className="flex items-start gap-2">
+            <Syringe className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                Protocolo pendente ({pendenciasAbertas.length})
+              </p>
+              <p className="text-[12px] text-amber-800/80 dark:text-amber-300/80">
+                Aplique e toque em APLIQUEI — a pendência sai da sua tela.
+              </p>
+            </div>
+          </div>
+          <ul className="space-y-1.5">
+            {pendenciasAbertas.map((p) => {
+              const nomes = SPECIES_META[speciesOf(p.species)];
+              return (
+                <li
+                  key={p.id}
+                  className="flex items-center gap-3 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white dark:bg-slate-900 px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 break-words">
+                      {p.medicine}
+                      {p.dose ? (
+                        <span className="text-sm font-normal text-slate-500"> · {p.dose}</span>
+                      ) : null}
+                    </p>
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                      {nomes.youngMale} {p.calf_sex === "macho" ? "macho" : "fêmea"}
+                      {p.mother_tag ? ` da mãe ${p.mother_tag}` : ""}
+                      {p.birth_date ? ` · nasceu ${formatDate(p.birth_date)}` : ""}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => darBaixa(p)}
+                    disabled={baixando === p.id}
+                    className="h-12 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex-shrink-0"
+                  >
+                    <Check className="w-4 h-4" />
+                    {baixando === p.id ? "..." : "APLIQUEI"}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+          {erroPendencia && (
+            <p className="text-sm text-red-600 dark:text-red-400">{erroPendencia}</p>
+          )}
         </div>
       )}
 
@@ -489,89 +624,21 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Foto do {filhote} *</Label>
-              {/* `capture` força a câmera no celular — o segundo input é para a
-                  foto que o vaqueiro já tirou antes de abrir o sistema. */}
-              <input
-                ref={cameraRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => {
-                  handlePhotoChange(e.target.files?.[0] ?? null);
-                  e.target.value = "";
-                }}
-              />
-              <input
-                ref={galleryRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  handlePhotoChange(e.target.files?.[0] ?? null);
-                  e.target.value = "";
-                }}
-              />
-              {photoUrl ? (
-                <div className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photoUrl}
-                    alt={`Foto do ${filhote}`}
-                    className="w-full h-56 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handlePhotoChange(null)}
-                    aria-label="Remover foto"
-                    className="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                  <div className="absolute bottom-2 right-2 flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => cameraRef.current?.click()}
-                      className="h-10 px-3 rounded-full bg-black/60 text-white text-xs font-medium flex items-center gap-1.5"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      Câmera
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => galleryRef.current?.click()}
-                      className="h-10 px-3 rounded-full bg-black/60 text-white text-xs font-medium flex items-center gap-1.5"
-                    >
-                      <ImagePlus className="w-3.5 h-3.5" />
-                      Galeria
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 h-24 flex-col gap-1.5 border-dashed"
-                    onClick={() => cameraRef.current?.click()}
-                  >
-                    <Camera className="w-6 h-6" />
-                    <span className="text-sm">Tirar foto</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 h-24 flex-col gap-1.5 border-dashed"
-                    onClick={() => galleryRef.current?.click()}
-                  >
-                    <ImagePlus className="w-6 h-6" />
-                    <span className="text-sm">Escolher foto</span>
-                  </Button>
-                </div>
-              )}
-            </div>
+            {/* AS DUAS FOTOS: a do filhote (obrigatória) e a da mãe — cada uma
+                vai para a ficha do seu animal quando o patrão lançar. */}
+            <CampoFoto
+              titulo={`Foto do ${filhote} *`}
+              alt={`Foto do ${filhote}`}
+              url={photoUrl}
+              onChange={handlePhotoChange}
+            />
+            <CampoFoto
+              titulo="Foto da mãe"
+              alt="Foto da mãe"
+              url={fotoMaeUrl}
+              onChange={handleFotoMaeChange}
+              ajuda="Opcional — vai para a ficha da mãe."
+            />
 
             <div className="space-y-1.5">
               <Label htmlFor="vq_mother_tag">Número da mãe *</Label>
@@ -597,8 +664,24 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
               </p>
             </div>
 
+            {/* Como reconhecer a cria no pasto — vira a observação da ficha dela */}
+            <div className="space-y-1.5">
+              <Label htmlFor="vq_caracteristicas">Características do {filhote}</Label>
+              <Textarea
+                id="vq_caracteristicas"
+                value={caracteristicas}
+                onChange={(e) => setCaracteristicas(upperKeepingCaret(e))}
+                placeholder="ex: PINTA NA TESTA, MANCHA BRANCA NO LOMBO, ORELHA CAÍDA"
+                autoCapitalize="characters"
+                rows={2}
+                maxLength={500}
+                className="text-base"
+              />
+            </div>
+
             {/* O PROTOCOLO DO NASCIMENTO — o que o patrão mandou aplicar agora,
-                com a cria na mão. Sem marcar tudo, o botão de salvar não passa. */}
+                com a cria na mão. Não trava o envio: o que ficar sem marcar
+                vira pendência dele, lá embaixo, até aplicar. */}
             {protocoloDoBicho.length > 0 && (
               <div className="space-y-2 rounded-xl border-2 border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/20 p-3">
                 <div className="flex items-start gap-2">
@@ -608,7 +691,8 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
                       Aplique agora no {filhote} *
                     </p>
                     <p className="text-[12px] text-amber-800/80 dark:text-amber-300/80">
-                      Toque em cada um depois de aplicar. Só salva com tudo marcado.
+                      Toque em cada um depois de aplicar. O que não aplicar agora fica
+                      pendente para você — o nascimento vai do mesmo jeito.
                     </p>
                   </div>
                 </div>
@@ -679,12 +763,17 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
             >
               {isPending
                 ? "Enviando..."
-                : faltaAplicar.length > 0
-                  ? `Falta aplicar ${faltaAplicar.length} de ${protocoloDoBicho.length}`
-                  : guardaNoCelular
-                    ? "Salvar nascimento"
-                    : "Enviar nascimento"}
+                : guardaNoCelular
+                  ? "Salvar nascimento"
+                  : "Enviar nascimento"}
             </Button>
+            {faltaAplicar.length > 0 && (
+              <p className="text-center text-[12px] text-amber-700 dark:text-amber-400 -mt-2">
+                {faltaAplicar.length === 1
+                  ? "1 item do protocolo vai ficar pendente para você"
+                  : `${faltaAplicar.length} itens do protocolo vão ficar pendentes para você`}
+              </p>
+            )}
 
             {guardaNoCelular && (
               <p className="text-center text-[11px] text-slate-400 dark:text-slate-500">
@@ -789,6 +878,115 @@ export function VaqueiroClient({ podeOffline = false, protocolo = [] }: Props) {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Um campo de foto do celular: "Tirar foto" abre a câmera, "Escolher foto" a
+ * galeria (a foto que ele já tirou antes de abrir o sistema). Com a foto
+ * escolhida, mostra a prévia com os botões de trocar e de tirar.
+ */
+function CampoFoto({
+  titulo,
+  alt,
+  url,
+  onChange,
+  ajuda,
+}: {
+  titulo: string;
+  alt: string;
+  url: string | null;
+  onChange: (file: File | null) => void;
+  ajuda?: string;
+}) {
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="space-y-1.5">
+      <Label>{titulo}</Label>
+      {/* `capture` força a câmera no celular — o segundo input é para a
+          foto que o vaqueiro já tirou antes de abrir o sistema. */}
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          onChange(e.target.files?.[0] ?? null);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={galleryRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          onChange(e.target.files?.[0] ?? null);
+          e.target.value = "";
+        }}
+      />
+      {url ? (
+        <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={alt}
+            className="w-full h-56 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
+          />
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            aria-label="Remover foto"
+            className="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <div className="absolute bottom-2 right-2 flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => cameraRef.current?.click()}
+              className="h-10 px-3 rounded-full bg-black/60 text-white text-xs font-medium flex items-center gap-1.5"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              Câmera
+            </button>
+            <button
+              type="button"
+              onClick={() => galleryRef.current?.click()}
+              className="h-10 px-3 rounded-full bg-black/60 text-white text-xs font-medium flex items-center gap-1.5"
+            >
+              <ImagePlus className="w-3.5 h-3.5" />
+              Galeria
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 h-24 flex-col gap-1.5 border-dashed"
+            onClick={() => cameraRef.current?.click()}
+          >
+            <Camera className="w-6 h-6" />
+            <span className="text-sm">Tirar foto</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 h-24 flex-col gap-1.5 border-dashed"
+            onClick={() => galleryRef.current?.click()}
+          >
+            <ImagePlus className="w-6 h-6" />
+            <span className="text-sm">Escolher foto</span>
+          </Button>
+        </div>
+      )}
+      {ajuda && <p className="text-[11px] text-slate-400 dark:text-slate-500">{ajuda}</p>}
     </div>
   );
 }

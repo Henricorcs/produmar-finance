@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { SPECIES_META, categoryLabel, speciesOf } from "./animal-shared";
-import type { AnimalBirthRequest, AnimalWithInfo } from "@/lib/types";
+import type { AnimalBirthRequest, AnimalWithInfo, ProtocoloPendencia } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -19,6 +19,10 @@ interface Props {
   request: AnimalBirthRequest | null;
   /** Foto que o vaqueiro mandou (URL assinada). */
   photoUrl: string | null;
+  /** Foto da MÃE que ele mandou (migration 138). */
+  motherPhotoUrl?: string | null;
+  /** O protocolo que ele deixou pendente neste envio (migration 138). */
+  pendentes?: ProtocoloPendencia[];
   /** Só fêmeas — para dizer se o número que ele digitou existe no rebanho. */
   mothers: AnimalWithInfo[];
   discarding: boolean;
@@ -37,6 +41,8 @@ export function BirthRequestDetailDialog({
   onClose,
   request,
   photoUrl,
+  motherPhotoUrl = null,
+  pendentes = [],
   mothers,
   discarding,
   onResolve,
@@ -93,6 +99,25 @@ export function BirthRequestDetailDialog({
           </p>
         )}
 
+        {/* A FOTO DA MÃE (migration 138) — entra na ficha da mãe ao lançar */}
+        {motherPhotoUrl && (
+          <a href={motherPhotoUrl} target="_blank" rel="noreferrer" className="block relative -mt-2 mb-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={motherPhotoUrl}
+              alt={`Mãe ${request.mother_tag}`}
+              className="w-full h-40 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
+            />
+            <span className="absolute top-2 left-2 h-7 px-2.5 rounded-full bg-black/60 text-white text-[11px] font-semibold flex items-center">
+              Mãe
+            </span>
+            <span className="absolute bottom-2 right-2 h-8 px-2.5 rounded-full bg-black/60 text-white text-[11px] font-medium flex items-center gap-1.5">
+              <Maximize2 className="w-3.5 h-3.5" />
+              Ver a foto
+            </span>
+          </a>
+        )}
+
         <div className="space-y-3">
           <div>
             <p className="text-xl font-semibold text-slate-800 dark:text-slate-100">
@@ -130,6 +155,48 @@ export function BirthRequestDetailDialog({
             {/* envio antigo, de antes da 053, quando o vaqueiro ainda numerava */}
             {request.calf_tag && <Linha rotulo="Nº que veio no envio" valor={request.calf_tag} />}
           </dl>
+
+          {/* Como reconhecer a cria — vira a observação da ficha dela */}
+          {request.caracteristicas && (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                Características
+              </p>
+              <p className="text-sm text-slate-800 dark:text-slate-100 break-words">
+                {request.caracteristicas}
+              </p>
+            </div>
+          )}
+
+          {/* O que ele NÃO aplicou na hora — pendência dele até dar baixa */}
+          {pendentes.length > 0 && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex items-center gap-1.5 mb-1.5">
+                <Syringe className="w-3.5 h-3.5" />
+                Protocolo pendente com o vaqueiro
+              </p>
+              <ul className="space-y-1">
+                {pendentes.map((p) => (
+                  <li key={p.id} className="text-xs text-slate-700 dark:text-slate-200">
+                    {p.applied_at ? "✓ " : "• "}
+                    {p.medicine}
+                    {p.dose ? <span className="text-slate-500"> · {p.dose}</span> : null}
+                    {p.applied_at ? (
+                      <span className="text-emerald-700 dark:text-emerald-400">
+                        {" "}
+                        — aplicado {formatDate(p.applied_at)}
+                      </span>
+                    ) : (
+                      <span className="text-amber-700 dark:text-amber-400"> — falta aplicar</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-1.5">
+                Quando ele der baixa, o remédio entra como tratamento na ficha da cria.
+              </p>
+            </div>
+          )}
 
           {/* O PROTOCOLO que o vaqueiro marcou como aplicado, no ato */}
           {request.protocolo_aplicado && request.protocolo_aplicado.length > 0 ? (

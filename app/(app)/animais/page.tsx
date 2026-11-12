@@ -3,6 +3,7 @@ import { AnimaisPageClient } from "@/components/animais/animais-page-client";
 import type {
   AnimalBirth,
   AnimalBirthRequest,
+  ProtocoloPendencia,
   ProtocoloNascimentoItem,
   AnimalBreed,
   AnimalDespesa,
@@ -179,8 +180,17 @@ export default async function AnimaisPage({
       .limit(20000),
   ]);
 
+  // O protocolo que o vaqueiro deixou PENDENTE nos envios ainda não lançados
+  // (migration 138 — sem ela a consulta falha e a conferência segue igual).
+  const { data: pendenciasDoNascimento } = await supabase
+    .from("animal_protocolo_pendencias")
+    .select("*")
+    .not("birth_request_id", "is", null)
+    .limit(1000);
+
   return (
     <AnimaisPageClient
+      pendenciasDoNascimento={(pendenciasDoNascimento as ProtocoloPendencia[] | null) ?? []}
       animals={(animalsRes.data as AnimalWithInfo[]) ?? []}
       breeds={(breedsRes.data as AnimalBreed[]) ?? []}
       vaccines={(vaccinesRes.data as AnimalVaccine[]) ?? []}

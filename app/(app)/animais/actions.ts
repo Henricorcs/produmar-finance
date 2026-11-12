@@ -1013,6 +1013,66 @@ export async function resolveBirthRequest(requestId: string, input: ResolveBirth
     await supabase.from("animal_treatments").insert(tratamentos);
   }
 
+  // A FOTO DA MÃE que o vaqueiro tirou entra na ficha da mãe escolhida pelo
+  // patrão; vira a foto principal só se ela ainda não tinha (migration 138).
+  if (request.mother_photo_path) {
+    await supabase.from("animal_photos").insert({
+      animal_id: input.mother_id,
+      path: request.mother_photo_path as string,
+      created_by: (request.created_by as string | null) ?? user.id,
+    });
+    const { data: mae } = await supabase
+      .from("animals")
+      .select("photo_path")
+      .eq("id", input.mother_id)
+      .maybeSingle();
+    if (mae && !mae.photo_path) {
+      await supabase
+        .from("animals")
+        .update({ photo_path: request.mother_photo_path })
+        .eq("id", input.mother_id);
+    }
+  }
+
+  // AS CARACTERÍSTICAS que ele escreveu (pinta na testa...) viram a observação
+  // da ficha da cria.
+  if (request.caracteristicas) {
+    await supabase
+      .from("animals")
+      .update({ notes: clean(request.caracteristicas as string) })
+      .eq("id", result.calfAnimalId);
+  }
+
+  // O PROTOCOLO QUE FICOU PENDENTE passa a apontar para a cria — quando o
+  // vaqueiro aplicar, o tratamento cai direto na ficha dela. O que ele já
+  // aplicou depois do envio (antes de o patrão lançar) entra agora.
+  const { data: pendencias } = await supabase
+    .from("animal_protocolo_pendencias")
+    .update({ calf_animal_id: result.calfAnimalId })
+    .eq("birth_request_id", requestId)
+    .select("medicine, dose, applied_at, applied_by");
+  const jaAplicadas = (
+    (pendencias ?? []) as {
+      medicine: string;
+      dose: string | null;
+      applied_at: string | null;
+      applied_by: string | null;
+    }[]
+  ).filter((p) => p.applied_at);
+  if (jaAplicadas.length > 0) {
+    await supabase.from("animal_treatments").insert(
+      jaAplicadas.map((p) => ({
+        animal_id: result.calfAnimalId,
+        description: "PROTOCOLO DO NASCIMENTO",
+        medicine: clean(p.medicine),
+        dose: clean(p.dose),
+        applied_at: p.applied_at,
+        notes: "APLICADO PELO VAQUEIRO DEPOIS DO NASCIMENTO",
+        created_by: p.applied_by ?? user.id,
+      }))
+    );
+  }
+
   await supabase.from("animal_birth_requests").delete().eq("id", requestId);
 
   revalidate();
@@ -1100,16 +1160,23 @@ export async function rejectBirthRequest(requestId: string) {
 
   const { data: request, error: reqErr } = await supabase
     .from("animal_birth_requests")
-    .select("photo_path")
+    .select("*")
     .eq("id", requestId)
     .maybeSingle();
   if (reqErr) return { error: birthRequestsTableError(reqErr) };
 
+  // Envio descartado: o protocolo pendente dele não vale mais (a cria não
+  // existe, ou foi lançada por outro envio). Best-effort, sem a 138 não há.
+  await supabase.from("animal_protocolo_pendencias").delete().eq("birth_request_id", requestId);
+
   const { error } = await supabase.from("animal_birth_requests").delete().eq("id", requestId);
   if (error) return { error: birthRequestsTableError(error) };
 
-  if (request?.photo_path) {
-    await removerArquivos([request.photo_path as string]);
+  const fotos = [request?.photo_path, request?.mother_photo_path].filter(
+    (p): p is string => typeof p === "string" && !!p
+  );
+  if (fotos.length > 0) {
+    await removerArquivos(fotos);
   }
 
   revalidate();
