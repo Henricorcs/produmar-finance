@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   createLoan,
   updateLoan,
+  gerarBoletosDaDivida,
   uploadLoanAttachments,
   type LoanInput,
 } from "@/app/(app)/devedores/actions";
@@ -60,6 +61,8 @@ export function LoanDialog({ open, onClose, loan }: Props) {
   const [termMonths, setTermMonths] = useState("");
   const [interestAmount, setInterestAmount] = useState("");
   const [installments, setInstallments] = useState("");
+  /** Forma "Boleto": já cria os boletos no sistema ao salvar (migration 139). */
+  const [criarBoletos, setCriarBoletos] = useState(true);
 
   // Comprovantes anexados já na criação (ex.: print do PIX)
   const [files, setFiles] = useState<File[]>([]);
@@ -85,6 +88,8 @@ export function LoanDialog({ open, onClose, loan }: Props) {
         setTermMonths(loan?.term_months != null ? String(loan.term_months) : "");
       }
       setInstallments(loan?.installments_count != null ? String(loan.installments_count) : "");
+      // dívida nova já sai com boleto; editar não cria sem ele pedir
+      setCriarBoletos(!loan);
       setError(null);
       setFiles([]);
       setFileError(null);
@@ -182,6 +187,17 @@ export function LoanDialog({ open, onClose, loan }: Props) {
         if (up && "error" in up) {
           setError(
             `Dívida salva, mas falha ao anexar o comprovante: ${up.error}. Tente enviar de novo.`
+          );
+          return;
+        }
+      }
+
+      // Os boletos no sistema (só cria os que faltam — repetir não duplica)
+      if (loanId && paymentMethod === "boleto" && criarBoletos) {
+        const b = await gerarBoletosDaDivida(loanId);
+        if (b && "error" in b && b.error) {
+          setError(
+            `Dívida salva, mas os boletos não saíram: ${b.error} Dá para gerar depois, na tela da dívida.`
           );
           return;
         }
@@ -365,6 +381,28 @@ export function LoanDialog({ open, onClose, loan }: Props) {
                 </button>
               ))}
             </div>
+            {/* No boleto: já cria os boletos no sistema ao salvar (um por
+                parcela, ou um com o saldo). Ir para o banco é depois, na tela
+                da dívida, com confirmação — como nos aluguéis. */}
+            {paymentMethod === "boleto" && (
+              <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={criarBoletos}
+                  onChange={(e) => setCriarBoletos(e.target.checked)}
+                  className="mt-0.5 w-5 h-5 accent-produmar-600 flex-shrink-0"
+                />
+                <span className="text-sm text-slate-700 dark:text-slate-200">
+                  Criar os boletos no sistema ao salvar
+                  <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                    {repaymentType === "parcelado"
+                      ? "Um boleto para cada parcela."
+                      : "Um boleto com o total, no vencimento."}{" "}
+                    Depois, na dívida, você confere e toca em Gerar no banco.
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
 
           {/* Parcelamento — quantas vezes, não por qual meio. Isto já se

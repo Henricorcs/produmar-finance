@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { consultarBoleto } from "@/lib/cora/client";
 import { aplicarStatusDaCora } from "@/lib/alugueis-baixa-cora";
+import { aplicarStatusDaCoraNaDivida } from "@/lib/devedores-boletos-banco";
+import type { LoanBoleto } from "@/lib/types";
 import type { CoraInvoiceStatus } from "@/lib/cora/types";
 import type { TransactionStatus } from "@/lib/types";
 
@@ -110,8 +112,8 @@ async function baixarBoletoDeAluguel(supabase: ReturnType<typeof createAdminClie
     .eq("cora_invoice_id", resourceId)
     .maybeSingle();
 
-  // Não é um boleto nosso (ou o vínculo já foi removido) — nada a fazer.
-  if (!boleto) return NextResponse.json({ ok: true });
+  // Não é do aluguel: pode ser o boleto de uma dívida (Devedores, migration 139).
+  if (!boleto) return baixarBoletoDeDivida(supabase, resourceId);
 
   let invoice;
   try {
@@ -124,6 +126,38 @@ async function baixarBoletoDeAluguel(supabase: ReturnType<typeof createAdminClie
   const r = await aplicarStatusDaCora(supabase, boleto, invoice);
   if (r.erro) {
     console.error("[webhook cora] falha ao dar baixa no aluguel", boleto.id, r.erro);
+    return NextResponse.json({ ok: false }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
+}
+
+/**
+ * O boleto de uma dívida (loan_boletos, migration 139). A Cora é reconsultada
+ * e a baixa — o pagamento em loan_payments e a parcela paga — é feita em
+ * lib/devedores-boletos-banco (o mesmo código da conferência ao abrir
+ * Devedores). Nada vai para o caixa.
+ */
+async function baixarBoletoDeDivida(supabase: ReturnType<typeof createAdminClient>, resourceId: string) {
+  const { data: boleto } = await supabase
+    .from("loan_boletos")
+    .select("*")
+    .eq("cora_invoice_id", resourceId)
+    .maybeSingle();
+
+  // Não é um boleto nosso (ou o vínculo já foi removido) — nada a fazer.
+  if (!boleto) return NextResponse.json({ ok: true });
+
+  let invoice;
+  try {
+    invoice = await consultarBoleto(resourceId);
+  } catch (e) {
+    console.error("[webhook cora] falha ao reconsultar boleto da dívida", resourceId, e);
+    return NextResponse.json({ ok: false }, { status: 502 });
+  }
+
+  const r = await aplicarStatusDaCoraNaDivida(supabase, boleto as LoanBoleto, invoice);
+  if ("erro" in r) {
+    console.error("[webhook cora] falha ao dar baixa na dívida", boleto.id, r.erro);
     return NextResponse.json({ ok: false }, { status: 500 });
   }
   return NextResponse.json({ ok: true });

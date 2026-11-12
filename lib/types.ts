@@ -567,6 +567,34 @@ export interface LoanPayment {
   created_at: string;
 }
 
+/**
+ * Boleto da dívida (migration 139) — do mesmo jeito do boleto do aluguel:
+ * nasce só no sistema (cora_status = "SISTEMA") e, depois de confirmar, é
+ * registrado na Cora. Pago no banco, a baixa entra sozinha em loan_payments.
+ */
+export interface LoanBoleto {
+  id: string;
+  loan_id: string;
+  installment_id: string | null;
+  /** O número da parcela; nulo no boleto do saldo da dívida avulsa. */
+  numero: number | null;
+  descricao: string | null;
+  due_date: string;
+  amount: number;
+  cora_invoice_id: string | null;
+  cora_status: RentalBoletoStatus;
+  digitable_line: string | null;
+  barcode: string | null;
+  pdf_url: string | null;
+  our_number: string | null;
+  pix_emv: string | null;
+  paid_at: string | null;
+  paid_amount: number | null;
+  payment_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface LoanAttachment {
   id: string;
   loan_id: string;

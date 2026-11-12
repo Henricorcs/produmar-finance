@@ -8,6 +8,12 @@ import { LOAN_PAYMENT_METHODS } from "@/lib/types";
 import type { LoanPaymentMethod, LoanRepaymentType, LoanStatus } from "@/lib/types";
 import { loanTotalDue } from "@/lib/utils";
 import { removerArquivos, uploadArquivo, urlDoArquivo } from "@/lib/storage";
+import {
+  cancelarBoletoDaDivida,
+  conferirBoletosDasDividasNaCora,
+  criarBoletosDaDividaNoSistema,
+  registrarBoletosDaDividaNoBanco,
+} from "@/lib/devedores-boletos-banco";
 
 /**
  * ESTE MÓDULO NÃO ENCOSTA NO CAIXA. NUNCA.
@@ -470,4 +476,68 @@ export async function deleteLoanAttachment(id: string) {
 
   revalidate();
   return { ok: true };
+}
+
+// ── Boletos da dívida (migration 139) ─────────────────────────────────────────
+// Do mesmo jeito dos boletos do aluguel: "Gerar no sistema" cria os boletos
+// (um por parcela, ou um com o saldo); depois de confirmar, "Gerar no banco"
+// registra na Cora. Pago no banco, a baixa entra sozinha — ver
+// lib/devedores-boletos-banco. Nada disso encosta no caixa.
+
+/** "Gerar no sistema": os boletos que faltam, só aqui (sem banco). */
+export async function gerarBoletosDaDivida(loanId: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  const r = await criarBoletosDaDividaNoSistema(supabase, loanId, user.id);
+  revalidate();
+  if (r.gerados === 0 && r.aviso) return { error: r.aviso };
+  return { ok: true as const, ...r };
+}
+
+/** "Gerar no banco": um boleto (id) ou todos os da dívida que estão só no sistema. */
+export async function gerarBoletoDaDividaNoBanco(loanId: string, boletoId: string | null) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  const r = await registrarBoletosDaDividaNoBanco(supabase, loanId, boletoId ? [boletoId] : null);
+  revalidate();
+  if (r.gerados === 0 && r.aviso) return { error: r.aviso };
+  return { ok: true as const, ...r };
+}
+
+/** Cancela um boleto da dívida (pagou de outro jeito, valor errado...). */
+export async function cancelarBoletoDivida(id: string) {
+  const supabase = createClient();
+  const r = await cancelarBoletoDaDivida(supabase, id);
+  revalidate();
+  return r;
+}
+
+// a última conferência automática (por processo): abrir a tela várias vezes
+// seguidas não pergunta à Cora toda vez
+let ultimaConferenciaDividas = 0;
+
+/**
+ * Confere na Cora os boletos de dívida em aberto no banco e dá a baixa dos
+ * pagos. A tela de Devedores chama sozinha ao abrir (no máximo a cada 5 min).
+ */
+export async function conferirPagamentosDasDividas(agora = false) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!agora && Date.now() - ultimaConferenciaDividas < 5 * 60 * 1000)
+    return { ok: true as const, conferidos: 0, baixados: 0 };
+  ultimaConferenciaDividas = Date.now();
+  const r = await conferirBoletosDasDividasNaCora(supabase);
+  if (r.baixados > 0) revalidate();
+  if (agora && r.erros.length > 0 && r.baixados === 0)
+    return { error: `Não consegui conferir no banco: ${r.erros[0]}` };
+  return { ok: true as const, conferidos: r.conferidos, baixados: r.baixados };
 }

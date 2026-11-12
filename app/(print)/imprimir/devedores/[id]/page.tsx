@@ -1,0 +1,232 @@
+import { redirect } from "next/navigation";
+import QRCode from "qrcode";
+import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserId } from "@/lib/auth";
+import {
+  barrasDoBoleto,
+  boletoEmAberto,
+  boletoNoBanco,
+  linhaDigitavelFormatada,
+} from "@/lib/alugueis-boletos";
+import { JUROS_DA_DIVIDA, MULTA_DA_DIVIDA, tituloDoBoletoDaDivida } from "@/lib/devedores-boletos";
+import { formatBRL, formatDate } from "@/lib/utils";
+import { CarneBarra } from "@/components/alugueis/carne-barra";
+import type { CarneParaPdf } from "@/lib/carne-pdf";
+import type { Loan, LoanBoleto } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * O CARNÊ DA DÍVIDA (Devedores) — os boletos em aberto, três por folha A4,
+ * para recortar e entregar ao devedor. Mesmo desenho do carnê do aluguel: o
+ * que está no banco leva a linha digitável, o código de barras e o QR do Pix;
+ * o que está só no sistema leva o recibo. Também sai em PDF para o WhatsApp.
+ */
+export default async function ImprimirBoletosDaDividaPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  /** ?b=<id do boleto> imprime só ele. */
+  searchParams: { b?: string };
+}) {
+  const supabase = createClient();
+  const userId = await getCurrentUserId();
+  if (!userId) redirect("/login");
+
+  const [dividaRes, boletosRes] = await Promise.all([
+    supabase.from("loans").select("*").eq("id", params.id).single(),
+    supabase.from("loan_boletos").select("*").eq("loan_id", params.id).order("due_date"),
+  ]);
+
+  const divida = dividaRes.data as Loan | null;
+  const boletos = ((boletosRes.data as LoanBoleto[]) ?? []).filter(
+    (b) => boletoEmAberto(b) && (!searchParams.b || b.id === searchParams.b)
+  );
+
+  if (!divida || boletos.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8 text-center">
+        <div>
+          <p className="text-lg font-semibold text-slate-700">
+            {divida ? "Nenhum boleto em aberto nesta dívida" : "Dívida não encontrada"}
+          </p>
+          <p className="text-sm text-slate-500 mt-1">Os boletos são gerados em Devedores → a dívida → Boletos.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const totalParcelas = divida.installments_count;
+  const referencia = `Dívida nº ${divida.loan_number} · de ${formatDate(divida.loan_date)}`;
+  const qrs = await Promise.all(
+    boletos.map((b) =>
+      b.pix_emv ? QRCode.toString(b.pix_emv, { type: "svg", margin: 0, errorCorrectionLevel: "M" }) : null
+    )
+  );
+
+  // O PDF para mandar pelo WhatsApp: o mesmo do aluguel, com os rótulos da dívida
+  const carne: CarneParaPdf = {
+    inquilino: divida.borrower_name,
+    imovel: referencia,
+    multa: MULTA_DA_DIVIDA,
+    juros: JUROS_DA_DIVIDA,
+    rotuloPagador: "DEVEDOR (PAGADOR)",
+    rotuloReferencia: "REFERENTE A",
+    cabecalhoSistema: "CARNÊ DA DÍVIDA · PAGAR A",
+    prefixoArquivo: "carne-divida",
+    boletos: boletos.map((b) => ({
+      competencia: `${b.due_date.slice(0, 7)}-01`,
+      due_date: b.due_date,
+      amount: b.amount,
+      cora_status: b.cora_status,
+      cora_invoice_id: b.cora_invoice_id,
+      digitable_line: b.digitable_line,
+      barcode: b.barcode,
+      our_number: b.our_number,
+      pix_emv: b.pix_emv,
+      // o título vai como "avulso": é o que o carnê escreve no canto
+      avulso: true,
+      descricao: tituloDoBoletoDaDivida(b, totalParcelas).toUpperCase(),
+    })),
+  };
+
+  return (
+    <>
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          html, body { background: white !important; }
+          @page { size: A4; margin: 8mm 10mm; }
+          .folha { box-shadow: none !important; margin: 0 !important; padding: 0 !important; }
+        }
+        body { font-family: Arial, Helvetica, sans-serif; background: #f1f5f9; color: #0f172a; }
+        .boleto { break-inside: avoid; }
+        .boleto:nth-child(3n) { break-after: page; }
+        .qr svg { width: 100%; height: 100%; }
+      `}</style>
+
+      <CarneBarra
+        titulo={
+          boletos.length === 1 && searchParams.b
+            ? `Boleto · ${tituloDoBoletoDaDivida(boletos[0], totalParcelas)} · ${divida.borrower_name}`
+            : `Carnê · ${divida.borrower_name} · ${boletos.length} boleto(s)`
+        }
+        carne={carne}
+      />
+
+      <div className="folha max-w-[794px] mx-auto my-6 bg-white shadow-xl p-6 print:p-0">
+        {boletos.map((b, i) => (
+          <section key={b.id} className="boleto pb-3 mb-3 border-b border-dashed border-slate-400 last:border-b-0">
+            <div className="border-2 border-slate-800 rounded p-3">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-300 pb-1.5">
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                    {boletoNoBanco(b) ? "Beneficiário" : "Carnê da dívida · pagar a"}
+                  </p>
+                  <p className="text-sm font-bold">PRODUMAR SERVIÇOS LTDA</p>
+                </div>
+                <div className="text-right min-w-0">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Referente a</p>
+                  <p className="text-sm font-bold truncate">{tituloDoBoletoDaDivida(b, totalParcelas)}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-x-3 gap-y-1 py-1.5 text-[11px] border-b border-slate-300">
+                <div className="col-span-2 min-w-0">
+                  <p className="text-[9px] uppercase text-slate-500">Devedor (pagador)</p>
+                  <p className="font-semibold truncate">{divida.borrower_name}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase text-slate-500">Vencimento</p>
+                  <p className="text-sm font-bold tabular-nums">{formatDate(b.due_date)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] uppercase text-slate-500">Valor</p>
+                  <p className="text-sm font-bold tabular-nums">{formatBRL(Number(b.amount))}</p>
+                </div>
+                <div className="col-span-4 min-w-0">
+                  <p className="text-[9px] uppercase text-slate-500">Referente a</p>
+                  <p className="truncate">{referencia}</p>
+                </div>
+              </div>
+
+              {!boletoNoBanco(b) ? (
+                <div className="pt-2 space-y-2 text-[11px]">
+                  <p className="text-[10px] text-slate-600 leading-snug">
+                    Pagamento direto à PRODUMAR (Pix, transferência ou dinheiro). Depois do vencimento: multa de{" "}
+                    {MULTA_DA_DIVIDA}% e juros de {JUROS_DA_DIVIDA}% ao mês.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 pt-3">
+                    <p className="border-t border-slate-500 pt-0.5 text-[9px] uppercase text-slate-500">
+                      Recebido em ____/____/________
+                    </p>
+                    <p className="border-t border-slate-500 pt-0.5 text-[9px] uppercase text-slate-500">
+                      Assinatura de quem recebeu
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-3 pt-2">
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <p className="font-mono text-[13px] font-bold tracking-tight break-all">
+                      {linhaDigitavelFormatada(b.digitable_line)}
+                    </p>
+                    {b.barcode && <CodigoDeBarras codigo={b.barcode} />}
+                    <p className="text-[10px] text-slate-600 leading-snug">
+                      Depois do vencimento: multa de {MULTA_DA_DIVIDA}% e juros de {JUROS_DA_DIVIDA}% ao mês. Pague no
+                      aplicativo do banco lendo o código de barras, ou pelo Pix com o QR ao lado. Nosso número{" "}
+                      {b.our_number ?? "—"}.
+                    </p>
+                  </div>
+                  {qrs[i] && (
+                    <div className="w-[30mm] flex-shrink-0 text-center">
+                      <div className="qr w-[28mm] h-[28mm] mx-auto" dangerouslySetInnerHTML={{ __html: qrs[i]! }} />
+                      <p className="text-[9px] font-semibold text-slate-600 mt-0.5">Pague com Pix</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {b.pdf_url && (
+              <a
+                href={b.pdf_url}
+                target="_blank"
+                rel="noreferrer"
+                className="no-print inline-block mt-1 text-[11px] text-produmar-700 underline"
+              >
+                PDF oficial deste boleto na Cora
+              </a>
+            )}
+          </section>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/** O código de barras do boleto (Intercalado 2 de 5), no tamanho do padrão: 103 × 13 mm. */
+function CodigoDeBarras({ codigo }: { codigo: string }) {
+  const larguras = barrasDoBoleto(codigo);
+  if (larguras.length === 0) return null;
+  const total = larguras.reduce((s, w) => s + w, 0);
+  let x = 0;
+  const barras: { x: number; w: number }[] = [];
+  larguras.forEach((w, i) => {
+    if (i % 2 === 0) barras.push({ x, w });
+    x += w;
+  });
+  return (
+    <svg
+      viewBox={`0 0 ${total} 50`}
+      preserveAspectRatio="none"
+      style={{ width: "103mm", maxWidth: "100%", height: "13mm" }}
+      shapeRendering="crispEdges"
+      aria-label="Código de barras do boleto"
+    >
+      {barras.map((b, i) => (
+        <rect key={i} x={b.x} y={0} width={b.w} height={50} fill="#000" />
+      ))}
+    </svg>
+  );
+}

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { addPayment, deletePayment } from "@/app/(app)/devedores/actions";
 import { LoanComprovantes } from "./loan-comprovantes";
+import { LoanBoletos } from "./loan-boletos";
 import {
   loanTotalDue,
   loanInterestAmount,
@@ -267,6 +268,13 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
                   Registrar
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* BOLETOS (migration 139) — na dívida cobrada no boleto, ou que já tem */}
+          {(loan.payment_method === "boleto" || (loan.loan_boletos ?? []).length > 0) && (
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+              <LoanBoletos loan={loan} />
             </div>
           )}
 

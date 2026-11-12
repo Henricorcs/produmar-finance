@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useEffect, useState, useMemo, useTransition } from "react";
 import { Plus, Pencil, Trash2, HandCoins, Search, Paperclip, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { LoanDialog } from "./loan-dialog";
 import { LoanDetailDialog } from "./loan-detail-dialog";
 import { LoanCalculatorDialog } from "./loan-calculator-dialog";
-import { deleteLoan } from "@/app/(app)/devedores/actions";
+import { conferirPagamentosDasDividas, deleteLoan } from "@/app/(app)/devedores/actions";
 import {
   loanTotalDue,
   loanBalance,
@@ -100,6 +100,15 @@ export function DevedoresPageClient({ loans }: Props) {
   const [detail, setDetail] = useState<LoanWithDetails | null>(null);
   const [filter, setFilter] = useState<FilterValue>("");
   const [search, setSearch] = useState("");
+
+  // Ao abrir: confere na Cora os boletos de dívida já pagos no banco e dá a
+  // baixa (pega o aviso do banco que se perdeu). No máximo a cada 5 minutos.
+  useEffect(() => {
+    if (!loans.some((l) => l.loan_boletos?.some((b) => b.cora_invoice_id))) return;
+    conferirPagamentosDasDividas().catch(() => undefined);
+    // só ao abrir a tela
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Mantém o detalhe sincronizado com os dados recarregados após uma ação
   const detailLive = useMemo(

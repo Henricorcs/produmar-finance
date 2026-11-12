@@ -29,6 +29,14 @@ export interface CarneParaPdf {
   imovel: string;
   multa: number;
   juros: number;
+  /**
+   * O mesmo carnê serve para a dívida (Devedores, migration 139): só mudam os
+   * rótulos. Sem eles, é o carnê do aluguel de sempre.
+   */
+  rotuloPagador?: string; // "INQUILINO (PAGADOR)"
+  rotuloReferencia?: string; // "IMÓVEL"
+  cabecalhoSistema?: string; // "CARNÊ DE ALUGUEL · PAGAR A"
+  prefixoArquivo?: string; // "carne-aluguel"
   boletos: Pick<
     RentalBoleto,
     | "competencia"
@@ -107,7 +115,13 @@ export async function gerarCarnePdf(c: CarneParaPdf): Promise<File> {
     doc.setTextColor(100);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text(banco ? "BENEFICIÁRIO" : boletoAvulso(b) ? "BOLETO AVULSO · PAGAR A" : "CARNÊ DE ALUGUEL · PAGAR A", x + 4, y + 5);
+    doc.text(
+      banco
+        ? "BENEFICIÁRIO"
+        : c.cabecalhoSistema ?? (boletoAvulso(b) ? "BOLETO AVULSO · PAGAR A" : "CARNÊ DE ALUGUEL · PAGAR A"),
+      x + 4,
+      y + 5
+    );
     doc.text(rotuloDoTitulo(b).toUpperCase(), x + largura - 4, y + 5, { align: "right" });
     doc.setTextColor(15);
     doc.setFont("helvetica", "bold");
@@ -130,7 +144,7 @@ export async function gerarCarnePdf(c: CarneParaPdf): Promise<File> {
       doc.setFontSize(6.5);
       doc.text(t, px, py, alinhar ? { align: alinhar } : undefined);
     };
-    rotulo("INQUILINO (PAGADOR)", x + 4, y + 16.5);
+    rotulo(c.rotuloPagador ?? "INQUILINO (PAGADOR)", x + 4, y + 16.5);
     rotulo("VENCIMENTO", x + 118, y + 16.5);
     rotulo("VALOR", x + largura - 4, y + 16.5, "right");
     doc.setTextColor(15);
@@ -141,7 +155,7 @@ export async function gerarCarnePdf(c: CarneParaPdf): Promise<File> {
     doc.text(formatDate(b.due_date), x + 118, y + 21);
     doc.text(limpar(formatBRL(Number(b.amount))), x + largura - 4, y + 21, { align: "right" });
 
-    rotulo("IMÓVEL", x + 4, y + 26);
+    rotulo(c.rotuloReferencia ?? "IMÓVEL", x + 4, y + 26);
     doc.setTextColor(15);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
@@ -240,7 +254,7 @@ export async function gerarCarnePdf(c: CarneParaPdf): Promise<File> {
   const nome =
     c.boletos.length === 1
       ? `boleto-${boletoAvulso(c.boletos[0]) ? "" : "aluguel-"}${paraNomeDeArquivo(tituloDoBoleto(c.boletos[0]))}-${nomeBase}.pdf`
-      : `carne-aluguel-${nomeBase}.pdf`;
+      : `${c.prefixoArquivo ?? "carne-aluguel"}-${nomeBase}.pdf`;
   const blob = doc.output("blob");
   return new File([blob], nome, { type: "application/pdf" });
 }
