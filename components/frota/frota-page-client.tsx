@@ -20,6 +20,7 @@ import { QuickCreateMachineDialog } from "@/components/operacoes/quick-create-ma
 import { cn, formatBRL, formatDate, machineCategoryLabel } from "@/lib/utils";
 import { DespesaDialog } from "./despesa-dialog";
 import { RelatorioOsTab } from "./relatorio-os-tab";
+import { RelatorioMensalTab } from "./relatorio-mensal-tab";
 import { VeiculoFichaDialog } from "./veiculo-ficha-dialog";
 import { ParceriasTab } from "./parcerias-tab";
 import { Chip, categoryChip, toneResultado } from "./frota-shared";
@@ -68,13 +69,15 @@ interface Props {
 }
 
 /**
- * Os três recortes da tela: a frota, o relatório de OS de cada máquina e o
- * escambo de diárias com o parceiro.
+ * Os recortes da tela: a frota, o relatório do mês (o que cada máquina fez,
+ * pra quem, quem trabalhou e quanto arrecadou), o relatório de OS de cada
+ * máquina e o escambo de diárias com o parceiro.
  */
-type Aba = "veiculos" | "relatorio" | "parceria";
+type Aba = "veiculos" | "mensal" | "relatorio" | "parceria";
 
 const ABAS = [
   { value: "veiculos" as const, label: "Veículos" },
+  { value: "mensal" as const, label: "Relatório do mês" },
   { value: "relatorio" as const, label: "Relatório de OS" },
   { value: "parceria" as const, label: "Troca com parceiro" },
 ];
@@ -511,6 +514,16 @@ export function FrotaPageClient({
       )}
 
       </>
+      ) : aba === "mensal" ? (
+        <RelatorioMensalTab
+          machines={machines}
+          ficha={ficha}
+          servicos={servicos}
+          mesLabel={mesLabel}
+          onPrevMonth={() => navigateMonth(-1)}
+          onNextMonth={() => navigateMonth(1)}
+          onAbrirFicha={setFichaMachineId}
+        />
       ) : aba === "relatorio" ? (
         <RelatorioOsTab
           machines={machines}
