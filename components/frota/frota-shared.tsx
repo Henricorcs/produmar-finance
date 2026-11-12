@@ -45,6 +45,17 @@ export function kindMeta(kind?: string | null): KindMeta {
 }
 
 /**
+ * "quantos dias", "quantas horas", "quantas viagens", "quantos km" — com o
+ * gênero certo de cada unidade. `inicio` = começa com maiúscula (rótulo).
+ */
+export function quantosDe(kind?: string | null, inicio = false): string {
+  const meta = kindMeta(kind);
+  const feminino = meta.value === "hora" || meta.value === "viagem";
+  const palavra = feminino ? "quantas" : "quantos";
+  return `${inicio ? "Q" + palavra.slice(1) : palavra} ${meta.unitPlural}`;
+}
+
+/**
  * A CONTA DO SERVIÇO do jeito que se fala: "3 viagens × R$ 200,00".
  *
  * É o que tira a dúvida na hora de conferir: sem ela a tela mostra só o total e

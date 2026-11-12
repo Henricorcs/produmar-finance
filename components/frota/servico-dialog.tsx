@@ -36,6 +36,7 @@ import {
   FOOTER_SUBMIT,
   STICKY_FOOTER,
   kindMeta,
+  quantosDe,
 } from "./frota-shared";
 import {
   MACHINE_SERVICO_KINDS,
@@ -236,7 +237,7 @@ export function ServicoDialog({
     }
     // Só a OS já acabada precisa da quantidade; a aberta, o operador conta no fim
     if (semQuantidade && (status === "concluida" || paid)) {
-      setError(`Informe quantos ${meta.unitPlural} foram — a OS concluída precisa disso`);
+      setError(`Informe ${quantosDe(kind)} foram — a OS concluída precisa disso`);
       return;
     }
     if (!internal && valor <= 0) {
@@ -417,7 +418,7 @@ export function ServicoDialog({
       {!fechado && (
         <div className="space-y-1.5">
           <Label htmlFor="ms_qtd">
-            Quantos {meta.unitPlural}
+            {quantosDe(kind, true)}
             {novo || status === "aberta" ? " — se já souber" : " *"}
           </Label>
           <Input
@@ -430,7 +431,7 @@ export function ServicoDialog({
             autoComplete="off"
           />
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Pode deixar em branco: quem estiver na máquina diz quantos {meta.unitPlural}{" "}
+            Pode deixar em branco: quem estiver na máquina diz {quantosDe(kind)}{" "}
             levou quando finalizar a OS, e o valor sai daí.
           </p>
         </div>

@@ -41,7 +41,7 @@ import {
   pausarMachineServico,
   retomarMachineServico,
 } from "@/app/(app)/frota/actions";
-import { kindMeta } from "@/components/frota/frota-shared";
+import { kindMeta, quantosDe } from "@/components/frota/frota-shared";
 import type { MachineServicoDoOperador, MachineServicoPausa } from "@/lib/types";
 
 /**
@@ -906,7 +906,7 @@ function FinalizarFrotaOSDialog({
 
     const feito = fechado ? null : parseMoney(quantidade);
     if (!fechado && (feito === null || feito <= 0)) {
-      return setErro(`Diga quantos ${meta.unitPlural} você fez`);
+      return setErro(`Diga ${quantosDe(os.kind)} você fez`);
     }
 
     startTransition(async () => {
@@ -975,7 +975,7 @@ function FinalizarFrotaOSDialog({
           {!fechado && (
             <div className="space-y-2">
               <Label htmlFor="fim_qtd" className="text-base font-semibold">
-                Quantos {meta.unitPlural} você fez? *
+                {quantosDe(os?.kind, true)} você fez? *
               </Label>
               <Input
                 id="fim_qtd"
@@ -993,7 +993,7 @@ function FinalizarFrotaOSDialog({
                   ? "Sai das leituras do horímetro. Se precisar, corrija aqui."
                   : Number(os?.quantity) > 0
                     ? "Já vem com o que foi combinado. Se fez mais ou menos, corrija aqui."
-                    : `Conte quantos ${meta.unitPlural} o serviço levou — é por isso que ele vai ser cobrado.`}
+                    : `Conte ${quantosDe(os?.kind)} o serviço levou — é por isso que ele vai ser cobrado.`}
               </p>
             </div>
           )}
