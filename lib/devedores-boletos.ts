@@ -8,12 +8,12 @@ import type { LoanBoleto } from "./types";
 // também — primeiro só no sistema, depois de confirmar, no banco.
 
 /**
- * Multa e juros do atraso no boleto da dívida. A dívida não tem contrato com
- * cláusula de multa (como o aluguel), então vai o usual da cobrança: 2% de
- * multa e 1% de juros ao mês.
+ * Multa e juros do atraso no boleto da dívida — o que o dono escolheu: 5% de
+ * multa e 3% de juros ao mês. Vale para o boleto registrado na Cora e para o
+ * texto do carnê.
  */
-export const MULTA_DA_DIVIDA = 2;
-export const JUROS_DA_DIVIDA = 1;
+export const MULTA_DA_DIVIDA = 5;
+export const JUROS_DA_DIVIDA = 3;
 
 /** O que o boleto cobra: "Parcela 2 de 6", ou a descrição do boleto avulso. */
 export function tituloDoBoletoDaDivida(
