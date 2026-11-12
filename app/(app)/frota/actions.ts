@@ -146,7 +146,11 @@ function servicoRow(input: MachineServicoInput) {
 function servicoInvalido(input: MachineServicoInput): string | null {
   if (!input.machine_id) return "Escolha a máquina ou o veículo";
   const kind = normalizeKind(input.kind);
-  if (kind !== "servico" && qty(input.quantity) <= 0)
+  // A OS ABERTA pode nascer sem quantidade: quem abre ainda não sabe quantas
+  // horas, viagens ou dias o serviço vai levar — o operador conta ao FINALIZAR
+  // (lá a quantidade é obrigatória). Só a OS já concluída precisa dela.
+  const aberta = !input.paid && normalizeStatus(input.status) === "aberta";
+  if (kind !== "servico" && qty(input.quantity) <= 0 && !aberta)
     return "Informe a quantidade do serviço";
   // O serviço interno pode não ter valor: é trabalho da própria firma.
   if (!input.internal && money(input.unit_price) <= 0)

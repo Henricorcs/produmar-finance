@@ -59,6 +59,8 @@ export function contaDoServico(
   const meta = kindMeta(kind);
   if (meta.value === "servico") return "";
   const q = Number(quantity) || 0;
+  // OS aberta sem quantidade: o operador conta quando finalizar
+  if (q <= 0) return `${formatBRL(Number(unitPrice) || 0)} por ${meta.unit} · a contar`;
   const nome = q === 1 ? meta.unit : meta.unitPlural;
   return `${formatQty(q)} ${nome} × ${formatBRL(Number(unitPrice) || 0)}`;
 }

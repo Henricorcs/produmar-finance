@@ -231,7 +231,9 @@ function FrotaOSCard({
   const combinado =
     meta.value === "servico"
       ? "Valor fechado"
-      : `${formatQty(Number(os.quantity))} ${
+      : Number(os.quantity) <= 0
+        ? `Por ${meta.unit} — você conta ao finalizar`
+        : `${formatQty(Number(os.quantity))} ${
           Number(os.quantity) === 1 ? meta.unit : meta.unitPlural
         }`;
   const trecho = [os.origin, os.destination].filter(Boolean).join(" → ");
@@ -861,7 +863,8 @@ function FinalizarFrotaOSDialog({
     if (!os) return;
     setLeituraFinal("");
     setLeituraInicialDigitada("");
-    setQuantidade(formatQty(Number(os.quantity)));
+    // OS aberta sem quantidade: o campo vem vazio para ele preencher
+    setQuantidade(Number(os.quantity) > 0 ? formatQty(Number(os.quantity)) : "");
     setQtdNaMao(false);
     setOQueFoiFeito(os.completion_notes ?? "");
     setErro(null);
@@ -988,7 +991,9 @@ function FinalizarFrotaOSDialog({
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {quantidadeDaLeitura
                   ? "Sai das leituras do horímetro. Se precisar, corrija aqui."
-                  : "Já vem com o que foi combinado. Se fez mais ou menos, corrija aqui."}
+                  : Number(os?.quantity) > 0
+                    ? "Já vem com o que foi combinado. Se fez mais ou menos, corrija aqui."
+                    : `Conte quantos ${meta.unitPlural} o serviço levou — é por isso que ele vai ser cobrado.`}
               </p>
             </div>
           )}

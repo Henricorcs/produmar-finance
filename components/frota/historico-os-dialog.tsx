@@ -211,7 +211,11 @@ function HistoricoDaFicha({
           label={
             Number(servico.quantity) === 1 ? meta.unit : meta.unitPlural
           }
-          valor={formatQty(Number(servico.quantity))}
+          valor={
+            Number(servico.quantity) > 0
+              ? formatQty(Number(servico.quantity))
+              : "a contar — o operador diz ao finalizar"
+          }
         />
         {servico.contratante && (
           <Linha icone={User} label="Contratante" valor={servico.contratante} />
