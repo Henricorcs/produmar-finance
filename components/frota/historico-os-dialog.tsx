@@ -167,9 +167,6 @@ function HistoricoDaFicha({
   const hFim = num(servico.hourmeter_end);
   const kIni = num(servico.km_start);
   const kFim = num(servico.km_end);
-  const horas = hIni !== null && hFim !== null ? hFim - hIni : null;
-  const kmRodado = kIni !== null && kFim !== null ? kFim - kIni : null;
-
   // As paradas moram numa tabela à parte (migration 094): vêm na hora.
   const [pausas, setPausas] = useState<MachineServicoPausa[] | null>(null);
   useEffect(() => {
@@ -183,6 +180,25 @@ function HistoricoDaFicha({
       vivo = false;
     };
   }, [servico.id]);
+
+  // O que a máquina fez em OUTRA OS enquanto esta estava pausada não é desta
+  // (a carregadeira parou aqui, foi fazer outra e voltou). Só conta a pausa
+  // cuja leitura cai entre o início e o fim desta medida.
+  const emOutraOs = (ini: number | null, fim: number | null): number => {
+    if (ini === null || fim === null) return 0;
+    let total = 0;
+    for (const p of pausas ?? []) {
+      const parou = num(p.pause_reading);
+      const voltou = p.resume_time ? num(p.resume_reading) : fim;
+      if (parou === null || voltou === null || parou < ini || parou > fim) continue;
+      if (voltou > parou) total += Math.min(voltou, fim) - parou;
+    }
+    return total;
+  };
+  const hPausado = emOutraOs(hIni, hFim);
+  const kPausado = emOutraOs(kIni, kFim);
+  const horas = hIni !== null && hFim !== null ? Math.max(0, hFim - hIni - hPausado) : null;
+  const kmRodado = kIni !== null && kFim !== null ? Math.max(0, kFim - kIni - kPausado) : null;
 
   return (
     <div className="space-y-3">
@@ -241,6 +257,13 @@ function HistoricoDaFicha({
           />
           {horas !== null && (
             <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
+              {hPausado > 0 && (
+                <Linha
+                  icone={Pause}
+                  label="Em outra OS durante a pausa"
+                  valor={`− ${formatQty(Math.round(hPausado * 10) / 10)} h`}
+                />
+              )}
               <Linha
                 icone={Clock}
                 label="Horas trabalhadas"
@@ -262,6 +285,13 @@ function HistoricoDaFicha({
           />
           {kmRodado !== null && (
             <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
+              {kPausado > 0 && (
+                <Linha
+                  icone={Pause}
+                  label="Em outra OS durante a pausa"
+                  valor={`− ${formatQty(Math.round(kPausado * 10) / 10)} km`}
+                />
+              )}
               <Linha
                 icone={Route}
                 label="KM rodado"
@@ -290,6 +320,10 @@ function HistoricoDaFicha({
                   {p.pause_reading != null && (
                     <span className="text-[10px] text-slate-400 ml-auto tabular-nums flex-shrink-0">
                       {formatQty(Number(p.pause_reading))}
+                      {p.resume_reading != null &&
+                      Number(p.resume_reading) !== Number(p.pause_reading)
+                        ? ` → ${formatQty(Number(p.resume_reading))}`
+                        : ""}
                     </span>
                   )}
                 </div>

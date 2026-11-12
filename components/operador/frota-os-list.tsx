@@ -52,8 +52,11 @@ import type { MachineServicoDoOperador, MachineServicoPausa } from "@/lib/types"
  * botões do dia:
  *
  *   INICIAR    → anota o horímetro (máquina) ou o km (caminhão, caçamba);
- *   PAUSAR     → fim do expediente, com a leitura e o que ficou do dia;
- *   CONTINUAR  → volta no dia seguinte, com a leitura de quando voltou;
+ *   PAUSAR     → teve um problema ou acabou o expediente: a OS fica parada,
+ *                com a leitura e o porquê — e dá para começar OUTRA enquanto
+ *                isso (a mesma máquina, uma OS rodando de cada vez);
+ *   CONTINUAR  → volta nela, com a leitura de quando voltou. O que a máquina
+ *                fez em outra OS durante a pausa não conta nesta;
  *   FINALIZAR  → a leitura final, e quanto realmente fez.
  *
  * É o mesmo caminho da OS de Operações. Quando a OS de máquina mudou para a
@@ -125,16 +128,102 @@ function leituraInicial(os: MachineServicoDoOperador, medicao: Medicao): number 
   return v === null || v === undefined ? null : Number(v);
 }
 
+/**
+ * Quanto a máquina andou ENQUANTO esta OS estava pausada — as horas (ou km) de
+ * outra OS que ela fez nesse meio-tempo, e que não são desta. Pausa ainda
+ * aberta conta até a leitura final. Parada de fim de expediente não muda nada:
+ * a máquina parada não anda, então a volta tem a mesma leitura da pausa.
+ */
+function andouNasPausas(os: MachineServicoDoOperador | null, fim: number | null): number {
+  let total = 0;
+  for (const p of os?.pausas ?? []) {
+    if (p.pause_reading == null) continue;
+    const volta = p.resume_time ? p.resume_reading : fim;
+    if (volta === null || volta === undefined) continue;
+    const d = Number(volta) - Number(p.pause_reading);
+    if (Number.isFinite(d) && d > 0) total += d;
+  }
+  return Math.round(total * 10) / 10;
+}
+
+/** A pausa ainda aberta desta OS (a que espera o CONTINUAR). */
+function pausaAbertaDe(os: MachineServicoDoOperador): MachineServicoPausa | null {
+  return (os.pausas ?? []).find((p) => !p.resume_time) ?? null;
+}
+
+type DepoisDaPausa = () => void;
+
+function semChave<T>(m: Record<string, T>, chave: string): Record<string, T> {
+  const copia = { ...m };
+  delete copia[chave];
+  return copia;
+}
+
 export function FrotaOSList({ items }: { items: MachineServicoDoOperador[] }) {
   const [iniciando, setIniciando] = useState<MachineServicoDoOperador | null>(null);
-  const [pausando, setPausando] = useState<MachineServicoDoOperador | null>(null);
+  const [pausando, setPausando] = useState<{
+    os: MachineServicoDoOperador;
+    /** Pausou para começar (ou continuar) outra: abre ela em seguida. */
+    depois?: DepoisDaPausa;
+    paraQual?: MachineServicoDoOperador;
+  } | null>(null);
   const [retomando, setRetomando] = useState<{
     os: MachineServicoDoOperador;
     pausa: MachineServicoPausa;
   } | null>(null);
   const [finalizando, setFinalizando] = useState<MachineServicoDoOperador | null>(null);
+  // O que ele acabou de pausar/continuar neste celular. A tela recarrega do
+  // servidor logo depois, mas a OS seguinte abre na hora — e já tem que saber
+  // que a outra parou e em que leitura.
+  const [pausadasAgora, setPausadasAgora] = useState<Record<string, number>>({});
+  const [retomadasAgora, setRetomadasAgora] = useState<Record<string, true>>({});
 
   if (items.length === 0) return null;
+
+  /** Esta OS está pausada? (pelo servidor ou pelo que ele acabou de fazer) */
+  function estaPausada(o: MachineServicoDoOperador): boolean {
+    if (o.id in pausadasAgora) return true;
+    if (retomadasAgora[o.id]) return false;
+    return !!pausaAbertaDe(o);
+  }
+
+  /** Outra OS da mesma máquina rodando agora (começou e não está pausada). */
+  function outraRodando(os: MachineServicoDoOperador | null): MachineServicoDoOperador | null {
+    if (!os) return null;
+    return (
+      items.find(
+        (o) =>
+          o.id !== os.id &&
+          o.machine_id === os.machine_id &&
+          !!o.started_at &&
+          !estaPausada(o)
+      ) ?? null
+    );
+  }
+
+  /** Onde a máquina parou — contando a pausa que ele acabou de anotar. */
+  function parouEm(os: MachineServicoDoOperador | null): number | null {
+    if (!os) return null;
+    const medicao = medicaoDaOs(os);
+    let n = ondeParou(os, medicao);
+    for (const o of items) {
+      const v = pausadasAgora[o.id];
+      if (v === undefined || o.machine_id !== os.machine_id || medicaoDaOs(o) !== medicao) continue;
+      if (n === null || v > n) n = v;
+    }
+    return n;
+  }
+
+  /** Pausa a outra OS da máquina e, pausada, abre esta de novo. */
+  function pausarOutraAntes(
+    outra: MachineServicoDoOperador,
+    esta: MachineServicoDoOperador,
+    depois: DepoisDaPausa
+  ) {
+    setIniciando(null);
+    setRetomando(null);
+    setPausando({ os: outra, depois, paraQual: esta });
+  }
 
   return (
     <section className="space-y-3">
@@ -148,7 +237,7 @@ export function FrotaOSList({ items }: { items: MachineServicoDoOperador[] }) {
           key={os.id}
           os={os}
           onIniciar={() => setIniciando(os)}
-          onPausar={() => setPausando(os)}
+          onPausar={() => setPausando({ os })}
           onRetomar={(pausa) => setRetomando({ os, pausa })}
           onFinalizar={() => setFinalizando(os)}
         />
@@ -156,12 +245,48 @@ export function FrotaOSList({ items }: { items: MachineServicoDoOperador[] }) {
 
       <IniciarFrotaOSDialog
         os={iniciando}
-        todas={items}
+        parou={parouEm(iniciando)}
+        outra={outraRodando(iniciando)}
+        onPausarOutra={(outra) => {
+          const esta = iniciando;
+          if (!esta) return;
+          pausarOutraAntes(outra, esta, () => setIniciando(esta));
+        }}
         onClose={() => setIniciando(null)}
       />
-      <PausarFrotaOSDialog os={pausando} onClose={() => setPausando(null)} />
-      <RetomarFrotaOSDialog alvo={retomando} onClose={() => setRetomando(null)} />
-      <FinalizarFrotaOSDialog os={finalizando} onClose={() => setFinalizando(null)} />
+      <PausarFrotaOSDialog
+        os={pausando?.os ?? null}
+        paraQual={pausando?.paraQual ?? null}
+        onClose={() => setPausando(null)}
+        onPausou={(leitura) => {
+          const alvo = pausando;
+          if (!alvo) return;
+          setPausadasAgora((m) => ({ ...m, [alvo.os.id]: leitura }));
+          setRetomadasAgora((m) => semChave(m, alvo.os.id));
+          setPausando(null);
+          alvo.depois?.();
+        }}
+      />
+      <RetomarFrotaOSDialog
+        alvo={retomando}
+        parou={parouEm(retomando?.os ?? null)}
+        outra={outraRodando(retomando?.os ?? null)}
+        onPausarOutra={(outra) => {
+          const alvo = retomando;
+          if (!alvo) return;
+          pausarOutraAntes(outra, alvo.os, () => setRetomando(alvo));
+        }}
+        onRetomou={(id) => {
+          setRetomadasAgora((m) => ({ ...m, [id]: true }));
+          setPausadasAgora((m) => semChave(m, id));
+        }}
+        onClose={() => setRetomando(null)}
+      />
+      <FinalizarFrotaOSDialog
+        os={finalizando}
+        parou={parouEm(finalizando)}
+        onClose={() => setFinalizando(null)}
+      />
     </section>
   );
 }
@@ -496,14 +621,57 @@ function Maquina({ os }: { os: MachineServicoDoOperador | null }) {
 
 // ── INICIAR ─────────────────────────────────────────────────────────────────
 
+/**
+ * Outra OS da mesma máquina ainda rodando. Mais de uma OS no dia é normal (4 h
+ * para um, 2 h para outro), mas uma de cada vez: com duas rodando juntas, as
+ * mesmas horas contariam duas vezes. Então o botão pausa a outra — ela fica
+ * esperando o CONTINUAR — e volta para esta.
+ */
+function AvisoOutraRodando({
+  outra,
+  medicao,
+  acao,
+  onPausarOutra,
+}: {
+  outra: MachineServicoDoOperador | null;
+  medicao: Medicao;
+  acao: "começar" | "continuar";
+  onPausarOutra: (outra: MachineServicoDoOperador) => void;
+}) {
+  if (!outra) return null;
+  const qual = outra.contratante ? `de ${outra.contratante}` : "anterior";
+  return (
+    <div className="rounded-xl px-3 py-3 space-y-3 bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50">
+      <p className="text-sm text-amber-800 dark:text-amber-300">
+        A OS {qual} nesta máquina ainda está rodando. Pause ela antes de {acao}{" "}
+        esta — senão as mesmas {medicao === "horimetro" ? "horas" : "km"} contam duas
+        vezes. Depois você volta nela e finaliza.
+      </p>
+      <Button
+        type="button"
+        className="w-full h-14 text-base font-bold bg-amber-500 hover:bg-amber-600 text-white"
+        onClick={() => onPausarOutra(outra)}
+      >
+        <PauseCircle className="w-5 h-5" />
+        PAUSAR A OS {outra.contratante ? `DE ${outra.contratante.toUpperCase()}` : "ANTERIOR"}
+      </Button>
+    </div>
+  );
+}
+
 function IniciarFrotaOSDialog({
   os,
-  todas,
+  parou,
+  outra,
+  onPausarOutra,
   onClose,
 }: {
   os: MachineServicoDoOperador | null;
-  /** As outras OS dele — para avisar se a mesma máquina já está rodando outra. */
-  todas: MachineServicoDoOperador[];
+  /** Onde a máquina parou — a OS da tarde começa de onde a da manhã terminou. */
+  parou: number | null;
+  /** Outra OS da mesma máquina ainda rodando. */
+  outra: MachineServicoDoOperador | null;
+  onPausarOutra: (outra: MachineServicoDoOperador) => void;
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -511,19 +679,6 @@ function IniciarFrotaOSDialog({
   const [valor, setValor] = useState("");
 
   const medicao: Medicao = os ? medicaoDaOs(os) : "horimetro";
-  /** Onde a máquina parou — a OS da tarde começa de onde a da manhã terminou. */
-  const parou = ondeParou(os, medicao);
-  // Mais de uma OS no dia é normal (4 h para um, 2 h para outro), mas uma de
-  // cada vez: com duas rodando juntas, as mesmas horas contam duas vezes.
-  const rodandoJunto = os
-    ? todas.find(
-        (o) =>
-          o.id !== os.id &&
-          o.machine_id === os.machine_id &&
-          !!o.started_at &&
-          !(o.pausas ?? []).some((p) => !p.resume_time)
-      ) ?? null
-    : null;
 
   useEffect(() => {
     if (!os) return;
@@ -567,6 +722,12 @@ function IniciarFrotaOSDialog({
 
         <div className="space-y-5">
           <Maquina os={os} />
+          <AvisoOutraRodando
+            outra={outra}
+            medicao={medicao}
+            acao="começar"
+            onPausarOutra={onPausarOutra}
+          />
           <CampoLeitura
             medicao={medicao}
             titulo={
@@ -584,14 +745,6 @@ function IniciarFrotaOSDialog({
             >
               Usar {mostrarLeitura(parou, medicao)} — onde a máquina parou
             </Button>
-          )}
-          {rodandoJunto && (
-            <p className="text-sm rounded-xl px-3 py-2 bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/50">
-              A OS {rodandoJunto.contratante ? `de ${rodandoJunto.contratante} ` : ""}
-              nesta máquina ainda está em andamento. Finalize ela antes de começar
-              esta — senão as mesmas {medicao === "horimetro" ? "horas" : "km"} contam
-              duas vezes.
-            </p>
           )}
           <Erro texto={erro} />
         </div>
@@ -623,10 +776,16 @@ function IniciarFrotaOSDialog({
 
 function PausarFrotaOSDialog({
   os,
+  paraQual,
   onClose,
+  onPausou,
 }: {
   os: MachineServicoDoOperador | null;
+  /** Está pausando esta para começar (ou continuar) aquela. */
+  paraQual: MachineServicoDoOperador | null;
   onClose: () => void;
+  /** Pausou — com a leitura anotada, para a próxima OS já saber onde parou. */
+  onPausou: (leitura: number) => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -685,7 +844,7 @@ function PausarFrotaOSDialog({
         })
       );
       if (falha) return setErro(falha);
-      onClose();
+      onPausou(n);
     });
   }
 
@@ -701,6 +860,13 @@ function PausarFrotaOSDialog({
 
         <div className="space-y-5">
           <Maquina os={os} />
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {paraQual
+              ? `Esta fica parada enquanto você faz a OS ${
+                  paraQual.contratante ? `de ${paraQual.contratante}` : "seguinte"
+                }. Depois é só tocar em CONTINUAR nela e finalizar.`
+              : "Teve um problema ou acabou o expediente? A OS fica parada esperando você voltar — e enquanto isso dá para começar outra."}
+          </p>
           <CampoLeitura
             medicao={medicao}
             titulo={medicao === "horimetro" ? "Horímetro na hora de parar" : "KM na hora de parar"}
@@ -709,11 +875,11 @@ function PausarFrotaOSDialog({
           />
           <CampoHora titulo="Hora da pausa" valor={hora} onChange={setHora} />
           <div className="space-y-2">
-            <Label className="text-base font-semibold">O que ficou do dia</Label>
+            <Label className="text-base font-semibold">Por que parou / o que ficou</Label>
             <Textarea
               value={obs}
               onChange={(e) => setObs(upperKeepingCaret(e))}
-              placeholder="opcional — ex: FALTOU TERMINAR O LADO DA CERCA"
+              placeholder="opcional — ex: CAMINHÃO NÃO CHEGOU, FALTOU TERMINAR A CERCA"
               rows={2}
               autoCapitalize="characters"
               className="text-base"
@@ -736,7 +902,7 @@ function PausarFrotaOSDialog({
             ) : (
               <>
                 <PauseCircle className="w-6 h-6" />
-                PAUSAR AGORA
+                {paraQual ? "PAUSAR E SEGUIR" : "PAUSAR AGORA"}
               </>
             )}
           </Button>
@@ -753,9 +919,19 @@ function PausarFrotaOSDialog({
 
 function RetomarFrotaOSDialog({
   alvo,
+  parou,
+  outra,
+  onPausarOutra,
+  onRetomou,
   onClose,
 }: {
   alvo: { os: MachineServicoDoOperador; pausa: MachineServicoPausa } | null;
+  /** Onde a máquina está agora — pode ter andado em outra OS durante a pausa. */
+  parou: number | null;
+  /** Outra OS da mesma máquina ainda rodando. */
+  outra: MachineServicoDoOperador | null;
+  onPausarOutra: (outra: MachineServicoDoOperador) => void;
+  onRetomou: (id: string) => void;
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -766,18 +942,26 @@ function RetomarFrotaOSDialog({
   const os = alvo?.os ?? null;
   const pausa = alvo?.pausa ?? null;
   const medicao: Medicao = os ? medicaoDaOs(os) : "horimetro";
+  const leituraDaPausa = pausa?.pause_reading != null ? Number(pausa.pause_reading) : null;
+  // A máquina andou enquanto esta estava parada: fez outra OS nesse meio-tempo
+  const andouEmOutra =
+    parou !== null && leituraDaPausa !== null && parou > leituraDaPausa
+      ? Math.round((parou - leituraDaPausa) * 10) / 10
+      : null;
 
   useEffect(() => {
     if (!alvo) return;
-    // A leitura de quando parou já vem no campo: a máquina parada não anda,
-    // então quase sempre é só confirmar.
-    setValor(
-      alvo.pausa.pause_reading != null
-        ? String(alvo.pausa.pause_reading).replace(".", ",")
-        : ""
-    );
+    // Já vem no campo onde a máquina está: a de quando parou (a máquina parada
+    // não anda) ou, se ela fez outra OS nesse meio-tempo, onde aquela terminou.
+    // Quase sempre é só confirmar.
+    const daPausa = alvo.pausa.pause_reading != null ? Number(alvo.pausa.pause_reading) : null;
+    const sugerida =
+      parou !== null && (daPausa === null || parou > daPausa) ? parou : daPausa;
+    setValor(sugerida !== null ? leituraNoCampo(sugerida) : "");
     setHora(agoraHHMM());
     setErro(null);
+    // só quando abre: depois disso o campo é dele
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alvo]);
 
   function retomar() {
@@ -809,6 +993,7 @@ function RetomarFrotaOSDialog({
         })
       );
       if (falha) return setErro(falha);
+      onRetomou(os.id);
       onClose();
     });
   }
@@ -834,11 +1019,24 @@ function RetomarFrotaOSDialog({
                 : ""}
             </p>
           )}
+          <AvisoOutraRodando
+            outra={outra}
+            medicao={medicao}
+            acao="continuar"
+            onPausarOutra={onPausarOutra}
+          />
           <CampoLeitura
             medicao={medicao}
             titulo={medicao === "horimetro" ? "Horímetro ao voltar" : "KM ao voltar"}
             valor={valor}
             onChange={setValor}
+            ajuda={
+              andouEmOutra !== null
+                ? `A máquina andou ${mostrarLeitura(andouEmOutra, medicao)} em outra OS enquanto esta estava parada — ${
+                    medicao === "horimetro" ? "essas horas não contam" : "esses km não contam"
+                  } aqui.`
+                : undefined
+            }
           />
           <CampoHora titulo="Hora da volta" valor={hora} onChange={setHora} />
           <Erro texto={erro} />
@@ -879,9 +1077,12 @@ function RetomarFrotaOSDialog({
  */
 function FinalizarFrotaOSDialog({
   os,
+  parou,
   onClose,
 }: {
   os: MachineServicoDoOperador | null;
+  /** Onde a máquina parou na última leitura anotada (qualquer OS dela). */
+  parou: number | null;
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -921,12 +1122,18 @@ function FinalizarFrotaOSDialog({
 
   const fim = lerLeitura(leituraFinal);
   const diferenca = inicio !== null && fim !== null && fim >= inicio ? fim - inicio : null;
+  // O que a máquina fez em OUTRA OS enquanto esta estava pausada não é desta:
+  // começou 1.000, pausou 1.002, a outra foi até 1.005, voltou e fechou 1.007
+  // → 7 − 3 = 4 h desta.
+  const pausado = andouNasPausas(os, fim);
+  const trabalhado =
+    diferenca !== null ? Math.max(0, Math.round((diferenca - pausado) * 10) / 10) : null;
 
   // Digitou a leitura final: as horas (ou os km) aparecem sozinhas.
   useEffect(() => {
-    if (!quantidadeDaLeitura || qtdNaMao || diferenca === null) return;
-    setQuantidade(formatQty(Math.round(diferenca * 10) / 10));
-  }, [diferenca, quantidadeDaLeitura, qtdNaMao]);
+    if (!quantidadeDaLeitura || qtdNaMao || trabalhado === null) return;
+    setQuantidade(formatQty(trabalhado));
+  }, [trabalhado, quantidadeDaLeitura, qtdNaMao]);
 
   function finalizar() {
     if (!os) return;
@@ -1002,14 +1209,14 @@ function FinalizarFrotaOSDialog({
               }
             />
           )}
-          {semPartida && ondeParou(os, medicao) !== null && (
+          {semPartida && parou !== null && (
             <Button
               type="button"
               variant="outline"
               className="w-full h-12 text-base -mt-2"
-              onClick={() => setLeituraInicialDigitada(leituraNoCampo(ondeParou(os, medicao)!))}
+              onClick={() => setLeituraInicialDigitada(leituraNoCampo(parou))}
             >
-              Usar {mostrarLeitura(ondeParou(os, medicao), medicao)} — onde a máquina parou
+              Usar {mostrarLeitura(parou, medicao)} — onde a máquina parou
             </Button>
           )}
 
@@ -1019,17 +1226,34 @@ function FinalizarFrotaOSDialog({
               valor={leituraFinal}
               onChange={setLeituraFinal}
               ajuda={
-                diferenca !== null
-                  ? `${mostrarLeitura(inicio, medicao)} → ${mostrarLeitura(fim, medicao)} = ${
+                diferenca !== null && trabalhado !== null
+                  ? `${mostrarLeitura(inicio, medicao)} → ${mostrarLeitura(fim, medicao)}${
+                      pausado > 0
+                        ? ` = ${formatQty(Math.round(diferenca * 10) / 10)}, menos ${formatQty(
+                            pausado
+                          )} em outra OS durante a pausa`
+                        : ""
+                    } = ${
                       medicao === "horimetro"
-                        ? `${formatQty(Math.round(diferenca * 10) / 10)} h trabalhadas`
-                        : `${formatQty(Math.round(diferenca * 10) / 10)} km rodados`
+                        ? `${formatQty(trabalhado)} h trabalhadas`
+                        : `${formatQty(trabalhado)} km rodados`
                     }`
                   : inicio !== null
                     ? `Começou com ${mostrarLeitura(inicio, medicao)}`
                     : undefined
               }
             />
+          {/* Pausada e a máquina foi para outra OS: o fim desta é onde ela parou */}
+          {!semPartida && os && pausaAbertaDe(os) && parou !== null && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-12 text-base -mt-2"
+              onClick={() => setLeituraFinal(leituraNoCampo(parou))}
+            >
+              Usar {mostrarLeitura(parou, medicao)} — onde a máquina está
+            </Button>
+          )}
 
           {!fechado && (
             <div className="space-y-2">

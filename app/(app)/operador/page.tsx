@@ -182,20 +182,24 @@ export default async function OperadorPage({
         ultimaLeitura.set(r.machine_id, cur);
       }
     }
-    // a leitura da pausa também conta: a máquina parou ali
+    // as leituras da pausa e da volta também contam: a máquina passou por ali
     for (const p of pausasDaFrota) {
       const os = frotaSemPausas.find((s) => s.id === p.machine_servico_id);
-      if (!os || p.pause_reading == null) continue;
-      const cur = ultimaLeitura.get(os.machine_id) ?? { horimetro: null, km: null };
-      const n = Number(p.pause_reading);
+      if (!os) continue;
       // a mesma regra do celular: hora é horímetro; km e viagem, o km do painel
       const medeKm =
         os.kind === "km" ||
         os.kind === "viagem" ||
         (os.kind !== "hora" && os.machines?.tracking_type === "km");
-      if (medeKm) cur.km = cur.km === null || n > cur.km ? n : cur.km;
-      else cur.horimetro = cur.horimetro === null || n > cur.horimetro ? n : cur.horimetro;
-      ultimaLeitura.set(os.machine_id, cur);
+      for (const bruto of [p.pause_reading, p.resume_reading]) {
+        if (bruto == null) continue;
+        const n = Number(bruto);
+        if (!Number.isFinite(n)) continue;
+        const cur = ultimaLeitura.get(os.machine_id) ?? { horimetro: null, km: null };
+        if (medeKm) cur.km = cur.km === null || n > cur.km ? n : cur.km;
+        else cur.horimetro = cur.horimetro === null || n > cur.horimetro ? n : cur.horimetro;
+        ultimaLeitura.set(os.machine_id, cur);
+      }
     }
   }
   const frotaOS = frotaSemPausas.map((s) => ({
