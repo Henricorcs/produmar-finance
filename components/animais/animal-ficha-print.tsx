@@ -9,6 +9,7 @@ import {
   doseRuleLabel,
   ehNelorePO,
   formatAge,
+  idadeComDias,
   formatMl,
   formatWeight,
   pariuLabel,
@@ -121,7 +122,7 @@ export function AnimalFichaPrint({
     { label: "Raça", value: animal.breed_name ?? "—" },
     ...(ehNelorePO(animal.breed_name) && animal.abcz_code ? [{ label: "ABCZ", value: animal.abcz_code }] : []),
     { label: "Nascimento", value: animal.birth_date ? formatDate(animal.birth_date) : "—" },
-    { label: "Idade", value: formatAge(animal.age_months) },
+    { label: "Idade", value: idadeComDias(animal.birth_date, animal.age_months) },
     { label: "Peso", value: weightKg > 0 ? formatWeight(weightKg) : "—" },
   ];
   if (lifeGain) info.push({ label: "Ganho", value: lifeGain.label });

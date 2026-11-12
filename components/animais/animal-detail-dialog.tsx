@@ -45,6 +45,7 @@ import {
   ehNelorePO,
   ehRacaPO,
   formatAge,
+  idadeComDias,
   formatMl,
   formatPeriod,
   formatWeight,
@@ -589,7 +590,7 @@ export function AnimalDetailDialog({
                   label="Nascimento"
                   value={animal.birth_date ? formatDate(animal.birth_date) : "—"}
                 />
-                <InfoRow label="Idade" value={formatAge(animal.age_months)} />
+                <InfoRow label="Idade" value={idadeComDias(animal.birth_date, animal.age_months)} />
                 <InfoRow
                   label="Peso"
                   value={

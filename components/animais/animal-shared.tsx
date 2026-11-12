@@ -360,6 +360,39 @@ export function formatAge(ageMonths: number | null): string {
   return `${y} e ${months} ${months === 1 ? "mês" : "meses"}`;
 }
 
+/**
+ * A idade certinha, com os dias: "2 anos, 1 mês e 28 dias". Conta pela data
+ * de nascimento no calendário (não por 30 dias o mês), até hoje. Sem a data,
+ * cai na idade em meses da view.
+ */
+export function idadeComDias(birthDate: string | null | undefined, ageMonths: number | null): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(birthDate ?? "");
+  if (!m) return formatAge(ageMonths);
+  const [ano, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const hoje = new Date();
+  let anos = hoje.getFullYear() - ano;
+  let meses = hoje.getMonth() + 1 - mes;
+  let dias = hoje.getDate() - dia;
+  if (dias < 0) {
+    meses -= 1;
+    // os dias do mês anterior ao de hoje
+    dias += new Date(hoje.getFullYear(), hoje.getMonth(), 0).getDate();
+  }
+  if (meses < 0) {
+    anos -= 1;
+    meses += 12;
+  }
+  if (anos < 0) return "—"; // nascimento no futuro: data errada no cadastro
+
+  const partes: string[] = [];
+  if (anos > 0) partes.push(`${anos} ${anos === 1 ? "ano" : "anos"}`);
+  if (meses > 0) partes.push(`${meses} ${meses === 1 ? "mês" : "meses"}`);
+  if (dias > 0) partes.push(`${dias} ${dias === 1 ? "dia" : "dias"}`);
+  if (partes.length === 0) return "nasceu hoje";
+  if (partes.length === 1) return partes[0];
+  return `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}`;
+}
+
 /** Peso em kg, sem casas quando inteiro (450 kg / 32,5 kg). */
 export function formatWeight(kg: number): string {
   if (!kg) return "—";
