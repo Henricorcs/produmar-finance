@@ -548,7 +548,18 @@ export async function iniciarServicoDeMaquina(input: ServicoDeMaquinaInput & { d
 }
 
 /** Anota o horímetro final: o serviço fecha e as horas entram no custo da obra. */
-export async function fecharServicoDeMaquina(id: string, final: number | null) {
+/**
+ * Fecha o serviço com o horímetro final.
+ *
+ * `inicialCorrigido`: o horímetro do começo foi digitado errado (um zero a
+ * mais, a vírgula esquecida) e quem fecha corrigiu na conferência. Sem isso o
+ * serviço ficava preso: todo final verdadeiro dava "menor que o inicial".
+ */
+export async function fecharServicoDeMaquina(
+  id: string,
+  final: number | null,
+  inicialCorrigido?: number | null
+) {
   const supabase = createClient();
 
   const { data: servico, error: lerErr } = await supabase
@@ -560,13 +571,21 @@ export async function fecharServicoDeMaquina(id: string, final: number | null) {
   if (!servico) return { error: "Serviço não encontrado. Ele pode ter sido apagado." };
   if (servico.hourmeter_end != null) return { error: "Este serviço já foi fechado." };
 
-  const errHorimetro = erroDoHorimetro(Number(servico.hourmeter_start), final);
+  const corrigiu =
+    inicialCorrigido != null && inicialCorrigido !== Number(servico.hourmeter_start);
+  const inicial = corrigiu ? inicialCorrigido : Number(servico.hourmeter_start);
+
+  const errHorimetro = erroDoHorimetro(inicial, final);
   if (errHorimetro) return { error: errHorimetro };
 
   // só fecha se continuar aberto: dois aparelhos não gravam um por cima do outro
   const { data, error } = await supabase
     .from("diarista_dia_maquinas")
-    .update({ hourmeter_end: final, closed_at: new Date().toISOString() })
+    .update({
+      ...(corrigiu ? { hourmeter_start: inicial } : {}),
+      hourmeter_end: final,
+      closed_at: new Date().toISOString(),
+    })
     .eq("id", id)
     .is("hourmeter_end", null)
     .select("id");
@@ -579,6 +598,29 @@ export async function fecharServicoDeMaquina(id: string, final: number | null) {
 
   revalidate();
   return { ok: true };
+}
+
+/**
+ * Onde a máquina parou no último serviço fechado — a pista para conferir o
+ * horímetro do começo antes de fechar (se o começo está acima de onde ela
+ * parou, quase sempre foi digitado errado).
+ */
+export async function ultimoHorimetroDaMaquina(
+  machineId: string,
+  exceto: string
+): Promise<{ final: number; em: string | null } | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("diarista_dia_maquinas")
+    .select("hourmeter_end, closed_at")
+    .eq("machine_id", machineId)
+    .neq("id", exceto)
+    .not("hourmeter_end", "is", null)
+    .order("closed_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data || data.hourmeter_end == null) return null;
+  return { final: Number(data.hourmeter_end), em: data.closed_at ?? null };
 }
 
 /** Lançou errado: apaga o serviço e a diária continua. */

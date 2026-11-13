@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useRef, useState, useTransition } from "react";
 import { Plus, Tractor, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import {
   apagarServicoDeMaquina,
   fecharServicoDeMaquina,
   iniciarServicoDeMaquina,
+  ultimoHorimetroDaMaquina,
 } from "@/app/(app)/diaristas/actions";
 import {
   erroDoHorimetro,
@@ -188,24 +189,92 @@ function CartaoDoServico({
   const [error, setError] = useState<string | null>(null);
   const [final, setFinal] = useState("");
 
+  /**
+   * Fechar é em etapas, uma pergunta por tela: 0 = confere o horímetro do
+   * começo, 1 = horímetro de agora, 2 = conferir e fechar. Null = fechado o
+   * passo a passo (o cartão mostra só o botão).
+   */
+  const [passo, setPasso] = useState<0 | 1 | 2 | null>(null);
+  /** O começo foi digitado errado e está sendo corrigido aqui. */
+  const [corrigindo, setCorrigindo] = useState(false);
+  const [inicialTxt, setInicialTxt] = useState("");
+  /** Onde a máquina parou no último serviço fechado (a pista para conferir). */
+  const [ultimo, setUltimo] = useState<{ final: number; em: string | null } | null>(null);
+  /** Hora da última troca de passo — o toque duplo no "Próximo" não fecha o serviço. */
+  const trocouEm = useRef(0);
+
   const maquina = maquinas.find((m) => m.id === servico.machine_id) ?? null;
   const obra = obras.find((o) => o.id === servico.obra_id)?.name ?? null;
   const setor = sectors.find((s) => s.id === servico.sector_id)?.name ?? null;
   const valorHora = Number(servico.machine_hourly_rate ?? maquina?.hourly_rate ?? 0);
   const aberto = servico.hourmeter_end == null;
-  const inicial = Number(servico.hourmeter_start);
+  const inicialGravado = Number(servico.hourmeter_start);
+  /** O começo que vale: o gravado, ou o corrigido agora. */
+  const inicial = corrigindo ? lerHorimetro(inicialTxt) : inicialGravado;
 
   const fim = lerHorimetro(final);
   const horasNovas = horasDaMaquina(inicial, fim);
   const aviso = fim != null ? erroDoHorimetro(inicial, fim) : null;
+  /** O final ficou abaixo do começo: quase sempre é o começo que está errado. */
+  const finalAbaixo = fim != null && inicial != null && fim <= inicial;
+  /** O começo está acima de onde a máquina parou da última vez. */
+  const comecoSuspeito = ultimo != null && inicialGravado > ultimo.final;
+
+  function abrirPassos() {
+    setError(null);
+    setPasso(0);
+    if (servico.machine_id) {
+      ultimoHorimetroDaMaquina(servico.machine_id, servico.id)
+        .then(setUltimo)
+        .catch(() => setUltimo(null));
+    }
+  }
+
+  function corrigirComeco() {
+    setError(null);
+    setCorrigindo(true);
+    if (!inicialTxt) setInicialTxt(formatQty(inicialGravado));
+    setPasso(0);
+  }
+
+  function avancar() {
+    setError(null);
+    if (passo === 0) {
+      if (corrigindo) {
+        if (inicial == null) return setError("Escreva o horímetro do começo");
+        if (inicial < 0) return setError("O horímetro não pode ser negativo");
+      }
+      return setPasso(1);
+    }
+    if (passo === 1) {
+      if (!final.trim()) return setError("Escreva o horímetro que a máquina marca agora");
+      if (fim == null) return setError("Não entendi esse número — escreva só os números, ex: 2745,5");
+      if (aviso) return setError(aviso);
+      trocouEm.current = Date.now();
+      return setPasso(2);
+    }
+  }
 
   function fechar() {
+    if (Date.now() - trocouEm.current < 600) return;
     setError(null);
+    if (aviso || fim == null || inicial == null) {
+      setPasso(1);
+      return setError(aviso ?? "Escreva o horímetro final");
+    }
     startTransition(async () => {
-      const r = await fecharServicoDeMaquina(servico.id, fim);
+      const r = await fecharServicoDeMaquina(
+        servico.id,
+        fim,
+        corrigindo && inicial !== inicialGravado ? inicial : null
+      );
       if (r && "error" in r) setError(r.error ?? "Erro ao fechar o serviço");
     });
   }
+
+  const dataDoUltimo = ultimo?.em
+    ? new Date(ultimo.em).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+    : null;
 
   function apagar() {
     if (!confirm("Apagar este serviço de máquina? A diária continua lançada.")) return;
@@ -260,12 +329,12 @@ function CartaoDoServico({
 
       {aberto ? (
         <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-          Começou no horímetro {formatQty(inicial)}
+          Começou no horímetro {formatQty(inicialGravado)}
         </p>
       ) : (
         <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
           <span>
-            {formatQty(inicial)} → {formatQty(Number(servico.hourmeter_end))} (
+            {formatQty(inicialGravado)} → {formatQty(Number(servico.hourmeter_end))} (
             {formatHoras(Number(servico.machine_hours))})
           </span>
           <span className="font-semibold text-slate-700 dark:text-slate-200">
@@ -276,37 +345,176 @@ function CartaoDoServico({
         </div>
       )}
 
-      {aberto && podeFechar && (
-        <div className="space-y-2">
-          <div className="space-y-1.5">
-            <Label htmlFor={`final_${servico.id}`}>Horímetro final *</Label>
-            <Input
-              id={`final_${servico.id}`}
-              value={final}
-              onChange={(e) => setFinal(e.target.value)}
-              placeholder={`maior que ${formatQty(inicial)}`}
-              inputMode="decimal"
-              autoComplete="off"
-              className="h-11 tabular-nums"
-            />
-          </div>
-          {aviso ? (
-            <p className="text-[12px] text-red-600 dark:text-red-400">{aviso}</p>
-          ) : horasNovas != null && horasNovas > 0 ? (
-            <ContaDaMaquina horas={horasNovas} valorHora={valorHora} temMaquina={!!maquina} />
-          ) : null}
-          <Button
-            type="button"
-            className="w-full h-12 font-semibold"
-            disabled={fim == null || !!aviso || isPending}
-            onClick={fechar}
-          >
-            {isPending ? "Fechando..." : "Fechar o serviço"}
-          </Button>
-        </div>
+      {aberto && podeFechar && passo === null && (
+        <Button type="button" className="w-full h-12 font-semibold" onClick={abrirPassos}>
+          Fechar o serviço
+        </Button>
       )}
 
-      {error && <p className="text-[12px] text-red-600 dark:text-red-400">{error}</p>}
+      {/* ── FECHAR EM ETAPAS: uma pergunta por tela ─────────────────────── */}
+      {aberto && podeFechar && passo !== null && (
+        <form
+          className="space-y-3 pt-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (passo === 2) fechar();
+            else avancar();
+          }}
+        >
+          <div className="space-y-1">
+            <div className="flex gap-1">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className={`h-1 flex-1 rounded-full ${
+                    i <= passo ? "bg-produmar-600" : "bg-slate-200 dark:bg-slate-700"
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">Passo {passo + 1} de 3</p>
+            <h4 className="text-base font-bold text-slate-800 dark:text-slate-100">
+              {passo === 0
+                ? "O horímetro do começo está certo?"
+                : passo === 1
+                  ? "Quanto a máquina marca agora?"
+                  : "Conferir e fechar"}
+            </h4>
+          </div>
+
+          {/* 1) O começo — se ele estiver errado, nenhum final passa */}
+          {passo === 0 &&
+            (corrigindo ? (
+              <div className="space-y-1.5">
+                <Label htmlFor={`ini_${servico.id}`}>Horímetro do começo, certo</Label>
+                <Input
+                  id={`ini_${servico.id}`}
+                  value={inicialTxt}
+                  onChange={(e) => setInicialTxt(e.target.value)}
+                  placeholder="ex: 2745,5"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  className="h-12 text-lg tabular-nums"
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Lançado antes: {formatQty(inicialGravado)}. Escreva o número que a máquina
+                  marcava quando ele começou.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-3xl font-bold text-slate-800 dark:text-slate-100 tabular-nums text-center py-1">
+                  {formatQty(inicialGravado)}
+                </p>
+                {ultimo && (
+                  <p
+                    className={`text-[12px] rounded-lg px-3 py-2 ${
+                      comecoSuspeito
+                        ? "bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/50"
+                        : "text-slate-500 dark:text-slate-400"
+                    }`}
+                  >
+                    O último serviço fechado desta máquina parou em{" "}
+                    <strong className="tabular-nums">{formatQty(ultimo.final)}</strong>
+                    {dataDoUltimo ? ` (${dataDoUltimo})` : ""}.
+                    {comecoSuspeito &&
+                      " O começo está bem acima disso — confira se não foi digitado errado."}
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-11"
+                  onClick={corrigirComeco}
+                >
+                  Não, corrigir o do começo
+                </Button>
+              </div>
+            ))}
+
+          {/* 2) O final */}
+          {passo === 1 && (
+            <div className="space-y-2">
+              <Input
+                id={`final_${servico.id}`}
+                aria-label="Horímetro final"
+                value={final}
+                onChange={(e) => {
+                  setFinal(e.target.value);
+                  setError(null);
+                }}
+                placeholder={inicial != null ? `maior que ${formatQty(inicial)}` : "ex: 2753,5"}
+                inputMode="decimal"
+                autoComplete="off"
+                className="h-12 text-lg tabular-nums"
+              />
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Começou em {inicial != null ? formatQty(inicial) : "—"}
+                {corrigindo ? " (corrigido)" : ""}.
+              </p>
+              {finalAbaixo && (
+                <div className="rounded-lg px-3 py-2 space-y-2 bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50">
+                  <p className="text-[12px] text-amber-800 dark:text-amber-300">
+                    Ficou menor que o do começo. Se o número de agora está certo, foi o do
+                    começo que entrou errado.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-10"
+                    onClick={corrigirComeco}
+                  >
+                    Corrigir o do começo
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3) Conferir */}
+          {passo === 2 && horasNovas != null && inicial != null && fim != null && (
+            <div className="space-y-2">
+              <p className="text-sm text-slate-600 dark:text-slate-300 tabular-nums text-center">
+                {formatQty(inicial)} → {formatQty(fim)}
+                {corrigindo && inicial !== inicialGravado ? " (começo corrigido)" : ""}
+              </p>
+              <ContaDaMaquina horas={horasNovas} valorHora={valorHora} temMaquina={!!maquina} />
+            </div>
+          )}
+
+          {error && <p className="text-[12px] text-red-600 dark:text-red-400">{error}</p>}
+
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 h-12"
+              disabled={isPending}
+              onClick={() => {
+                setError(null);
+                setPasso(passo === 0 ? null : ((passo - 1) as 0 | 1));
+              }}
+            >
+              {passo === 0 ? "Cancelar" : "Voltar"}
+            </Button>
+            <Button type="submit" className="flex-[2] h-12 font-semibold" disabled={isPending}>
+              {isPending
+                ? "Fechando..."
+                : passo === 0
+                  ? corrigindo
+                    ? "Próximo"
+                    : "Sim, está certo"
+                  : passo === 1
+                    ? "Próximo"
+                    : "Fechar o serviço"}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {error && passo === null && (
+        <p className="text-[12px] text-red-600 dark:text-red-400">{error}</p>
+      )}
     </div>
   );
 }
