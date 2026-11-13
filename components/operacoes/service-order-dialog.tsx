@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useTransition, useEffect, useMemo } from "react";
+import { useState, useTransition, useEffect, useMemo, useRef } from "react";
 import {
   Plus, X, Truck, Wrench, User, Building2,
   Clock, Gauge, DollarSign, Fuel, Boxes,
   Route, CalendarDays, HardHat, AlertTriangle, Zap, Package,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
+import { FOOTER_CANCEL, FOOTER_SUBMIT, STICKY_FOOTER } from "@/components/frota/frota-shared";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +41,7 @@ import {
   listServiceOrderAttachments,
   type ServiceOrderItemInput,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel, formatBRLInput, mascaraCpfCnpj, mascaraTelefone, upperKeepingCaret } from "@/lib/utils";
+import { cn, formatBRL, formatDate, formatHourmeter, isFreightCategory, machineCategoryLabel, osStatusLabel, formatBRLInput, mascaraCpfCnpj, mascaraTelefone, upperKeepingCaret } from "@/lib/utils";
 import { AvisoDoCelular } from "@/components/operador/aviso-do-celular";
 import { actionError } from "@/lib/action-result";
 import { avisoNaoEntregue, recadoDoAvisoNaoEntregue } from "@/lib/aviso-do-envio";
@@ -159,13 +161,40 @@ function emptyItem(): ItemDraft {
   return { product_id: "", description: "", quantity: "1", unit: "carrada", unit_price: "" };
 }
 
-function todayStr(): string {
+function todayStr(daqui = 0): string {
   // Data local do navegador (toISOString seria UTC e erra depois das 21h BRT).
   const d = new Date();
+  d.setDate(d.getDate() + daqui);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate()
   ).padStart(2, "0")}`;
 }
+
+/**
+ * As telas da OS NOVA, na ordem em que aparecem — um campo por tela, como na
+ * OS da máquina (ficha do veículo). A OS que já existe abre com tudo junto.
+ */
+type PassoRapido = "servico" | "material" | "obra" | "valor" | "data" | "enviar" | "resumo";
+
+const PASSOS_RAPIDO: PassoRapido[] = [
+  "servico",
+  "material",
+  "obra",
+  "valor",
+  "data",
+  "enviar",
+  "resumo",
+];
+
+const TITULO_PASSO_RAPIDO: Record<PassoRapido, string> = {
+  servico: "O que precisa ser feito",
+  material: "Que material buscar",
+  obra: "Pra qual obra levar",
+  valor: "Quanto deve custar",
+  data: "Pra quando",
+  enviar: "Quem vai fazer",
+  resumo: "Conferir e lançar",
+};
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -188,6 +217,14 @@ export function ServiceOrderDialog({
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  /** OS nova = passo a passo. A que já existe abre com tudo na tela. */
+  const novo = !order;
+  const [passoIdx, setPassoIdx] = useState(0);
+  /** Hora da última troca de passo — o toque duplo no "Próximo" não pode lançar a OS. */
+  const trocouEm = useRef(0);
+  const passo = PASSOS_RAPIDO[Math.min(passoIdx, PASSOS_RAPIDO.length - 1)];
+  const ultimoPasso = passoIdx >= PASSOS_RAPIDO.length - 1;
 
   // Common form state
   const [type, setType] = useState<ServiceOrderType>("entrega_material");
@@ -367,6 +404,7 @@ export function ServiceOrderDialog({
       setMateriais([]);
       setSupplyObraId("");
     }
+    setPassoIdx(0);
     setError(null);
   }, [open, order]);
 
@@ -567,9 +605,51 @@ export function ServiceOrderDialog({
     setPrdDialogIdx(null);
   }
 
+  // ── Passo a passo (OS nova) ──────────────────────────────────────────────
+  function irPara(i: number) {
+    setError(null);
+    trocouEm.current = Date.now();
+    setPassoIdx(Math.max(0, Math.min(i, PASSOS_RAPIDO.length - 1)));
+  }
+
+  /** O que cada passo precisa antes de seguir. */
+  function faltaNoPasso(p: PassoRapido): string | null {
+    if (p === "servico" && !serviceDescription.trim())
+      return "Escreva o que precisa ser feito";
+    if (p === "data" && !deliveryDate) return "Escolha o dia";
+    return null;
+  }
+
   // ── Submit ───────────────────────────────────────────────────────────────
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (novo) {
+      // No passo a passo, o Enter do teclado (e o "Próximo") só anda uma tela
+      if (!ultimoPasso) {
+        const falta = faltaNoPasso(passo);
+        if (falta) {
+          setError(falta);
+          return;
+        }
+        irPara(passoIdx + 1);
+        return;
+      }
+      // o dedo que tocou duas vezes no "Próximo" não lança a OS sem conferir
+      if (Date.now() - trocouEm.current < 600) return;
+      // Na conferência, o que faltar leva de volta para a tela dele
+      for (let i = 0; i < PASSOS_RAPIDO.length; i++) {
+        const falta = faltaNoPasso(PASSOS_RAPIDO[i]);
+        if (falta) {
+          irPara(i);
+          setError(falta);
+          return;
+        }
+      }
+    }
+    salvar();
+  }
+
+  function salvar() {
     setError(null);
 
     // Regra de negócio: frete só em caminhão/caçamba.
@@ -849,23 +929,476 @@ export function ServiceOrderDialog({
   // ── Render ───────────────────────────────────────────────────────────────
   const isClient = freightType === "cliente";
 
+  // Os pedaços do formulário — no passo a passo aparece um de cada vez (o
+  // título da tela já diz o que é, então o rótulo some); na edição, todos
+  // juntos, cada um com o seu rótulo.
+
+  const campoEnviar = (rotulo: boolean) => (
+    <div className="space-y-1.5">
+      {rotulo && (
+        <Label className="flex items-center gap-1.5">
+          <HardHat className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+          Enviar para
+        </Label>
+      )}
+      <SearchableSelect
+        items={operators}
+        value={assignedTo}
+        onChange={setAssignedTo}
+        getId={(op) => op.id}
+        getLabel={(op) => op.full_name || op.email}
+        renderItem={(op) => (
+          <div className="min-w-0">
+            <span className="truncate block">
+              {op.full_name || op.email}
+              {/* Na lista onde antes só havia operador, a marca evita
+                  mandar a OS para o xará errado. */}
+              {op.role === "admin" && (
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                  {" "}
+                  · admin
+                </span>
+              )}
+            </span>
+            {/* Categorias só fazem sentido em OS com máquina — no serviço
+                rápido (sem veículo) viram ruído, então não mostramos. */}
+            {!isQuick && op.allowed_categories?.length > 0 && (
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate block">
+                {op.allowed_categories.map(machineCategoryLabel).join(", ")}
+              </span>
+            )}
+          </div>
+        )}
+        placeholder="Ninguém (aparece para todos)"
+        searchPlaceholder="Buscar pelo nome..."
+        emptyMessage="Ninguém com esse nome"
+      />
+      {!isQuick && selectedOperator && (selectedOperator.allowed_categories?.length ?? 0) > 0 && (
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-1">
+          {selectedOperator.full_name || selectedOperator.email} opera:{" "}
+          {selectedOperator.allowed_categories.map(machineCategoryLabel).join(", ")}
+        </p>
+      )}
+      {!rotulo && (
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          O celular dele toca com a OS. Sem ninguém, ela aparece para todos.
+        </p>
+      )}
+      {/* Mandar a OS é uma coisa; o celular apitar é outra — este aviso
+          só aparece quando ele não vai tocar. */}
+      <AvisoDoCelular
+        userId={assignedTo}
+        nome={selectedOperator?.full_name || selectedOperator?.email}
+      />
+    </div>
+  );
+
+  const campoServicoRapido = (rotulo: boolean) => (
+    <div className="space-y-1.5">
+      {rotulo && (
+        <Label htmlFor="quick_task" className="flex items-center gap-1.5">
+          <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+          Serviço *
+        </Label>
+      )}
+      <Textarea
+        id="quick_task"
+        value={serviceDescription}
+        onChange={(e) => setServiceDescription(upperKeepingCaret(e))}
+        placeholder="ex: comprar 1l de diesel no posto e levar para a oficina"
+        rows={rotulo ? 2 : 4}
+        autoCapitalize="characters"
+      />
+      {!rotulo && (
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          Escreva como falaria pra ele — dá pra ditar no microfone. Frete, diária e
+          hora de máquina se lançam na ficha do veículo.
+        </p>
+      )}
+    </div>
+  );
+
+  /** MATERIAL A BUSCAR — a OS é ordem de compra, não é baixa. */
+  const campoMaterial = (rotulo: boolean) => (
+    <div className="space-y-1.5">
+      {rotulo && (
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-1.5">
+            <Package className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
+            Material
+          </Label>
+          <span className="text-[10px] text-slate-400">opcional</span>
+        </div>
+      )}
+
+      {materiais.map((m) => (
+        <div key={m.key} className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            {m.freeText ? (
+              <Input
+                value={m.name}
+                onChange={(e) => patchMaterial(m.key, { name: upperKeepingCaret(e) })}
+                placeholder="ex: cano 50mm"
+                autoCapitalize="characters"
+                autoComplete="off"
+              />
+            ) : (
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                {m.name}
+              </p>
+            )}
+          </div>
+          <Input
+            value={m.quantity}
+            onChange={(e) => patchMaterial(m.key, { quantity: formatQty(e.target.value) })}
+            inputMode="decimal"
+            aria-label={`Quantidade de ${m.name || "material"}`}
+            className="w-20 tabular-nums text-center flex-shrink-0"
+            autoComplete="off"
+          />
+          <span className="text-[11px] text-slate-400 w-9 truncate flex-shrink-0">
+            {m.unit}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMateriais((prev) => prev.filter((x) => x.key !== m.key))}
+            aria-label={`Tirar ${m.name || "o material"} da lista`}
+            className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 flex-shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => setPickerOpen(true)}
+        className={cn(
+          "w-full flex items-center justify-center gap-1.5 text-[13px] font-medium rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors",
+          rotulo ? "py-2" : "py-3"
+        )}
+      >
+        <Plus className="w-3.5 h-3.5" />
+        {materiais.length > 0 ? "Escolher mais material" : "Escolher material do estoque"}
+      </button>
+
+      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+        {!rotulo && "Não precisa de material? É só seguir. "}
+        É a lista do que buscar — o saldo do estoque não se mexe aqui. A entrada e a
+        baixa você faz quando a pendência chegar, com o preço que ele informar.
+      </p>
+    </div>
+  );
+
+  /**
+   * Para qual obra levar. É a obra do ESTOQUE — a mesma lista do aviso do
+   * técnico e da baixa, para a conta da obra fechar com ela mesma quando o
+   * material chegar.
+   */
+  const campoObraEstoque = (rotulo: boolean) => (
+    <div className="space-y-1.5">
+      {rotulo && (
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-1.5">
+            <HardHat className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
+            Obra
+          </Label>
+          <span className="text-[10px] text-slate-400">opcional</span>
+        </div>
+      )}
+      <SearchableSelect
+        items={supplyObras}
+        value={supplyObraId}
+        onChange={setSupplyObraId}
+        getId={(o) => o.id}
+        getLabel={(o) => o.name}
+        renderItem={(o) => (
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <span className="truncate">{o.name}</span>
+            {o.client && (
+              <span className="text-[10px] text-slate-400 flex-shrink-0 truncate max-w-[7rem]">
+                {o.client}
+              </span>
+            )}
+          </div>
+        )}
+        placeholder={rotulo ? "Para qual obra levar (opcional)..." : "Nenhuma — escolha se for pra obra"}
+        searchPlaceholder="Buscar obra..."
+        emptyMessage="Nenhuma obra cadastrada no Estoque"
+      />
+      {!rotulo && (
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          Opcional. Não é pra obra? É só seguir.
+        </p>
+      )}
+    </div>
+  );
+
+  /** Obra do módulo Obras — vínculo opcional, soma o custo da OS no total dela. */
+  const campoObraModulo = (rotulo: string) =>
+    obras.length > 0 ? (
+      <div className="space-y-1.5">
+        <Label>{rotulo}</Label>
+        <SearchableSelect
+          items={obras}
+          value={obraId}
+          onChange={setObraId}
+          getId={(o) => o.id}
+          getLabel={(o) => o.name}
+          placeholder="Vincular a uma obra (opcional)..."
+          searchPlaceholder="Buscar obra..."
+          emptyMessage="Nenhuma obra cadastrada"
+        />
+      </div>
+    ) : null;
+
+  const campoValorRapido = (rotulo: boolean) => (
+    <div className="space-y-1.5">
+      {rotulo && (
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-1.5">
+            <DollarSign className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
+            Valor previsto
+          </Label>
+          <span className="text-[10px] text-slate-400">opcional</span>
+        </div>
+      )}
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
+        <Input
+          value={flatServiceAmount}
+          onChange={(e) => setFlatServiceAmount(formatBRLInput(e.target.value))}
+          placeholder="0,00"
+          inputMode="decimal"
+          autoComplete="off"
+          className={cn("pl-9 tabular-nums", !rotulo && "h-12 text-lg")}
+        />
+      </div>
+      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+        {!rotulo && "Opcional — não sabe ainda? É só seguir. "}
+        O funcionário pode confirmar/ajustar esse valor e anexar o comprovante ao finalizar.
+      </p>
+    </div>
+  );
+
+  const hoje = todayStr();
+  const amanha = todayStr(1);
+
+  const campoDataRapido = (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        {(
+          [
+            { v: hoje, label: "Hoje" },
+            { v: amanha, label: "Amanhã" },
+          ] as const
+        ).map((o) => (
+          <button
+            key={o.label}
+            type="button"
+            onClick={() => {
+              setDeliveryDate(o.v);
+              irPara(passoIdx + 1);
+            }}
+            className={cn(
+              "min-h-[48px] rounded-lg border flex flex-col items-center justify-center gap-0.5 transition-colors",
+              deliveryDate === o.v
+                ? "bg-produmar-50 border-produmar-300 text-produmar-700 dark:bg-produmar-900/30 dark:border-produmar-600 dark:text-produmar-400"
+                : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+            )}
+          >
+            <span className="text-sm font-semibold">{o.label}</span>
+            <span className="text-[10px] opacity-80">{formatDate(o.v)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="quick_date" className="text-xs text-slate-500 dark:text-slate-400">
+          Outro dia
+        </Label>
+        <Input
+          id="quick_date"
+          type="date"
+          value={deliveryDate}
+          onChange={(e) => setDeliveryDate(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+
+  /** O resumo antes de lançar — cada linha volta para a tela dela. */
+  const materiaisDaLista = materiais.filter((m) => m.name.trim());
+  const obraEstoque = supplyObras.find((o) => o.id === supplyObraId);
+  const obraModulo = obras.find((o) => o.id === obraId);
+  const valorPrevisto = parseBRLToNumber(flatServiceAmount);
+  const linhasDoResumo: { passo: PassoRapido; titulo: string; valor: string }[] = [
+    { passo: "servico", titulo: "Serviço", valor: serviceDescription.trim() || "—" },
+    {
+      passo: "material",
+      titulo: "Material",
+      valor:
+        materiaisDaLista
+          .map((m) => `${m.quantity || "1"} ${m.unit} ${m.name.trim()}`)
+          .join(" · ") || "Nenhum",
+    },
+    {
+      passo: "obra",
+      titulo: "Obra",
+      valor:
+        [obraEstoque?.name, obraModulo && obraModulo.name !== obraEstoque?.name ? obraModulo.name : null]
+          .filter(Boolean)
+          .join(" · ") || "Nenhuma",
+    },
+    {
+      passo: "valor",
+      titulo: "Valor",
+      valor: valorPrevisto > 0 ? formatBRL(valorPrevisto) : "Ele informa ao finalizar",
+    },
+    { passo: "data", titulo: "Pra quando", valor: deliveryDate ? formatDate(deliveryDate) : "—" },
+    {
+      passo: "enviar",
+      titulo: "Enviar para",
+      valor: selectedOperator
+        ? selectedOperator.full_name || selectedOperator.email
+        : "Ninguém — aparece para todos",
+    },
+  ];
+
+  const resumoRapido = (
+    <div className="space-y-2">
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+        {linhasDoResumo.map((l) => (
+          <button
+            key={l.passo}
+            type="button"
+            onClick={() => irPara(PASSOS_RAPIDO.indexOf(l.passo))}
+            className="w-full flex items-start gap-3 px-3 py-2.5 text-left"
+          >
+            <span className="w-20 flex-shrink-0 text-[11px] text-slate-400 dark:text-slate-500 pt-0.5">
+              {l.titulo}
+            </span>
+            <span className="flex-1 min-w-0 text-sm font-medium text-slate-700 dark:text-slate-200 break-words">
+              {l.valor}
+            </span>
+            <ChevronRight className="w-4 h-4 text-slate-300 flex-shrink-0 mt-0.5" />
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-slate-400 dark:text-slate-500">
+        A OS nasce PENDENTE, como serviço rápido. Toque numa linha para corrigir.
+      </p>
+    </div>
+  );
+
+  const CORPO_DO_PASSO: Record<PassoRapido, React.ReactNode> = {
+    servico: campoServicoRapido(false),
+    material: campoMaterial(false),
+    obra: (
+      <div className="space-y-4">
+        {campoObraEstoque(false)}
+        {campoObraModulo("Somar o valor em qual obra (módulo Obras)")}
+      </div>
+    ),
+    valor: campoValorRapido(false),
+    data: campoDataRapido,
+    enviar: campoEnviar(false),
+    resumo: resumoRapido,
+  };
+
+  const caixaDeErro = error && (
+    <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
+      {error}
+    </p>
+  );
+
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent
-          className="max-w-2xl max-h-[92vh] overflow-y-auto"
+          className={novo ? "max-w-sm" : "max-w-2xl max-h-[92vh] overflow-y-auto"}
           onInteractOutside={(e) => {
-            // Não fecha a OS quando um sub-dialog (criar carro/local/produto)
-            // está aberto — a interação com o sub-dialog dispara este evento.
-            if (mchDialogOpen || prdDialogOpen || locDialogOpen) e.preventDefault();
+            // Não fecha a OS quando um sub-dialog (criar carro/local/produto,
+            // escolher material) está aberto — a interação com o sub-dialog
+            // dispara este evento.
+            if (mchDialogOpen || prdDialogOpen || locDialogOpen || pickerOpen) e.preventDefault();
           }}
         >
           <DialogHeader>
-            <DialogTitle className="dark:text-slate-100">
+            <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
+              {novo && (
+                <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+                  <Zap className="w-4 h-4" />
+                </span>
+              )}
               {order ? `Editar OS #${order.order_number}` : "Nova ordem de serviço"}
             </DialogTitle>
           </DialogHeader>
 
+          {novo ? (
+          // ── OS NOVA: uma tela por vez ──────────────────────────────────────
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Em que passo está */}
+            <div className="space-y-1.5">
+              <div className="flex gap-1">
+                {PASSOS_RAPIDO.map((p, i) => (
+                  <span
+                    key={p}
+                    className={cn(
+                      "h-1 flex-1 rounded-full",
+                      i <= passoIdx ? "bg-produmar-600" : "bg-slate-200 dark:bg-slate-700"
+                    )}
+                  />
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Passo {passoIdx + 1} de {PASSOS_RAPIDO.length} · Serviço rápido
+              </p>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                {TITULO_PASSO_RAPIDO[passo]}
+              </h3>
+            </div>
+
+            <div key={passo}>{CORPO_DO_PASSO[passo]}</div>
+
+            {caixaDeErro}
+
+            <DialogFooter className={STICKY_FOOTER}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => (passoIdx === 0 ? onClose() : irPara(passoIdx - 1))}
+                disabled={isPending}
+                className={cn(FOOTER_CANCEL, "h-11 sm:h-10")}
+              >
+                {passoIdx === 0 ? (
+                  "Cancelar"
+                ) : (
+                  <>
+                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    Voltar
+                  </>
+                )}
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending}
+                className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}
+              >
+                {isPending ? (
+                  "Salvando..."
+                ) : ultimoPasso ? (
+                  "Lançar OS"
+                ) : (
+                  <>
+                    Próximo
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+          ) : (
+          // ── OS QUE JÁ EXISTE: tudo na tela, para corrigir ──────────────────
           <form onSubmit={handleSubmit} className="space-y-5">
 
             {/* Type toggle */}
@@ -1095,195 +1628,15 @@ export function ServiceOrderDialog({
             )}
 
             {/* Para quem vai a OS: operador, encarregado ou outro admin */}
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5">
-                <HardHat className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                Enviar para
-              </Label>
-              <SearchableSelect
-                items={operators}
-                value={assignedTo}
-                onChange={setAssignedTo}
-                getId={(op) => op.id}
-                getLabel={(op) => op.full_name || op.email}
-                renderItem={(op) => (
-                  <div className="min-w-0">
-                    <span className="truncate block">
-                      {op.full_name || op.email}
-                      {/* Na lista onde antes só havia operador, a marca evita
-                          mandar a OS para o xará errado. */}
-                      {op.role === "admin" && (
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                          {" "}
-                          · admin
-                        </span>
-                      )}
-                    </span>
-                    {/* Categorias só fazem sentido em OS com máquina — no serviço
-                        rápido (sem veículo) viram ruído, então não mostramos. */}
-                    {!isQuick && op.allowed_categories?.length > 0 && (
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate block">
-                        {op.allowed_categories.map(machineCategoryLabel).join(", ")}
-                      </span>
-                    )}
-                  </div>
-                )}
-                placeholder="Ninguém (aparece para todos)"
-                searchPlaceholder="Buscar pelo nome..."
-                emptyMessage="Ninguém com esse nome"
-              />
-              {!isQuick && selectedOperator && (selectedOperator.allowed_categories?.length ?? 0) > 0 && (
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-1">
-                  {selectedOperator.full_name || selectedOperator.email} opera:{" "}
-                  {selectedOperator.allowed_categories.map(machineCategoryLabel).join(", ")}
-                </p>
-              )}
-              {/* Mandar a OS é uma coisa; o celular apitar é outra — este aviso
-                  só aparece quando ele não vai tocar. */}
-              <AvisoDoCelular
-                userId={assignedTo}
-                nome={selectedOperator?.full_name || selectedOperator?.email}
-              />
-            </div>
+            {campoEnviar(true)}
 
             {/* ── SERVIÇO RÁPIDO: o que fazer + valor (opcional) ──────── */}
             {isQuick && (
               <div className="space-y-3 p-3 rounded-xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
-                <div className="space-y-1.5">
-                  <Label htmlFor="quick_task" className="flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    Serviço *
-                  </Label>
-                  <Textarea
-                    id="quick_task"
-                    value={serviceDescription}
-                    onChange={(e) => setServiceDescription(upperKeepingCaret(e))}
-                    placeholder="ex: comprar 1l de diesel no posto e levar para a oficina"
-                    rows={2}
-                    autoCapitalize="characters"
-                  />
-                </div>
-
-                {/* MATERIAL A BUSCAR — a OS é ordem de compra, não é baixa */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
-                      Material
-                    </Label>
-                    <span className="text-[10px] text-slate-400">opcional</span>
-                  </div>
-
-                  {materiais.map((m) => (
-                    <div key={m.key} className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1">
-                        {m.freeText ? (
-                          <Input
-                            value={m.name}
-                            onChange={(e) => patchMaterial(m.key, { name: upperKeepingCaret(e) })}
-                            placeholder="ex: cano 50mm"
-                            autoCapitalize="characters"
-                            autoComplete="off"
-                          />
-                        ) : (
-                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
-                            {m.name}
-                          </p>
-                        )}
-                      </div>
-                      <Input
-                        value={m.quantity}
-                        onChange={(e) => patchMaterial(m.key, { quantity: formatQty(e.target.value) })}
-                        inputMode="decimal"
-                        aria-label={`Quantidade de ${m.name || "material"}`}
-                        className="w-20 tabular-nums text-center flex-shrink-0"
-                        autoComplete="off"
-                      />
-                      <span className="text-[11px] text-slate-400 w-9 truncate flex-shrink-0">
-                        {m.unit}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setMateriais((prev) => prev.filter((x) => x.key !== m.key))}
-                        aria-label={`Tirar ${m.name || "o material"} da lista`}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 flex-shrink-0"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-
-                  <button
-                    type="button"
-                    onClick={() => setPickerOpen(true)}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 text-[13px] font-medium rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Escolher material do estoque
-                  </button>
-
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    É a lista do que buscar — o saldo do estoque não se mexe aqui. A entrada e a
-                    baixa você faz quando a pendência chegar, com o preço que ele informar.
-                  </p>
-                </div>
-
-                {/* Para qual obra levar. É a obra do ESTOQUE — a mesma lista do
-                    aviso do técnico e da baixa, para a conta da obra fechar com
-                    ela mesma quando o material chegar. */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-1.5">
-                      <HardHat className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
-                      Obra
-                    </Label>
-                    <span className="text-[10px] text-slate-400">opcional</span>
-                  </div>
-                  <SearchableSelect
-                    items={supplyObras}
-                    value={supplyObraId}
-                    onChange={setSupplyObraId}
-                    getId={(o) => o.id}
-                    getLabel={(o) => o.name}
-                    renderItem={(o) => (
-                      <div className="flex items-center justify-between gap-2 min-w-0">
-                        <span className="truncate">{o.name}</span>
-                        {o.client && (
-                          <span className="text-[10px] text-slate-400 flex-shrink-0 truncate max-w-[7rem]">
-                            {o.client}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    placeholder="Para qual obra levar (opcional)..."
-                    searchPlaceholder="Buscar obra..."
-                    emptyMessage="Nenhuma obra cadastrada no Estoque"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-1.5">
-                      <DollarSign className="w-3.5 h-3.5 text-produmar-600 dark:text-produmar-400" />
-                      Valor previsto
-                    </Label>
-                    <span className="text-[10px] text-slate-400">opcional</span>
-                  </div>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
-                    <Input
-                      value={flatServiceAmount}
-                      onChange={(e) => setFlatServiceAmount(formatBRLInput(e.target.value))}
-                      placeholder="0,00"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      className="pl-9 tabular-nums"
-                    />
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    O funcionário pode confirmar/ajustar esse valor e anexar o comprovante ao finalizar.
-                  </p>
-                </div>
+                {campoServicoRapido(true)}
+                {campoMaterial(true)}
+                {campoObraEstoque(true)}
+                {campoValorRapido(true)}
               </div>
             )}
 
@@ -1357,21 +1710,7 @@ export function ServiceOrderDialog({
             )}
 
             {/* Obra — vínculo opcional, soma o custo desta OS no total da obra */}
-            {obras.length > 0 && (
-              <div className="space-y-1.5">
-                <Label>Obra</Label>
-                <SearchableSelect
-                  items={obras}
-                  value={obraId}
-                  onChange={setObraId}
-                  getId={(o) => o.id}
-                  getLabel={(o) => o.name}
-                  placeholder="Vincular a uma obra (opcional)..."
-                  searchPlaceholder="Buscar obra..."
-                  emptyMessage="Nenhuma obra cadastrada"
-                />
-              </div>
-            )}
+            {campoObraModulo("Obra")}
 
             {/* Locations — serviço rápido não tem local de retirada/entrega */}
             {!isQuick && (type !== "prestacao_servico" ? (
@@ -1922,21 +2261,18 @@ export function ServiceOrderDialog({
               </div>
             )}
 
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-400">
-                {error}
-              </p>
-            )}
+            {caixaDeErro}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
                 Cancelar
               </Button>
               <Button type="submit" disabled={isPending}>
-                {isPending ? "Salvando..." : order ? "Salvar alterações" : "Lançar OS"}
+                {isPending ? "Salvando..." : "Salvar alterações"}
               </Button>
             </DialogFooter>
           </form>
+          )}
         </DialogContent>
       </Dialog>
 
