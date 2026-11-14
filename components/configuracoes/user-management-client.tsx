@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Landmark, Trees, Smartphone, UserCog } from "lucide-react";
+import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Landmark, Trees, Smartphone, UserCog, RefreshCw } from "lucide-react";
+import { DadosDeAcesso, gerarSenha, type AcessoCriado } from "@/components/configuracoes/dados-de-acesso";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -81,6 +82,9 @@ export function UserManagementClient({ users, currentUserId }: Props) {
   const [inviteModules, setInviteModules] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
+  /** A senha do usuário novo — já vem gerada, e aparece no recado depois de criar. */
+  const [senhaNova, setSenhaNova] = useState("");
+  const [acessoCriado, setAcessoCriado] = useState<AcessoCriado | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingCatsId, setEditingCatsId] = useState<string | null>(null);
   const [catsDraft, setCatsDraft] = useState<string[]>([]);
@@ -173,12 +177,19 @@ export function UserManagementClient({ users, currentUserId }: Props) {
       )
     );
 
+    const criado: AcessoCriado = {
+      nome: String(formData.get("full_name") ?? ""),
+      email: String(formData.get("email") ?? "").trim().toLowerCase(),
+      senha: String(formData.get("password") ?? "").trim(),
+      perfil: ROLES.find((r) => r.value === selectedRole)?.label ?? selectedRole,
+    };
+
     startTransition(async () => {
       const err = actionError(await inviteUser(formData));
       if (err) {
         setFormError(err);
       } else {
-        setFormSuccess("Usuário criado com sucesso!");
+        setAcessoCriado(criado);
         setShowForm(false);
         setSelectedRole("financeiro");
         setInviteCategories([]);
@@ -470,6 +481,10 @@ export function UserManagementClient({ users, currentUserId }: Props) {
       </div>
 
       {/* Success message */}
+      {acessoCriado && (
+        <DadosDeAcesso acesso={acessoCriado} onFechar={() => setAcessoCriado(null)} />
+      )}
+
       {formSuccess && (
         <p className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50 px-3 py-2 rounded-lg">
           {formSuccess}
@@ -484,6 +499,8 @@ export function UserManagementClient({ users, currentUserId }: Props) {
           onClick={() => {
             setShowForm(true);
             setFormSuccess(null);
+            setAcessoCriado(null);
+            setSenhaNova(gerarSenha());
             setFormError(null);
           }}
           className="w-full"
@@ -524,16 +541,36 @@ export function UserManagementClient({ users, currentUserId }: Props) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="inv_password" className="text-xs">Senha provisória *</Label>
-            <Input
-              id="inv_password"
-              name="password"
-              type="password"
-              placeholder="mínimo 6 caracteres"
-              required
-              minLength={6}
-              className="h-9 text-sm"
-            />
+            <Label htmlFor="inv_password" className="text-xs">Senha (já gerada — pode trocar)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="inv_password"
+                name="password"
+                type="text"
+                value={senhaNova}
+                onChange={(e) => setSenhaNova(e.target.value)}
+                placeholder="mínimo 6 caracteres"
+                required
+                minLength={6}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                semDitado
+                className="h-9 text-sm font-semibold tracking-wide"
+              />
+              <button
+                type="button"
+                onClick={() => setSenhaNova(gerarSenha())}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Outra
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+              Depois de criar, aparece o recado com o site, o login e a senha para mandar para a pessoa.
+            </p>
           </div>
 
           <div className="space-y-1.5">
