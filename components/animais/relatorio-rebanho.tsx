@@ -167,6 +167,21 @@ export function RelatorioRebanho({ animals, todos, filiacao, escolha, breeds, on
   const [situacao, setSituacao] = useState<Situacao>("rebanho");
   const [busca, setBusca] = useState("");
   const [ordem, setOrdem] = useState<Ordem>("numero");
+  /**
+   * Altura da barra de abas que fica colada no topo no computador — o
+   * cabeçalho congelado para logo abaixo dela. No celular a barra é a de baixo
+   * e esta some (altura 0): o cabeçalho cola no alto da tela.
+   */
+  const [topo, setTopo] = useState(0);
+  useEffect(() => {
+    const medir = () => {
+      const nav = document.querySelector<HTMLElement>("[data-topnav]");
+      setTopo(nav ? nav.offsetHeight : 0);
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, []);
 
   const linhas = useMemo(
     () => montarLinhas(animals, todos, filiacao, situacao, busca, ordem),
@@ -321,25 +336,16 @@ export function RelatorioRebanho({ animals, todos, filiacao, escolha, breeds, on
         </p>
       ) : separar ? (
         grupos.map((g) => (
-          <div key={g.species} className="space-y-2">
-            <div className="flex items-center justify-between gap-2 px-1">
-              <span
-                className={cn(
-                  "text-xs font-semibold px-2 py-0.5 rounded-full",
-                  SPECIES_META[g.species].chip
-                )}
-              >
-                {SPECIES_META[g.species].plural}
-              </span>
-              <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
-                {contagem(g.linhas.length)}
-              </span>
-            </div>
-            <TabelaTela linhas={g.linhas} onAbrir={onAbrir} />
-          </div>
+          <BlocoTela
+            key={g.species}
+            species={g.species}
+            linhas={g.linhas}
+            onAbrir={onAbrir}
+            topo={topo}
+          />
         ))
       ) : (
-        <TabelaTela linhas={linhas} onAbrir={onAbrir} />
+        <BlocoTela linhas={linhas} onAbrir={onAbrir} topo={topo} />
       )}
 
       <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-start gap-1.5">
@@ -354,58 +360,106 @@ export function RelatorioRebanho({ animals, todos, filiacao, escolha, breeds, on
   );
 }
 
-/** A tabela da tela — Nº, mãe, nascimento e raça. */
-function TabelaTela({ linhas, onAbrir }: { linhas: Linha[]; onAbrir?: (id: string) => void }) {
+/** As quatro colunas — as mesmas no cabeçalho fixo e em cada linha. */
+const COLUNAS =
+  "grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1.05fr)_minmax(0,1fr)] gap-x-2 px-3";
+
+/**
+ * Um bloco da tela: o título do tipo (quando o relatório sai separado por
+ * tipo), a linha das colunas e os animais.
+ *
+ * O título e a linha das colunas ficam CONGELADOS no alto enquanto a lista
+ * rola (`sticky`) — e, como moram dentro do bloco, o bloco seguinte empurra o
+ * anterior para fora. A página é que rola (não há caixa com rolagem própria),
+ * e nada no caminho até ela pode ter `overflow` nem `transform`, senão o
+ * Safari do iPhone solta o cabeçalho: por isso o cartão não tem
+ * `overflow-hidden` e o arredondado de cima vai no próprio cabeçalho.
+ * O fundo do cabeçalho é opaco: as linhas passam por baixo dele.
+ */
+function BlocoTela({
+  species,
+  linhas,
+  onAbrir,
+  topo,
+}: {
+  /** O tipo do bloco — com ele aparece o título; sem ele, só a linha das colunas. */
+  species?: AnimalSpecies;
+  linhas: Linha[];
+  onAbrir?: (id: string) => void;
+  /** Onde o cabeçalho para: logo abaixo da barra de abas fixa do computador. */
+  topo: number;
+}) {
   return (
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
-          <table className="w-full text-xs sm:text-sm">
-            <thead>
-              <tr className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
-                <th className="py-2 pl-3 pr-2 font-semibold">Nº</th>
-                <th className="py-2 px-2 font-semibold">Mãe</th>
-                <th className="py-2 px-2 font-semibold">Nascimento</th>
-                <th className="py-2 pl-2 pr-3 font-semibold">Raça</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {linhas.map((l) => (
-                <tr
-                  key={l.id}
-                  onClick={onAbrir ? () => onAbrir(l.id) : undefined}
-                  className={cn(
-                    onAbrir && "cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/60",
-                    !l.ativo && "text-slate-400 dark:text-slate-500"
-                  )}
-                >
-                  <td className="py-2 pl-3 pr-2 align-top">
-                    <span className="font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                      {l.tag}
-                    </span>
-                    {l.tagAntigo && (
-                      <span className="block text-[10px] text-slate-400">nº antigo {l.tagAntigo}</span>
-                    )}
-                    {!l.ativo && (
-                      <span className="block text-[10px] font-semibold uppercase text-rose-500">saiu</span>
-                    )}
-                  </td>
-                  <td className="py-2 px-2 align-top tabular-nums">
-                    {l.mae ?? <span className="text-slate-300 dark:text-slate-600">—</span>}
-                  </td>
-                  <td className="py-2 px-2 align-top tabular-nums whitespace-nowrap">
-                    {l.nascimento ? (
-                      formatDate(l.nascimento)
-                    ) : (
-                      <span className="text-slate-300 dark:text-slate-600">—</span>
-                    )}
-                  </td>
-                  <td className="py-2 pl-2 pr-3 align-top">
-                    {l.raca ?? <span className="text-slate-300 dark:text-slate-600">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+      <div
+        className="sticky z-10 rounded-t-[11px] bg-white shadow-[0_1px_0_0_#e2e8f0] dark:bg-slate-900 dark:shadow-[0_1px_0_0_#334155]"
+        style={{ top: topo }}
+      >
+        {species && (
+          <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2">
+            <span
+              className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", SPECIES_META[species].chip)}
+            >
+              {SPECIES_META[species].plural}
+            </span>
+            <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
+              {contagem(linhas.length)}
+            </span>
+          </div>
+        )}
+        <div
+          className={cn(
+            COLUNAS,
+            "py-2 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+            !species && "rounded-t-[11px]"
+          )}
+        >
+          <span>Nº</span>
+          <span>Mãe</span>
+          <span>Nascimento</span>
+          <span>Raça</span>
         </div>
+      </div>
+
+      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+        {linhas.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            disabled={!onAbrir}
+            onClick={onAbrir ? () => onAbrir(l.id) : undefined}
+            className={cn(
+              COLUNAS,
+              "w-full py-2 text-left text-xs sm:text-sm last:rounded-b-[11px] active:bg-slate-50 dark:active:bg-slate-800/60 disabled:cursor-default",
+              !l.ativo && "text-slate-400 dark:text-slate-500"
+            )}
+          >
+            <span className="min-w-0 break-words">
+              <span className="font-bold tabular-nums text-slate-800 dark:text-slate-100">{l.tag}</span>
+              {l.tagAntigo && (
+                <span className="block text-[10px] text-slate-400">nº antigo {l.tagAntigo}</span>
+              )}
+              {!l.ativo && (
+                <span className="block text-[10px] font-semibold uppercase text-rose-500">saiu</span>
+              )}
+            </span>
+            <span className="min-w-0 break-words tabular-nums">
+              {l.mae ?? <span className="text-slate-300 dark:text-slate-600">—</span>}
+            </span>
+            <span className="tabular-nums whitespace-nowrap">
+              {l.nascimento ? (
+                formatDate(l.nascimento)
+              ) : (
+                <span className="text-slate-300 dark:text-slate-600">—</span>
+              )}
+            </span>
+            <span className="min-w-0 break-words">
+              {l.raca ?? <span className="text-slate-300 dark:text-slate-600">—</span>}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
