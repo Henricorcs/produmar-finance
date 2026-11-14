@@ -146,8 +146,7 @@ export function BirthRequestDetailDialog({
             <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2.5 py-2">
               Não existe nenhuma fêmea {request.mother_tag.trim().toUpperCase()} no cadastro — ou o
               vaqueiro errou o número, ou essa {nomes.female.toLowerCase()} ainda não foi
-              cadastrada. Ao lançar, você escolhe a mãe certa na lista ou lança com a mãe{" "}
-              {request.mother_tag.trim().toUpperCase()} escrita na ficha da cria.
+              cadastrada. Ao lançar, escolha a mãe certa na lista das fêmeas cadastradas.
             </p>
           )}
 
