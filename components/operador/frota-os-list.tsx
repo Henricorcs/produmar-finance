@@ -151,6 +151,82 @@ function pausaAbertaDe(os: MachineServicoDoOperador): MachineServicoPausa | null
   return (os.pausas ?? []).find((p) => !p.resume_time) ?? null;
 }
 
+function numero(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * A última leitura que ESTA OS registrou — a de partida, a de cada pausa e a
+ * de cada volta. Dentro da OS o horímetro só anda para frente: a pausa não
+ * pode ser menor que ela, e o fim também não.
+ */
+function ultimaDaOs(os: MachineServicoDoOperador, medicao: Medicao): number | null {
+  let n = leituraInicial(os, medicao);
+  for (const p of os.pausas ?? []) {
+    for (const v of [numero(p.pause_reading), numero(p.resume_reading)]) {
+      if (v !== null && (n === null || v > n)) n = v;
+    }
+  }
+  return n;
+}
+
+/** "12/11 às 17:52" — com o que o celular gravou (já é a hora daqui). */
+function diaEHora(data: string | null, hora: string | null): string {
+  const d = data ? formatDate(data).slice(0, 5) : "";
+  const h = hora ? hora.slice(0, 5) : "";
+  return [d, h ? `às ${h}` : ""].filter(Boolean).join(" ");
+}
+
+/**
+ * Um pedaço do serviço em que a máquina trabalhou NESTA OS: do começo (ou da
+ * volta de uma pausa) até a pausa seguinte (ou até agora). Entre um trecho e
+ * outro a máquina pode ter feito outra OS — essas horas não entram aqui.
+ */
+interface Trecho {
+  de: number | null;
+  /** Nulo = é o trecho de agora, ainda rodando. */
+  ate: number | null;
+  /** Quando voltou (o primeiro trecho começa no INICIAR). */
+  voltou: string | null;
+  parou: string | null;
+  motivo: string | null;
+}
+
+function trechosDaOs(os: MachineServicoDoOperador, medicao: Medicao): Trecho[] {
+  const trechos: Trecho[] = [];
+  let de = leituraInicial(os, medicao);
+  let voltou: string | null = null;
+  const pausas = [...(os.pausas ?? [])].sort((a, b) => a.pause_number - b.pause_number);
+  for (const p of pausas) {
+    trechos.push({
+      de,
+      ate: numero(p.pause_reading),
+      voltou,
+      parou: diaEHora(p.pause_date, p.pause_time) || "—",
+      motivo: p.pause_notes,
+    });
+    // pausada agora: não há trecho rodando
+    if (!p.resume_time) return trechos;
+    de = numero(p.resume_reading);
+    voltou = diaEHora(p.resume_date, p.resume_time) || "—";
+  }
+  trechos.push({ de, ate: null, voltou, parou: null, motivo: null });
+  return trechos;
+}
+
+/** Horas (ou km) somadas dos trechos já fechados por uma pausa. */
+function feitoNosTrechos(trechos: Trecho[]): number {
+  let total = 0;
+  for (const t of trechos) {
+    if (t.de === null || t.ate === null) continue;
+    const d = t.ate - t.de;
+    if (d > 0) total += d;
+  }
+  return Math.round(total * 10) / 10;
+}
+
 type DepoisDaPausa = () => void;
 
 function semChave<T>(m: Record<string, T>, chave: string): Record<string, T> {
@@ -454,20 +530,10 @@ function FrotaOSCard({
         <p className="text-sm text-slate-500 dark:text-slate-400 break-words">{os.notes}</p>
       )}
 
-      {/* O diário das paradas — para ele saber de onde voltou */}
+      {/* Os trechos do serviço: cada vez que a máquina trabalhou NESTA OS, de
+          que leitura a que leitura. Entre um e outro ela pode ter feito outra OS. */}
       {pausas.length > 0 && (
-        <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40 px-3 py-2 space-y-1">
-          {pausas.map((p) => (
-            <p key={p.id} className="text-sm text-amber-800 dark:text-amber-300 tabular-nums">
-              Parou {p.pause_date ? formatDate(p.pause_date) : ""}
-              {p.pause_time ? ` às ${p.pause_time.slice(0, 5)}` : ""}
-              {p.pause_reading != null ? ` · ${mostrarLeitura(p.pause_reading, medicao)}` : ""}
-              {p.resume_time
-                ? ` — voltou ${p.resume_date ? formatDate(p.resume_date) : ""} às ${p.resume_time.slice(0, 5)}`
-                : " — aguardando continuar"}
-            </p>
-          ))}
-        </div>
+        <TrechosDaOs os={os} medicao={medicao} pausada={!!pausaAberta} />
       )}
 
       {emAndamento ? (
@@ -539,6 +605,62 @@ function Linha({
   );
 }
 
+/**
+ * Os trechos da OS pausada uma ou mais vezes:
+ *
+ *   1º  1.558,1 → 1.564,5 = 6,4 h   · parou 12/11 às 17:52 — CHUVA
+ *   2º  1.570,0 → rodando agora     · voltou 13/11 às 06:57
+ *   Trabalhado até agora: 6,4 h
+ *
+ * É a conta que o FINALIZAR faz: só entra o que a máquina andou dentro de
+ * cada trecho — o que ela fez em outra OS entre um e outro fica de fora.
+ */
+function TrechosDaOs({
+  os,
+  medicao,
+  pausada,
+}: {
+  os: MachineServicoDoOperador;
+  medicao: Medicao;
+  pausada: boolean;
+}) {
+  const trechos = trechosDaOs(os, medicao);
+  const feito = feitoNosTrechos(trechos);
+  const unidade = medicao === "horimetro" ? "h" : "km";
+  return (
+    <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40 px-3 py-2 space-y-2">
+      {trechos.map((t, i) => {
+        const d = t.de !== null && t.ate !== null ? Math.max(0, t.ate - t.de) : null;
+        return (
+          <div key={i} className="text-sm text-amber-900 dark:text-amber-200 tabular-nums">
+            <p className="font-semibold">
+              {i + 1}º trecho: {t.de !== null ? mostrarLeitura(t.de, medicao) : "—"} →{" "}
+              {t.ate !== null
+                ? `${mostrarLeitura(t.ate, medicao)} = ${formatQty(Math.round((d ?? 0) * 10) / 10)} ${unidade}`
+                : "rodando agora"}
+            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              {t.voltou ? `voltou ${t.voltou}` : "começou"}
+              {t.parou ? ` · parou ${t.parou}` : ""}
+              {t.motivo ? ` — ${t.motivo}` : ""}
+            </p>
+          </div>
+        );
+      })}
+      <p className="text-sm font-bold text-amber-900 dark:text-amber-200 tabular-nums border-t border-amber-200 dark:border-amber-900/50 pt-1.5">
+        {medicao === "horimetro" ? "Trabalhado" : "Rodado"} até {pausada ? "a pausa" : "a última pausa"}:{" "}
+        {formatQty(feito)} {unidade}
+      </p>
+      {pausada && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          A máquina está livre para outra OS. Quando voltar aqui, toque em CONTINUAR e anote{" "}
+          {medicao === "horimetro" ? "o horímetro que ela estiver marcando" : "o km do painel"}.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Os campos grandes que os quatro diálogos repetem ─────────────────────────
 
 function CampoLeitura({
@@ -574,28 +696,53 @@ function CampoLeitura({
   );
 }
 
-function CampoHora({
-  titulo,
-  valor,
-  onChange,
+/** Dia e hora lado a lado — a pausa lançada depois fica com o dia certo. */
+function CampoDiaEHora({
+  tituloDia,
+  dia,
+  onDia,
+  tituloHora,
+  hora,
+  onHora,
 }: {
-  titulo: string;
-  valor: string;
-  onChange: (v: string) => void;
+  tituloDia: string;
+  dia: string;
+  onDia: (v: string) => void;
+  tituloHora: string;
+  hora: string;
+  onHora: (v: string) => void;
 }) {
   return (
-    <div className="space-y-2">
-      <Label className="text-base font-semibold flex items-center gap-2">
-        <Clock className="w-5 h-5 text-produmar-600" />
-        {titulo}
-      </Label>
-      <Input
-        type="time"
-        value={valor}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-16 text-3xl text-center font-bold tabular-nums"
-      />
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-2 min-w-0">
+        <Label className="text-base font-semibold">{tituloDia}</Label>
+        <Input
+          type="date"
+          value={dia}
+          onChange={(e) => onDia(e.target.value)}
+          className="h-14 text-base text-center font-bold tabular-nums"
+        />
+      </div>
+      <div className="space-y-2 min-w-0">
+        <Label className="text-base font-semibold">{tituloHora}</Label>
+        <Input
+          type="time"
+          value={hora}
+          onChange={(e) => onHora(e.target.value)}
+          className="h-14 text-xl text-center font-bold tabular-nums"
+        />
+      </div>
     </div>
+  );
+}
+
+/** O aviso amarelo que pede para conferir — e um segundo toque confirma. */
+function Aviso({ texto }: { texto: string | null }) {
+  if (!texto) return null;
+  return (
+    <p className="text-base text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5 rounded-lg border border-amber-200 dark:border-amber-900/50">
+      {texto}
+    </p>
   );
 }
 
@@ -677,6 +824,9 @@ function IniciarFrotaOSDialog({
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [valor, setValor] = useState("");
+  const [aviso, setAviso] = useState<string | null>(null);
+  /** A leitura que ele já conferiu depois do aviso — o segundo toque passa. */
+  const [conferida, setConferida] = useState<number | null>(null);
 
   const medicao: Medicao = os ? medicaoDaOs(os) : "horimetro";
 
@@ -684,6 +834,8 @@ function IniciarFrotaOSDialog({
     if (!os) return;
     setValor("");
     setErro(null);
+    setAviso(null);
+    setConferida(null);
   }, [os]);
 
   function iniciar() {
@@ -697,7 +849,22 @@ function IniciarFrotaOSDialog({
       );
       return;
     }
+    // A máquina já passou dessa leitura em outra OS (pausada ou fechada):
+    // começar abaixo dela faz as mesmas horas contarem nas duas. Pode ser um
+    // serviço antigo lançado agora — então avisa e o segundo toque confirma.
+    if (parou !== null && n < parou && conferida !== n) {
+      setErro(null);
+      setConferida(n);
+      setAviso(
+        `A máquina já marcou ${mostrarLeitura(parou, medicao)} em outra OS. Começar com ${mostrarLeitura(
+          n,
+          medicao
+        )} faz ${medicao === "horimetro" ? "as mesmas horas contarem" : "os mesmos km contarem"} duas vezes. Confira no painel da máquina. Se está certo (um serviço antigo lançado agora), toque em COMEÇAR de novo.`
+      );
+      return;
+    }
     setErro(null);
+    setAviso(null);
     startTransition(async () => {
       const falha = actionError(
         await iniciarMachineServico(
@@ -734,18 +901,25 @@ function IniciarFrotaOSDialog({
               medicao === "horimetro" ? "Horímetro da máquina agora" : "KM do veículo agora"
             }
             valor={valor}
-            onChange={setValor}
+            onChange={(v) => {
+              setValor(v);
+              setAviso(null);
+            }}
           />
           {parou !== null && (
             <Button
               type="button"
               variant="outline"
               className="w-full h-12 text-base"
-              onClick={() => setValor(leituraNoCampo(parou))}
+              onClick={() => {
+                setValor(leituraNoCampo(parou));
+                setAviso(null);
+              }}
             >
               Usar {mostrarLeitura(parou, medicao)} — onde a máquina parou
             </Button>
           )}
+          <Aviso texto={aviso} />
           <Erro texto={erro} />
         </div>
 
@@ -790,15 +964,19 @@ function PausarFrotaOSDialog({
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [valor, setValor] = useState("");
+  const [dia, setDia] = useState("");
   const [hora, setHora] = useState("");
   const [obs, setObs] = useState("");
   const [gps, setGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
 
   const medicao: Medicao = os ? medicaoDaOs(os) : "horimetro";
+  // De onde este trecho começou: o INICIAR ou a volta da última pausa.
+  const desde = os ? ultimaDaOs(os, medicao) : null;
 
   useEffect(() => {
     if (!os) return;
     setValor("");
+    setDia(localDateISO());
     setHora(agoraHHMM());
     setObs("");
     setErro(null);
@@ -829,12 +1007,20 @@ function PausarFrotaOSDialog({
       );
       return;
     }
+    if (desde !== null && n < desde) {
+      return setErro(
+        `A leitura da pausa não pode ser menor que ${mostrarLeitura(desde, medicao)} — onde este serviço ${
+          (os.pausas ?? []).length > 0 ? "voltou da última pausa" : "começou"
+        }.`
+      );
+    }
+    if (!dia) return setErro("Informe o dia da pausa");
     if (!hora.trim()) return setErro("Informe a hora da pausa");
     setErro(null);
     startTransition(async () => {
       const falha = actionError(
         await pausarMachineServico(os.id, {
-          pauseDate: localDateISO(),
+          pauseDate: dia,
           pauseTime: hora,
           reading: n,
           notes: obs,
@@ -872,8 +1058,20 @@ function PausarFrotaOSDialog({
             titulo={medicao === "horimetro" ? "Horímetro na hora de parar" : "KM na hora de parar"}
             valor={valor}
             onChange={setValor}
+            ajuda={
+              desde !== null
+                ? `Este trecho começou com ${mostrarLeitura(desde, medicao)}.`
+                : undefined
+            }
           />
-          <CampoHora titulo="Hora da pausa" valor={hora} onChange={setHora} />
+          <CampoDiaEHora
+            tituloDia="Dia da pausa"
+            dia={dia}
+            onDia={setDia}
+            tituloHora="Hora"
+            hora={hora}
+            onHora={setHora}
+          />
           <div className="space-y-2">
             <Label className="text-base font-semibold">Por que parou / o que ficou</Label>
             <Textarea
@@ -937,7 +1135,11 @@ function RetomarFrotaOSDialog({
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [valor, setValor] = useState("");
+  const [dia, setDia] = useState("");
   const [hora, setHora] = useState("");
+  const [aviso, setAviso] = useState<string | null>(null);
+  /** A leitura que ele já conferiu depois do aviso — o segundo toque passa. */
+  const [conferida, setConferida] = useState<number | null>(null);
 
   const os = alvo?.os ?? null;
   const pausa = alvo?.pausa ?? null;
@@ -948,20 +1150,26 @@ function RetomarFrotaOSDialog({
     parou !== null && leituraDaPausa !== null && parou > leituraDaPausa
       ? Math.round((parou - leituraDaPausa) * 10) / 10
       : null;
+  const digitada = lerLeitura(valor);
+  // O que a máquina fez fora desta OS durante a pausa — pela leitura digitada
+  const foraDestaOs =
+    digitada !== null && leituraDaPausa !== null && digitada > leituraDaPausa
+      ? Math.round((digitada - leituraDaPausa) * 10) / 10
+      : null;
 
   useEffect(() => {
     if (!alvo) return;
-    // Já vem no campo onde a máquina está: a de quando parou (a máquina parada
-    // não anda) ou, se ela fez outra OS nesse meio-tempo, onde aquela terminou.
-    // Quase sempre é só confirmar.
-    const daPausa = alvo.pausa.pause_reading != null ? Number(alvo.pausa.pause_reading) : null;
-    const sugerida =
-      parou !== null && (daPausa === null || parou > daPausa) ? parou : daPausa;
-    setValor(sugerida !== null ? leituraNoCampo(sugerida) : "");
+    // O campo vem VAZIO: a leitura da volta é a que a máquina marca agora, e
+    // ela só sai do painel da máquina. Antes vinha preenchido e, no confirmar
+    // sem olhar, entrava a leitura errada — e as horas da OS feita no meio
+    // contavam aqui também. Os botões abaixo do campo cobrem os dois casos de
+    // sempre (ficou parada / fez outra OS) com um toque.
+    setValor("");
+    setDia(localDateISO());
     setHora(agoraHHMM());
     setErro(null);
-    // só quando abre: depois disso o campo é dele
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setAviso(null);
+    setConferida(null);
   }, [alvo]);
 
   function retomar() {
@@ -970,7 +1178,7 @@ function RetomarFrotaOSDialog({
     if (n === null) {
       return setErro(
         medicao === "horimetro"
-          ? "Anote o horímetro da máquina ao voltar"
+          ? "Anote o horímetro que a máquina está marcando agora"
           : "Anote o KM que está no painel do veículo"
       );
     }
@@ -982,12 +1190,28 @@ function RetomarFrotaOSDialog({
         )}).`
       );
     }
+    // A máquina já passou dessa leitura em outra OS durante a pausa: voltar
+    // abaixo dela põe as horas da outra OS nesta também. Pode ser um serviço
+    // antigo sendo lançado agora — avisa, e o segundo toque confirma.
+    if (parou !== null && n < parou && conferida !== n) {
+      setErro(null);
+      setConferida(n);
+      setAviso(
+        `A máquina já marcou ${mostrarLeitura(parou, medicao)} em outra OS depois desta pausa. Voltar com ${mostrarLeitura(
+          n,
+          medicao
+        )} faz ${medicao === "horimetro" ? "as horas da outra OS contarem" : "os km da outra OS contarem"} aqui também. Confira no painel da máquina. Se está certo, toque em CONTINUAR de novo.`
+      );
+      return;
+    }
+    if (!dia) return setErro("Informe o dia da volta");
     if (!hora.trim()) return setErro("Informe a hora da volta");
     setErro(null);
+    setAviso(null);
     startTransition(async () => {
       const falha = actionError(
         await retomarMachineServico(os.id, {
-          resumeDate: localDateISO(),
+          resumeDate: dia,
           resumeTime: hora,
           reading: n,
         })
@@ -1027,18 +1251,66 @@ function RetomarFrotaOSDialog({
           />
           <CampoLeitura
             medicao={medicao}
-            titulo={medicao === "horimetro" ? "Horímetro ao voltar" : "KM ao voltar"}
+            titulo={
+              medicao === "horimetro"
+                ? "Horímetro que a máquina marca agora"
+                : "KM que o painel marca agora"
+            }
             valor={valor}
-            onChange={setValor}
+            onChange={(v) => {
+              setValor(v);
+              setAviso(null);
+            }}
             ajuda={
-              andouEmOutra !== null
-                ? `A máquina andou ${mostrarLeitura(andouEmOutra, medicao)} em outra OS enquanto esta estava parada — ${
+              foraDestaOs !== null
+                ? `Entre a pausa e agora a máquina andou ${mostrarLeitura(foraDestaOs, medicao)} fora desta OS — ${
                     medicao === "horimetro" ? "essas horas não contam" : "esses km não contam"
                   } aqui.`
-                : undefined
+                : digitada !== null && leituraDaPausa !== null && digitada === leituraDaPausa
+                  ? "A mesma de quando parou: a máquina ficou parada."
+                  : undefined
             }
           />
-          <CampoHora titulo="Hora da volta" valor={hora} onChange={setHora} />
+          {/* Os dois casos de sempre, com um toque — mas é ele quem escolhe */}
+          {(leituraDaPausa !== null || andouEmOutra !== null) && (
+            <div className="grid gap-2 -mt-2">
+              {andouEmOutra !== null && parou !== null && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-auto min-h-12 py-2 text-base whitespace-normal"
+                  onClick={() => {
+                    setValor(leituraNoCampo(parou));
+                    setAviso(null);
+                  }}
+                >
+                  {mostrarLeitura(parou, medicao)} — onde a outra OS deixou a máquina
+                </Button>
+              )}
+              {leituraDaPausa !== null && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-auto min-h-12 py-2 text-base whitespace-normal"
+                  onClick={() => {
+                    setValor(leituraNoCampo(leituraDaPausa));
+                    setAviso(null);
+                  }}
+                >
+                  {mostrarLeitura(leituraDaPausa, medicao)} — a máquina ficou parada desde a pausa
+                </Button>
+              )}
+            </div>
+          )}
+          <CampoDiaEHora
+            tituloDia="Dia da volta"
+            dia={dia}
+            onDia={setDia}
+            tituloHora="Hora"
+            hora={hora}
+            onHora={setHora}
+          />
+          <Aviso texto={aviso} />
           <Erro texto={erro} />
         </div>
 
@@ -1157,6 +1429,13 @@ function FinalizarFrotaOSDialog({
     if (inicio !== null && fim < inicio) {
       return setErro(
         `A leitura final não pode ser menor que a inicial (${mostrarLeitura(inicio, medicao)}).`
+      );
+    }
+    // Com pausa no meio, o fim não pode ficar abaixo da última pausa ou volta
+    const ultima = ultimaDaOs(os, medicao);
+    if (!semPartida && ultima !== null && fim < ultima) {
+      return setErro(
+        `A leitura final não pode ser menor que ${mostrarLeitura(ultima, medicao)} — a última anotada neste serviço (na pausa ou na volta).`
       );
     }
 

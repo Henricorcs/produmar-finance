@@ -601,8 +601,19 @@ export function VeiculoFichaDialog({
                               )}
                               {/* Enviada para o celular de alguém — e se já começou */}
                               {aberta && servico?.assigned_to && (
-                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-produmar-100 text-produmar-700 dark:bg-produmar-900/40 dark:text-produmar-400">
-                                  {servico.started_at ? "EM ANDAMENTO COM " : "COM "}
+                                <span
+                                  className={cn(
+                                    "text-[10px] font-semibold px-1.5 py-0.5 rounded",
+                                    servico.pausada
+                                      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                                      : "bg-produmar-100 text-produmar-700 dark:bg-produmar-900/40 dark:text-produmar-400"
+                                  )}
+                                >
+                                  {servico.pausada
+                                    ? "PAUSADA COM "
+                                    : servico.started_at
+                                      ? "EM ANDAMENTO COM "
+                                      : "COM "}
                                   {nomeDoOperador.get(servico.assigned_to) ?? "OPERADOR"}
                                 </span>
                               )}

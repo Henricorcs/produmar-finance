@@ -163,11 +163,30 @@ export default async function FrotaPage({
     operators = [];
   }
 
+  // Quais OS em andamento estão PAUSADAS: a ficha mostra "PAUSADA COM FULANO"
+  // em vez de "EM ANDAMENTO". Best-effort: sem a 094 a tabela não existe e a
+  // ficha segue como era.
+  let servicos = (servicosRes.data as MachineServico[]) ?? [];
+  const emAndamento = servicos.filter((s) => s.status === "aberta" && s.started_at).map((s) => s.id);
+  if (emAndamento.length > 0) {
+    const { data: abertas, error: erroPausas } = await supabase
+      .from("machine_servico_pausas")
+      .select("machine_servico_id")
+      .in("machine_servico_id", emAndamento)
+      .is("resume_time", null);
+    if (!erroPausas) {
+      const pausadas = new Set(
+        ((abertas as { machine_servico_id: string }[]) ?? []).map((p) => p.machine_servico_id)
+      );
+      servicos = servicos.map((s) => (pausadas.has(s.id) ? { ...s, pausada: true } : s));
+    }
+  }
+
   return (
     <FrotaPageClient
       machines={machines}
       ficha={(fichaRes.data as MachineFichaLinha[]) ?? []}
-      servicos={(servicosRes.data as MachineServico[]) ?? []}
+      servicos={servicos}
       despesas={(despesasRes.data as MachineDespesa[]) ?? []}
       operators={operators}
       todasAsOs={(todasAsOsRes.data as OsDaFichaNoRelatorio[]) ?? []}

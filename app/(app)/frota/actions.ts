@@ -323,9 +323,60 @@ export async function iniciarMachineServico(
   return { ok: true };
 }
 
+/** Número de leitura vindo do banco (numeric chega como texto). */
+function num(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Leitura no jeito de ler: 1.564,5. */
+function mostrar(n: number): string {
+  return n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+}
+
 /**
- * PAUSAR: o fim do expediente de um serviço que continua amanhã. Grava a hora,
- * a leitura do horímetro/km e o que ficou do dia. Uma pausa aberta por vez.
+ * Por onde esta OS já passou: a leitura de partida e a de cada pausa e volta.
+ * O horímetro só anda para frente DENTRO de uma OS — começou 1.558, parou
+ * 1.564, voltou 1.570 (a máquina fez outra OS no meio) — então cada leitura
+ * nova desta OS não pode ser menor que a última que ela registrou.
+ *
+ * A pausa guarda a leitura sem dizer se é horímetro ou km: vale o que a OS
+ * mede, e a de partida é a da coluna que estiver preenchida.
+ */
+async function leiturasDaOs(supabase: ReturnType<typeof createClient>, id: string) {
+  const [osRes, pausasRes] = await Promise.all([
+    supabase.from("machine_servicos").select("hourmeter_start, km_start").eq("id", id).maybeSingle(),
+    supabase
+      .from("machine_servico_pausas")
+      .select("pause_reading, resume_reading, resume_time, pause_number")
+      .eq("machine_servico_id", id)
+      .order("pause_number", { ascending: true }),
+  ]);
+  const os = osRes.data as { hourmeter_start: unknown; km_start: unknown } | null;
+  const pausas =
+    (pausasRes.data as {
+      pause_reading: unknown;
+      resume_reading: unknown;
+      resume_time: string | null;
+    }[]) ?? [];
+  const partida = num(os?.hourmeter_start) ?? num(os?.km_start);
+  // a última leitura que esta OS registrou, na ordem em que aconteceu
+  let ultima = partida;
+  for (const p of pausas) {
+    const parou = num(p.pause_reading);
+    if (parou !== null && (ultima === null || parou > ultima)) ultima = parou;
+    const voltou = num(p.resume_reading);
+    if (voltou !== null && (ultima === null || voltou > ultima)) ultima = voltou;
+  }
+  return { partida, ultima };
+}
+
+/**
+ * PAUSAR: teve um motivo de força maior, ou acabou o expediente. Grava a hora,
+ * a leitura do horímetro/km naquele momento e o porquê. A máquina fica livre
+ * para outra OS; esta espera o CONTINUAR. Uma pausa aberta por vez, e quantas
+ * pausas forem precisas ao longo do serviço.
  */
 export async function pausarMachineServico(
   id: string,
@@ -354,6 +405,17 @@ export async function pausarMachineServico(
     .maybeSingle();
   if (erroAberta) return { error: faltaA094(erroAberta) ? RECADO_094 : erroAberta.message };
   if (aberta) return { error: "Este serviço já está pausado." };
+
+  // A leitura da pausa não pode ser menor que a de quando o serviço começou
+  // (ou voltou da última pausa): entre uma e outra a máquina estava NESTA OS.
+  const lida = leitura(input.reading);
+  if (lida !== null) {
+    const { ultima: desde } = await leiturasDaOs(supabase, id);
+    if (desde !== null && lida < desde)
+      return {
+        error: `A leitura da pausa (${mostrar(lida)}) não pode ser menor que a de quando este serviço começou ou voltou (${mostrar(desde)}).`,
+      };
+  }
 
   const { data: ultima } = await supabase
     .from("machine_servico_pausas")
@@ -393,7 +455,7 @@ export async function retomarMachineServico(
 
   const { data: aberta, error: erroAberta } = await supabase
     .from("machine_servico_pausas")
-    .select("id")
+    .select("id, pause_reading")
     .eq("machine_servico_id", id)
     .is("resume_time", null)
     .order("pause_number", { ascending: false })
@@ -401,6 +463,14 @@ export async function retomarMachineServico(
     .maybeSingle();
   if (erroAberta) return { error: faltaA094(erroAberta) ? RECADO_094 : erroAberta.message };
   if (!aberta) return { error: "Este serviço não está pausado." };
+
+  // Voltar com leitura menor que a da pausa é horímetro andando para trás.
+  const volta = leitura(input.reading);
+  const parou = num((aberta as { pause_reading: unknown }).pause_reading);
+  if (volta !== null && parou !== null && volta < parou)
+    return {
+      error: `A leitura da volta (${mostrar(volta)}) não pode ser menor que a de quando parou (${mostrar(parou)}).`,
+    };
 
   const { error } = await supabase
     .from("machine_servico_pausas")
@@ -491,6 +561,15 @@ export async function finalizarMachineServico(
         error: `O km final não pode ser menor que o inicial (${Number(kIni).toLocaleString(
           "pt-BR"
         )}).`,
+      };
+    // Com pausa no meio, o fim também não pode ser menor que a última leitura
+    // da OS (a pausa, ou a volta dela): começou 1.558, parou 1.564, voltou
+    // 1.570 — fechar com 1.566 não existe.
+    const fimLido = horimetroFinal ?? kmFinal;
+    const { ultima } = await leiturasDaOs(supabase, id);
+    if (fimLido !== null && ultima !== null && fimLido < ultima)
+      return {
+        error: `A leitura final (${mostrar(fimLido)}) não pode ser menor que a última anotada neste serviço (${mostrar(ultima)}), na pausa ou na volta.`,
       };
   }
 

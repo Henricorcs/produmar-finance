@@ -2228,6 +2228,8 @@ export interface MachineServico {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  /** Tem pausa em aberto — a ficha mostra PAUSADA (montado na página, não é coluna). */
+  pausada?: boolean;
 }
 
 /**
