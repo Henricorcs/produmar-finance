@@ -268,7 +268,7 @@ export function daCriacao<T extends { species?: AnimalSpecies | null }>(
  * O número do jeito que o curral fala: caixa alta, sem espaço e sem os zeros
  * da frente — "026", "0026" e "26" são a mesma cabra.
  */
-function numeroSemZeros(numero?: string | null): string {
+export function numeroSemZeros(numero?: string | null): string {
   return (numero ?? "")
     .toUpperCase()
     .replace(/\s+/g, "")

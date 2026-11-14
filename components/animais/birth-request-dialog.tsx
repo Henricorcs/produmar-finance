@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { UserPlus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Check } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,9 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn, localDateISO, upperKeepingCaret } from "@/lib/utils";
-import { createAnimal, resolveBirthRequest } from "@/app/(app)/animais/actions";
+import { resolveBirthRequest } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
   FOOTER_SUBMIT,
@@ -23,7 +22,7 @@ import {
   SexPicker,
   acharMaeDoVaqueiro,
   categoryLabel,
-  daCriacao,
+  numeroSemZeros,
   speciesOf,
   ItemDeAnimal,
 } from "./animal-shared";
@@ -38,48 +37,48 @@ interface Props {
   photoUrl: string | null;
 }
 
+/** Quantas fêmeas a lista mostra de cada vez — o resto aparece digitando. */
+const MAX_NA_LISTA = 30;
+
 /**
- * Confere o que o vaqueiro enviou e lança de verdade no rebanho. O vaqueiro só
- * digitou a numeração da mãe (texto livre); aqui ela é casada com o cadastro
- * de verdade — bate sozinho quando o número existe entre as fêmeas (com ou sem
- * os zeros da frente, ou pelo número antigo), senão o patrão escolhe na lista
- * ou cadastra a mãe ali mesmo. O número do bezerro também é dado aqui: quem
- * está no curral não numera bicho (migration 053).
+ * Confere o que o vaqueiro enviou e lança de verdade no rebanho. O número da
+ * MÃE é um campo de digitar, que já vem com o que o vaqueiro escreveu:
+ *   - se o número é de uma fêmea do cadastro (com ou sem os zeros da frente,
+ *     ou pelo número antigo), ela já vem ligada;
+ *   - digitando, aparece embaixo a lista das fêmeas que batem (número, número
+ *     antigo ou código ABCZ) para escolher com um toque;
+ *   - se ninguém for escolhido, vale o número digitado: a cria entra com a mãe
+ *     escrita na ficha (sai no relatório) — a vaca 187 que não está no
+ *     rebanho não trava mais o lançamento.
+ * O número do bezerro também é dado aqui: quem está no curral não numera bicho
+ * (migration 053).
  *
- * A lista de mães é ABERTA, dentro da própria janela — nada de caixinha que
- * cai por cima: no iPhone a caixinha dentro de uma janela que rola travava
- * (era rolar a lista e a tela não mexia).
+ * A lista fica DENTRO da janela, logo abaixo do campo (nada de caixinha
+ * flutuante, que no iPhone travava), e ao tocar no campo a janela rola até ele
+ * ficar no alto, para a lista caber acima do teclado.
  */
 export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }: Props) {
   const [isPending, startTransition] = useTransition();
-  const [cadastrando, startCadastro] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  const [maeTexto, setMaeTexto] = useState("");
   const [motherId, setMotherId] = useState("");
+  const [listaAberta, setListaAberta] = useState(false);
   const [birthDate, setBirthDate] = useState("");
   const [calfSex, setCalfSex] = useState<AnimalSex>("femea");
   const [calfTag, setCalfTag] = useState("");
-  /** Lista de mães aberta (para escolher ou trocar a que casou). */
-  const [escolhendo, setEscolhendo] = useState(false);
-  /** Mostrar fêmeas de todos os tipos, e não só do bicho que ele marcou. */
-  const [todosOsTipos, setTodosOsTipos] = useState(false);
-  /** A mãe cadastrada aqui mesmo, até ela chegar na lista que vem do servidor. */
-  const [maeCriada, setMaeCriada] = useState<{ id: string; tag: string } | null>(null);
 
-  // A mãe que o número digitado pelo vaqueiro aponta no cadastro.
-  const casou = useMemo(
-    () => (request ? acharMaeDoVaqueiro(mothers, request.mother_tag, request.species) : null),
-    [request, mothers]
-  );
+  const blocoMaeRef = useRef<HTMLDivElement>(null);
+  const campoMaeRef = useRef<HTMLInputElement>(null);
 
-  // Preenche só ao ABRIR (ou trocar de envio). Antes a tela se refazia toda vez
-  // que a lista de animais atualizava, e apagava o que o patrão já tinha digitado.
+  // Preenche só ao ABRIR (ou trocar de envio): a lista de animais que atualiza
+  // por trás não pode apagar o que o patrão já digitou.
   useEffect(() => {
     if (!open || !request) return;
+    const casou = acharMaeDoVaqueiro(mothers, request.mother_tag, request.species);
+    setMaeTexto(casou?.tag ?? request.mother_tag.trim().toUpperCase());
     setMotherId(casou?.id ?? "");
-    setEscolhendo(!casou);
-    setTodosOsTipos(false);
-    setMaeCriada(null);
+    setListaAberta(false);
     setBirthDate(request.birth_date || localDateISO());
     setCalfSex(request.calf_sex ?? "femea");
     setCalfTag(request.calf_tag ?? "");
@@ -87,66 +86,100 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, request?.id]);
 
+  const tipoMarcado = speciesOf(request?.species);
+
+  // As fêmeas que batem com o que está digitado — as do bicho marcado primeiro.
+  const sugestoes = useMemo(() => {
+    const q = maeTexto.trim().toUpperCase().replace(/\s+/g, "");
+    const qSemZeros = numeroSemZeros(maeTexto);
+    const bate = (v?: string | null) => {
+      if (!v) return false;
+      const s = v.toUpperCase().replace(/\s+/g, "");
+      return s.includes(q) || numeroSemZeros(v).includes(qSemZeros);
+    };
+    const lista = q
+      ? mothers.filter((a) => bate(a.tag) || bate(a.tag_antigo) || bate(a.abcz_code))
+      : mothers.filter((a) => speciesOf(a.species) === tipoMarcado);
+    const exato = (a: AnimalWithInfo) => numeroSemZeros(a.tag) === qSemZeros;
+    return lista
+      .slice()
+      .sort((a, b) => {
+        const ta = speciesOf(a.species) === tipoMarcado ? 0 : 1;
+        const tb = speciesOf(b.species) === tipoMarcado ? 0 : 1;
+        if (ta !== tb) return ta - tb;
+        const ea = exato(a) ? 0 : 1;
+        const eb = exato(b) ? 0 : 1;
+        if (ea !== eb) return ea - eb;
+        return a.tag.localeCompare(b.tag, "pt-BR", { numeric: true });
+      })
+      .slice(0, MAX_NA_LISTA);
+  }, [maeTexto, mothers, tipoMarcado]);
+
   if (!request) return null;
 
   const selecionada = mothers.find((m) => m.id === motherId) ?? null;
-  const digitado = request.mother_tag.trim().toUpperCase();
+  const digitadoPeloVaqueiro = request.mother_tag.trim().toUpperCase();
+  const textoMae = maeTexto.trim().toUpperCase();
 
   /**
    * Como chamar a cria nesta tela. O vaqueiro marcou o bicho no celular
-   * (migration 091), mas quem manda é a MÃE escolhida aqui: é dela que
-   * `createBirth` puxa tipo e raça. Escolheu uma ovelha, é cordeiro — mesmo
-   * que ele tenha marcado bovino sem prestar atenção.
+   * (migration 091), mas quando a mãe é do cadastro quem manda é ELA: é dela
+   * que `createBirth` puxa tipo e raça. Mãe só escrita → vale o que ele marcou.
    */
   const nomes = SPECIES_META[speciesOf(selecionada?.species ?? request.species)];
   const cria = nomes.youngMale.toLowerCase();
-  const tipoDivergente =
-    !!selecionada && speciesOf(selecionada.species) !== speciesOf(request.species);
-  const tipoMarcado = SPECIES_META[speciesOf(request.species)];
+  const tipoDivergente = !!selecionada && speciesOf(selecionada.species) !== tipoMarcado;
+  const metaMarcado = SPECIES_META[tipoMarcado];
 
-  // A lista: só as fêmeas do bicho que ele marcou (bezerro → vacas), a não ser
-  // que o número tenha casado com outro tipo ou o patrão peça todos.
-  const tipoDaLista = speciesOf(casou?.species ?? request.species);
-  const listaDeMaes = todosOsTipos ? mothers : daCriacao(mothers, tipoDaLista);
+  /** Põe o campo da mãe no alto da janela, para a lista caber acima do teclado. */
+  function subirCampoMae() {
+    const bloco = blocoMaeRef.current;
+    const caixa = bloco?.closest<HTMLElement>('[role="dialog"]');
+    if (!bloco || !caixa) return;
+    const delta = bloco.getBoundingClientRect().top - caixa.getBoundingClientRect().top - 12;
+    if (delta > 0) caixa.scrollTop += delta;
+  }
 
-  function escolher(id: string) {
-    setMotherId(id);
-    if (id) setEscolhendo(false);
+  function aoFocarMae() {
+    setListaAberta(true);
+    // espera o teclado subir e a janela encolher para a faixa visível
+    setTimeout(subirCampoMae, 120);
+    setTimeout(subirCampoMae, 450);
+  }
+
+  function aoDigitarMae(e: React.ChangeEvent<HTMLInputElement>) {
+    const v = upperKeepingCaret(e);
+    setMaeTexto(v);
+    // número que é de uma fêmea do cadastro já liga sozinho
+    const casou = v.trim() ? acharMaeDoVaqueiro(mothers, v, request!.species) : null;
+    setMotherId(casou?.id ?? "");
+    setListaAberta(true);
     setError(null);
   }
 
-  /** O número que o vaqueiro digitou não existe: cadastra a mãe com ele. */
-  function cadastrarMae() {
+  function escolherMae(a: AnimalWithInfo) {
+    setMotherId(a.id);
+    setMaeTexto(a.tag);
+    setListaAberta(false);
     setError(null);
-    const especie = speciesOf(request!.species);
-    startCadastro(async () => {
-      const r = await createAnimal({ tag: digitado, sex: "femea", species: especie });
-      if (r && "error" in r) {
-        setError(r.error ?? "Erro ao cadastrar a mãe");
-        return;
-      }
-      const id = (r as { animalId?: string }).animalId;
-      if (!id) return;
-      setMaeCriada({ id, tag: digitado });
-      setMotherId(id);
-      setEscolhendo(false);
-    });
+    campoMaeRef.current?.blur(); // fecha o teclado
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!motherId) {
-      setEscolhendo(true);
-      return setError("Escolha a mãe na lista (ou cadastre a que o vaqueiro informou)");
+    if (!motherId && !textoMae) {
+      campoMaeRef.current?.focus();
+      return setError("Digite o número da mãe");
     }
     if (!birthDate) return setError("Informe a data do nascimento");
     if (!calfTag.trim()) return setError(`Informe o número do ${cria}`);
 
     startTransition(async () => {
       const r = await resolveBirthRequest(request!.id, {
-        mother_id: motherId,
+        mother_id: motherId || null,
+        mother_tag: motherId ? null : textoMae,
         birth_date: birthDate,
         calf_sex: calfSex,
         calf_tag: calfTag,
@@ -158,11 +191,6 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
       onClose();
     });
   }
-
-  // A mãe já escolhida: a da lista ou, logo depois de cadastrar, a recém-criada.
-  const maeEscolhida =
-    selecionada ??
-    (maeCriada && maeCriada.id === motherId ? { tag: maeCriada.tag, detalhe: "cadastrada agora" } : null);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -181,121 +209,110 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Mãe *</Label>
+          <div ref={blocoMaeRef} className="space-y-1.5">
+            <Label htmlFor="brq_mae">Mãe (número) *</Label>
+            <Input
+              id="brq_mae"
+              ref={campoMaeRef}
+              value={maeTexto}
+              onChange={aoDigitarMae}
+              onFocus={aoFocarMae}
+              placeholder="Digite o número da mãe"
+              autoCapitalize="characters"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              enterKeyHint="done"
+              className={cn(
+                "h-11 sm:h-10 text-lg font-semibold tabular-nums",
+                selecionada && "border-emerald-400 dark:border-emerald-700"
+              )}
+            />
 
-            {/* O número não bate com ninguém: diz por quê e dá a saída */}
-            {!casou && !maeEscolhida && (
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 px-3 py-2.5 space-y-2">
-                <p className="text-xs text-amber-800 dark:text-amber-300">
-                  O vaqueiro informou a mãe <strong>{digitado}</strong>, mas não existe nenhuma
-                  fêmea {digitado} no cadastro (procuramos pelo número, sem os zeros da frente e
-                  pelo número antigo). Ou ele errou o número, ou essa{" "}
-                  {tipoMarcado.female.toLowerCase()} ainda não foi cadastrada.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={cadastrarMae}
-                  disabled={cadastrando || isPending}
-                  className="w-full h-11 sm:h-10 bg-white dark:bg-slate-900"
+            {/* A lista das fêmeas que batem — dentro da janela, logo abaixo do campo */}
+            {listaAberta && (
+              <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                <div
+                  className="overflow-y-auto overscroll-contain py-1"
+                  style={{ maxHeight: "max(8rem, calc(var(--dialog-band-h, 100dvh) * 0.38))" }}
                 >
-                  <UserPlus className="w-4 h-4 mr-1.5" />
-                  {cadastrando
-                    ? "Cadastrando..."
-                    : `Cadastrar a ${tipoMarcado.female.toLowerCase()} ${digitado} e usar como mãe`}
-                </Button>
-                <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90">
-                  Ou escolha a mãe certa na lista abaixo.
-                </p>
+                  {sugestoes.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400 text-center">
+                      Nenhuma fêmea do cadastro com {textoMae} — tudo bem, vale o número digitado.
+                    </p>
+                  ) : (
+                    sugestoes.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => escolherMae(a)}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-produmar-50 dark:hover:bg-slate-700",
+                          a.id === motherId && "bg-produmar-100/70 dark:bg-slate-700"
+                        )}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <ItemDeAnimal
+                            numero={a.tag}
+                            detalhe={`${categoryLabel(a.category, a.sex, a.species)}${a.breed_name ? ` · ${a.breed_name}` : ""}`}
+                          />
+                        </div>
+                        {a.id === motherId && (
+                          <Check className="w-4 h-4 text-produmar-600 dark:text-produmar-400 flex-shrink-0" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setListaAberta(false);
+                    campoMaeRef.current?.blur();
+                  }}
+                  className="w-full border-t border-slate-100 dark:border-slate-700 px-3 py-2.5 text-xs font-medium text-produmar-600 dark:text-produmar-400"
+                >
+                  {selecionada ? `Fica a ${selecionada.tag}` : textoMae ? `Usar ${textoMae} como digitado` : "Fechar a lista"}
+                </button>
               </div>
             )}
 
-            {maeEscolhida && !escolhendo ? (
-              <div className="flex items-center gap-2 rounded-md border border-produmar-200 dark:border-slate-600 bg-produmar-50/60 dark:bg-slate-800 px-3 py-2">
-                <div className="flex-1 min-w-0">
-                  <ItemDeAnimal
-                    numero={maeEscolhida.tag}
-                    detalhe={
-                      "detalhe" in maeEscolhida
-                        ? maeEscolhida.detalhe
-                        : `${categoryLabel(maeEscolhida.category, maeEscolhida.sex, maeEscolhida.species)}${maeEscolhida.breed_name ? ` · ${maeEscolhida.breed_name}` : ""}`
-                    }
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setEscolhendo(true)}
-                  disabled={isPending}
-                  className="h-9 px-3 flex-shrink-0"
-                >
-                  Trocar
-                </Button>
-              </div>
-            ) : (
-              <>
-                <SearchableSelect
-                  inline
-                  items={listaDeMaes}
-                  value={motherId}
-                  onChange={escolher}
-                  getId={(a) => a.id}
-                  getLabel={(a) => a.tag}
-                  renderItem={(a) => (
-                    <ItemDeAnimal
-                      numero={a.tag}
-                      detalhe={`${categoryLabel(a.category, a.sex, a.species)}${a.breed_name ? ` · ${a.breed_name}` : ""}`}
-                    />
-                  )}
-                  searchPlaceholder="Buscar pelo número..."
-                  emptyMessage={
-                    todosOsTipos
-                      ? "Nenhuma fêmea com esse número"
-                      : `Nenhuma ${SPECIES_META[tipoDaLista].female.toLowerCase()} com esse número`
-                  }
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setTodosOsTipos((v) => !v)}
-                    className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 py-1"
-                  >
-                    {todosOsTipos
-                      ? `Mostrar só ${SPECIES_META[tipoDaLista].females.toLowerCase()}`
-                      : "Mostrar fêmeas de todos os tipos"}
-                  </button>
-                  {maeEscolhida && (
-                    <button
-                      type="button"
-                      onClick={() => setEscolhendo(false)}
-                      className="text-[11px] font-medium text-slate-500 dark:text-slate-400 py-1"
-                    >
-                      Manter {maeEscolhida.tag}
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-
-            {casou && (
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                {selecionada && selecionada.id === casou.id
-                  ? `O vaqueiro digitou ${digitado} — já casou com o cadastro.`
-                  : `O vaqueiro digitou ${digitado} (no cadastro: ${casou.tag}), mas você escolheu outra mãe.`}
-              </p>
-            )}
-            {maeCriada && maeCriada.id === motherId && (
+            {/* Onde a mãe vai parar: ligada ao cadastro ou escrita na ficha */}
+            {selecionada ? (
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                {tipoMarcado.female} {maeCriada.tag} cadastrada sem raça — complete a ficha dela
-                depois.
+                Ligada à {categoryLabel(selecionada.category, selecionada.sex, selecionada.species).toLowerCase()}{" "}
+                {selecionada.tag} do cadastro
+                {selecionada.breed_name ? ` · ${selecionada.breed_name}` : ""}
+                {textoMae === digitadoPeloVaqueiro || selecionada.tag === digitadoPeloVaqueiro
+                  ? " — é a que o vaqueiro informou."
+                  : ` — o vaqueiro tinha informado ${digitadoPeloVaqueiro}.`}
+              </p>
+            ) : textoMae ? (
+              <p className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2.5 py-2">
+                {textoMae === digitadoPeloVaqueiro ? (
+                  <>
+                    O vaqueiro informou a mãe <strong>{textoMae}</strong>, que não é uma fêmea do
+                    cadastro.{" "}
+                  </>
+                ) : (
+                  <>
+                    <strong>{textoMae}</strong> não é uma fêmea do cadastro.{" "}
+                  </>
+                )}
+                Se for assim mesmo, o {cria} entra com a mãe {textoMae} escrita na ficha (sai no
+                relatório). Se é outra, toque no campo e escolha na lista.
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                O vaqueiro informou {digitadoPeloVaqueiro || "—"}. Digite o número da mãe.
               </p>
             )}
+
             {/* A cria puxa tipo e raça da mãe: se a mãe escolhida é de outro
                 bicho, o que vai entrar no rebanho não é o que ele marcou. */}
             {tipoDivergente && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2.5 py-2">
-                O vaqueiro marcou {tipoMarcado.label.toLowerCase()}, mas esta mãe é{" "}
+                O vaqueiro marcou {metaMarcado.label.toLowerCase()}, mas esta mãe é{" "}
                 {nomes.label.toLowerCase()} — a cria vai entrar como {nomes.label.toLowerCase()},
                 com o tipo e a raça dela.
               </p>
@@ -324,6 +341,7 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
               id="brq_calf_tag"
               value={calfTag}
               onChange={(e) => setCalfTag(upperKeepingCaret(e))}
+              onFocus={() => setListaAberta(false)}
               placeholder="ex: 1046"
               autoCapitalize="characters"
               className="h-11 sm:h-10"
@@ -358,11 +376,7 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
             >
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              disabled={isPending || cadastrando}
-              className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}
-            >
+            <Button type="submit" disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11 sm:h-10")}>
               {isPending ? "Lançando..." : "Lançar no rebanho"}
             </Button>
           </DialogFooter>

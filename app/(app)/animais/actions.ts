@@ -968,10 +968,55 @@ function birthRequestsTableError(error: { code?: string; message: string }): str
 }
 
 export interface ResolveBirthRequestInput {
-  mother_id: string;
+  /** A mãe do cadastro. Vazio quando a mãe não é animal cadastrado. */
+  mother_id?: string | null;
+  /**
+   * O número da mãe escrito à mão — vale quando não há `mother_id` (a vaca 187
+   * que o vaqueiro informou e não está no rebanho). Vai para a ficha da cria
+   * (animals.mae, migration 137) e é dali que o relatório tira a mãe.
+   */
+  mother_tag?: string | null;
   birth_date: string;
   calf_sex: AnimalSex;
   calf_tag: string;
+}
+
+/**
+ * A cria cuja mãe NÃO está no cadastro: entra no rebanho sozinha, com o número
+ * da mãe escrito na ficha. Sem mãe cadastrada não há parto em animal_births
+ * (ele exige a mãe), e o tipo vem do bicho que o vaqueiro marcou.
+ */
+async function cadastrarCriaComMaeEscrita(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  input: {
+    mother_tag: string;
+    birth_date: string;
+    calf_sex: AnimalSex;
+    calf_tag: string;
+    species: AnimalSpecies | null;
+  }
+): Promise<{ error: string } | { ok: true; calfAnimalId: string }> {
+  if (!input.birth_date) return { error: "Informe a data do nascimento" };
+  if (!input.calf_sex) return { error: "Informe o sexo da cria" };
+  const calfTag = clean(input.calf_tag);
+  if (!calfTag) return { error: "Informe o número da cria" };
+
+  const { data: calf, error } = await supabase
+    .from("animals")
+    .insert({
+      tag: calfTag,
+      sex: input.calf_sex,
+      species: normSpecies(input.species),
+      birth_date: input.birth_date,
+      mae: clean(input.mother_tag),
+      created_by: userId,
+    })
+    .select("id")
+    .single();
+  if (error || !calf)
+    return { error: error ? dupTagError(error, input.species) : "Erro ao cadastrar a cria" };
+  return { ok: true, calfAnimalId: calf.id as string };
 }
 
 /**
@@ -997,12 +1042,24 @@ export async function resolveBirthRequest(requestId: string, input: ResolveBirth
   if (reqErr) return { error: birthRequestsTableError(reqErr) };
   if (!request) return { error: "Solicitação não encontrada (já foi resolvida?)" };
 
-  const result = await createBirth({
-    mother_id: input.mother_id,
-    birth_date: input.birth_date,
-    calf_sex: input.calf_sex,
-    calf_tag: input.calf_tag,
-  });
+  // Mãe do cadastro → parto de verdade (createBirth). Só o número escrito →
+  // a cria entra com a mãe na ficha, sem travar o lançamento.
+  const maeEscrita = clean(input.mother_tag);
+  if (!input.mother_id && !maeEscrita) return { error: "Informe o número da mãe" };
+  const result = input.mother_id
+    ? await createBirth({
+        mother_id: input.mother_id,
+        birth_date: input.birth_date,
+        calf_sex: input.calf_sex,
+        calf_tag: input.calf_tag,
+      })
+    : await cadastrarCriaComMaeEscrita(supabase, user.id, {
+        mother_tag: maeEscrita!,
+        birth_date: input.birth_date,
+        calf_sex: input.calf_sex,
+        calf_tag: input.calf_tag,
+        species: (request.species as AnimalSpecies | null) ?? null,
+      });
   if ("error" in result) return result;
 
   if (request.photo_path) {
@@ -1054,23 +1111,24 @@ export async function resolveBirthRequest(requestId: string, input: ResolveBirth
       created_by: quem,
     });
 
-    const [{ data: mae }, { count: fotosDaMae }] = await Promise.all([
-      supabase.from("animals").select("photo_path").eq("id", input.mother_id).maybeSingle(),
-      supabase
-        .from("animal_photos")
-        .select("id", { count: "exact", head: true })
-        .eq("animal_id", input.mother_id),
-    ]);
-    if (mae && !mae.photo_path && (fotosDaMae ?? 0) === 0) {
-      await supabase.from("animal_photos").insert({
-        animal_id: input.mother_id,
-        path: fotoDaMae,
-        created_by: quem,
-      });
-      await supabase
-        .from("animals")
-        .update({ photo_path: fotoDaMae })
-        .eq("id", input.mother_id);
+    // mãe só com o número escrito não tem ficha: a foto fica só na cria
+    const maeId = input.mother_id;
+    if (maeId) {
+      const [{ data: mae }, { count: fotosDaMae }] = await Promise.all([
+        supabase.from("animals").select("photo_path").eq("id", maeId).maybeSingle(),
+        supabase
+          .from("animal_photos")
+          .select("id", { count: "exact", head: true })
+          .eq("animal_id", maeId),
+      ]);
+      if (mae && !mae.photo_path && (fotosDaMae ?? 0) === 0) {
+        await supabase.from("animal_photos").insert({
+          animal_id: maeId,
+          path: fotoDaMae,
+          created_by: quem,
+        });
+        await supabase.from("animals").update({ photo_path: fotoDaMae }).eq("id", maeId);
+      }
     }
   }
 
