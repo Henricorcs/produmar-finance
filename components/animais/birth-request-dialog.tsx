@@ -150,8 +150,11 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
   function aoDigitarMae(e: React.ChangeEvent<HTMLInputElement>) {
     const v = upperKeepingCaret(e);
     setMaeTexto(v);
-    // número que é de uma fêmea do cadastro já liga sozinho
-    const casou = v.trim() ? acharMaeDoVaqueiro(mothers, v, request!.species) : null;
+    // número que é de uma fêmea do cadastro já liga sozinho — mas só do bicho
+    // que o vaqueiro marcou: digitando "20" para a vaca, não pode ligar na
+    // cabrita 0020 no meio do caminho. Outro tipo, só tocando na lista.
+    const doTipo = mothers.filter((a) => speciesOf(a.species) === tipoMarcado);
+    const casou = v.trim() ? acharMaeDoVaqueiro(doTipo, v, request!.species) : null;
     setMotherId(casou?.id ?? "");
     setListaAberta(true);
     setError(null);
