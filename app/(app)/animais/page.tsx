@@ -28,6 +28,7 @@ import type {
 } from "@/lib/types";
 import type { VaccinationRow } from "@/components/animais/animais-page-client";
 import type { EtapaFeita } from "@/components/animais/protocolos-tab";
+import type { Filiacao } from "@/components/animais/relatorio-rebanho";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,7 @@ export default async function AnimaisPage({
     pesosFotoRes,
     gruposRes,
     grupoAnimaisRes,
+    filiacaoRes,
   ] = await Promise.all([
     supabase.from("v_animals").select("*").order("tag", { ascending: true }),
     supabase.from("animal_breeds").select("*").order("name", { ascending: true }),
@@ -178,6 +180,13 @@ export default async function AnimaisPage({
       .select("*")
       .order("joined_on", { ascending: false })
       .limit(20000),
+    // quem é filho de quem, pelo parto lançado — para o número da mãe no
+    // relatório (a lista de partos acima vem só com os 500 mais novos)
+    supabase
+      .from("animal_births")
+      .select("calf_animal_id, mother_id")
+      .not("calf_animal_id", "is", null)
+      .limit(20000),
   ]);
 
   // O protocolo que o vaqueiro deixou PENDENTE nos envios ainda não lançados
@@ -216,6 +225,7 @@ export default async function AnimaisPage({
       pesosFoto={(pesosFotoRes.data as AnimalPesoFoto[]) ?? []}
       grupos={(gruposRes.data as AnimalGrupo[]) ?? []}
       grupoAnimais={(grupoAnimaisRes.data as AnimalGrupoAnimal[]) ?? []}
+      filiacao={(filiacaoRes.data as Filiacao[]) ?? []}
       tipoInicial={searchParams.tipo ?? null}
       racaInicial={searchParams.raca ?? null}
     />

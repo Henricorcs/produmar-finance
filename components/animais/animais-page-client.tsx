@@ -14,6 +14,7 @@ import {
   Plus,
   Printer,
   Camera,
+  FileText,
   Search,
   Settings2,
   Pencil,
@@ -53,6 +54,7 @@ import { AnimalFinanceiroTab } from "./animal-financeiro-tab";
 import { LotesTab } from "./lotes-tab";
 import { GruposTab } from "./grupos-tab";
 import { CodigoPODialog } from "./codigo-po-dialog";
+import { RelatorioRebanho, type Filiacao } from "./relatorio-rebanho";
 import { ProtocolosTab, type EtapaFeita } from "./protocolos-tab";
 import {
   BotaoRacas,
@@ -164,6 +166,8 @@ interface Props {
   /** Lotes do rebanho e quem está em cada um (migration 134). */
   grupos?: AnimalGrupo[];
   grupoAnimais?: AnimalGrupoAnimal[];
+  /** Quem é filho de quem, pelo parto lançado — o número da mãe no relatório. */
+  filiacao?: Filiacao[];
   /** ?tipo= e ?raca= da URL — a escolha do menu de raças ao abrir a página. */
   tipoInicial?: string | null;
   racaInicial?: string | null;
@@ -198,7 +202,8 @@ type Tab =
   | "saidas"
   | "lotes"
   | "tanques"
-  | "financeiro";
+  | "financeiro"
+  | "relatorio";
 type CategoryFilter = "todos" | AnimalCategory;
 /** Filtro pelo tipo do animal — só aparece quando o rebanho tem mais de um. */
 type SpeciesFilter = "todos" | AnimalSpecies;
@@ -266,6 +271,7 @@ export function AnimaisPageClient({
   pesosFoto = [],
   grupos = [],
   grupoAnimais = [],
+  filiacao = [],
   tipoInicial = null,
   racaInicial = null,
 }: Props) {
@@ -974,6 +980,7 @@ export function AnimaisPageClient({
     { value: "lotes", label: "Lotes", icon: Users },
     { value: "tanques", label: "Tanques", icon: Layers },
     { value: "financeiro", label: "Ficha", icon: Wallet },
+    { value: "relatorio", label: "Relatório", icon: FileText },
   ];
 
   const categoryFilters: { value: CategoryFilter; label: string; count: number }[] = [
@@ -1706,6 +1713,20 @@ export function AnimaisPageClient({
           lotes={lotes}
           animals={allAnimalsNaEscolha}
           especieFixa={temEscolha ? (species as AnimalSpecies) : null}
+        />
+      )}
+
+      {/* ── Aba: Relatório — número, mãe, nascimento e raça de cada animal ── */}
+      {tab === "relatorio" && (
+        <RelatorioRebanho
+          animals={allAnimalsNaEscolha}
+          todos={allAnimals}
+          filiacao={filiacao}
+          escolha={escolha}
+          breeds={breeds}
+          onAbrir={(id) => {
+            if (animals.some((a) => a.id === id)) setDetailAnimalId(id);
+          }}
         />
       )}
         </div>
