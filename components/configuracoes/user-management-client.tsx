@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Landmark, Trees, Smartphone, UserCog, RefreshCw } from "lucide-react";
+import { UserPlus, ShieldCheck, User, Eye, Wrench, Trash2, HardHat, Check, LayoutGrid, Beef, PackageOpen, Landmark, Trees, Smartphone, UserCog, RefreshCw, KeyRound } from "lucide-react";
 import { DadosDeAcesso, gerarSenha, type AcessoCriado } from "@/components/configuracoes/dados-de-acesso";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import {
   inviteUser,
   removeUser,
+  trocarSenhaDoUsuario,
   updateOperatorCategories,
   updateUserModules,
   updateUserRole,
@@ -85,6 +86,12 @@ export function UserManagementClient({ users, currentUserId }: Props) {
   /** A senha do usuário novo — já vem gerada, e aparece no recado depois de criar. */
   const [senhaNova, setSenhaNova] = useState("");
   const [acessoCriado, setAcessoCriado] = useState<AcessoCriado | null>(null);
+  /** Trocar a senha de quem já existe: a linha aberta, a senha nova e o recado depois. */
+  const [senhaDeId, setSenhaDeId] = useState<string | null>(null);
+  const [senhaDraft, setSenhaDraft] = useState("");
+  const [senhaErro, setSenhaErro] = useState<string | null>(null);
+  const [senhaTrocada, setSenhaTrocada] = useState<{ userId: string; acesso: AcessoCriado } | null>(null);
+  const [trocandoSenha, startTrocaSenha] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingCatsId, setEditingCatsId] = useState<string | null>(null);
   const [catsDraft, setCatsDraft] = useState<string[]>([]);
@@ -96,6 +103,38 @@ export function UserManagementClient({ users, currentUserId }: Props) {
   const [savingCats, startSaveCats] = useTransition();
   const [savingMods, startSaveMods] = useTransition();
   const [savingRole, startSaveRole] = useTransition();
+
+  function abrirNovaSenha(u: Profile) {
+    setEditingCatsId(null);
+    setEditingModsId(null);
+    setEditingRoleId(null);
+    setSenhaTrocada(null);
+    setSenhaErro(null);
+    setSenhaDeId(u.id);
+    setSenhaDraft(gerarSenha());
+  }
+
+  function confirmarNovaSenha(u: Profile) {
+    setSenhaErro(null);
+    const senha = senhaDraft.trim();
+    startTrocaSenha(async () => {
+      const err = actionError(await trocarSenhaDoUsuario(u.id, senha));
+      if (err) {
+        setSenhaErro(err);
+        return;
+      }
+      setSenhaDeId(null);
+      setSenhaTrocada({
+        userId: u.id,
+        acesso: {
+          nome: u.full_name ?? "",
+          email: u.email,
+          senha,
+          perfil: ROLES.find((r) => r.value === u.role)?.label ?? u.role,
+        },
+      });
+    });
+  }
 
   function startEditCats(u: Profile) {
     setEditingModsId(null);
@@ -313,6 +352,15 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                 )}
                 {!isMe && (
                   <button
+                    onClick={() => (senhaDeId === u.id ? setSenhaDeId(null) : abrirNovaSenha(u))}
+                    title="Nova senha"
+                    className="p-1 text-slate-300 dark:text-slate-600 hover:text-produmar-600 dark:hover:text-produmar-400 transition-colors flex-shrink-0"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {!isMe && (
+                  <button
                     onClick={() => handleDelete(u.id, u.full_name ?? u.email)}
                     disabled={deletingId === u.id}
                     title="Remover usuário"
@@ -322,6 +370,68 @@ export function UserManagementClient({ users, currentUserId }: Props) {
                   </button>
                 )}
               </div>
+
+              {/* Nova senha: gera, confirma e mostra o recado para mandar */}
+              {!isMe && senhaDeId === u.id && (
+                <div className="mt-2 ml-11 space-y-2 rounded-lg border border-produmar-100 dark:border-slate-700 bg-produmar-50/30 dark:bg-slate-800/40 p-3">
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    Nova senha para {u.full_name || u.email}
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={senhaDraft}
+                      onChange={(e) => setSenhaDraft(e.target.value)}
+                      aria-label="Nova senha"
+                      autoComplete="off"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      semDitado
+                      className="h-9 text-sm font-semibold tracking-wide"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSenhaDraft(gerarSenha())}
+                      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Outra
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                    A senha antiga deixa de valer na hora. Depois de trocar, aparece o recado para mandar.
+                  </p>
+                  {senhaErro && <p className="text-xs text-red-600 dark:text-red-400">{senhaErro}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSenhaDeId(null)}
+                      disabled={trocandoSenha}
+                      className="flex-1 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="flex-1"
+                      disabled={trocandoSenha || senhaDraft.trim().length < 6}
+                      onClick={() => confirmarNovaSenha(u)}
+                    >
+                      {trocandoSenha ? "Trocando..." : "Trocar a senha"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {senhaTrocada?.userId === u.id && (
+                <div className="mt-2 ml-11">
+                  <DadosDeAcesso
+                    acesso={senhaTrocada.acesso}
+                    titulo={`Senha nova — mande o acesso para ${u.full_name || u.email}`}
+                    onFechar={() => setSenhaTrocada(null)}
+                  />
+                </div>
+              )}
 
               {/* Editor do perfil de acesso (admin, financeiro, operador...) */}
               {!isMe && editingRoleId === u.id && (

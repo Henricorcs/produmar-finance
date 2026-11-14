@@ -56,7 +56,16 @@ function recado(a: AcessoCriado, site: string): string {
   ].join("\n");
 }
 
-export function DadosDeAcesso({ acesso, onFechar }: { acesso: AcessoCriado; onFechar: () => void }) {
+export function DadosDeAcesso({
+  acesso,
+  onFechar,
+  titulo,
+}: {
+  acesso: AcessoCriado;
+  onFechar: () => void;
+  /** O título do quadro — o padrão é o do usuário recém-criado. */
+  titulo?: string;
+}) {
   const [site, setSite] = useState("");
   const [copiado, setCopiado] = useState(false);
 
@@ -99,7 +108,7 @@ export function DadosDeAcesso({ acesso, onFechar }: { acesso: AcessoCriado; onFe
         <div>
           <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300">
             <KeyRound className="h-4 w-4" />
-            Usuário criado — mande o acesso para {acesso.nome.trim() || acesso.email}
+            {titulo ?? `Usuário criado — mande o acesso para ${acesso.nome.trim() || acesso.email}`}
           </p>
           <p className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80">Perfil: {acesso.perfil}</p>
         </div>

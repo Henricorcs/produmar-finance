@@ -347,6 +347,45 @@ export async function updateUserModules(
   return { ok: true };
 }
 
+/**
+ * Admin troca a senha de outro usuário — a pessoa esqueceu, ou o recado com a
+ * senha se perdeu. A senha velha deixa de valer na hora; a tela mostra a nova
+ * no mesmo recado da criação (site, login e senha) para mandar à pessoa.
+ */
+export async function trocarSenhaDoUsuario(
+  targetUserId: string,
+  senha: string
+): Promise<{ error: string } | { ok: true }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (targetUserId === user.id)
+    return { error: "A sua própria senha você troca em Seu perfil" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin") return { error: "Acesso restrito a administradores" };
+
+  const password = String(senha ?? "").trim();
+  if (password.length < 6) return { error: "Senha deve ter no mínimo 6 caracteres" };
+
+  try {
+    const admin = createAdminClient();
+    const { error } = await admin.auth.admin.updateUserById(targetUserId, { password });
+    if (error) return { error: error.message };
+  } catch (e) {
+    return { error: crashMessage(e) };
+  }
+
+  return { ok: true };
+}
+
 export async function removeUser(
   targetUserId: string
 ): Promise<{ error: string } | { ok: true }> {
