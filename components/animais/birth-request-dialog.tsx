@@ -135,19 +135,25 @@ export function BirthRequestDialog({ open, onClose, request, mothers, photoUrl }
     !!selecionada && speciesOf(selecionada.species) !== speciesOf(request.species);
   const metaLista = SPECIES_META[tipoDaLista];
 
-  /** Põe a busca no alto da janela, para a lista caber acima do teclado. */
-  function subirBusca() {
-    const bloco = blocoMaeRef.current;
-    const caixa = bloco?.closest<HTMLElement>('[role="dialog"]');
-    if (!bloco || !caixa) return;
-    const delta = bloco.getBoundingClientRect().top - caixa.getBoundingClientRect().top - 12;
+  /** Rola a janela até o elemento ficar no alto dela. */
+  function levarAoAlto(el: HTMLElement | null) {
+    const caixa = el?.closest<HTMLElement>('[role="dialog"]');
+    if (!el || !caixa) return;
+    const delta = el.getBoundingClientRect().top - caixa.getBoundingClientRect().top - 12;
     if (delta > 0) caixa.scrollTop += delta;
   }
 
+  /** O bloco da mãe inteiro no alto (aviso + lista) — ao tentar lançar sem mãe. */
+  function subirBusca() {
+    levarAoAlto(blocoMaeRef.current);
+  }
+
   function aoFocarBusca() {
-    // espera o teclado subir e a janela encolher para a faixa visível
-    setTimeout(subirBusca, 120);
-    setTimeout(subirBusca, 450);
+    // Com o teclado aberto sobra pouca tela: a BUSCA vai para o alto (o aviso
+    // fica acima, rolado), e a lista ganha o espaço até os botões.
+    // Espera o teclado subir e a janela encolher para a faixa visível.
+    setTimeout(() => levarAoAlto(buscaRef.current), 120);
+    setTimeout(() => levarAoAlto(buscaRef.current), 450);
   }
 
   function escolher(a: AnimalWithInfo) {
