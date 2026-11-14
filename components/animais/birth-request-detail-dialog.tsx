@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { SPECIES_META, categoryLabel, speciesOf } from "./animal-shared";
+import { SPECIES_META, acharMaeDoVaqueiro, categoryLabel, speciesOf } from "./animal-shared";
 import type { AnimalBirthRequest, AnimalWithInfo, ProtocoloPendencia } from "@/lib/types";
 
 interface Props {
@@ -50,8 +50,8 @@ export function BirthRequestDetailDialog({
 }: Props) {
   if (!request) return null;
 
-  const typed = request.mother_tag.trim().toUpperCase();
-  const mother = mothers.find((m) => m.tag.trim().toUpperCase() === typed) ?? null;
+  // o mesmo casamento da conferência: número exato, sem zeros da frente ou antigo
+  const mother = acharMaeDoVaqueiro(mothers, request.mother_tag, request.species);
 
   // O bicho que o vaqueiro marcou (migration 091). Envio antigo é bovino.
   const nomes = SPECIES_META[speciesOf(request.species)];
@@ -144,7 +144,10 @@ export function BirthRequestDetailDialog({
             </p>
           ) : (
             <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2.5 py-2">
-              Não achamos esse número entre as fêmeas — busque a mãe certa ao lançar.
+              Não existe nenhuma fêmea {request.mother_tag.trim().toUpperCase()} no cadastro — ou o
+              vaqueiro errou o número, ou essa {nomes.female.toLowerCase()} ainda não foi
+              cadastrada. Ao lançar, você escolhe a mãe certa ou cadastra a{" "}
+              {request.mother_tag.trim().toUpperCase()} ali mesmo.
             </p>
           )}
 

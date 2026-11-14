@@ -265,6 +265,42 @@ export function daCriacao<T extends { species?: AnimalSpecies | null }>(
 }
 
 /**
+ * O número do jeito que o curral fala: caixa alta, sem espaço e sem os zeros
+ * da frente — "026", "0026" e "26" são a mesma cabra.
+ */
+function numeroSemZeros(numero?: string | null): string {
+  return (numero ?? "")
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/^0+(?=\d)/, "");
+}
+
+/**
+ * A mãe que o VAQUEIRO digitou no celular, achada no cadastro. Ele escreve o
+ * número de cabeça, então a busca vai em degraus: o número exato; o mesmo
+ * número sem os zeros da frente (ele digita 026, a cabra está como 0026); e
+ * por fim o número antigo do animal. Quando o mesmo número existe em mais de
+ * um tipo de bicho, fica o do tipo que ele marcou. Nada achado → null.
+ */
+export function acharMaeDoVaqueiro<
+  T extends { tag: string; tag_antigo?: string | null; species?: AnimalSpecies | null }
+>(maes: T[], digitado: string, especie?: AnimalSpecies | null): T | null {
+  const exato = digitado.trim().toUpperCase();
+  const semZeros = numeroSemZeros(digitado);
+  if (!exato) return null;
+
+  const tipo = speciesOf(especie);
+  const melhor = (lista: T[]) =>
+    lista.find((a) => speciesOf(a.species) === tipo) ?? lista[0] ?? null;
+
+  return (
+    melhor(maes.filter((a) => a.tag.trim().toUpperCase() === exato)) ??
+    melhor(maes.filter((a) => numeroSemZeros(a.tag) === semZeros)) ??
+    melhor(maes.filter((a) => !!a.tag_antigo && numeroSemZeros(a.tag_antigo) === semZeros))
+  );
+}
+
+/**
  * Uma linha da lista de escolher animal: o NÚMERO grande (no curral é ele que
  * se procura) e, ao lado, menor, o tipo e o peso.
  */
