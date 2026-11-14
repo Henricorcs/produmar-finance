@@ -18,7 +18,9 @@ export type UserRole =
    */
   | "tecnico"
   /** Só o controle de notas da prefeitura: lança e dá baixa (migration 104). */
-  | "prefeitura";
+  | "prefeitura"
+  /** Só a agenda das chácaras: reserva, dá baixa e exclui (migration 143). */
+  | "chacaras";
 export type TransactionType = "entrada" | "saida";
 export type TransactionStatus = "pendente" | "pago" | "recebido" | "vencido" | "cancelado";
 export type InvoiceSource = "xml" | "pdf" | "manual";

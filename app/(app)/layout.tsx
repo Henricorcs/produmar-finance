@@ -54,10 +54,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const isVaqueiro     = profile?.role === "vaqueiro";
   const isTecnico      = profile?.role === "tecnico";
   const isPrefeitura   = profile?.role === "prefeitura";
+  // Chácaras: a agenda das chácaras e mais nada, no mesmo molde (migration 143)
+  const isChacaras     = profile?.role === "chacaras";
 
   // Prefeitura: a tela das notas e mais nada — sem nav de módulos, mas na
   // largura cheia, porque a tela é uma tabela (migration 104).
-  if (isPrefeitura) {
+  if (isPrefeitura || isChacaras) {
     return (
       <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
         <Topbar profile={profile} notifications={[]} nota={nota} notaEm={notaEm} />

@@ -35,6 +35,8 @@ export default async function ChacarasPage({ searchParams }: { searchParams: { m
   const podeGravar =
     role === "admin" ||
     role === "financeiro" ||
+    // o perfil fechado das chácaras (migration 143)
+    role === "chacaras" ||
     ((role === "operador" || role === "encarregado") &&
       (profile?.allowed_modules ?? []).includes("chacaras"));
 

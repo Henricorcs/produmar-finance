@@ -104,6 +104,12 @@ export async function updateSession(request: NextRequest) {
       return redirectTo("/prefeitura");
     }
 
+    // Chácaras: só a agenda dos aluguéis das chácaras. Fechado como o da
+    // prefeitura — nada de hub, módulos ou configurações (migration 143).
+    if (role === "chacaras" && !path.startsWith("/chacaras") && !isPublicRoute) {
+      return redirectTo("/chacaras");
+    }
+
     // Técnico: só a tela de "usei este material". Ele avisa o que gastou na
     // obra; o saldo só cai quando o chefe dá baixa. Nada de hub nem módulos.
     if (role === "tecnico" && !path.startsWith("/tecnico") && !isPublicRoute) {
@@ -179,6 +185,7 @@ export async function updateSession(request: NextRequest) {
       role !== "vaqueiro" &&
       role !== "tecnico" &&
       role !== "prefeitura" &&
+      role !== "chacaras" &&
       !isPublicRoute
     ) {
       const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;
