@@ -18,6 +18,7 @@ export const ASSIGNABLE_MODULE_SLUGS = [
   "devedores",
   "prefeitura",
   "medicoes",
+  "chacaras",
 ] as const;
 
 export type ModuleSlug = (typeof ASSIGNABLE_MODULE_SLUGS)[number];
@@ -59,6 +60,8 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   // Medir cerca. A cerca também fica em Obras, onde morava: quem tem só Obras
   // não perde a tela — a rota abre para quem tem QUALQUER um dos dois.
   medicoes: ["/medicoes", "/medir-cerca"],
+  // Chácaras: a agenda dos aluguéis do Sítio Castro e da Chácara Thalles (142)
+  chacaras: ["/chacaras"],
 };
 
 /**

@@ -22,6 +22,7 @@ import {
   PenLine,
   Ruler,
   LandPlot,
+  Trees,
   type LucideIcon,
 } from "lucide-react";
 
@@ -177,6 +178,19 @@ export const APP_MODULES: AppModule[] = [
       // qualquer PDF assinado com certificado A1, e o arquivo por certificado (124)
       { href: "/assinar", label: "Assinar digitalmente", short: "Assinar", icon: PenLine },
     ],
+  },
+  {
+    // A agenda das duas chácaras que a empresa aluga (Sítio Castro e Chácara
+    // Thalles): o calendário de cada uma com os dias reservados e pagos, e o
+    // banco não deixa alugar o mesmo dia duas vezes — ver a migration 142.
+    slug: "chacaras",
+    name: "Chácaras",
+    description: "Agenda dos aluguéis: dias reservados e pagos, sem alugar duas vezes",
+    href: "/chacaras",
+    icon: Trees,
+    accentIcon:
+      "bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-400",
+    tabs: [{ href: "/chacaras", label: "Agenda das chácaras", short: "Agenda", icon: Trees }],
   },
   {
     // QUEM DEVE PARA A EMPRESA. Isto morava numa aba lá dentro de Finanças,

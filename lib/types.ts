@@ -3086,3 +3086,36 @@ export interface Medicao {
   created_at: string;
   updated_at: string;
 }
+
+// ── Agenda das chácaras (migration 142) ─────────────────────────────────────
+
+/** As chácaras que a empresa aluga (Sítio Castro, Chácara Thalles). */
+export interface Chacara {
+  id: string;
+  nome: string;
+  ordem: number;
+  ativa: boolean;
+}
+
+export type ChacaraFormaPagamento = "pix" | "dinheiro" | "cartao" | "boleto" | "transferencia" | "outro";
+
+/** Sai do que já foi pago: nada → reservado; parte → sinal; tudo → pago. */
+export type ChacaraSituacao = "reservado" | "sinal" | "pago";
+
+/** Uma reserva: do primeiro ao último dia, os dois contam. */
+export interface ChacaraReserva {
+  id: string;
+  chacara_id: string;
+  data_inicio: string;
+  data_fim: string;
+  cliente_nome: string;
+  cliente_telefone: string | null;
+  valor: number;
+  valor_pago: number;
+  forma_pagamento: ChacaraFormaPagamento;
+  situacao: ChacaraSituacao;
+  observacao: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
