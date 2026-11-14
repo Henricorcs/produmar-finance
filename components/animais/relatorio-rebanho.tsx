@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpDown, FileSpreadsheet, Info, Printer, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn, formatDate } from "@/lib/utils";
-import { SPECIES_META, speciesOf } from "./animal-shared";
+import { SPECIES_META, SPECIES_OPTIONS, speciesOf } from "./animal-shared";
 import { animalNaEscolha, nomeDaEscolha, type EscolhaRaca } from "./menu-racas";
 import type { AnimalBreed, AnimalSpecies, AnimalWithInfo } from "@/lib/types";
 
@@ -112,6 +112,25 @@ function montarLinhas(
   });
 }
 
+/** Os animais de um tipo (bovino, ovino...) — um bloco do relatório. */
+interface Grupo {
+  species: AnimalSpecies;
+  linhas: Linha[];
+}
+
+/**
+ * Separa por tipo, na ordem do menu (Bovinos, Equinos, Caprinos...). Tipo sem
+ * nenhum animal não aparece. Dentro do tipo fica a ordem que já veio.
+ */
+function agruparPorTipo(linhas: Linha[]): Grupo[] {
+  return SPECIES_OPTIONS.map((o) => ({
+    species: o.value,
+    linhas: linhas.filter((l) => l.species === o.value),
+  })).filter((g) => g.linhas.length > 0);
+}
+
+const contagem = (n: number) => `${n} ${n === 1 ? "animal" : "animais"}`;
+
 /** Excel em português: ponto e vírgula e o BOM para os acentos saírem certos. */
 function baixarPlanilha(nome: string, cabecalho: string[], linhas: string[][]) {
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -155,7 +174,9 @@ export function RelatorioRebanho({ animals, todos, filiacao, escolha, breeds, on
   );
   const semMae = linhas.filter((l) => !l.mae).length;
   const semNascimento = linhas.filter((l) => !l.nascimento).length;
-  const mostrarTipo = escolha.species === "todos" && new Set(linhas.map((l) => l.species)).size > 1;
+  /** Em "Todos os animais" o relatório sai separado por tipo, com cabeçalho. */
+  const separar = escolha.species === "todos";
+  const grupos = useMemo(() => agruparPorTipo(linhas), [linhas]);
 
   function imprimir() {
     const p = new URLSearchParams();
@@ -173,17 +194,25 @@ export function RelatorioRebanho({ animals, todos, filiacao, escolha, breeds, on
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "")
       .replace(/[^A-Za-z0-9]+/g, "_");
+    const linha = (l: Linha) => [
+      l.tag,
+      l.mae ?? "",
+      dataBR(l.nascimento),
+      l.raca ?? "",
+      SPECIES_META[l.species].label,
+      l.ativo ? "No rebanho" : "Saiu",
+    ];
     baixarPlanilha(
       `Rebanho_${nome}.csv`,
       ["Nº do animal", "Nº da mãe", "Data de nascimento", "Raça", "Tipo", "Situação"],
-      linhas.map((l) => [
-        l.tag,
-        l.mae ?? "",
-        dataBR(l.nascimento),
-        l.raca ?? "",
-        SPECIES_META[l.species].label,
-        l.ativo ? "No rebanho" : "Saiu",
-      ])
+      separar
+        ? // um bloco por tipo: o título com a contagem, os animais e uma linha em branco
+          grupos.flatMap((g, i) => [
+            ...(i > 0 ? [[]] : []),
+            [`${SPECIES_META[g.species].plural.toUpperCase()} — ${contagem(g.linhas.length)}`],
+            ...g.linhas.map(linha),
+          ])
+        : linhas.map(linha)
     );
   }
 
@@ -290,7 +319,44 @@ export function RelatorioRebanho({ animals, todos, filiacao, escolha, breeds, on
         <p className="text-xs text-slate-400 dark:text-slate-500 py-6 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
           {busca.trim() ? "Nenhum animal com essa busca." : "Nenhum animal nesta escolha."}
         </p>
+      ) : separar ? (
+        grupos.map((g) => (
+          <div key={g.species} className="space-y-2">
+            <div className="flex items-center justify-between gap-2 px-1">
+              <span
+                className={cn(
+                  "text-xs font-semibold px-2 py-0.5 rounded-full",
+                  SPECIES_META[g.species].chip
+                )}
+              >
+                {SPECIES_META[g.species].plural}
+              </span>
+              <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
+                {contagem(g.linhas.length)}
+              </span>
+            </div>
+            <TabelaTela linhas={g.linhas} onAbrir={onAbrir} />
+          </div>
+        ))
       ) : (
+        <TabelaTela linhas={linhas} onAbrir={onAbrir} />
+      )}
+
+      <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-start gap-1.5">
+        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+        <span>
+          A mãe é a vaca do parto lançado no sistema; no gado PO, quando não há parto, vale a mãe
+          escrita na ficha. O relatório segue o tipo e a raça escolhidos no menu; em “Todos os
+          animais” sai separado por tipo. Toque num animal para abrir a ficha dele.
+        </span>
+      </p>
+    </div>
+  );
+}
+
+/** A tabela da tela — Nº, mãe, nascimento e raça. */
+function TabelaTela({ linhas, onAbrir }: { linhas: Linha[]; onAbrir?: (id: string) => void }) {
+  return (
         <div className="rounded-xl border border-slate-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
           <table className="w-full text-xs sm:text-sm">
             <thead>
@@ -334,28 +400,12 @@ export function RelatorioRebanho({ animals, todos, filiacao, escolha, breeds, on
                   </td>
                   <td className="py-2 pl-2 pr-3 align-top">
                     {l.raca ?? <span className="text-slate-300 dark:text-slate-600">—</span>}
-                    {mostrarTipo && (
-                      <span className="block text-[10px] text-slate-400">
-                        {SPECIES_META[l.species].label}
-                      </span>
-                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      )}
-
-      <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-start gap-1.5">
-        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-        <span>
-          A mãe é a vaca do parto lançado no sistema; no gado PO, quando não há parto, vale a mãe
-          escrita na ficha. O relatório segue o tipo e a raça escolhidos no menu. Toque num animal
-          para abrir a ficha dele.
-        </span>
-      </p>
-    </div>
   );
 }
 
@@ -387,7 +437,9 @@ export function RelatorioRebanhoPrint({
   };
   const daEscolha = animals.filter((a) => animalNaEscolha(a, escolha));
   const linhas = montarLinhas(daEscolha, animals, filiacao, situacao, busca, ordem);
-  const mostrarTipo = escolha.species === "todos" && new Set(linhas.map((l) => l.species)).size > 1;
+  /** Em "Todos os animais" a folha sai separada por tipo, como a tela. */
+  const separar = escolha.species === "todos";
+  const grupos = agruparPorTipo(linhas);
 
   const filtro = [
     nomeDaEscolha(escolha, breeds),
@@ -464,7 +516,35 @@ export function RelatorioRebanhoPrint({
 
           {linhas.length === 0 ? (
             <p className="text-[12px] text-slate-500 py-6 text-center">Nenhum animal para listar.</p>
+          ) : separar ? (
+            grupos.map((g) => (
+              <div key={g.species} className="space-y-1.5 pt-2">
+                <div className="flex items-baseline justify-between border-b border-slate-300 pb-1">
+                  <h2 className="text-[13px] font-bold uppercase tracking-wide text-produmar-700">
+                    {SPECIES_META[g.species].plural}
+                  </h2>
+                  <span className="text-[11px] text-slate-500">{contagem(g.linhas.length)}</span>
+                </div>
+                <TabelaFolha linhas={g.linhas} />
+              </div>
+            ))
           ) : (
+            <TabelaFolha linhas={linhas} />
+          )}
+
+          <p className="text-[10px] text-slate-500 pt-1">
+            Mãe = a vaca do parto lançado no sistema; no gado PO, quando não há parto, a mãe escrita
+            na ficha.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** A tabela da folha impressa. */
+function TabelaFolha({ linhas }: { linhas: Linha[] }) {
+  return (
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="bg-slate-100 text-slate-600 text-left">
@@ -490,22 +570,10 @@ export function RelatorioRebanhoPrint({
                     </td>
                     <td className="py-1.5 px-2 border border-slate-200">
                       {l.raca ?? "—"}
-                      {mostrarTipo && (
-                        <span className="text-[10px] text-slate-500"> · {SPECIES_META[l.species].label}</span>
-                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-
-          <p className="text-[10px] text-slate-500 pt-1">
-            Mãe = a vaca do parto lançado no sistema; no gado PO, quando não há parto, a mãe escrita
-            na ficha.
-          </p>
-        </div>
-      </div>
-    </>
   );
 }
