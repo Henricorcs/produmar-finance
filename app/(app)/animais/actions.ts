@@ -3,6 +3,7 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
 import type {
   AnimalExitReason,
   AnimalLoteMovimentoKind,
@@ -30,6 +31,18 @@ function clean(s?: string | null): string | null {
 
 function normWeight(v?: number | null): number {
   return Math.max(0, v ?? 0);
+}
+
+/**
+ * Vaqueiro nível 01 (migration 146): trabalha no gado, mas não exclui animal
+ * nem dá saída. O banco já recusa (RLS e gatilho); a conferência aqui vem
+ * ANTES porque essas ações mexem em outra coisa primeiro — o excluir apaga as
+ * fotos do storage, a saída lança no financeiro — e o meio-caminho ficaria.
+ */
+async function barradoParaVaqueiroN1(): Promise<{ error: string } | null> {
+  const profile = await getProfile();
+  if (profile?.role !== "vaqueiro_n1") return null;
+  return { error: "O acesso de Vaqueiro nível 01 não permite isto. Peça ao patrão." };
 }
 
 /** Dinheiro (e quilo) sempre positivo, com 2 casas. */
@@ -238,6 +251,8 @@ async function semOutroDono(
 
 /** Exclui o animal, as fotos e o histórico de vacinação (cascade). */
 export async function deleteAnimal(id: string) {
+  const barrado = await barradoParaVaqueiroN1();
+  if (barrado) return barrado;
   const supabase = createClient();
 
   // remove as fotos do storage (as linhas em animal_photos somem por cascade)
@@ -930,6 +945,11 @@ export async function createBirth(input: BirthInput) {
  * sem mãe.
  */
 export async function deleteBirth(id: string, deleteCalf = false) {
+  // apagar o parto junto com o bezerro é excluir animal
+  if (deleteCalf) {
+    const barrado = await barradoParaVaqueiroN1();
+    if (barrado) return barrado;
+  }
   const supabase = createClient();
 
   const { data: birth } = await supabase
@@ -1397,6 +1417,8 @@ export interface AnimalExitInput {
 }
 
 export async function registerAnimalExit(input: AnimalExitInput) {
+  const barrado = await barradoParaVaqueiroN1();
+  if (barrado) return barrado;
   const supabase = createClient();
   const {
     data: { user },
@@ -1521,6 +1543,8 @@ export async function registerAnimalExit(input: AnimalExitInput) {
 
 /** Desfaz a saída: o animal volta ao rebanho e o lançamento da venda é apagado. */
 export async function undoAnimalExit(animalId: string) {
+  const barrado = await barradoParaVaqueiroN1();
+  if (barrado) return barrado;
   const supabase = createClient();
   const {
     data: { user },

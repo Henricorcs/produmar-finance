@@ -42,6 +42,7 @@ const ROLES: { value: UserRole; label: string; desc: string }[] = [
   { value: "encarregado", label: "Encarregado", desc: "Painel de OS + os módulos liberados" },
   { value: "visualizador",label: "Visualizador",desc: "Somente leitura"                },
   { value: "vaqueiro",    label: "Vaqueiro",    desc: "Só o nascimento de bezerro"     },
+  { value: "vaqueiro_n1", label: "Vaqueiro nível 01", desc: "A tela de Animais, só bovinos: vacina, pesa, parto e lote" },
   { value: "tecnico",     label: "Encarregado de obra", desc: "Material, cerca e os colaboradores liberados" },
   { value: "prefeitura",  label: "Prefeitura",  desc: "Só as notas da prefeitura: lança e dá baixa" },
   { value: "chacaras",    label: "Chácaras",    desc: "Só a agenda das chácaras: reserva e dá baixa" },
@@ -57,6 +58,7 @@ const ROLE_BADGE: Record<UserRole, string> = {
   tecnico:      "bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-400",
   prefeitura:   "bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-400",
   chacaras:     "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400",
+  vaqueiro_n1:  "bg-lime-100 dark:bg-lime-900/40 text-lime-700 dark:text-lime-400",
 };
 
 const ROLE_ICON: Record<UserRole, React.ComponentType<{ className?: string }>> = {
@@ -69,6 +71,7 @@ const ROLE_ICON: Record<UserRole, React.ComponentType<{ className?: string }>> =
   tecnico:      PackageOpen,
   prefeitura:   Landmark,
   chacaras:     Trees,
+  vaqueiro_n1:  Beef,
 };
 
 interface Props {

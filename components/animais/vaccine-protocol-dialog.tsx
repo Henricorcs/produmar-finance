@@ -37,6 +37,7 @@ import {
   weightGain,
   daCriacao,
   ItemDeAnimal,
+  useSoBovinos,
 } from "./animal-shared";
 import type {
   AnimalSpecies,
@@ -112,6 +113,7 @@ export function VaccineProtocolDialog({
   const [weight, setWeight] = useState("");
   const [notes, setNotes] = useState("");
   const [vaccinesOpen, setVaccinesOpen] = useState(false);
+  const soBovinos = useSoBovinos();
 
   const presetKey = (presetVaccineIds ?? []).join(",");
 
@@ -461,14 +463,17 @@ export function VaccineProtocolDialog({
                     {selectedCount === speciesVaccines.length ? "Limpar" : "Marcar todas"}
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setVaccinesOpen(true)}
-                  className={INLINE_LINK}
-                >
-                  <Settings2 className="w-3.5 h-3.5" />
-                  Gerenciar
-                </button>
+                {/* o cadastro de vacinas é do patrão — o vaqueiro nível 01 só aplica (146) */}
+                {!soBovinos && (
+                  <button
+                    type="button"
+                    onClick={() => setVaccinesOpen(true)}
+                    className={INLINE_LINK}
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                    Gerenciar
+                  </button>
+                )}
               </div>
             </div>
 

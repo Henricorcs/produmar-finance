@@ -28,6 +28,7 @@ import {
   speciesOf,
   ehNelorePO,
   ehRacaPO,
+  useSoBovinos,
 } from "./animal-shared";
 import { AnimalBreedsDialog } from "./animal-breeds-dialog";
 import type { Animal, AnimalBreed, AnimalSex, AnimalSpecies } from "@/lib/types";
@@ -71,6 +72,7 @@ export function AnimalDialog({
   const [tipoAberto, setTipoAberto] = useState(false);
   const [photos, setPhotos] = useState<File[]>([]);
   const [breedsOpen, setBreedsOpen] = useState(false);
+  const soBovinos = useSoBovinos();
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -233,10 +235,13 @@ export function AnimalDialog({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="animal_breed">Raça</Label>
-              <button type="button" onClick={() => setBreedsOpen(true)} className={INLINE_LINK}>
-                <Settings2 className="w-3.5 h-3.5" />
-                Gerenciar
-              </button>
+              {/* o cadastro de raças é do patrão — o vaqueiro nível 01 só escolhe (146) */}
+              {!soBovinos && (
+                <button type="button" onClick={() => setBreedsOpen(true)} className={INLINE_LINK}>
+                  <Settings2 className="w-3.5 h-3.5" />
+                  Gerenciar
+                </button>
+              )}
             </div>
             <select
               id="animal_breed"

@@ -110,6 +110,23 @@ export async function updateSession(request: NextRequest) {
       return redirectTo("/chacaras");
     }
 
+    // Vaqueiro nível 01: a tela de Animais (só bovinos — o RLS da migration
+    // 146 garante) e a impressão da ficha e do relatório do rebanho. Fechado
+    // como o da prefeitura: nada de hub, outros módulos ou configurações.
+    if (
+      role === "vaqueiro_n1" &&
+      !(
+        path === "/animais" ||
+        path.startsWith("/animais/") ||
+        path.startsWith("/imprimir/animal/") ||
+        path === "/imprimir/animais" ||
+        path.startsWith("/imprimir/animais/")
+      ) &&
+      !isPublicRoute
+    ) {
+      return redirectTo("/animais");
+    }
+
     // Técnico: só a tela de "usei este material". Ele avisa o que gastou na
     // obra; o saldo só cai quando o chefe dá baixa. Nada de hub nem módulos.
     if (role === "tecnico" && !path.startsWith("/tecnico") && !isPublicRoute) {
@@ -186,6 +203,7 @@ export async function updateSession(request: NextRequest) {
       role !== "tecnico" &&
       role !== "prefeitura" &&
       role !== "chacaras" &&
+      role !== "vaqueiro_n1" &&
       !isPublicRoute
     ) {
       const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;

@@ -3,7 +3,14 @@
 import { useEffect, useMemo } from "react";
 import { ChevronRight, ListFilter, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SPECIES_META, SPECIES_OPTIONS, criacaoPorLote, ehRacaPO, speciesOf } from "./animal-shared";
+import {
+  SPECIES_META,
+  criacaoPorLote,
+  ehRacaPO,
+  speciesOf,
+  useSoBovinos,
+  useSpeciesOptions,
+} from "./animal-shared";
 import type { AnimalBreed, AnimalSpecies, AnimalWithInfo } from "@/lib/types";
 
 /**
@@ -103,17 +110,24 @@ export function ListaRacas({ breeds, animals, value, onChange }: ListaProps) {
   const ativo = (species: EscolhaRaca["species"], breedId: string | null) =>
     value.species === species && value.breedId === breedId;
 
+  // Vaqueiro nível 01 (146): só o gado — e "Todos os animais" seria o mesmo
+  // que "Todos os bovinos", então nem aparece.
+  const soBovinos = useSoBovinos();
+  const tipos = useSpeciesOptions();
+
   return (
     <nav aria-label="Escolher tipo e raça" className="space-y-3">
-      <Item
-        label="Todos os animais"
-        count={animals.length}
-        ativo={ativo("todos", null)}
-        onClick={() => onChange({ species: "todos", breedId: null })}
-        destaque
-      />
+      {!soBovinos && (
+        <Item
+          label="Todos os animais"
+          count={animals.length}
+          ativo={ativo("todos", null)}
+          onClick={() => onChange({ species: "todos", breedId: null })}
+          destaque
+        />
+      )}
 
-      {SPECIES_OPTIONS.map(({ value: sp }) => {
+      {tipos.map(({ value: sp }) => {
         const meta = SPECIES_META[sp];
         const porLote = criacaoPorLote(sp);
         const racas = porLote ? [] : racasPorTipo.get(sp) ?? [];

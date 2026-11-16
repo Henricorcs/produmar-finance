@@ -37,6 +37,9 @@ export function Topbar({ profile, notifications = [], nota = "", notaEm = null, 
 
   const overdueCount = notifications.filter((n) => n.isOverdue).length;
   const hasUnread = notifications.length > 0 || desmames > 0;
+  // Vaqueiro nível 01 (migration 146): o sino é só do desmame — contas a pagar
+  // e Configurações não são da conta dele (o middleware nem deixa abrir).
+  const ehVaqueiroN1 = profile?.role === "vaqueiro_n1";
 
   return (
     <header className="produmar-hero text-white pt-safe">
@@ -119,7 +122,16 @@ export function Topbar({ profile, notifications = [], nota = "", notaEm = null, 
                   )}
 
                   {/* List */}
-                  {notifications.length === 0 ? (
+                  {ehVaqueiroN1 ? (
+                    desmames === 0 && (
+                      <div className="px-4 py-8 text-center">
+                        <Bell className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                        <p className="text-sm text-slate-400 dark:text-slate-500">
+                          Nenhum aviso agora
+                        </p>
+                      </div>
+                    )
+                  ) : notifications.length === 0 ? (
                     <div className="px-4 py-8 text-center">
                       <Bell className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
                       <p className="text-sm text-slate-400 dark:text-slate-500">
@@ -169,15 +181,17 @@ export function Topbar({ profile, notifications = [], nota = "", notaEm = null, 
                   )}
 
                   {/* Footer */}
-                  <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-700">
-                    <a
-                      href="/contas"
-                      onClick={() => setNotifOpen(false)}
-                      className="text-xs text-produmar-600 dark:text-produmar-400 hover:underline"
-                    >
-                      Ver todas as contas →
-                    </a>
-                  </div>
+                  {!ehVaqueiroN1 && (
+                    <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-700">
+                      <a
+                        href="/contas"
+                        onClick={() => setNotifOpen(false)}
+                        className="text-xs text-produmar-600 dark:text-produmar-400 hover:underline"
+                      >
+                        Ver todas as contas →
+                      </a>
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -211,16 +225,18 @@ export function Topbar({ profile, notifications = [], nota = "", notaEm = null, 
                       {profile?.email}
                     </div>
                     <div className="mt-1.5 inline-block text-[10px] uppercase tracking-wide bg-produmar-50 dark:bg-produmar-900/40 text-produmar-700 dark:text-produmar-300 px-2 py-0.5 rounded">
-                      {profile?.role ?? "—"}
+                      {ehVaqueiroN1 ? "Vaqueiro nível 01" : profile?.role ?? "—"}
                     </div>
                   </div>
-                  <a
-                    href="/configuracoes"
-                    className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-produmar-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <UserIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                    Configurações
-                  </a>
+                  {!ehVaqueiroN1 && (
+                    <a
+                      href="/configuracoes"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-produmar-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      <UserIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                      Configurações
+                    </a>
+                  )}
                   <form action={signOutAction}>
                     <button
                       type="submit"

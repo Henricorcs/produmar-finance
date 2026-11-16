@@ -12,6 +12,7 @@ const ROLE_MIGRATION: Partial<Record<UserRole, { migration: string; label: strin
   encarregado: { migration: "079", label: "Encarregado" },
   prefeitura: { migration: "104", label: "Prefeitura" },
   chacaras: { migration: "143", label: "Chácaras" },
+  vaqueiro_n1: { migration: "146", label: "Vaqueiro nível 01" },
 };
 
 /**
@@ -156,6 +157,7 @@ export async function inviteUser(
       "tecnico",
       "prefeitura",
       "chacaras",
+      "vaqueiro_n1",
     ].includes(role)
   )
     return { error: "Perfil de acesso inválido" };
@@ -237,6 +239,7 @@ export async function updateUserRole(
       "tecnico",
       "prefeitura",
       "chacaras",
+      "vaqueiro_n1",
     ].includes(role)
   )
     return { error: "Perfil de acesso inválido" };

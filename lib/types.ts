@@ -20,7 +20,13 @@ export type UserRole =
   /** Só o controle de notas da prefeitura: lança e dá baixa (migration 104). */
   | "prefeitura"
   /** Só a agenda das chácaras: reserva, dá baixa e exclui (migration 143). */
-  | "chacaras";
+  | "chacaras"
+  /**
+   * Na tela: VAQUEIRO NÍVEL 01. Entra na tela de Animais e trabalha no gado,
+   * só bovino — sem excluir, sem saída, sem dinheiro e sem mexer nos
+   * cadastros. O banco garante pelo RLS (migration 146).
+   */
+  | "vaqueiro_n1";
 export type TransactionType = "entrada" | "saida";
 export type TransactionStatus = "pendente" | "pago" | "recebido" | "vencido" | "cancelado";
 export type InvoiceSource = "xml" | "pdf" | "manual";

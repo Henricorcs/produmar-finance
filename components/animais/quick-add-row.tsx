@@ -6,10 +6,10 @@ import { cn, upperKeepingCaret } from "@/lib/utils";
 import { createAnimal, createBirth } from "@/app/(app)/animais/actions";
 import {
   SPECIES_META,
-  SPECIES_OPTIONS,
   formatDecimalInput,
   parseDecimal,
   speciesOf,
+  useSpeciesOptions,
   youngNoun,
 } from "./animal-shared";
 import type { AnimalBreed, AnimalSex, AnimalSpecies } from "@/lib/types";
@@ -52,6 +52,8 @@ export function QuickAddRow({
   const [calfSex, setCalfSex] = useState<AnimalSex | null>(null);
   const [calfTag, setCalfTag] = useState("");
   const tagRef = useRef<HTMLInputElement>(null);
+  /** Vaqueiro nível 01 só vê bovino (146). */
+  const tipos = useSpeciesOptions();
 
   const isFemale = sex === "femea";
   /** A raça é do tipo escolhido — nelore não aparece para uma égua. */
@@ -210,7 +212,7 @@ export function QuickAddRow({
               className={inputCls}
               disabled={isPending}
             >
-              {SPECIES_OPTIONS.map((s) => (
+              {tipos.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
                 </option>

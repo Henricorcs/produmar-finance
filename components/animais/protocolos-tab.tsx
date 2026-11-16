@@ -50,6 +50,7 @@ import {
   formatWeight,
   parseDecimal,
   suggestedDoseMl,
+  useSoBovinos,
 } from "./animal-shared";
 import {
   Chip,
@@ -132,6 +133,8 @@ export function ProtocolosTab({
   etapasFeitas,
 }: Props) {
   const [, startTransition] = useTransition();
+  /** Vaqueiro nível 01 (146): aplica os protocolos, não monta nem edita. */
+  const soBovinos = useSoBovinos();
   const [medsOpen, setMedsOpen] = useState(false);
   const [medsSpecies, setMedsSpecies] = useState<AnimalSpecies>("bovino");
   const [modeloOpen, setModeloOpen] = useState(false);
@@ -244,7 +247,7 @@ export function ProtocolosTab({
   return (
     <div className="space-y-4">
       {/* Ações */}
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className={cn("grid gap-1.5", soBovinos ? "grid-cols-1" : "grid-cols-3")}>
         <Button
           onClick={() => {
             setProgramarPreset(null);
@@ -256,28 +259,32 @@ export function ProtocolosTab({
           <Syringe className="w-4 h-4" />
           Aplicar
         </Button>
-        <Button
-          variant="outline"
-          className="h-11"
-          onClick={() => {
-            setModelo(null);
-            setModeloOpen(true);
-          }}
-        >
-          <Plus className="w-4 h-4" />
-          Protocolo
-        </Button>
-        <Button
-          variant="outline"
-          className="h-11"
-          onClick={() => {
-            setMedsSpecies("bovino");
-            setMedsOpen(true);
-          }}
-        >
-          <Pill className="w-4 h-4" />
-          Remédios
-        </Button>
+        {!soBovinos && (
+          <>
+            <Button
+              variant="outline"
+              className="h-11"
+              onClick={() => {
+                setModelo(null);
+                setModeloOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              Protocolo
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11"
+              onClick={() => {
+                setMedsSpecies("bovino");
+                setMedsOpen(true);
+              }}
+            >
+              <Pill className="w-4 h-4" />
+              Remédios
+            </Button>
+          </>
+        )}
       </div>
       {etapasFeitas.length > 0 && (
         <Button variant="outline" className="h-11 w-full" onClick={() => setRelatorioOpen(true)}>
@@ -286,8 +293,14 @@ export function ProtocolosTab({
         </Button>
       )}
 
-      {/* Primeiro uso: os três passos */}
-      {protocolos.length === 0 && (
+      {/* Primeiro uso: os três passos (quem monta é o patrão, não o vaqueiro nível 01) */}
+      {protocolos.length === 0 && soBovinos && (
+        <p className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-300">
+          Nenhum protocolo montado ainda. Quem monta é o patrão — assim que ele cadastrar,
+          aparece aqui para você aplicar.
+        </p>
+      )}
+      {protocolos.length === 0 && !soBovinos && (
         <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-4 space-y-2 text-sm text-slate-600 dark:text-slate-300">
           <p className="font-semibold text-slate-800 dark:text-slate-100">Como funciona</p>
           <ol className="list-decimal pl-5 space-y-1 text-[13px]">
@@ -366,16 +379,18 @@ export function ProtocolosTab({
               >
                 <Syringe className="w-4 h-4" />
               </button>
-              <button
-                aria-label={`Editar ${p.name}`}
-                onClick={() => {
-                  setModelo(p);
-                  setModeloOpen(true);
-                }}
-                className={cn(ICON_BUTTON, "text-slate-400 hover:text-produmar-600")}
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
+              {!soBovinos && (
+                <button
+                  aria-label={`Editar ${p.name}`}
+                  onClick={() => {
+                    setModelo(p);
+                    setModeloOpen(true);
+                  }}
+                  className={cn(ICON_BUTTON, "text-slate-400 hover:text-produmar-600")}
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ))}
         </section>

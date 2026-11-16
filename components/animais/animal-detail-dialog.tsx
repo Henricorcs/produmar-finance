@@ -57,6 +57,7 @@ import {
   vaccineStatusFor,
   vaccinesForSpecies,
   weightGain,
+  useSoBovinos,
 } from "./animal-shared";
 import { TrocarMaeDialog } from "./trocar-mae-dialog";
 import type {
@@ -134,6 +135,7 @@ export function AnimalDetailDialog({
   const [photos, setPhotos] = useState<{ id: string; url: string | null }[]>([]);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [trocandoMae, setTrocandoMae] = useState(false);
+  const soBovinos = useSoBovinos();
 
   // carrega as fotos sob demanda (URLs assinadas)
   useEffect(() => {
@@ -790,15 +792,18 @@ export function AnimalDetailDialog({
                     Parto
                   </Button>
                 )}
-                {/* Saída do rebanho: vendido (o valor vai pro financeiro) ou morto */}
-                <Button
-                  variant="outline"
-                  className="h-12 sm:h-10 col-span-2 border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400"
-                  onClick={() => onExit(animal)}
-                >
-                  <HandCoins className="w-4 h-4" />
-                  Vender ou dar baixa
-                </Button>
+                {/* Saída do rebanho: vendido (o valor vai pro financeiro) ou
+                    morto. O vaqueiro nível 01 não dá saída (146). */}
+                {!soBovinos && (
+                  <Button
+                    variant="outline"
+                    className="h-12 sm:h-10 col-span-2 border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400"
+                    onClick={() => onExit(animal)}
+                  >
+                    <HandCoins className="w-4 h-4" />
+                    Vender ou dar baixa
+                  </Button>
+                )}
               </div>
             </>
           )}
@@ -926,15 +931,18 @@ export function AnimalDetailDialog({
               <Pencil className="w-3.5 h-3.5" />
               Editar
             </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={isPending}
-              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-sm font-medium text-slate-400 hover:text-red-500 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Excluir
-            </button>
+            {/* o vaqueiro nível 01 não exclui animal (146) */}
+            {!soBovinos && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isPending}
+                className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-sm font-medium text-slate-400 hover:text-red-500 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Excluir
+              </button>
+            )}
           </div>
         </div>
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { cn, upperKeepingCaret } from "@/lib/utils";
 import { createAnimal } from "@/app/(app)/animais/actions";
-import { SPECIES_META, SPECIES_OPTIONS } from "./animal-shared";
+import { SPECIES_META, useSpeciesOptions } from "./animal-shared";
 import type { AnimalSex, AnimalSpecies } from "@/lib/types";
 
 interface Props {
@@ -26,6 +26,8 @@ export function QuickAddBar({ species: filterSpecies, breedId = null }: Props) {
   const [sex, setSex] = useState<AnimalSex>("femea");
   const [species, setSpecies] = useState<AnimalSpecies>(filterSpecies ?? "bovino");
   const tagRef = useRef<HTMLInputElement>(null);
+  /** Vaqueiro nível 01 só vê bovino (146). */
+  const tipos = useSpeciesOptions();
 
   /** Filtrou a tela por um tipo? O animal novo entra nesse — senão sumiria. */
   useEffect(() => {
@@ -106,7 +108,7 @@ export function QuickAddBar({ species: filterSpecies, breedId = null }: Props) {
             disabled={isPending}
             className="h-11 rounded-lg border border-produmar-200 bg-white px-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-produmar-400 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           >
-            {SPECIES_OPTIONS.map((s) => (
+            {tipos.map((s) => (
               <option key={s.value} value={s.value}>
                 {SPECIES_META[s.value].label}
               </option>

@@ -30,6 +30,7 @@ import {
   doseLabel,
   formatDecimalInput,
   parseDecimal,
+  useSpeciesOptions,
 } from "./animal-shared";
 import type {
   AnimalMedicamento,
@@ -77,9 +78,12 @@ export function SpeciesChips({
   value: AnimalSpecies;
   onChange: (v: AnimalSpecies) => void;
 }) {
+  // Vaqueiro nível 01 (146): só bovino — com um tipo só não há o que escolher
+  const opcoes = useSpeciesOptions(PARTO_SPECIES_OPTIONS);
+  if (opcoes.length <= 1) return null;
   return (
     <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
-      {PARTO_SPECIES_OPTIONS.map((o) => (
+      {opcoes.map((o) => (
         <Chip key={o.value} active={value === o.value} onClick={() => onChange(o.value)}>
           {o.label}
         </Chip>

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
 import { AnimaisPageClient } from "@/components/animais/animais-page-client";
 import type {
   AnimalBirth,
@@ -43,6 +44,13 @@ export default async function AnimaisPage({
   searchParams: { tipo?: string; raca?: string; desmame?: string };
 }) {
   const supabase = createClient();
+
+  // Vaqueiro nível 01 (migration 146): só bovino. O RLS já não manda outro
+  // tipo nem o que é dinheiro (despesas, vendas, tanques); aqui a página nem
+  // pede essas tabelas e apaga o valor da venda dos animais que saíram.
+  const profile = await getProfile();
+  const soBovinos = profile?.role === "vaqueiro_n1";
+  const nada = Promise.resolve({ data: [] as unknown[] });
 
   const [
     animalsRes,
@@ -108,37 +116,50 @@ export default async function AnimaisPage({
     // a ficha de receitas e despesas por espécie (migration 072 — sem ela a
     // aba abre vazia e o resto da tela segue igual). O limite é folgado porque
     // o relatório por raça soma o ano inteiro a partir destas linhas.
-    supabase
-      .from("v_animal_financeiro")
-      .select("*")
-      .order("entry_date", { ascending: false })
-      .limit(5000),
+    soBovinos
+      ? nada
+      : supabase
+          .from("v_animal_financeiro")
+          .select("*")
+          .order("entry_date", { ascending: false })
+          .limit(5000),
     // as despesas cruas: é por elas que a ficha abre uma na correção
-    supabase
-      .from("animal_despesas")
-      .select("*")
-      .order("expense_date", { ascending: false })
-      .limit(2000),
+    soBovinos
+      ? nada
+      : supabase
+          .from("animal_despesas")
+          .select("*")
+          .order("expense_date", { ascending: false })
+          .limit(2000),
     // as vendas de lote cruas — peixe e ave, que não têm brinco (migration 088
     // — sem ela a ficha segue igual, só sem essas linhas)
-    supabase
-      .from("animal_vendas")
-      .select("*")
-      .order("sale_date", { ascending: false })
-      .limit(2000),
+    soBovinos
+      ? nada
+      : supabase
+          .from("animal_vendas")
+          .select("*")
+          .order("sale_date", { ascending: false })
+          .limit(2000),
     // tanque, ciclo e movimento (migration 089 — sem ela a aba abre vazia e o
     // resto da tela segue igual)
-    supabase.from("animal_tanques").select("*").order("name", { ascending: true }),
-    supabase
-      .from("v_animal_lotes")
-      .select("*")
-      .order("start_date", { ascending: false })
-      .limit(500),
-    supabase
-      .from("animal_lote_movimentos")
-      .select("*")
-      .order("moved_on", { ascending: false })
-      .limit(5000),
+    // (peixe e ave: nada disso é do vaqueiro nível 01)
+    soBovinos
+      ? nada
+      : supabase.from("animal_tanques").select("*").order("name", { ascending: true }),
+    soBovinos
+      ? nada
+      : supabase
+          .from("v_animal_lotes")
+          .select("*")
+          .order("start_date", { ascending: false })
+          .limit(500),
+    soBovinos
+      ? nada
+      : supabase
+          .from("animal_lote_movimentos")
+          .select("*")
+          .order("moved_on", { ascending: false })
+          .limit(5000),
     // o protocolo do nascimento (migration 095 — sem ela a aba Nascimentos
     // abre igual, só com o protocolo vazio e o aviso de rodar a migration)
     supabase
@@ -198,10 +219,26 @@ export default async function AnimaisPage({
     .not("birth_request_id", "is", null)
     .limit(1000);
 
+  // O valor da venda fica fora do que vai para o celular do vaqueiro nível 01.
+  const animais = ((animalsRes.data as AnimalWithInfo[]) ?? []).map((a) =>
+    soBovinos
+      ? {
+          ...a,
+          exit_amount: 0,
+          sale_weight_kg: 0,
+          sale_price_per_kg: 0,
+          exit_buyer: null,
+          exit_notes: null,
+          exit_transaction_id: null,
+        }
+      : a
+  );
+
   return (
     <AnimaisPageClient
+      soBovinos={soBovinos}
       pendenciasDoNascimento={(pendenciasDoNascimento as ProtocoloPendencia[] | null) ?? []}
-      animals={(animalsRes.data as AnimalWithInfo[]) ?? []}
+      animals={animais}
       breeds={(breedsRes.data as AnimalBreed[]) ?? []}
       vaccines={(vaccinesRes.data as AnimalVaccine[]) ?? []}
       vaccinations={(vaccinationsRes.data as VaccinationRow[]) ?? []}

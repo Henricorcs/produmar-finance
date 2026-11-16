@@ -1,5 +1,6 @@
 "use client";
 
+import { createContext, useContext } from "react";
 import type {
   AnimalCategory,
   AnimalSex,
@@ -211,6 +212,29 @@ export const LOTE_SPECIES_OPTIONS = SPECIES_OPTIONS.filter((o) =>
  * deles se controla por lote, no tanque e no galpão.
  */
 export const PARTO_SPECIES_OPTIONS = SPECIES_OPTIONS.filter((o) => !criacaoPorLote(o.value));
+
+// ── Vaqueiro nível 01: só bovinos (migration 146) ───────────────────────────
+//
+// Quem entra com esse perfil trabalha no gado e só nele. O banco já não manda
+// outro tipo (RLS), mas a tela também não pode OFERECER: um menu com Equino,
+// Suíno e Piscicultura vazios, ou um cadastro que deixa escolher Caprino e
+// depois dá erro, é pior do que não ter. A tela de Animais embrulha tudo neste
+// contexto, e os seletores de tipo leem dele.
+
+/** true = Vaqueiro nível 01: só bovino, sem excluir, sem saída, sem dinheiro, sem cadastros. */
+export const SoBovinosContext = createContext(false);
+
+export function useSoBovinos(): boolean {
+  return useContext(SoBovinosContext);
+}
+
+/** Os tipos que a pessoa pode ver — para o Vaqueiro nível 01, só bovino. */
+export function useSpeciesOptions(
+  base: { value: AnimalSpecies; label: string }[] = SPECIES_OPTIONS
+): { value: AnimalSpecies; label: string }[] {
+  const soBovinos = useSoBovinos();
+  return soBovinos ? base.filter((o) => o.value === "bovino") : base;
+}
 
 export function localLabel(species?: AnimalSpecies | null): string {
   const s = speciesOf(species);
@@ -689,9 +713,12 @@ export function SpeciesPicker({
   value: AnimalSpecies;
   onChange: (v: AnimalSpecies) => void;
 }) {
+  const opcoes = useSpeciesOptions();
+  // só um tipo possível: não há o que escolher
+  if (opcoes.length <= 1) return null;
   return (
     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-      {SPECIES_OPTIONS.map((opt) => (
+      {opcoes.map((opt) => (
         <button
           key={opt.value}
           type="button"

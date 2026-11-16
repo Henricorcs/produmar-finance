@@ -88,6 +88,7 @@ import {
   vaccinesForSpecies,
   vaccinesHaveSpecies,
   weightGain,
+  SoBovinosContext,
 } from "./animal-shared";
 import type {
   AnimalBirth,
@@ -174,6 +175,12 @@ interface Props {
   racaInicial?: string | null;
   /** ?desmame=1 — veio do sino: abre a lista de crias prontas para desmamar. */
   desmameInicial?: boolean;
+  /**
+   * Vaqueiro nível 01 (migration 146): só bovino. O menu, as abas e os
+   * seletores de tipo só mostram o gado; somem Saídas, Tanques, Ficha, o
+   * Excluir, a baixa e os cadastros (raças, vacinas, remédios, protocolos).
+   */
+  soBovinos?: boolean;
 }
 
 /**
@@ -207,6 +214,8 @@ type Tab =
   | "tanques"
   | "financeiro"
   | "relatorio";
+/** O que o Vaqueiro nível 01 não vê (migration 146): dinheiro e peixe/ave. */
+const ABAS_FORA_DO_VAQUEIRO_N1: Tab[] = ["saidas", "tanques", "financeiro"];
 type CategoryFilter = "todos" | AnimalCategory;
 /** Filtro pelo tipo do animal — só aparece quando o rebanho tem mais de um. */
 type SpeciesFilter = "todos" | AnimalSpecies;
@@ -278,6 +287,7 @@ export function AnimaisPageClient({
   tipoInicial = null,
   racaInicial = null,
   desmameInicial = false,
+  soBovinos = false,
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -293,9 +303,13 @@ export function AnimaisPageClient({
    * ou uma raça. Vale para todas as seções — Rebanho, Nascimentos, Vacinação,
    * Protocolos, Saídas e Ficha mostram só o que é dessa escolha.
    */
-  const [escolha, setEscolha] = useState<EscolhaRaca>(() =>
-    escolhaDaUrl(tipoInicial, racaInicial, breeds)
-  );
+  const [escolha, setEscolha] = useState<EscolhaRaca>(() => {
+    const e = escolhaDaUrl(tipoInicial, racaInicial, breeds);
+    // Vaqueiro nível 01: o gado é o rebanho inteiro dele — abre em Bovinos
+    // (e ?tipo=equino na URL não muda nada: o banco nem manda outro tipo)
+    if (soBovinos && e.species !== "bovino") return { species: "bovino", breedId: null };
+    return e;
+  });
   const species: SpeciesFilter = escolha.species;
   const breedId = escolha.breedId;
   const [menuAberto, setMenuAberto] = useState(false);
@@ -305,7 +319,9 @@ export function AnimaisPageClient({
    * Troca a escolha e grava na URL (?tipo=&raca=) sem recarregar a página —
    * assim a escolha sobrevive ao recarregar e ao voltar para a tela.
    */
-  const escolher = useCallback((e: EscolhaRaca) => {
+  const escolher = useCallback((e0: EscolhaRaca) => {
+    const e: EscolhaRaca =
+      soBovinos && e0.species !== "bovino" ? { species: "bovino", breedId: null } : e0;
     setEscolha(e);
     setMenuAberto(false);
     try {
@@ -318,7 +334,7 @@ export function AnimaisPageClient({
     } catch {
       // sem URL a escolha continua valendo na tela — só não sobrevive ao recarregar
     }
-  }, []);
+  }, [soBovinos]);
   /** Atalho para os botões que escolhem um tipo inteiro. */
   const setSpecies = (sp: SpeciesFilter) => escolher({ species: sp, breedId: null });
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
@@ -986,6 +1002,8 @@ export function AnimaisPageClient({
     { value: "financeiro", label: "Ficha", icon: Wallet },
     { value: "relatorio", label: "Relatório", icon: FileText },
   ];
+  // Vaqueiro nível 01 (146): Saídas e Ficha são dinheiro; Tanques é peixe e ave
+  const abas = soBovinos ? tabs.filter((t) => !ABAS_FORA_DO_VAQUEIRO_N1.includes(t.value)) : tabs;
 
   const categoryFilters: { value: CategoryFilter; label: string; count: number }[] = [
     { value: "todos", label: "Total", count: speciesAnimals.length },
@@ -1020,6 +1038,7 @@ export function AnimaisPageClient({
   );
 
   return (
+    <SoBovinosContext.Provider value={soBovinos}>
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
@@ -1054,7 +1073,7 @@ export function AnimaisPageClient({
 
       {/* Abas — 4 por linha no celular, cabendo na largura da tela */}
       <div className="grid grid-cols-4 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
-        {tabs.map((t) => {
+        {abas.map((t) => {
           const Icon = t.icon;
           const active = tab === t.value;
           return (
@@ -1462,16 +1481,19 @@ export function AnimaisPageClient({
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => setVaccinesOpen(true)}
-              className="w-full flex items-center justify-center gap-2 min-h-[48px] px-3 border-t border-slate-100 bg-slate-50/60 text-sm font-semibold text-produmar-700 dark:border-slate-800 dark:bg-slate-800/40 dark:text-produmar-400 active:scale-[0.98] transition-transform"
-            >
-              <Settings2 className="w-4 h-4" />
-              {species === "todos"
-                ? "Cadastrar vacinas"
-                : `Cadastrar vacinas de ${SPECIES_META[species].label.toLowerCase()}`}
-            </button>
+            {/* o cadastro de vacinas é do patrão — o vaqueiro nível 01 só aplica (146) */}
+            {!soBovinos && (
+              <button
+                type="button"
+                onClick={() => setVaccinesOpen(true)}
+                className="w-full flex items-center justify-center gap-2 min-h-[48px] px-3 border-t border-slate-100 bg-slate-50/60 text-sm font-semibold text-produmar-700 dark:border-slate-800 dark:bg-slate-800/40 dark:text-produmar-400 active:scale-[0.98] transition-transform"
+              >
+                <Settings2 className="w-4 h-4" />
+                {species === "todos"
+                  ? "Cadastrar vacinas"
+                  : `Cadastrar vacinas de ${SPECIES_META[species].label.toLowerCase()}`}
+              </button>
+            )}
           </div>
 
           <Button className="w-full h-12" onClick={() => openProtocol(null)}>
@@ -1553,7 +1575,9 @@ export function AnimaisPageClient({
         <>
           {/* O protocolo do nascimento: o que o vaqueiro tem que aplicar na
               cria antes de conseguir informar. Fica no topo da aba porque é
-              daqui que saem os nascimentos. */}
+              daqui que saem os nascimentos. Quem monta é o patrão: o
+              vaqueiro nível 01 não vê o botão (146). */}
+          {!soBovinos && (
           <button
             type="button"
             onClick={() => setProtocoloOpen(true)}
@@ -1574,6 +1598,7 @@ export function AnimaisPageClient({
             </span>
             <Pencil className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
           </button>
+          )}
 
           {birthRequestsNaEscolha.length === 0 ? (
             <EmptyState
@@ -1886,6 +1911,7 @@ export function AnimaisPageClient({
         species={species === "todos" ? undefined : species}
       />
     </div>
+    </SoBovinosContext.Provider>
   );
 }
 
