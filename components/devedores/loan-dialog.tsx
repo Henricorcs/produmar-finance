@@ -41,6 +41,8 @@ import {
   mascaraCpfCnpj,
   mascaraTelefone,
 } from "@/lib/utils";
+import { mascaraCep } from "@/components/ui/passo-a-passo";
+import { enderecoDoDevedor } from "@/lib/devedor-endereco";
 import { LOAN_PAYMENT_METHODS, LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
 import type { Loan, LoanPaymentMethod, LoanRepaymentType } from "@/lib/types";
 import type { LoanWithDetails } from "@/app/(app)/devedores/page";
@@ -78,11 +80,21 @@ type TipoJuros = "percent" | "fixed" | "nenhum";
  * Com boleto, no fim aparecem os boletos gerados e o botão "Gerar no banco",
  * do mesmo jeito dos aluguéis.
  */
-type Passo = "devedor" | "dados" | "valor" | "juros" | "parcelas" | "forma" | "conferir" | "boletos";
+type Passo =
+  | "devedor"
+  | "dados"
+  | "endereco"
+  | "valor"
+  | "juros"
+  | "parcelas"
+  | "forma"
+  | "conferir"
+  | "boletos";
 
 const TITULO: Record<Passo, string> = {
   devedor: "Quem está devendo",
   dados: "Dados para a confissão",
+  endereco: "Endereço",
   valor: "Quanto deve",
   juros: "Tem juros?",
   parcelas: "Como vai pagar",
@@ -91,7 +103,45 @@ const TITULO: Record<Passo, string> = {
   boletos: "Pronto",
 };
 
-const ETAPAS: Passo[] = ["devedor", "dados", "valor", "juros", "parcelas", "forma", "conferir"];
+const ETAPAS: Passo[] = ["devedor", "dados", "endereco", "valor", "juros", "parcelas", "forma", "conferir"];
+
+/** O endereço em partes (migration 144), como a tela pergunta. */
+interface Endereco {
+  rua: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+  cep: string;
+}
+
+const ENDERECO_VAZIO: Endereco = { rua: "", numero: "", complemento: "", bairro: "", cidade: "", uf: "", cep: "" };
+
+function enderecoDaDivida(l?: Loan | null): Endereco {
+  return {
+    rua: l?.borrower_street ?? "",
+    numero: l?.borrower_number ?? "",
+    complemento: l?.borrower_complement ?? "",
+    bairro: l?.borrower_district ?? "",
+    cidade: l?.borrower_city ?? "",
+    uf: l?.borrower_state ?? "",
+    cep: mascaraCep(l?.borrower_zip ?? ""),
+  };
+}
+
+/** O que está no formulário, no formato da dívida — sem o endereço corrido antigo. */
+function partesDoForm(e: Endereco): Partial<Loan> {
+  return {
+    borrower_street: e.rua,
+    borrower_number: e.numero,
+    borrower_complement: e.complemento,
+    borrower_district: e.bairro,
+    borrower_city: e.cidade,
+    borrower_state: e.uf,
+    borrower_zip: e.cep,
+  };
+}
 
 /** Os estados civis do botão — como saem escritos na confissão. */
 const ESTADOS_CIVIS = ["SOLTEIRO(A)", "CASADO(A)", "DIVORCIADO(A)", "VIÚVO(A)", "UNIÃO ESTÁVEL"];
@@ -109,7 +159,7 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
   const [estadoCivil, setEstadoCivil] = useState("");
   const [profissao, setProfissao] = useState("");
   const [rg, setRg] = useState("");
-  const [endereco, setEndereco] = useState("");
+  const [endereco, setEndereco] = useState<Endereco>(ENDERECO_VAZIO);
   const [repNome, setRepNome] = useState("");
   const [repDoc, setRepDoc] = useState("");
   const [amount, setAmount] = useState("");
@@ -149,7 +199,7 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
     setEstadoCivil(loan?.borrower_marital_status ?? "");
     setProfissao(loan?.borrower_profession ?? "");
     setRg(loan?.borrower_rg ?? "");
-    setEndereco(loan?.borrower_address ?? "");
+    setEndereco(enderecoDaDivida(loan));
     setRepNome(loan?.borrower_rep_name ?? "");
     setRepDoc(mascaraCpfCnpj(loan?.borrower_rep_document ?? ""));
     setAmount(loan?.principal ? formatBRLInput(loan.principal) : "");
@@ -212,6 +262,13 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
   const indice = ETAPAS.indexOf(passo);
   /** CNPJ (14 dígitos): os dados são da empresa — sede e quem assina por ela. */
   const ehEmpresa = documento.replace(/\D/g, "").length === 14;
+  const mudarEndereco = (campo: keyof Endereco, valor: string) =>
+    setEndereco((e) => ({ ...e, [campo]: valor }));
+  /** O endereço montado — o das partes ou, sem elas, o corrido antigo. */
+  const enderecoMontado = enderecoDoDevedor({
+    ...partesDoForm(endereco),
+    borrower_address: loan?.borrower_address,
+  });
 
   function irPara(p: Passo) {
     setError(null);
@@ -284,7 +341,15 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
       borrower_marital_status: ehEmpresa ? null : estadoCivil,
       borrower_profession: ehEmpresa ? null : profissao,
       borrower_rg: ehEmpresa ? null : rg,
-      borrower_address: endereco,
+      // o endereço corrido de antes da 144 (borrower_address) não é mexido:
+      // continua valendo até as partes serem preenchidas
+      borrower_street: endereco.rua,
+      borrower_number: endereco.numero,
+      borrower_complement: endereco.complemento,
+      borrower_district: endereco.bairro,
+      borrower_city: endereco.cidade,
+      borrower_state: endereco.uf,
+      borrower_zip: endereco.cep,
       borrower_rep_name: ehEmpresa ? repNome : null,
       borrower_rep_document: ehEmpresa ? repDoc : null,
       principal,
@@ -409,6 +474,21 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                   Precisa do CPF (ou CNPJ) certo para o boleto ir para o banco e para a confissão de dívida.
                 </p>
               </div>
+              {/* RG é de pessoa física — com CNPJ some */}
+              {!ehEmpresa && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="borrower_rg">RG</Label>
+                  <Input
+                    id="borrower_rg"
+                    value={rg}
+                    onChange={(e) => setRg(e.target.value.toUpperCase())}
+                    placeholder="nº e órgão — ex: 123456 SSP/MA"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    className="h-12 text-base"
+                  />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="borrower_phone">Telefone</Label>
                 <Input
@@ -432,18 +512,6 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
               </p>
               {ehEmpresa ? (
                 <>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="borrower_address">Endereço da sede</Label>
-                    <Textarea
-                      id="borrower_address"
-                      value={endereco}
-                      onChange={(e) => setEndereco(e.target.value.toUpperCase())}
-                      placeholder="RUA, Nº, BAIRRO, CIDADE/UF, CEP"
-                      rows={2}
-                      autoCapitalize="characters"
-                      className="text-base"
-                    />
-                  </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="borrower_rep_name">Quem assina pela empresa</Label>
                     <Input
@@ -469,29 +537,16 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                 </>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="borrower_nationality">Nacionalidade</Label>
-                      <Input
-                        id="borrower_nationality"
-                        value={nacionalidade}
-                        onChange={(e) => setNacionalidade(e.target.value.toUpperCase())}
-                        placeholder="BRASILEIRO(A)"
-                        autoCapitalize="characters"
-                        className="h-12 text-base"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="borrower_rg">RG</Label>
-                      <Input
-                        id="borrower_rg"
-                        value={rg}
-                        onChange={(e) => setRg(e.target.value.toUpperCase())}
-                        placeholder="nº e órgão"
-                        autoCapitalize="characters"
-                        className="h-12 text-base"
-                      />
-                    </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="borrower_nationality">Nacionalidade</Label>
+                    <Input
+                      id="borrower_nationality"
+                      value={nacionalidade}
+                      onChange={(e) => setNacionalidade(e.target.value.toUpperCase())}
+                      placeholder="BRASILEIRO(A)"
+                      autoCapitalize="characters"
+                      className="h-12 text-base"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Estado civil</Label>
@@ -519,20 +574,125 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                       className="h-12 text-base"
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="borrower_address">Endereço</Label>
-                    <Textarea
-                      id="borrower_address"
-                      value={endereco}
-                      onChange={(e) => setEndereco(e.target.value.toUpperCase())}
-                      placeholder="RUA, Nº, BAIRRO, CIDADE/UF, CEP"
-                      rows={2}
-                      autoCapitalize="characters"
-                      className="text-base"
-                    />
-                  </div>
                 </>
               )}
+            </>
+          )}
+
+          {/* 1c. ENDEREÇO EM PARTES (migration 144) — da casa ou, com CNPJ, da sede */}
+          {passo === "endereco" && (
+            <>
+              <p className="text-[12px] text-slate-500 dark:text-slate-400 -mt-1">
+                {ehEmpresa ? "Onde fica a sede da empresa." : "Onde o devedor mora."} O que ficar em
+                branco não sai na confissão.
+              </p>
+              {/* dívida de antes da 144: o endereço corrido segue valendo */}
+              {loan?.borrower_address?.trim() && !enderecoDoDevedor(partesDoForm(endereco)) && (
+                <p className="text-[12px] text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400">
+                  Endereço que está na dívida hoje: {loan.borrower_address.trim()}. Ele continua
+                  valendo até você preencher as partes abaixo.
+                </p>
+              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="borrower_street">Rua ou avenida</Label>
+                <Input
+                  id="borrower_street"
+                  value={endereco.rua}
+                  onChange={(e) => mudarEndereco("rua", e.target.value.toUpperCase())}
+                  placeholder="ex: RUA DAS FLORES"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  className="h-12 text-base"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="borrower_number">Número</Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      id="borrower_number"
+                      value={endereco.numero}
+                      onChange={(e) => mudarEndereco("numero", e.target.value.toUpperCase())}
+                      placeholder="ex: 120"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      className="h-12 text-base min-w-0"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => mudarEndereco("numero", endereco.numero === "S/N" ? "" : "S/N")}
+                      className={cn(seletor(endereco.numero === "S/N"), "min-h-[48px] px-2.5 shrink-0 text-xs")}
+                    >
+                      S/N
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="borrower_complement">Complemento</Label>
+                  <Input
+                    id="borrower_complement"
+                    value={endereco.complemento}
+                    onChange={(e) => mudarEndereco("complemento", e.target.value.toUpperCase())}
+                    placeholder="casa B, apto 3..."
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    className="h-12 text-base"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="borrower_district">Bairro</Label>
+                <Input
+                  id="borrower_district"
+                  value={endereco.bairro}
+                  onChange={(e) => mudarEndereco("bairro", e.target.value.toUpperCase())}
+                  placeholder="ex: CENTRO"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  className="h-12 text-base"
+                />
+              </div>
+              <div className="grid grid-cols-[1fr_5rem] gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="borrower_city">Cidade</Label>
+                  <Input
+                    id="borrower_city"
+                    value={endereco.cidade}
+                    onChange={(e) => mudarEndereco("cidade", e.target.value.toUpperCase())}
+                    placeholder="ex: SÃO MATEUS DO MARANHÃO"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    className="h-12 text-base"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="borrower_state">UF</Label>
+                  <Input
+                    id="borrower_state"
+                    value={endereco.uf}
+                    onChange={(e) =>
+                      mudarEndereco("uf", e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))
+                    }
+                    placeholder="MA"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    maxLength={2}
+                    className="h-12 text-base text-center uppercase"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="borrower_zip">CEP</Label>
+                <Input
+                  id="borrower_zip"
+                  value={endereco.cep}
+                  onChange={(e) => mudarEndereco("cep", mascaraCep(e.target.value))}
+                  placeholder="00000-000"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className="h-12 text-base tabular-nums"
+                />
+              </div>
             </>
           )}
 
@@ -779,18 +939,27 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
             <>
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-sm">
                 <Linha rotulo="Devedor" valor={nome || "—"} onEditar={() => irPara("devedor")} />
-                <Linha rotulo="CPF/CNPJ" valor={documento || "—"} onEditar={() => irPara("devedor")} />
                 <Linha
-                  rotulo={ehEmpresa ? "Sede / quem assina" : "Dados"}
+                  rotulo={ehEmpresa ? "CNPJ" : "CPF / RG"}
+                  valor={[documento, !ehEmpresa && rg && `RG ${rg}`].filter(Boolean).join(" · ") || "—"}
+                  onEditar={() => irPara("devedor")}
+                />
+                <Linha
+                  rotulo={ehEmpresa ? "Quem assina" : "Dados"}
                   valor={
                     (ehEmpresa
-                      ? [endereco, repNome]
-                      : [nacionalidade, estadoCivil, profissao, rg && `RG ${rg}`, endereco]
+                      ? [repNome, repDoc && `CPF ${repDoc}`]
+                      : [nacionalidade, estadoCivil, profissao]
                     )
                       .filter(Boolean)
                       .join(" · ") || "em branco (sai a linha para preencher)"
                   }
                   onEditar={() => irPara("dados")}
+                />
+                <Linha
+                  rotulo={ehEmpresa ? "Sede" : "Endereço"}
+                  valor={enderecoMontado || "em branco (sai a linha para preencher)"}
+                  onEditar={() => irPara("endereco")}
                 />
                 <Linha rotulo="Valor devido" valor={formatBRL(principal)} onEditar={() => irPara("valor")} />
                 <Linha

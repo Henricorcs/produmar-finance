@@ -526,9 +526,18 @@ export interface Loan {
   borrower_marital_status?: string | null;
   borrower_profession?: string | null;
   borrower_rg?: string | null;
+  /** O endereço corrido de antes da 144 — vale enquanto as partes estão vazias. */
   borrower_address?: string | null;
   borrower_rep_name?: string | null;
   borrower_rep_document?: string | null;
+  /** O endereço em partes (migration 144) — da casa ou, com CNPJ, da sede. */
+  borrower_street?: string | null;
+  borrower_number?: string | null;
+  borrower_complement?: string | null;
+  borrower_district?: string | null;
+  borrower_city?: string | null;
+  borrower_state?: string | null;
+  borrower_zip?: string | null;
 
   principal: number;
   interest_rate: number | null;   // % ao mês (juros simples)

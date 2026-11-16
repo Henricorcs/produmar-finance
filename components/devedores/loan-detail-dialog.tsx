@@ -26,6 +26,7 @@ import {
   localDateISO,
 } from "@/lib/utils";
 import { LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
+import { enderecoDoDevedor } from "@/lib/devedor-endereco";
 import type { LoanWithDetails } from "@/app/(app)/devedores/page";
 
 interface Props {
@@ -106,6 +107,25 @@ export function LoanDetailDialog({ open, onClose, loan, onEdit, onDelete }: Prop
             Dívida — {loan.borrower_name}
           </DialogTitle>
         </DialogHeader>
+
+        {/* Quem deve: documento, RG, telefone e o endereço montado */}
+        {(() => {
+          const doc = [
+            loan.borrower_document,
+            loan.borrower_rg && `RG ${loan.borrower_rg}`,
+            loan.borrower_phone,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          const endereco = enderecoDoDevedor(loan);
+          if (!doc && !endereco) return null;
+          return (
+            <div className="-mt-2 space-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+              {doc && <p>{doc}</p>}
+              {endereco && <p>{endereco}</p>}
+            </div>
+          );
+        })()}
 
         {/* Ações rápidas — visíveis só no celular */}
         {(onEdit || onDelete) && (

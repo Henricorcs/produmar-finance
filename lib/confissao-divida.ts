@@ -10,6 +10,7 @@ import {
 import { MARCA_ASSINATURAS, ASSINA_PELA_PRODUMAR, qualificacaoDaCompradora } from "./compra-venda-contrato";
 import { paraNomeDeArquivo } from "./contrato-pdf";
 import { JUROS_DA_DIVIDA, MULTA_DA_DIVIDA } from "./devedores-boletos";
+import { enderecoDoDevedor } from "./devedor-endereco";
 import { LOAN_PAYMENT_METHOD_LABEL } from "./types";
 import type { Loan, LoanInstallment, LoanPayment } from "./types";
 
@@ -88,7 +89,7 @@ function qualificacaoDoDevedor(l: Loan): string {
   const ou = (v: string | null | undefined, linha = LINHA) => v?.trim() || linha;
   if (ehCnpj(doc)) {
     return (
-      `${nome}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${doc}, com sede em ${ou(l.borrower_address, LINHA_LONGA)}, ` +
+      `${nome}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${doc}, com sede em ${ou(enderecoDoDevedor(l), LINHA_LONGA)}, ` +
       `neste ato representada por ${ou(l.borrower_rep_name, LINHA_LONGA)}, portador(a) do CPF nº ${ou(l.borrower_rep_document)}` +
       (fone ? `, telefone ${fone}` : "")
     );
@@ -100,7 +101,7 @@ function qualificacaoDoDevedor(l: Loan): string {
     `${ou(l.borrower_marital_status, `estado civil ${LINHA}`)}, ` +
     `${ou(l.borrower_profession, `profissão ${LINHA}`)}, ` +
     `portador(a) do RG nº ${ou(l.borrower_rg)}, inscrito(a) no CPF sob o nº ${doc || LINHA}, ` +
-    `residente e domiciliado(a) em ${ou(l.borrower_address, LINHA_LONGA)}` +
+    `residente e domiciliado(a) em ${ou(enderecoDoDevedor(l), LINHA_LONGA)}` +
     (fone ? `, telefone ${fone}` : "")
   );
 }

@@ -157,6 +157,14 @@ export interface LoanInput {
   borrower_address?: string | null;
   borrower_rep_name?: string | null;
   borrower_rep_document?: string | null;
+  /** O endereço em partes (144) — undefined = não mexe. */
+  borrower_street?: string | null;
+  borrower_number?: string | null;
+  borrower_complement?: string | null;
+  borrower_district?: string | null;
+  borrower_city?: string | null;
+  borrower_state?: string | null;
+  borrower_zip?: string | null;
   principal: number;
   interest_rate?: number | null;
   term_months?: number | null;
@@ -186,6 +194,11 @@ function loanError(error: { code?: string; message: string }, padrao: string): s
     error.message.includes("payment_method")
   )
     return "Rode a migration 093 no Supabase para guardar a forma de pagamento";
+  if (
+    (error.code === "42703" || error.code === "PGRST204") &&
+    /borrower_(street|number|complement|district|city|state|zip)/.test(error.message)
+  )
+    return "Rode a migration 144 no Supabase para guardar o endereço em partes";
   return error.message || padrao;
 }
 
@@ -214,6 +227,13 @@ function qualificacao(input: LoanInput) {
     "borrower_address",
     "borrower_rep_name",
     "borrower_rep_document",
+    "borrower_street",
+    "borrower_number",
+    "borrower_complement",
+    "borrower_district",
+    "borrower_city",
+    "borrower_state",
+    "borrower_zip",
   ] as const;
   const out: Partial<Record<(typeof campos)[number], string | null>> = {};
   for (const c of campos) {
