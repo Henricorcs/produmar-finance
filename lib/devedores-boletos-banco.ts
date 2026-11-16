@@ -3,7 +3,6 @@ import { cancelarBoleto, consultarBoleto, criarBoleto } from "./cora/client";
 import type { CoraInvoiceResponse } from "./cora/types";
 import { tipoDocumento, validarCpfCnpj } from "./cpf-cnpj";
 import {
-  MAXIMO_DE_BOLETOS,
   VALOR_MINIMO_BOLETO,
   boletoEmAberto,
   boletoValendo,
@@ -24,6 +23,9 @@ import type { Loan, LoanBoleto, LoanInstallment, LoanStatus } from "./types";
 //      Devedores pergunta — e a baixa entra sozinha: o pagamento em
 //      loan_payments e a parcela PAGA.
 // Como todo o módulo Devedores, NADA daqui encosta no caixa (transactions).
+
+/** Só uma trava contra engano de digitação (ex.: 480 parcelas). */
+const MAXIMO_DE_BOLETOS_DA_DIVIDA = 120;
 
 export interface ResultadoBoletosDivida {
   gerados: number;
@@ -87,7 +89,9 @@ export async function criarBoletosDaDividaNoSistema(
     const faltam = parcelas.filter((p) => !p.paid && !cobertas.has(p.id));
     if (faltam.length === 0)
       return { gerados: 0, aviso: avisoOrfaos ?? "Toda parcela em aberto já tem boleto." };
-    const agora = faltam.slice(0, MAXIMO_DE_BOLETOS);
+    // Todas as parcelas de uma vez (dívida de 48 vezes = 48 boletos): o teto
+    // de 36 do aluguel aqui deixava 12 para um segundo toque que ninguém via.
+    const agora = faltam.slice(0, MAXIMO_DE_BOLETOS_DA_DIVIDA);
     const { error } = await supabase.from("loan_boletos").insert(
       agora.map((p) => ({
         loan_id: loanId,
@@ -223,10 +227,9 @@ export async function registrarBoletosDaDividaNoBanco(
     gerados++;
   }
 
-  // de 3 em 3: mais rápido, sem afogar a Cora
-  for (let i = 0; i < aRegistrar.length; i += 3) {
-    await Promise.all(aRegistrar.slice(i, i + 3).map(registrar));
-  }
+  // Um de cada vez: de 3 em 3 a Cora respondeu 429 (muitos pedidos) e, de 36
+  // boletos, só 15 saíram. Mais devagar, mas sai tudo.
+  for (const b of aRegistrar) await registrar(b);
 
   const avisos: string[] = [];
   if (falhas.length > 0) avisos.push(`${falhas.length} boleto(s) não saíram na Cora. Primeiro erro — ${falhas[0]}`);

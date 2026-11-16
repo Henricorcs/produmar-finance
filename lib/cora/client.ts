@@ -86,15 +86,25 @@ async function chamar<T>(
   // idempotência por esse header nas chamadas de criação).
   if (method === "POST") headers["Idempotency-Key"] = randomUUID();
 
-  const resposta = await requisitarCora({
-    method,
-    hostname: opts?.hostname ?? hostname(),
-    path,
-    headers,
-    body: bodyStr,
-    cert,
-    key,
-  });
+  const pedir = () =>
+    requisitarCora({
+      method,
+      hostname: opts?.hostname ?? hostname(),
+      path,
+      headers,
+      body: bodyStr,
+      cert,
+      key,
+    });
+
+  // 429 = a Cora pediu calma (muitos pedidos seguidos — ex.: 36 boletos de
+  // uma vez, mais os avisos de cada um). Espera e tenta de novo, cada vez
+  // esperando o dobro; a mesma Idempotency-Key garante que não duplica.
+  let resposta = await pedir();
+  for (let espera = 2000; resposta.status === 429 && espera <= 32000; espera *= 2) {
+    await new Promise((r) => setTimeout(r, espera + Math.floor(Math.random() * 500)));
+    resposta = await pedir();
+  }
 
   if (resposta.status < 200 || resposta.status >= 300) {
     throw new Error(
