@@ -1380,6 +1380,10 @@ export function AnimaisPageClient({
                   fêmea
                 </span>
                 <span className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded border-2 border-yellow-400 bg-yellow-200 dark:border-yellow-600 dark:bg-yellow-700/50" />
+                  para descarte
+                </span>
+                <span className="flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-full bg-amber-500" />
                   vacina pendente
                 </span>
@@ -2141,9 +2145,23 @@ function RebanhoTable({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") onOpenAnimal(a.id);
                 }}
-                className="group border-t border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+                className={cn(
+                  "group border-t border-slate-100 dark:border-slate-800 cursor-pointer transition-colors",
+                  // para descarte (147): a linha inteira em amarelo
+                  a.descarte_em
+                    ? "bg-yellow-100 hover:bg-yellow-200 active:bg-yellow-200 dark:bg-yellow-900/40 dark:hover:bg-yellow-900/60"
+                    : "hover:bg-slate-50 dark:hover:bg-slate-800/60 active:bg-slate-100 dark:active:bg-slate-800"
+                )}
               >
-                <td className="sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/60 px-3 py-3 font-bold text-[17px] text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                <td
+                  className={cn(
+                    "sticky left-0 px-3 py-3 font-bold text-[17px] whitespace-nowrap",
+                    a.descarte_em
+                      ? "bg-yellow-200 text-yellow-900 group-hover:bg-yellow-300 dark:bg-yellow-800/70 dark:text-yellow-50"
+                      : "bg-white text-slate-800 group-hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:group-hover:bg-slate-800/60"
+                  )}
+                  title={a.descarte_em ? "Para descarte" : undefined}
+                >
                   {a.tag}
                 </td>
                 <td className="px-2 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">

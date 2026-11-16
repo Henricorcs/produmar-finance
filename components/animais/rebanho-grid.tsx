@@ -66,14 +66,17 @@ export function RebanhoGrid({
                   // ave (controle por lote) não têm sexo e ficam brancos.
                   const sexo = criacaoPorLote(a.species) ? null : a.sex;
                   const nomeSexo = sexo === "macho" ? "macho" : sexo === "femea" ? "fêmea" : "";
+                  // Para descarte (147): o amarelo manda — o dono pediu que o
+                  // animal marcado para descarte se destaque na tela principal
+                  const descarte = !!a.descarte_em;
                   return (
                     <button
                       key={a.id}
                       type="button"
                       onClick={() => onOpen(a.id)}
                       aria-label={`Animal ${a.tag}${nomeSexo ? `, ${nomeSexo}` : ""}${
-                        pending ? ", com vacina pendente" : ""
-                      }. Abrir a ficha`}
+                        descarte ? ", para descarte" : ""
+                      }${pending ? ", com vacina pendente" : ""}. Abrir a ficha`}
                       title={
                         pending
                           ? `Animal ${a.tag}${nomeSexo ? ` (${nomeSexo})` : ""} — tem vacina marcada como pendente (toque para abrir a ficha)`
@@ -86,7 +89,9 @@ export function RebanhoGrid({
                         a.tag.length > 6
                           ? "text-[15px] leading-tight text-center break-words"
                           : "text-[19px]",
-                        sexo === "macho"
+                        descarte
+                          ? "border-yellow-400 bg-yellow-200 text-yellow-900 hover:bg-yellow-300 dark:border-yellow-600 dark:bg-yellow-700/50 dark:text-yellow-50 dark:hover:bg-yellow-700/70"
+                          : sexo === "macho"
                           ? "border-sky-300 bg-sky-100 text-sky-900 hover:bg-sky-200 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
                           : sexo === "femea"
                             ? "border-pink-300 bg-pink-100 text-pink-900 hover:bg-pink-200 dark:border-pink-700 dark:bg-pink-900/40 dark:text-pink-100 dark:hover:bg-pink-900/60"
@@ -99,7 +104,11 @@ export function RebanhoGrid({
                       {pending && (
                         <span
                           aria-hidden
-                          className="absolute top-1 right-1 w-3 h-3 rounded-full bg-amber-500 ring-2 ring-white dark:ring-slate-900"
+                          className={cn(
+                            "absolute top-1 right-1 w-3 h-3 rounded-full ring-2 ring-white dark:ring-slate-900",
+                            // no quadro amarelo do descarte a bolinha laranja sumiria
+                            descarte ? "bg-orange-600" : "bg-amber-500"
+                          )}
                         />
                       )}
                     </button>
