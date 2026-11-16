@@ -24,6 +24,7 @@ import {
   Users,
   Wallet,
   X,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -181,6 +182,8 @@ interface Props {
    * Excluir, a baixa e os cadastros (raças, vacinas, remédios, protocolos).
    */
   soBovinos?: boolean;
+  /** O admin abriu ?ver=vaqueiro_n1: mostra a faixa avisando que é a prévia. */
+  previaVaqueiroN1?: boolean;
 }
 
 /**
@@ -288,6 +291,7 @@ export function AnimaisPageClient({
   racaInicial = null,
   desmameInicial = false,
   soBovinos = false,
+  previaVaqueiroN1 = false,
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -1040,6 +1044,19 @@ export function AnimaisPageClient({
   return (
     <SoBovinosContext.Provider value={soBovinos}>
     <div className="space-y-4 animate-fade-in">
+      {/* Prévia do admin: é a tela do vaqueiro nível 01, mas quem grava é o admin */}
+      {previaVaqueiroN1 && (
+        <div className="flex items-center gap-2 rounded-xl border border-lime-300 bg-lime-50 px-3 py-2 text-sm text-lime-900 dark:border-lime-800 dark:bg-lime-950/30 dark:text-lime-200">
+          <Eye className="w-4 h-4 flex-shrink-0" />
+          <span className="min-w-0 flex-1">
+            Prévia: assim o <strong>Vaqueiro nível 01</strong> vê a tela — só bovinos.
+          </span>
+          <a href="/animais" className="font-semibold underline flex-shrink-0">
+            Sair
+          </a>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">

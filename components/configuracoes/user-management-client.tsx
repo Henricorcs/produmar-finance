@@ -271,7 +271,10 @@ export function UserManagementClient({ users, currentUserId }: Props) {
             ? `/operador?ver=${u.id}`
             : isTecnico
               ? `/tecnico?ver=${u.id}`
-              : null;
+              : u.role === "vaqueiro_n1"
+                ? // a tela de Animais como ele vê: só bovinos (146)
+                  "/animais?ver=vaqueiro_n1"
+                : null;
           const canHaveModules = isFinanceiro || isOperador;
           const cats = u.allowed_categories ?? [];
           const mods = u.allowed_modules ?? [];

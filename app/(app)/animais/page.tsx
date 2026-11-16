@@ -33,6 +33,11 @@ import type { Filiacao } from "@/components/animais/relatorio-rebanho";
 
 export const dynamic = "force-dynamic";
 
+/** Bovino, ou sem tipo (o que é antigo é bovino) — a regra do RLS da 146. */
+function ehBovino(species?: string | null): boolean {
+  return (species ?? "bovino") === "bovino";
+}
+
 /**
  * ?tipo=bovino&raca=<id> — o que está escolhido no menu de raças. Fica na URL
  * para a escolha sobreviver ao recarregar a página.
@@ -41,7 +46,7 @@ export const dynamic = "force-dynamic";
 export default async function AnimaisPage({
   searchParams,
 }: {
-  searchParams: { tipo?: string; raca?: string; desmame?: string };
+  searchParams: { tipo?: string; raca?: string; desmame?: string; ver?: string };
 }) {
   const supabase = createClient();
 
@@ -49,7 +54,10 @@ export default async function AnimaisPage({
   // tipo nem o que é dinheiro (despesas, vendas, tanques); aqui a página nem
   // pede essas tabelas e apaga o valor da venda dos animais que saíram.
   const profile = await getProfile();
-  const soBovinos = profile?.role === "vaqueiro_n1";
+  // ?ver=vaqueiro_n1 — o admin vê a tela do jeito que o vaqueiro nível 01 vê
+  // (o "Ver como ele" de Configurações), sem precisar da senha de ninguém.
+  const previa = profile?.role === "admin" && searchParams.ver === "vaqueiro_n1";
+  const soBovinos = profile?.role === "vaqueiro_n1" || previa;
   const nada = Promise.resolve({ data: [] as unknown[] });
 
   const [
@@ -220,50 +228,79 @@ export default async function AnimaisPage({
     .limit(1000);
 
   // O valor da venda fica fora do que vai para o celular do vaqueiro nível 01.
-  const animais = ((animalsRes.data as AnimalWithInfo[]) ?? []).map((a) =>
-    soBovinos
-      ? {
-          ...a,
-          exit_amount: 0,
-          sale_weight_kg: 0,
-          sale_price_per_kg: 0,
-          exit_buyer: null,
-          exit_notes: null,
-          exit_transaction_id: null,
-        }
-      : a
-  );
+  const animais = ((animalsRes.data as AnimalWithInfo[]) ?? [])
+    .filter((a) => !previa || ehBovino(a.species))
+    .map((a) =>
+      soBovinos
+        ? {
+            ...a,
+            exit_amount: 0,
+            sale_weight_kg: 0,
+            sale_price_per_kg: 0,
+            exit_buyer: null,
+            exit_notes: null,
+            exit_transaction_id: null,
+          }
+        : a
+    );
+
+  // Na prévia do admin o RLS não filtra (admin vê tudo): o filtro de bovino é
+  // feito aqui, com a mesma regra do banco — tipo vazio conta como bovino, e o
+  // que pende de um animal vai junto com ele.
+  const idsDoGado = new Set(animais.map((a) => a.id));
+  const soGado = <T extends { species?: string | null }>(rows: T[]): T[] =>
+    previa ? rows.filter((r) => ehBovino(r.species)) : rows;
+  const doGado = <T,>(rows: T[], animalDe: (r: T) => string | null | undefined): T[] =>
+    previa
+      ? rows.filter((r) => {
+          const id = animalDe(r);
+          return !!id && idsDoGado.has(id);
+        })
+      : rows;
+  const protocolosDoGado = soGado((protocolosRes.data as AnimalProtocolo[]) ?? []);
+  const idsDosProtocolos = new Set(protocolosDoGado.map((p) => p.id));
 
   return (
     <AnimaisPageClient
       soBovinos={soBovinos}
-      pendenciasDoNascimento={(pendenciasDoNascimento as ProtocoloPendencia[] | null) ?? []}
+      previaVaqueiroN1={previa}
+      pendenciasDoNascimento={soGado(
+        (pendenciasDoNascimento as ProtocoloPendencia[] | null) ?? []
+      )}
       animals={animais}
-      breeds={(breedsRes.data as AnimalBreed[]) ?? []}
-      vaccines={(vaccinesRes.data as AnimalVaccine[]) ?? []}
-      vaccinations={(vaccinationsRes.data as VaccinationRow[]) ?? []}
-      treatments={(treatmentsRes.data as AnimalTreatment[]) ?? []}
-      births={(birthsRes.data as AnimalBirth[]) ?? []}
-      pendings={(pendingRes.data as AnimalVaccinePending[]) ?? []}
-      weights={(weightsRes.data as AnimalWeight[]) ?? []}
-      birthRequests={(birthRequestsRes.data as AnimalBirthRequest[]) ?? []}
+      breeds={soGado((breedsRes.data as AnimalBreed[]) ?? [])}
+      vaccines={soGado((vaccinesRes.data as AnimalVaccine[]) ?? [])}
+      vaccinations={doGado((vaccinationsRes.data as VaccinationRow[]) ?? [], (r) => r.animal_id)}
+      treatments={doGado((treatmentsRes.data as AnimalTreatment[]) ?? [], (r) => r.animal_id)}
+      births={doGado(
+        (birthsRes.data as AnimalBirth[]) ?? [],
+        (r) => r.mother_id ?? r.calf_animal_id
+      )}
+      pendings={doGado((pendingRes.data as AnimalVaccinePending[]) ?? [], (r) => r.animal_id)}
+      weights={doGado((weightsRes.data as AnimalWeight[]) ?? [], (r) => r.animal_id)}
+      birthRequests={soGado((birthRequestsRes.data as AnimalBirthRequest[]) ?? [])}
       financeiro={(financeiroRes.data as AnimalFinanceiroLinha[]) ?? []}
       despesas={(despesasRes.data as AnimalDespesa[]) ?? []}
       vendas={(vendasRes.data as AnimalVenda[]) ?? []}
       tanques={(tanquesRes.data as AnimalTanque[]) ?? []}
       lotes={(lotesRes.data as AnimalLoteResumo[]) ?? []}
       movimentos={(movimentosRes.data as AnimalLoteMovimento[]) ?? []}
-      protocolo={(protocoloRes.data as ProtocoloNascimentoItem[]) ?? []}
-      medicamentos={(medicamentosRes.data as AnimalMedicamento[]) ?? []}
-      protocolos={(protocolosRes.data as AnimalProtocolo[]) ?? []}
-      protocoloItens={(protocoloItensRes.data as AnimalProtocoloItem[]) ?? []}
-      aplicacoes={(aplicacoesRes.data as AnimalProtocoloAplicacao[]) ?? []}
-      aplicacaoAnimais={(aplicacaoAnimaisRes.data as AnimalProtocoloAplicacaoAnimal[]) ?? []}
-      etapasFeitas={(etapasFeitasRes.data as EtapaFeita[]) ?? []}
-      pesosFoto={(pesosFotoRes.data as AnimalPesoFoto[]) ?? []}
-      grupos={(gruposRes.data as AnimalGrupo[]) ?? []}
-      grupoAnimais={(grupoAnimaisRes.data as AnimalGrupoAnimal[]) ?? []}
-      filiacao={(filiacaoRes.data as Filiacao[]) ?? []}
+      protocolo={soGado((protocoloRes.data as ProtocoloNascimentoItem[]) ?? [])}
+      medicamentos={soGado((medicamentosRes.data as AnimalMedicamento[]) ?? [])}
+      protocolos={protocolosDoGado}
+      protocoloItens={((protocoloItensRes.data as AnimalProtocoloItem[]) ?? []).filter(
+        (i) => !previa || idsDosProtocolos.has(i.protocolo_id)
+      )}
+      aplicacoes={soGado((aplicacoesRes.data as AnimalProtocoloAplicacao[]) ?? [])}
+      aplicacaoAnimais={doGado(
+        (aplicacaoAnimaisRes.data as AnimalProtocoloAplicacaoAnimal[]) ?? [],
+        (r) => r.animal_id
+      )}
+      etapasFeitas={doGado((etapasFeitasRes.data as EtapaFeita[]) ?? [], (r) => r.animal_id)}
+      pesosFoto={doGado((pesosFotoRes.data as AnimalPesoFoto[]) ?? [], (r) => r.animal_id)}
+      grupos={soGado((gruposRes.data as AnimalGrupo[]) ?? [])}
+      grupoAnimais={doGado((grupoAnimaisRes.data as AnimalGrupoAnimal[]) ?? [], (r) => r.animal_id)}
+      filiacao={doGado((filiacaoRes.data as Filiacao[]) ?? [], (r) => r.calf_animal_id)}
       tipoInicial={searchParams.tipo ?? null}
       racaInicial={searchParams.raca ?? null}
       desmameInicial={searchParams.desmame === "1"}
