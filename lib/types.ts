@@ -901,6 +901,8 @@ export interface Animal {
   /** Mãe e pai do animal PO — nome, número ou registro (migration 137). */
   mae?: string | null;
   pai?: string | null;
+  /** Dia em que a cria foi desmamada; vazio = ainda não (migration 145). */
+  desmame_em?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

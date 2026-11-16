@@ -56,6 +56,7 @@ import { GruposTab } from "./grupos-tab";
 import { CodigoPODialog } from "./codigo-po-dialog";
 import { RelatorioRebanho, type Filiacao } from "./relatorio-rebanho";
 import { ProtocolosTab, type EtapaFeita } from "./protocolos-tab";
+import { DesmameAlerta } from "./desmame-alerta";
 import {
   BotaoRacas,
   GavetaRacas,
@@ -171,6 +172,8 @@ interface Props {
   /** ?tipo= e ?raca= da URL — a escolha do menu de raças ao abrir a página. */
   tipoInicial?: string | null;
   racaInicial?: string | null;
+  /** ?desmame=1 — veio do sino: abre a lista de crias prontas para desmamar. */
+  desmameInicial?: boolean;
 }
 
 /**
@@ -274,6 +277,7 @@ export function AnimaisPageClient({
   filiacao = [],
   tipoInicial = null,
   racaInicial = null,
+  desmameInicial = false,
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -1093,6 +1097,16 @@ export function AnimaisPageClient({
           Botões, inputs e selects não herdam text-transform — daí as variantes. */}
       {tab === "rebanho" && (
         <div className="space-y-3 uppercase [&_button]:uppercase [&_select]:uppercase">
+          {/* Alerta de desmame: crias bovinas com 8 meses ou mais ainda sem
+              o desmame marcado (migration 145). Sem nenhuma, não aparece. */}
+          <DesmameAlerta
+            animals={speciesAnimals}
+            todos={allAnimals}
+            filiacao={filiacao}
+            abertoInicial={desmameInicial}
+            onAbrir={(id) => setDetailAnimalId(id)}
+          />
+
           {/* ── Painel do rebanho ─────────────────────────────────────────
               Tipo, contagem, busca, ordem e impressão numa caixa só. Antes
               eram quatro blocos soltos, cada um com a sua fileira de números

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Wallet, Bell, LogOut, User as UserIcon, ChevronDown, AlertTriangle, Clock } from "lucide-react";
+import { Wallet, Bell, LogOut, User as UserIcon, ChevronDown, AlertTriangle, Clock, Milk, ChevronRight } from "lucide-react";
 import { getInitials, formatBRL, formatDate } from "@/lib/utils";
 import { signOutAction } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -27,14 +27,16 @@ interface TopbarProps {
   nota?: string;
   /** Quando o bloco foi gravado pela última vez (ISO), para o "Salvo às ...". */
   notaEm?: string | null;
+  /** Crias bovinas com 8 meses ou mais sem o desmame marcado (migration 145). */
+  desmames?: number;
 }
 
-export function Topbar({ profile, notifications = [], nota = "", notaEm = null }: TopbarProps) {
+export function Topbar({ profile, notifications = [], nota = "", notaEm = null, desmames = 0 }: TopbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
   const overdueCount = notifications.filter((n) => n.isOverdue).length;
-  const hasUnread = notifications.length > 0;
+  const hasUnread = notifications.length > 0 || desmames > 0;
 
   return (
     <header className="produmar-hero text-white pt-safe">
@@ -93,6 +95,28 @@ export function Topbar({ profile, notifications = [], nota = "", notaEm = null }
                       </span>
                     )}
                   </div>
+
+                  {/* Alerta de desmame — leva à lista das crias em Animais */}
+                  {desmames > 0 && (
+                    <a
+                      href="/animais?desmame=1"
+                      onClick={() => setNotifOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                    >
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-amber-100 dark:bg-amber-900/40">
+                        <Milk className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                          {desmames} {desmames === 1 ? "cria pronta" : "crias prontas"} para desmamar
+                        </p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                          Bezerros com 8 meses ou mais
+                        </p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    </a>
+                  )}
 
                   {/* List */}
                   {notifications.length === 0 ? (

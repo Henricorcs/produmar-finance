@@ -1561,6 +1561,41 @@ export async function undoAnimalExit(animalId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DESMAME (migration 145)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Marca o desmame das crias (ou desfaz, com `data` null). É a data gravada
+ * que tira a cria do alerta de desmame — sem ela, a cria de 8 meses aparece.
+ */
+export async function marcarDesmame(animalIds: string[], data: string | null) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (animalIds.length === 0) return { error: "Nenhuma cria escolhida" };
+  if (data !== null && !/^\d{4}-\d{2}-\d{2}$/.test(data)) return { error: "Data inválida" };
+  if (data !== null && data > localDateISO()) return { error: "O desmame não pode ser no futuro" };
+
+  const { error } = await supabase
+    .from("animals")
+    .update({ desmame_em: data })
+    .in("id", animalIds);
+  if (error) {
+    if (/desmame_em/.test(error.message)) {
+      return { error: "Falta rodar a migration 145 (desmame) no banco." };
+    }
+    return { error: error.message };
+  }
+
+  revalidatePath("/animais");
+  // o sino do topo conta as crias prontas para desmamar
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DESPESA COM ANIMAIS — a ficha de custo por espécie (migration 072)
 // ─────────────────────────────────────────────────────────────────────────────
 // A venda já ia para o financeiro; o GASTO com os bichos não tinha onde ser

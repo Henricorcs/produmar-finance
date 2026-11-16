@@ -382,6 +382,33 @@ export function youngNoun(species?: AnimalSpecies | null, sex?: AnimalSex | null
   return (sex === "femea" ? s.youngFemale : s.youngMale).toLowerCase();
 }
 
+// ── Desmame (migration 145) ──────────────────────────────────────────────────
+
+/** Com quantos meses a cria de bovino deve desmamar — é quando entra no alerta. */
+export const MESES_DESMAME = 8;
+
+/**
+ * A cria está pronta para desmamar? Bovino no rebanho, com 8 meses ou mais e
+ * ainda bezerro (até 11 meses), sem o desmame marcado. Bicho mais velho que
+ * isso já passou da fase: não enche o alerta com o gado adulto que desmamou
+ * antes de o sistema guardar o desmame.
+ */
+export function prontaParaDesmame(a: {
+  species?: AnimalSpecies | null;
+  active?: boolean | null;
+  age_months: number | null;
+  desmame_em?: string | null;
+}): boolean {
+  return (
+    speciesOf(a.species) === "bovino" &&
+    a.active !== false &&
+    a.age_months != null &&
+    a.age_months >= MESES_DESMAME &&
+    a.age_months < 12 &&
+    !a.desmame_em
+  );
+}
+
 // ── Formatação ───────────────────────────────────────────────────────────────
 
 /** Idade em texto curto: "2 anos e 3 meses", "8 meses", "—". */

@@ -6,6 +6,19 @@ import { TabsNav } from "@/components/layout/tabs-nav";
 import { hasHubModules } from "@/lib/module-access";
 import type { UserNote } from "@/lib/types";
 
+/**
+ * O dia de `meses` meses atrás (AAAA-MM-DD). Dia que não existe no mês de
+ * destino cai no último dia dele (31/10 − 8 meses = 28/02), como o Postgres.
+ */
+function mesesAtras(base: Date, meses: number): string {
+  const total = base.getFullYear() * 12 + base.getMonth() - meses;
+  const ano = Math.floor(total / 12);
+  const mes = total % 12;
+  const ultimo = new Date(ano, mes + 1, 0).getDate();
+  const dia = Math.min(base.getDate(), ultimo);
+  return `${ano}-${String(mes + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
@@ -26,7 +39,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // O bloco de notas vai na mesma leva: é uma linha só, do próprio usuário, e
   // aparece no topo de toda tela. Sem a migration 090 a consulta dá erro e o
   // bloco abre em branco — quem tentar escrever recebe o recado de rodá-la.
-  const [profile, notifRes, notaRes] = await Promise.all([
+  // Alerta de desmame (migration 145): crias bovinas no rebanho com 8 a 11
+  // meses de nascidas, sem o desmame marcado — a mesma regra de
+  // prontaParaDesmame, contada direto no banco (só o número, sem as linhas).
+  // Sem a migration a consulta dá erro e o sino só não mostra a linha.
+  const desmameAte = mesesAtras(today, 8);
+  const desmameDesde = mesesAtras(today, 12);
+
+  const [profile, notifRes, notaRes, desmameRes] = await Promise.all([
     getProfile(),
     supabase
       .from("transactions")
@@ -40,7 +60,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .select("content, updated_at")
       .eq("user_id", userId)
       .maybeSingle(),
+    supabase
+      .from("animals")
+      .select("id", { count: "exact", head: true })
+      .eq("species", "bovino")
+      .eq("active", true)
+      .is("desmame_em", null)
+      .lte("birth_date", desmameAte)
+      .gt("birth_date", desmameDesde),
   ]);
+  const desmames = desmameRes.error ? 0 : desmameRes.count ?? 0;
 
   const notaRow = notaRes.data as Pick<UserNote, "content" | "updated_at"> | null;
   const nota = notaRow?.content ?? "";
@@ -120,7 +149,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-produmar-50/40 dark:bg-slate-950">
-      <Topbar profile={profile} notifications={notifications} nota={nota} notaEm={notaEm} />
+      <Topbar
+        profile={profile}
+        notifications={notifications}
+        nota={nota}
+        notaEm={notaEm}
+        desmames={desmames}
+      />
       <TabsNav />
       {/* pb-safe-nav limpa a nav fixa (64px) + área segura do dispositivo no mobile */}
       <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-safe-nav">{children}</main>

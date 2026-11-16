@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, localDateISO } from "@/lib/utils";
 import {
   deleteAnimal,
   deleteAnimalPhoto,
@@ -32,6 +32,7 @@ import {
   deleteVaccination,
   deleteVaccinationProtocol,
   getAnimalPhotos,
+  marcarDesmame,
 } from "@/app/(app)/animais/actions";
 import {
   CATEGORY_META,
@@ -51,6 +52,7 @@ import {
   formatWeight,
   pariuLabel,
   previousWeighing,
+  prontaParaDesmame,
   speciesOf,
   vaccineStatusFor,
   vaccinesForSpecies,
@@ -173,6 +175,16 @@ export function AnimalDetailDialog({
   const weightKg = Number(animal.weight);
   /** Nomes do tipo do animal — dão o "bezerro/potro/cabrito" de cada texto. */
   const names = SPECIES_META[speciesOf(animal.species)];
+
+  /** Desmame (migration 145): marca hoje ou desfaz o que foi marcado. */
+  function handleDesmame(feito: boolean) {
+    const a = animal!;
+    if (!feito && !confirm(`Desfazer o desmame do nº ${a.tag}? Ele volta para o alerta.`)) return;
+    startTransition(async () => {
+      const r = await marcarDesmame([a.id], feito ? localDateISO() : null);
+      if (r && "error" in r) alert(r.error ?? "Erro ao gravar o desmame");
+    });
+  }
 
   function handleDelete() {
     const a = animal!;
@@ -619,6 +631,33 @@ export function AnimalDetailDialog({
                   value={animal.birth_date ? formatDate(animal.birth_date) : "—"}
                 />
                 <InfoRow label="Idade" value={idadeComDias(animal.birth_date, animal.age_months)} />
+                {/* Desmame: a data, quando já foi marcado; a cria de 8 meses
+                    sem desmame aparece como pronta, com o botão de marcar */}
+                {(animal.desmame_em || prontaParaDesmame(animal)) && (
+                  <div className="flex items-center justify-between gap-3 px-3 py-2">
+                    <span className="text-slate-500 dark:text-slate-400 flex-shrink-0">Desmame</span>
+                    <span className="flex items-center gap-2 text-right">
+                      <span
+                        className={cn(
+                          "font-medium",
+                          animal.desmame_em
+                            ? "text-slate-800 dark:text-slate-100"
+                            : "text-amber-700 dark:text-amber-400"
+                        )}
+                      >
+                        {animal.desmame_em ? formatDate(animal.desmame_em) : "Pronta para desmamar"}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleDesmame(!animal.desmame_em)}
+                        className="min-h-[36px] px-2 rounded-lg border border-slate-200 text-sm text-produmar-700 dark:border-slate-700 dark:text-produmar-400 disabled:opacity-50"
+                      >
+                        {animal.desmame_em ? "Desfazer" : "Feito hoje"}
+                      </button>
+                    </span>
+                  </div>
+                )}
                 <InfoRow
                   label="Peso"
                   value={

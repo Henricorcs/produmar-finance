@@ -35,11 +35,12 @@ export const dynamic = "force-dynamic";
 /**
  * ?tipo=bovino&raca=<id> — o que está escolhido no menu de raças. Fica na URL
  * para a escolha sobreviver ao recarregar a página.
+ * ?desmame=1 — veio do sino do topo: abre a lista das crias prontas para desmamar.
  */
 export default async function AnimaisPage({
   searchParams,
 }: {
-  searchParams: { tipo?: string; raca?: string };
+  searchParams: { tipo?: string; raca?: string; desmame?: string };
 }) {
   const supabase = createClient();
 
@@ -228,6 +229,7 @@ export default async function AnimaisPage({
       filiacao={(filiacaoRes.data as Filiacao[]) ?? []}
       tipoInicial={searchParams.tipo ?? null}
       racaInicial={searchParams.raca ?? null}
+      desmameInicial={searchParams.desmame === "1"}
     />
   );
 }
