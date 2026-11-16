@@ -56,6 +56,7 @@ import {
   vaccinesForSpecies,
   weightGain,
 } from "./animal-shared";
+import { TrocarMaeDialog } from "./trocar-mae-dialog";
 import type {
   AnimalBirth,
   AnimalTreatment,
@@ -83,6 +84,8 @@ interface Props {
   motherBirth?: AnimalBirth | null;
   /** Número da mãe (vem junto com motherBirth). */
   motherTag?: string | null;
+  /** Fêmeas do cadastro — para trocar a mãe do bezerro lançado na mãe errada. */
+  mothers?: AnimalWithInfo[];
   /** `animalId|vaccineId` marcados como pendentes na mão. */
   pendingKeys: Set<string>;
   onEdit: (animal: AnimalWithInfo) => void;
@@ -113,6 +116,7 @@ export function AnimalDetailDialog({
   weights = [],
   motherBirth,
   motherTag,
+  mothers = [],
   pendingKeys,
   onEdit,
   onVaccinate,
@@ -127,6 +131,7 @@ export function AnimalDetailDialog({
   const [section, setSection] = useState<Section>("ficha");
   const [photos, setPhotos] = useState<{ id: string; url: string | null }[]>([]);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
+  const [trocandoMae, setTrocandoMae] = useState(false);
 
   // carrega as fotos sob demanda (URLs assinadas)
   useEffect(() => {
@@ -145,6 +150,7 @@ export function AnimalDetailDialog({
   // volta pra ficha sempre que abrir outro animal
   useEffect(() => {
     if (open) setSection("ficha");
+    setTrocandoMae(false);
   }, [open, animal?.id]);
 
   function handleDeletePhoto(photoId: string) {
@@ -594,6 +600,17 @@ export function AnimalDetailDialog({
                     }
                   />
                 )}
+                {/* bezerro lançado na mãe errada: o parto passa para a certa */}
+                {motherBirth && (
+                  <button
+                    type="button"
+                    onClick={() => setTrocandoMae(true)}
+                    className="w-full flex items-center justify-end gap-1.5 px-3 py-2 text-sm text-slate-500 dark:text-slate-400 active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Mãe errada? Trocar a mãe
+                  </button>
+                )}
                 {ehRacaPO(animal.breed_name) && (
                   <InfoRow label="Pai" value={animal.pai || "—"} />
                 )}
@@ -881,6 +898,17 @@ export function AnimalDetailDialog({
             </button>
           </div>
         </div>
+
+        {motherBirth && (
+          <TrocarMaeDialog
+            open={trocandoMae}
+            onClose={() => setTrocandoMae(false)}
+            cria={animal}
+            parto={motherBirth}
+            maeAtualTag={motherTag ?? null}
+            maes={mothers}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

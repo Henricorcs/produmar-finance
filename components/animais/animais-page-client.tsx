@@ -1761,6 +1761,7 @@ export function AnimaisPageClient({
               null
             : null
         }
+        mothers={females}
         pendingKeys={pendingKeys}
         onEdit={(a) => {
           setDetailAnimalId(null);

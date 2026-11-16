@@ -950,6 +950,74 @@ export async function deleteBirth(id: string, deleteCalf = false) {
   return { ok: true };
 }
 
+/**
+ * Bezerro lançado na mãe errada: passa o parto para a mãe certa. O bezerro
+ * continua o mesmo (número, peso, vacinas, histórico) — só muda de quem ele é,
+ * e o "pariu" das duas vacas se acerta sozinho. Se a raça do bezerro veio da
+ * mãe errada (é a mesma dela), ele passa a ter a raça da mãe certa.
+ */
+export async function trocarMaeDoParto(birthId: string, novaMaeId: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!novaMaeId) return { error: "Escolha a mãe certa" };
+
+  const { data: parto } = await supabase
+    .from("animal_births")
+    .select("id, mother_id, calf_animal_id")
+    .eq("id", birthId)
+    .maybeSingle();
+  if (!parto) return { error: "Esse parto não existe mais — recarregue a página" };
+  if (parto.mother_id === novaMaeId) return { error: "Essa já é a mãe dele" };
+  if (parto.calf_animal_id === novaMaeId)
+    return { error: "O animal não pode ser mãe dele mesmo" };
+
+  const [{ data: novaMae }, { data: maeAntiga }, { data: cria }] = await Promise.all([
+    supabase
+      .from("animals")
+      .select("id, sex, species, breed_id")
+      .eq("id", novaMaeId)
+      .maybeSingle(),
+    supabase.from("animals").select("breed_id").eq("id", parto.mother_id).maybeSingle(),
+    parto.calf_animal_id
+      ? supabase
+          .from("animals")
+          .select("id, species, breed_id")
+          .eq("id", parto.calf_animal_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  if (!novaMae) return { error: "Essa mãe não está no cadastro — escolha outra na lista" };
+  if (novaMae.sex !== "femea") return { error: "A mãe escolhida não é fêmea — escolha outra" };
+  if (
+    cria &&
+    normSpecies(cria.species as AnimalSpecies | null) !==
+      normSpecies(novaMae.species as AnimalSpecies | null)
+  )
+    return { error: "A mãe escolhida é de outro tipo de animal — escolha outra" };
+
+  const { error } = await supabase
+    .from("animal_births")
+    .update({ mother_id: novaMaeId })
+    .eq("id", birthId);
+  if (error) return { error: error.message };
+
+  // a raça que ele puxou da mãe errada vira a da mãe certa
+  if (
+    cria &&
+    novaMae.breed_id &&
+    cria.breed_id === (maeAntiga?.breed_id ?? null) &&
+    cria.breed_id !== novaMae.breed_id
+  ) {
+    await supabase.from("animals").update({ breed_id: novaMae.breed_id }).eq("id", cria.id);
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SOLICITAÇÕES DE NASCIMENTO (vaqueiro envia pelo celular, patrão confere e lança)
 // ─────────────────────────────────────────────────────────────────────────────
