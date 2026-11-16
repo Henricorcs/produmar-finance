@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import {
   AlertTriangle,
   Baby,
+  Ban,
   Camera,
   ChevronRight,
   HandCoins,
@@ -32,6 +33,7 @@ import {
   deleteVaccination,
   deleteVaccinationProtocol,
   getAnimalPhotos,
+  marcarDescarte,
   marcarDesmame,
 } from "@/app/(app)/animais/actions";
 import {
@@ -136,10 +138,16 @@ export function AnimalDetailDialog({
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [trocandoMae, setTrocandoMae] = useState(false);
   const soBovinos = useSoBovinos();
+  /** O "Marcar para descarte" aberto, pedindo o motivo (147). */
+  const [descarteAberto, setDescarteAberto] = useState(false);
+  const [motivoDescarte, setMotivoDescarte] = useState("");
 
   // carrega as fotos sob demanda (URLs assinadas)
   useEffect(() => {
     setPhotos([]);
+    // o motivo digitado num animal não pode ir parar no próximo
+    setDescarteAberto(false);
+    setMotivoDescarte("");
     if (!open || !animal?.id) return;
     let cancelled = false;
     getAnimalPhotos(animal.id).then((r) => {
@@ -177,6 +185,22 @@ export function AnimalDetailDialog({
   const weightKg = Number(animal.weight);
   /** Nomes do tipo do animal — dão o "bezerro/potro/cabrito" de cada texto. */
   const names = SPECIES_META[speciesOf(animal.species)];
+
+  /** Descarte (migration 147): marca hoje, com o motivo, ou tira do descarte. */
+  function handleDescarte(marcar: boolean) {
+    const a = animal!;
+    if (!marcar && !confirm(`Tirar o nº ${a.tag} do descarte? Ele sai do alerta.`)) return;
+    const motivo = motivoDescarte;
+    startTransition(async () => {
+      const r = await marcarDescarte(a.id, marcar, motivo);
+      if (r && "error" in r) {
+        alert(r.error ?? "Erro ao gravar o descarte");
+        return;
+      }
+      setDescarteAberto(false);
+      setMotivoDescarte("");
+    });
+  }
 
   /** Desmame (migration 145): marca hoje ou desfaz o que foi marcado. */
   function handleDesmame(feito: boolean) {
@@ -557,6 +581,30 @@ export function AnimalDetailDialog({
         <div className="space-y-4">
           {section === "ficha" && (
             <>
+              {/* Para descarte (147): logo no topo, para ninguém deixar passar */}
+              {animal.descarte_em && (
+                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+                  <Ban className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold">Para descarte</p>
+                    <p className="text-xs opacity-80">
+                      {animal.descarte_motivo ? `${animal.descarte_motivo} · ` : ""}
+                      desde {formatDate(animal.descarte_em)}
+                    </p>
+                  </div>
+                  {!soBovinos && (
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => handleDescarte(false)}
+                      className="min-h-[36px] px-2 rounded-lg border border-red-200 bg-white text-xs font-medium text-red-700 dark:border-red-900/50 dark:bg-slate-900 dark:text-red-400 disabled:opacity-50 flex-shrink-0"
+                    >
+                      Tirar do descarte
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Fotos (galeria) */}
               {photos.length > 0 && (
                 <div className={photos.length === 1 ? "" : "grid grid-cols-2 gap-2"}>
@@ -803,6 +851,57 @@ export function AnimalDetailDialog({
                     <HandCoins className="w-4 h-4" />
                     Vender ou dar baixa
                   </Button>
+                )}
+                {/* Para descarte (147): quem marca é o patrão; o animal vai
+                    para o alerta da aba Rebanho e do sino */}
+                {!soBovinos && !animal.descarte_em && !descarteAberto && (
+                  <Button
+                    variant="outline"
+                    className="h-12 sm:h-10 col-span-2 border-red-200 text-red-700 dark:border-red-900/50 dark:text-red-400"
+                    onClick={() => setDescarteAberto(true)}
+                  >
+                    <Ban className="w-4 h-4" />
+                    Marcar para descarte
+                  </Button>
+                )}
+                {!soBovinos && !animal.descarte_em && descarteAberto && (
+                  <div className="col-span-2 space-y-2 rounded-xl border border-red-200 bg-red-50/60 p-3 dark:border-red-900/50 dark:bg-red-950/20">
+                    <label className="block text-sm font-medium text-red-800 dark:text-red-300">
+                      Motivo do descarte (opcional)
+                      <input
+                        type="text"
+                        value={motivoDescarte}
+                        onChange={(e) => setMotivoDescarte(e.target.value)}
+                        placeholder="Ex.: não emprenha, idade, casco"
+                        maxLength={120}
+                        autoFocus
+                        className="mt-1 w-full h-11 rounded-lg border border-slate-200 bg-white px-3 text-base text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1 h-11"
+                        disabled={isPending}
+                        onClick={() => {
+                          setDescarteAberto(false);
+                          setMotivoDescarte("");
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        className="flex-[2] h-11 bg-red-600 hover:bg-red-700 text-white"
+                        disabled={isPending}
+                        onClick={() => handleDescarte(true)}
+                      >
+                        <Ban className="w-4 h-4" />
+                        Marcar para descarte
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             </>

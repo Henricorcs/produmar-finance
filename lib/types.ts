@@ -909,6 +909,10 @@ export interface Animal {
   pai?: string | null;
   /** Dia em que a cria foi desmamada; vazio = ainda não (migration 145). */
   desmame_em?: string | null;
+  /** Dia em que foi marcado para descarte; vazio = não está (migration 147). */
+  descarte_em?: string | null;
+  /** Por que vai ser descartado — opcional (migration 147). */
+  descarte_motivo?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

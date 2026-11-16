@@ -58,6 +58,7 @@ import { CodigoPODialog } from "./codigo-po-dialog";
 import { RelatorioRebanho, type Filiacao } from "./relatorio-rebanho";
 import { ProtocolosTab, type EtapaFeita } from "./protocolos-tab";
 import { DesmameAlerta } from "./desmame-alerta";
+import { DescarteAlerta } from "./descarte-alerta";
 import {
   BotaoRacas,
   GavetaRacas,
@@ -176,6 +177,8 @@ interface Props {
   racaInicial?: string | null;
   /** ?desmame=1 — veio do sino: abre a lista de crias prontas para desmamar. */
   desmameInicial?: boolean;
+  /** ?descarte=1 — veio do sino: abre a lista dos animais para descarte (147). */
+  descarteInicial?: boolean;
   /**
    * Vaqueiro nível 01 (migration 146): só bovino. O menu, as abas e os
    * seletores de tipo só mostram o gado; somem Saídas, Tanques, Ficha, o
@@ -290,6 +293,7 @@ export function AnimaisPageClient({
   tipoInicial = null,
   racaInicial = null,
   desmameInicial = false,
+  descarteInicial = false,
   soBovinos = false,
   previaVaqueiroN1 = false,
 }: Props) {
@@ -1140,6 +1144,14 @@ export function AnimaisPageClient({
             todos={allAnimals}
             filiacao={filiacao}
             abertoInicial={desmameInicial}
+            onAbrir={(id) => setDetailAnimalId(id)}
+          />
+
+          {/* Alerta de descarte: o que o patrão marcou na ficha para sair do
+              rebanho (migration 147). Sem nenhum, não aparece. */}
+          <DescarteAlerta
+            animals={speciesAnimals}
+            abertoInicial={descarteInicial}
             onAbrir={(id) => setDetailAnimalId(id)}
           />
 

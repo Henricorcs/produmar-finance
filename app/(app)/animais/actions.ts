@@ -1592,6 +1592,48 @@ export async function undoAnimalExit(animalId: string) {
  * Marca o desmame das crias (ou desfaz, com `data` null). É a data gravada
  * que tira a cria do alerta de desmame — sem ela, a cria de 8 meses aparece.
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// DESCARTE (migration 147)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Marca o animal para descarte (com o motivo, se houver) ou tira do descarte
+ * (`marcar` false). É a data gravada que põe o animal no alerta da aba Rebanho
+ * e no sino; ele sai do alerta ao ser tirado do descarte ou ao sair do rebanho.
+ * Quem marca é o patrão — o vaqueiro nível 01 só vê (o gatilho da 146/147
+ * também barra no banco).
+ */
+export async function marcarDescarte(animalId: string, marcar: boolean, motivo?: string | null) {
+  const barrado = await barradoParaVaqueiroN1();
+  if (barrado) return barrado;
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+  if (!animalId) return { error: "Animal não informado" };
+
+  const { error } = await supabase
+    .from("animals")
+    .update(
+      marcar
+        ? { descarte_em: localDateISO(), descarte_motivo: clean(motivo) }
+        : { descarte_em: null, descarte_motivo: null }
+    )
+    .eq("id", animalId);
+  if (error) {
+    if (/descarte_/.test(error.message)) {
+      return { error: "Falta rodar a migration 147 (descarte) no banco." };
+    }
+    return { error: error.message };
+  }
+
+  revalidatePath("/animais");
+  // o sino do topo conta os animais para descarte
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 export async function marcarDesmame(animalIds: string[], data: string | null) {
   const supabase = createClient();
   const {

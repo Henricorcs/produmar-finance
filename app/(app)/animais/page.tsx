@@ -42,11 +42,12 @@ function ehBovino(species?: string | null): boolean {
  * ?tipo=bovino&raca=<id> — o que está escolhido no menu de raças. Fica na URL
  * para a escolha sobreviver ao recarregar a página.
  * ?desmame=1 — veio do sino do topo: abre a lista das crias prontas para desmamar.
+ * ?descarte=1 — veio do sino do topo: abre a lista dos animais para descarte.
  */
 export default async function AnimaisPage({
   searchParams,
 }: {
-  searchParams: { tipo?: string; raca?: string; desmame?: string; ver?: string };
+  searchParams: { tipo?: string; raca?: string; desmame?: string; descarte?: string; ver?: string };
 }) {
   const supabase = createClient();
 
@@ -304,6 +305,7 @@ export default async function AnimaisPage({
       tipoInicial={searchParams.tipo ?? null}
       racaInicial={searchParams.raca ?? null}
       desmameInicial={searchParams.desmame === "1"}
+      descarteInicial={searchParams.descarte === "1"}
     />
   );
 }

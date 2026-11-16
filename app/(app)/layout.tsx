@@ -46,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const desmameAte = mesesAtras(today, 8);
   const desmameDesde = mesesAtras(today, 12);
 
-  const [profile, notifRes, notaRes, desmameRes] = await Promise.all([
+  const [profile, notifRes, notaRes, desmameRes, descarteRes] = await Promise.all([
     getProfile(),
     supabase
       .from("transactions")
@@ -68,8 +68,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .is("desmame_em", null)
       .lte("birth_date", desmameAte)
       .gt("birth_date", desmameDesde),
+    // Alerta de descarte (migration 147): os animais do rebanho que o patrão
+    // marcou para descarte. Para o vaqueiro nível 01 o RLS já conta só bovino.
+    supabase
+      .from("animals")
+      .select("id", { count: "exact", head: true })
+      .eq("active", true)
+      .not("descarte_em", "is", null),
   ]);
   const desmames = desmameRes.error ? 0 : desmameRes.count ?? 0;
+  const descartes = descarteRes.error ? 0 : descarteRes.count ?? 0;
 
   const notaRow = notaRes.data as Pick<UserNote, "content" | "updated_at"> | null;
   const nota = notaRow?.content ?? "";
@@ -100,6 +108,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           nota={nota}
           notaEm={notaEm}
           desmames={desmames}
+          descartes={descartes}
         />
         <main className="max-w-7xl mx-auto px-4 lg:px-6 pt-6 pb-8">{children}</main>
       </div>
@@ -175,6 +184,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         nota={nota}
         notaEm={notaEm}
         desmames={desmames}
+        descartes={descartes}
       />
       <TabsNav />
       {/* pb-safe-nav limpa a nav fixa (64px) + área segura do dispositivo no mobile */}

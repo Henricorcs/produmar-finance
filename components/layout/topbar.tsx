@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Wallet, Bell, LogOut, User as UserIcon, ChevronDown, AlertTriangle, Clock, Milk, ChevronRight } from "lucide-react";
+import { Wallet, Bell, LogOut, User as UserIcon, ChevronDown, AlertTriangle, Clock, Milk, ChevronRight, Ban } from "lucide-react";
 import { getInitials, formatBRL, formatDate } from "@/lib/utils";
 import { signOutAction } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -29,16 +29,26 @@ interface TopbarProps {
   notaEm?: string | null;
   /** Crias bovinas com 8 meses ou mais sem o desmame marcado (migration 145). */
   desmames?: number;
+  /** Animais do rebanho marcados para descarte (migration 147). */
+  descartes?: number;
 }
 
-export function Topbar({ profile, notifications = [], nota = "", notaEm = null, desmames = 0 }: TopbarProps) {
+export function Topbar({
+  profile,
+  notifications = [],
+  nota = "",
+  notaEm = null,
+  desmames = 0,
+  descartes = 0,
+}: TopbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
   const overdueCount = notifications.filter((n) => n.isOverdue).length;
-  const hasUnread = notifications.length > 0 || desmames > 0;
-  // Vaqueiro nível 01 (migration 146): o sino é só do desmame — contas a pagar
-  // e Configurações não são da conta dele (o middleware nem deixa abrir).
+  const hasUnread = notifications.length > 0 || desmames > 0 || descartes > 0;
+  // Vaqueiro nível 01 (migration 146): o sino é só dos animais (desmame e
+  // descarte) — contas a pagar e Configurações não são da conta dele (o
+  // middleware nem deixa abrir).
   const ehVaqueiroN1 = profile?.role === "vaqueiro_n1";
 
   return (
@@ -121,9 +131,31 @@ export function Topbar({ profile, notifications = [], nota = "", notaEm = null, 
                     </a>
                   )}
 
+                  {/* Alerta de descarte — leva à lista em Animais (147) */}
+                  {descartes > 0 && (
+                    <a
+                      href="/animais?descarte=1"
+                      onClick={() => setNotifOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                    >
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-red-100 dark:bg-red-900/40">
+                        <Ban className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                          {descartes} {descartes === 1 ? "animal" : "animais"} para descarte
+                        </p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                          Marcados na ficha do animal
+                        </p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    </a>
+                  )}
+
                   {/* List */}
                   {ehVaqueiroN1 ? (
-                    desmames === 0 && (
+                    desmames === 0 && descartes === 0 && (
                       <div className="px-4 py-8 text-center">
                         <Bell className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
                         <p className="text-sm text-slate-400 dark:text-slate-500">
