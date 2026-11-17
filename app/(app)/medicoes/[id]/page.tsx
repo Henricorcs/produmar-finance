@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { EditorDeMedicao } from "@/components/medicoes/editor-de-medicao";
 import type { Medicao } from "@/lib/types";
@@ -20,6 +21,9 @@ export default async function MedicaoPage({ params }: { params: { id: string } }
       </div>
     );
   }
+
+  // medida de cerca abre na aba dela (lá ela é reaberta pela lista de cercas salvas)
+  if (data.tipo === "cerca") redirect("/medir-cerca");
 
   return <EditorDeMedicao medicao={data} />;
 }

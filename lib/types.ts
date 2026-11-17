@@ -3104,7 +3104,12 @@ export interface Medicao {
   /** Os cantos como vieram do GPS, na ordem do contorno. */
   pontos: import("./medir-cerca").PontoGps[];
   area_m2: number | null;
+  /** No lote, o contorno; na cerca, a metragem total (aberta ou fechada). */
   perimetro_m: number | null;
+  /** 'lote' = terreno com área; 'cerca' = medida da aba Medir cerca (migration 148; antes dela, vem vazio). */
+  tipo?: "lote" | "cerca";
+  /** Só na cerca: soma a volta do último ponto até o 1º. */
+  fechado?: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;

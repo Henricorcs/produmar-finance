@@ -12,5 +12,7 @@ export default async function MedicoesPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  return <MedicoesClient medicoes={(data as Medicao[]) ?? []} migrationPendente={!!error} />;
+  // as medidas de cerca (148) ficam na aba Medir cerca, não na lista de lotes
+  const lotes = ((data as Medicao[]) ?? []).filter((m) => m.tipo !== "cerca");
+  return <MedicoesClient medicoes={lotes} migrationPendente={!!error} />;
 }

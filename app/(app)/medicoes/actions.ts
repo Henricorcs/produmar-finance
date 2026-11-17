@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { contaDoLote } from "@/lib/medicao-lote";
-import type { PontoGps } from "@/lib/medir-cerca";
+import { trechos, type PontoGps } from "@/lib/medir-cerca";
 
 /**
  * MEDIÇÕES — o lote marcado pelo GPS. Quem manda são os pontos: a área e o
@@ -30,6 +30,9 @@ function erroDaMedicao(error: { code?: string; message: string }): string {
     /medicoes.*(does not exist|not find)|(does not exist|not find).*medicoes/i.test(error.message)
   )
     return "Rode a migration 131 no Supabase para guardar as medições";
+  // coluna tipo/fechado ainda não existe
+  if (error.code === "42703" || error.code === "PGRST204" || /(tipo|fechado).*column|column.*(tipo|fechado)/i.test(error.message))
+    return "Rode a migration 148 no Supabase para salvar a medida da cerca";
   return error.message;
 }
 
@@ -88,11 +91,61 @@ export async function salvarMedicao(id: string | null, m: MedicaoInput): Promise
   return { ok: true, id: (data as { id: string }).id };
 }
 
+export type CercaInput = MedicaoInput & {
+  /** Cercado fechado: soma a volta do último ponto até o 1º. */
+  fechado: boolean;
+};
+
+/**
+ * MEDIR CERCA — finaliza e grava a medida. Fica na mesma tabela dos lotes,
+ * com tipo 'cerca': perimetro_m é a metragem total e area_m2 fica vazio.
+ */
+export async function salvarCerca(id: string | null, c: CercaInput): Promise<Resultado> {
+  const nome = c.nome.trim();
+  if (!nome) return { error: "Dê um nome à cerca (ex.: Cerca do pasto grande)." };
+  const pontos = pontosLimpos(c.pontos ?? []);
+  if (!pontos) return { error: "Algum ponto veio sem coordenada. Desfaça e marque de novo." };
+  if (pontos.length < 2) return { error: "Marque pelo menos 2 pontos antes de salvar." };
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const fechado = !!c.fechado && pontos.length >= 3;
+  const total = trechos(pontos, fechado).reduce((s, t) => s + t, 0);
+  const linha = {
+    tipo: "cerca" as const,
+    fechado,
+    nome,
+    local: c.local?.trim() || null,
+    observacao: c.observacao?.trim() || null,
+    pontos,
+    area_m2: null,
+    perimetro_m: Math.round(total * 100) / 100,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = id
+    ? await supabase.from("medicoes").update(linha).eq("id", id).select("id").single()
+    : await supabase
+        .from("medicoes")
+        .insert({ ...linha, created_by: user.id })
+        .select("id")
+        .single();
+
+  if (error) return { error: erroDaMedicao(error) };
+  revalidatePath("/medir-cerca");
+  return { ok: true, id: (data as { id: string }).id };
+}
+
 export async function excluirMedicao(id: string): Promise<{ ok: true } | { error: string }> {
   const supabase = createClient();
   const { error, count } = await supabase.from("medicoes").delete({ count: "exact" }).eq("id", id);
   if (error) return { error: erroDaMedicao(error) };
   if (count === 0) return { error: "Não foi possível apagar — confira se você tem o módulo Medições." };
   revalidatePath("/medicoes");
+  revalidatePath("/medir-cerca");
   return { ok: true };
 }
