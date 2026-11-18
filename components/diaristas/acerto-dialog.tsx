@@ -39,11 +39,20 @@ import {
   monthLabel,
   monthRange,
 } from "./diarista-shared";
+import {
+  LancarDiaDialog,
+  type DiaristaMaquina,
+  type DiaristaObra,
+} from "./lancar-dia-dialog";
+import { ServicoDialog } from "@/components/obras/servico-dialog";
 import type {
+  Diarista,
   DiaristaAcerto,
   DiaristaAdiantamento,
   DiaristaDia,
   DiaristaResumo,
+  Medicao,
+  SupplyObraSector,
   SupplyObraServicoView,
 } from "@/lib/types";
 
@@ -63,7 +72,21 @@ interface Props {
   dias: DiaristaDia[];
   /** Os serviços fechados (069) — entram no mesmo corte que as diárias. */
   servicos?: SupplyObraServicoView[];
+  /**
+   * Para lançar daqui mesmo o que ele fez — por metro, empreita ou diária — sem
+   * sair do pagamento: as obras e os setores, as máquinas da diária, o
+   * cadastro (o serviço pede a lista de quem recebe) e as cercas medidas.
+   */
+  obras?: DiaristaObra[];
+  sectors?: SupplyObraSector[];
+  maquinas?: DiaristaMaquina[];
+  maquinaPronta?: boolean;
+  colaboradores?: Diarista[];
+  cercasSalvas?: Medicao[];
 }
+
+/** Como ele vai receber pelo que fez — a escolha do topo do pagamento. */
+type FormaDeLancar = "metro" | "empreita" | "diaria";
 
 /**
  * A CONTA do colaborador: o que ele tem a receber, o que já pegou adiantado e o
@@ -89,8 +112,21 @@ export function AcertoDialog({
   acertos,
   dias,
   servicos = [],
+  obras = [],
+  sectors = [],
+  maquinas = [],
+  maquinaPronta = false,
+  colaboradores = [],
+  cercasSalvas = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
+
+  /** A forma escolhida para lançar o que ele fez; null = nada aberto. */
+  const [forma, setForma] = useState<FormaDeLancar | null>(null);
+  /** Diária: o dia trabalhado, escolhido antes de abrir a tela do dia. */
+  const [diaDaDiaria, setDiaDaDiaria] = useState(localDateISO());
+  /** O dia confirmado — abre a tela "O que ele fez?" da diária. */
+  const [diaPendente, setDiaPendente] = useState<string | null>(null);
   /**
    * O erro guarda DE ONDE ele veio.
    *
@@ -119,6 +155,9 @@ export function AcertoDialog({
     setValeValor("");
     setValeObs("");
     setAcertoData(localDateISO());
+    setForma(null);
+    setDiaDaDiaria(localDateISO());
+    setDiaPendente(null);
     // abre no mês seguinte ao último salário pago, para ninguém pagar o mesmo
     // mês duas vezes nem pular um
     const ultimoPago = acertos
@@ -393,6 +432,89 @@ export function AcertoDialog({
             </p>
           )}
 
+          {/*
+            LANÇAR O QUE ELE FEZ — a escolha de como ele recebe por isso: no
+            metro, na empreita ou na diária. Antes o serviço só nascia em Obras →
+            setor, e quem estava aqui no pagamento com a metragem da cerca na mão
+            não tinha onde pôr.
+          */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <Plus className="w-3.5 h-3.5 text-slate-400" />
+              Lançar serviço — como ele recebe?
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { v: "metro", label: "Por metro", hint: "m × valor" },
+                  { v: "empreita", label: "Empreita", hint: "preço fechado" },
+                  { v: "diaria", label: "Diária", hint: "dia trabalhado" },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.v}
+                  type="button"
+                  onClick={() => setForma(forma === f.v && f.v === "diaria" ? null : f.v)}
+                  className={`min-h-[52px] rounded-xl border px-2.5 py-2 text-left transition-colors active:scale-[0.97] ${
+                    forma === f.v
+                      ? "bg-teal-50 border-teal-400 dark:bg-teal-950/30 dark:border-teal-700"
+                      : "bg-white border-slate-200 dark:bg-slate-900 dark:border-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`block text-sm font-semibold ${
+                      forma === f.v
+                        ? "text-teal-700 dark:text-teal-300"
+                        : "text-slate-600 dark:text-slate-300"
+                    }`}
+                  >
+                    {f.label}
+                  </span>
+                  <span className="block text-[10px] text-slate-400">{f.hint}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Diária: primeiro o dia, depois a tela "O que ele fez?" de sempre */}
+            {forma === "diaria" && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <Label htmlFor="diaria_dia" className="text-[11px]">
+                      Dia trabalhado
+                    </Label>
+                    <Input
+                      id="diaria_dia"
+                      type="date"
+                      value={diaDaDiaria}
+                      onChange={(e) => setDiaDaDiaria(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => diaDaDiaria && setDiaPendente(diaDaDiaria)}
+                    disabled={!diaDaDiaria}
+                  >
+                    Continuar
+                  </Button>
+                </div>
+                {dias.some(
+                  (d) => d.diarista_id === diarista.id && d.work_date === diaDaDiaria
+                ) && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    Esse dia já está lançado para ele.
+                  </p>
+                )}
+                {Number(diarista.daily_rate ?? 0) <= 0 && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    Falta o valor da diária no cadastro dele — sem ele o dia entra
+                    valendo zero. Toque em Editar na ficha.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Novo adiantamento */}
           <div className="space-y-2">
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
@@ -660,6 +782,35 @@ export function AcertoDialog({
             Voltar para a ficha
           </Button>
         </div>
+
+        {/* Por metro / empreita: a mesma tela do serviço da obra, com ele já escolhido */}
+        <ServicoDialog
+          open={forma === "metro" || forma === "empreita"}
+          onClose={() => setForma(null)}
+          obras={obras}
+          sectors={sectors}
+          colaboradores={colaboradores}
+          servico={null}
+          presetDiaristaId={diarista.id}
+          presetMode={forma === "metro" ? "metro" : forma === "empreita" ? "empreita" : null}
+          cercasSalvas={cercasSalvas}
+        />
+
+        {/* Diária: a tela de sempre do dia, no dia escolhido */}
+        <LancarDiaDialog
+          open={!!diaPendente}
+          onClose={() => setDiaPendente(null)}
+          diarista={diarista}
+          date={diaPendente}
+          obras={obras}
+          sectors={sectors}
+          maquinas={maquinas}
+          maquinaPronta={maquinaPronta}
+          onSaved={() => {
+            setDiaPendente(null);
+            setForma(null);
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

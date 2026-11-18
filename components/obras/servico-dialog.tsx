@@ -35,6 +35,7 @@ import {
   WORKER_TYPE_LABEL,
   type ContractMode,
   type Diarista,
+  type Medicao,
   type SupplyObraSector,
   type SupplyObraServicoView,
 } from "@/lib/types";
@@ -42,8 +43,17 @@ import {
 interface Props {
   open: boolean;
   onClose: () => void;
-  obraId: string;
-  obraNome: string;
+  /**
+   * A obra do serviço. Vazio quando a tela é aberta fora da obra (no pagamento
+   * do colaborador): aí a obra é escolhida na lista `obras`.
+   */
+  obraId?: string;
+  obraNome?: string;
+  /**
+   * Aberta fora da obra: as obras para escolher. Os setores vêm todos juntos e
+   * a tela mostra só os da obra escolhida.
+   */
+  obras?: { id: string; name: string }[];
   /** Setores da obra — o serviço nasce dentro de um deles. */
   sectors: SupplyObraSector[];
   /** Setor já escolhido (o serviço foi aberto de dentro dele). */
@@ -52,6 +62,15 @@ interface Props {
   colaboradores: Diarista[];
   /** Serviço em edição — null lança um novo. */
   servico: SupplyObraServicoView | null;
+  /** Aberta do pagamento de alguém: ele já vem escolhido. */
+  presetDiaristaId?: string | null;
+  /** E a forma escolhida lá (por metro ou empreita) já vem marcada. */
+  presetMode?: ContractMode | null;
+  /**
+   * As cercas salvas na aba Medir cerca (148): um toque põe a metragem medida
+   * pelo GPS no campo, sem digitar.
+   */
+  cercasSalvas?: Medicao[];
 }
 
 /**
@@ -69,15 +88,31 @@ interface Props {
 export function ServicoDialog({
   open,
   onClose,
-  obraId,
+  obraId: obraFixa,
   obraNome,
-  sectors,
+  obras,
+  sectors: todosSetores,
   presetSectorId,
   colaboradores,
   servico,
+  presetDiaristaId,
+  presetMode,
+  cercasSalvas = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  /** Com a obra fixa (aberto de dentro dela) vale a dela; fora, a escolhida. */
+  const [obraEscolhida, setObraEscolhida] = useState("");
+  const obraId = obraFixa || obraEscolhida;
+  const escolheObra = !obraFixa && !!obras;
+  const nomeDaObra =
+    obraNome || obras?.find((o) => o.id === obraId)?.name || "";
+  /** Fora da obra os setores chegam todos: ficam só os da obra escolhida. */
+  const sectors = useMemo(
+    () => (escolheObra ? todosSetores.filter((s) => s.obra_id === obraId) : todosSetores),
+    [escolheObra, todosSetores, obraId]
+  );
 
   const [sectorId, setSectorId] = useState("");
   const [serviceType, setServiceType] = useState("");
@@ -93,12 +128,31 @@ export function ServicoDialog({
 
   useEffect(() => {
     if (!open) return;
+    setObraEscolhida(servico?.obra_id ?? "");
     setSectorId(servico?.sector_id ?? presetSectorId ?? "");
     setServiceType(servico?.service_type ?? "");
-    setDiaristaId(servico?.diarista_id ?? "");
-    setMode(servico?.contract_mode ?? "empreita");
-    setAmount(servico ? formatBRLInput(num(servico.contract_amount)) : "");
-    setRate(servico ? formatBRLInput(num(servico.rate_per_unit)) : "");
+    setDiaristaId(servico?.diarista_id ?? presetDiaristaId ?? "");
+    setMode(servico?.contract_mode ?? presetMode ?? "empreita");
+    // aberto do pagamento de alguém: o preço combinado no cadastro dele já vem
+    // no campo, do mesmo jeito que quando ele é escolhido na lista
+    const preset =
+      !servico && presetDiaristaId
+        ? colaboradores.find((c) => c.id === presetDiaristaId)
+        : undefined;
+    setAmount(
+      servico
+        ? formatBRLInput(num(servico.contract_amount))
+        : preset && Number(preset.job_rate ?? 0) > 0
+          ? formatBRLInput(Number(preset.job_rate))
+          : ""
+    );
+    setRate(
+      servico
+        ? formatBRLInput(num(servico.rate_per_unit))
+        : preset && Number(preset.meter_rate ?? 0) > 0
+          ? formatBRLInput(Number(preset.meter_rate))
+          : ""
+    );
     setQuantity(
       servico && num(servico.quantity) > 0
         ? formatQtyInput(String(num(servico.quantity)).replace(".", ","))
@@ -109,7 +163,10 @@ export function ServicoDialog({
     setDescription(servico?.description ?? "");
     setNotes(servico?.notes ?? "");
     setError(null);
-  }, [open, servico, presetSectorId]);
+    // só ao abrir: a lista de colaboradores revalida e não pode apagar o que
+    // já foi digitado
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, servico, presetSectorId, presetDiaristaId, presetMode]);
 
   /** Só os colaboradores ativos entram na lista — arquivado não recebe serviço. */
   const profissionais = useMemo(
@@ -127,6 +184,12 @@ export function ServicoDialog({
   );
 
   const metro = mode === "metro";
+
+  /** As cercas salvas com metragem — as mais novas primeiro, como vêm do banco. */
+  const cercasComMedida = useMemo(
+    () => cercasSalvas.filter((c) => Number(c.perimetro_m ?? 0) > 0).slice(0, 12),
+    [cercasSalvas]
+  );
 
   /** O profissional escolhido — é dele que vem o preço já combinado. */
   const profissional = profissionais.find((c) => c.id === diaristaId) ?? null;
@@ -177,6 +240,7 @@ export function ServicoDialog({
     e.preventDefault();
     setError(null);
 
+    if (!obraId) return setError("Escolha a obra onde o serviço foi feito");
     if (!serviceType.trim()) return setError("Informe qual serviço foi feito");
     if (metro) {
       if (parseMoney(rate) <= 0) return setError("Informe o valor do metro");
@@ -242,7 +306,7 @@ export function ServicoDialog({
             </span>
             {servico ? "Editar serviço" : "Novo serviço"}
           </DialogTitle>
-          <p className="text-[11px] text-slate-400">{obraNome}</p>
+          {nomeDaObra && <p className="text-[11px] text-slate-400">{nomeDaObra}</p>}
         </DialogHeader>
 
         {travado && (
@@ -283,6 +347,29 @@ export function ServicoDialog({
               disabled={travado}
             />
           </div>
+
+          {/* Fora da obra (no pagamento do colaborador): em qual obra foi feito */}
+          {escolheObra && (
+            <div className="space-y-1.5">
+              <Label>Obra *</Label>
+              <SearchableSelect
+                items={obras ?? []}
+                value={obraEscolhida}
+                onChange={(id) => {
+                  setObraEscolhida(id);
+                  setSectorId(""); // o setor é de uma obra só
+                }}
+                getId={(o) => o.id}
+                getLabel={(o) => o.name}
+                placeholder="Toque para escolher a obra..."
+                searchPlaceholder="Buscar obra..."
+                emptyMessage="Nenhuma obra cadastrada"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                O valor entra no custo dessa obra e na conta dele.
+              </p>
+            </div>
+          )}
 
           {/* Onde: o setor da obra */}
           {sectors.length > 0 && (
@@ -417,6 +504,49 @@ export function ServicoDialog({
                   />
                 </div>
               </div>
+              {/*
+                A metragem que já foi medida pelo GPS na aba Medir cerca: um toque
+                põe o número no campo, em metros. Sem isso a medida salva ficava
+                presa lá e precisava ser copiada de cabeça.
+              */}
+              {!travado && cercasComMedida.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label>Usar uma cerca medida</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {cercasComMedida.map((c) => {
+                      const metros = Math.round(Number(c.perimetro_m) * 100) / 100;
+                      const texto = String(metros).replace(".", ",");
+                      const escolhida = quantity === texto && unit === "M";
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setQuantity(texto);
+                            setUnit("M");
+                            if (!serviceType.trim()) setServiceType("CERCA");
+                            if (!description.trim())
+                              setDescription(
+                                [c.nome, c.local].filter(Boolean).join(" · ").toUpperCase()
+                              );
+                          }}
+                          className={`max-w-full px-2.5 py-1.5 rounded-lg border text-left text-[11px] transition-colors ${
+                            escolhida
+                              ? "bg-teal-600 border-teal-600 text-white"
+                              : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
+                          }`}
+                        >
+                          <span className="font-semibold">{c.nome}</span>
+                          <span className={escolhida ? "text-teal-50" : "text-slate-400"}>
+                            {" "}
+                            · {metros.toLocaleString("pt-BR")} m
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>Unidade</Label>
                 <div className="flex gap-1.5">

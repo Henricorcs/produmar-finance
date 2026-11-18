@@ -31,6 +31,7 @@ import type {
   DiaristaResumo,
   DiaristaTecnico,
   EncarregadoDeObra,
+  Medicao,
   SupplyObraSector,
   SupplyObraServicoView,
   WorkerType,
@@ -59,6 +60,8 @@ interface Props {
   vinculos?: DiaristaTecnico[];
   /** Os usuários com o papel de encarregado de obra, para escolher. */
   encarregados?: EncarregadoDeObra[];
+  /** As cercas medidas pelo GPS (148): a metragem entra no serviço por metro. */
+  cercasSalvas?: Medicao[];
 }
 
 type Tab = "pessoas" | "dias" | "servicos";
@@ -111,6 +114,7 @@ export function DiaristasPageClient({
   servicos = [],
   vinculos = [],
   encarregados = [],
+  cercasSalvas = [],
 }: Props) {
   const hoje = new Date();
   const [year, setYear] = useState(hoje.getFullYear());
@@ -793,8 +797,10 @@ export function DiaristasPageClient({
             </div>
           )}
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Para lançar ou corrigir um serviço, vá em Obras → Setores e serviços. O
-            preço de cada um vem do cadastro dele, aqui em Colaboradores.
+            Para lançar um serviço, abra o pagamento da pessoa e escolha Por metro,
+            Empreita ou Diária — ou vá em Obras → Setores e serviços. Para corrigir,
+            é em Obras. O preço de cada um vem do cadastro dele, aqui em
+            Colaboradores.
           </p>
         </div>
       )}
@@ -832,6 +838,12 @@ export function DiaristasPageClient({
         acertos={acertos}
         dias={dias}
         servicos={servicos}
+        obras={obras}
+        sectors={sectors}
+        maquinas={maquinas}
+        maquinaPronta={maquinaPronta}
+        colaboradores={diaristas}
+        cercasSalvas={cercasSalvas}
       />
 
       <EncarregadosDialog

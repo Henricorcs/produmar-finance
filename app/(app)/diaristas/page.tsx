@@ -8,6 +8,7 @@ import type {
   DiaristaResumo,
   DiaristaTecnico,
   EncarregadoDeObra,
+  Medicao,
   SupplyObraSector,
   SupplyObraServicoView,
 } from "@/lib/types";
@@ -34,6 +35,7 @@ export default async function DiaristasPage() {
     encarregados,
     maquinasRes,
     servicosDeMaquina,
+    medicoesRes,
   ] = await Promise.all([
     // cadastro + quanto cada um já trabalhou (migration 059 — sem ela a tela
     // abre vazia com o aviso, em vez de quebrar)
@@ -71,6 +73,14 @@ export default async function DiaristasPage() {
     // a máquina pesada que trabalhou junto na diária (migration 132)
     supabase.from("machines").select("*").order("name", { ascending: true }),
     lerServicosDeMaquina(supabase),
+    // as cercas medidas pelo GPS na aba Medir cerca (148): a metragem entra com
+    // um toque no serviço por metro lançado do pagamento. select("*") e filtro
+    // aqui: antes da 148 não há a coluna tipo, e a tela segue funcionando
+    supabase
+      .from("medicoes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200),
   ]);
 
   return (
@@ -89,6 +99,7 @@ export default async function DiaristasPage() {
       servicos={(servicosRes.data as SupplyObraServicoView[]) ?? []}
       vinculos={(vinculosRes.data as DiaristaTecnico[]) ?? []}
       encarregados={encarregados}
+      cercasSalvas={((medicoesRes.data as Medicao[]) ?? []).filter((m) => m.tipo === "cerca")}
     />
   );
 }
