@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Layers, Plus, Settings2, Split } from "lucide-react";
+import { HandCoins, Layers, Plus, Settings2, Skull, Split } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatBRL, formatDate, formatQty } from "@/lib/utils";
 import {
@@ -13,6 +13,7 @@ import {
 import { TanquesDialog } from "./tanques-dialog";
 import { LoteDialog } from "./lote-dialog";
 import { LoteDetailDialog } from "./lote-detail-dialog";
+import { LoteMorteDialog } from "./lote-morte-dialog";
 import { AnimalVendaDialog } from "./animal-venda-dialog";
 import { AnimalDespesaDialog } from "./animal-despesa-dialog";
 import type {
@@ -74,6 +75,8 @@ export function LotesTab({
   const [detalhe, setDetalhe] = useState<AnimalLoteResumo | null>(null);
   const [vendaLote, setVendaLote] = useState<AnimalLoteResumo | null>(null);
   const [despesaLote, setDespesaLote] = useState<AnimalLoteResumo | null>(null);
+  /** Tanque em que se está lançando morte pelo botão do cartão. */
+  const [morteLote, setMorteLote] = useState<AnimalLoteResumo | null>(null);
   /** A nota de ração que serve a todos os tanques — entra dividida. */
   const [notaDividida, setNotaDividida] = useState(false);
   /** Lançamento aberto para conserto — veio da lista de dentro do tanque. */
@@ -208,16 +211,19 @@ export function LotesTab({
           {doFiltro.map((l) => {
             const fechado = l.status === "fechado";
             return (
-              <button
+              <div
                 key={l.id}
-                type="button"
-                onClick={() => setDetalhe(l)}
                 className={cn(
-                  "rounded-xl border bg-white dark:bg-slate-900 p-3 text-left transition-colors active:scale-[0.99]",
+                  "rounded-xl border bg-white dark:bg-slate-900 overflow-hidden",
                   fechado
                     ? "border-slate-200 opacity-70 dark:border-slate-700"
                     : "border-cyan-200 dark:border-cyan-900/50"
                 )}
+              >
+              <button
+                type="button"
+                onClick={() => setDetalhe(l)}
+                className="w-full p-3 text-left transition-colors active:bg-slate-50 dark:active:bg-slate-800/60"
               >
                 <div className="flex items-center gap-2">
                   <Layers
@@ -246,7 +252,7 @@ export function LotesTab({
                     {formatQty(Number(l.saldo))} vivos
                   </span>
                   <span className="text-xs text-rose-600 dark:text-rose-400">
-                    {formatQty(Number(l.mortalidade_pct))}% morte
+                    {formatQty(Number(l.mortes))} mortos · {formatQty(Number(l.mortalidade_pct))}%
                   </span>
                 </div>
 
@@ -266,6 +272,30 @@ export function LotesTab({
                   </span>
                 </div>
               </button>
+
+              {/* Morte e venda direto no cartão — antes só entravam abrindo o
+                  ciclo, e quem estava na beira do tanque não achava */}
+              {!fechado && (
+                <div className="grid grid-cols-2 divide-x divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setMorteLote(l)}
+                    className="flex items-center justify-center gap-1.5 h-11 text-sm font-semibold text-rose-700 active:bg-rose-50 dark:text-rose-400 dark:active:bg-rose-950/30"
+                  >
+                    <Skull className="w-4 h-4" />
+                    Morte
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVendaLote(l)}
+                    className="flex items-center justify-center gap-1.5 h-11 text-sm font-semibold text-emerald-700 active:bg-emerald-50 dark:text-emerald-400 dark:active:bg-emerald-950/30"
+                  >
+                    <HandCoins className="w-4 h-4" />
+                    Venda
+                  </button>
+                </div>
+              )}
+              </div>
             );
           })}
         </div>
@@ -320,6 +350,8 @@ export function LotesTab({
           setLoteOpen(true);
         }}
       />
+
+      <LoteMorteDialog lote={morteLote} onClose={() => setMorteLote(null)} />
 
       <AnimalVendaDialog
         open={!!vendaLote}
