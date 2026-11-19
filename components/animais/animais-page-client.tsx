@@ -41,6 +41,7 @@ import {
 import { AnimalDialog } from "./animal-dialog";
 import { AnimalExitDialog } from "./animal-exit-dialog";
 import { AnimalDetailDialog } from "./animal-detail-dialog";
+import type { Cria, FamiliaAnimal } from "./animal-evolucao-tab";
 import { VaccineProtocolDialog } from "./vaccine-protocol-dialog";
 import { AnimalVaccinesDialog } from "./animal-vaccines-dialog";
 import { TreatmentDialog } from "./treatment-dialog";
@@ -110,6 +111,7 @@ import type {
   AnimalProtocoloAplicacao,
   AnimalProtocoloAplicacaoAnimal,
   AnimalProtocoloItem,
+  AnimalSex,
   AnimalSpecies,
   AnimalTreatment,
   AnimalVaccination,
@@ -523,6 +525,74 @@ export function AnimaisPageClient({
         return (b.exit_date ?? "").localeCompare(a.exit_date ?? "");
       });
   }, [detailAnimal, allAnimals]);
+
+  /**
+   * A família do animal aberto, para a aba Evolução: a mãe pelo parto lançado
+   * (ou pelo nº escrito no cadastro do PO), o pai pelo nº escrito, os irmãos
+   * de mãe pelos partos e as crias — da fêmea pelos partos; de qualquer um,
+   * também quem tem o nº dele escrito como mãe ou pai.
+   */
+  const detailFamilia = useMemo<FamiliaAnimal | undefined>(() => {
+    if (!detailAnimal) return undefined;
+    const a = detailAnimal;
+    const sp = speciesOf(a.species);
+    const porId = new Map(allAnimals.map((x) => [x.id, x]));
+    const doTipo = allAnimals.filter((x) => speciesOf(x.species) === sp && x.id !== a.id);
+
+    /** Acha no rebanho o nº escrito ("Nº 123", "n° 123", "123"). */
+    const acharPeloNumero = (texto: string, sexo: AnimalSex): AnimalWithInfo | null => {
+      const num = numeroEscrito(texto);
+      if (!num) return null;
+      let cand = doTipo.filter((x) => x.sex === sexo && x.tag.trim().toUpperCase() === num);
+      // número reaproveitado: vale quem já tinha nascido antes deste animal
+      if (a.birth_date && cand.length > 1) {
+        const antes = cand.filter((x) => !x.birth_date || x.birth_date < a.birth_date!);
+        if (antes.length > 0) cand = antes;
+      }
+      cand.sort((p, q) => (q.active !== false ? 1 : 0) - (p.active !== false ? 1 : 0));
+      return cand[0] ?? null;
+    };
+
+    const parto = birthByCalf.get(a.id);
+    const maeDoParto = parto ? porId.get(parto.mother_id) ?? null : null;
+    const mae = maeDoParto
+      ? { animal: maeDoParto, texto: null }
+      : a.mae?.trim()
+        ? { animal: acharPeloNumero(a.mae, "femea"), texto: a.mae.trim() }
+        : null;
+    const pai = a.pai?.trim()
+      ? { animal: acharPeloNumero(a.pai, "macho"), texto: a.pai.trim() }
+      : null;
+
+    const irmaos = parto
+      ? (birthsByMother.get(parto.mother_id) ?? [])
+          .filter((b) => b.calf_animal_id && b.calf_animal_id !== a.id)
+          .map((b) => porId.get(b.calf_animal_id!))
+          .filter((x): x is AnimalWithInfo => !!x)
+      : [];
+
+    const crias: Cria[] = (birthsByMother.get(a.id) ?? []).map((b) => ({
+      key: b.id,
+      animal: b.calf_animal_id ? porId.get(b.calf_animal_id) ?? null : null,
+      tag: b.calf_tag,
+      sex: b.calf_sex,
+      nascimento: b.birth_date,
+    }));
+    const jaListadas = new Set(crias.map((c) => c.animal?.id).filter(Boolean));
+    const meuNumero = a.tag.trim().toUpperCase();
+    for (const x of doTipo) {
+      if (jaListadas.has(x.id)) continue;
+      const escrito = a.sex === "femea" ? x.mae : x.pai;
+      if (!escrito || numeroEscrito(escrito) !== meuNumero) continue;
+      // a cria nasceu depois dele (o nº pode ter sido de outro antes)
+      if (a.birth_date && x.birth_date && x.birth_date <= a.birth_date) continue;
+      crias.push({ key: x.id, animal: x, tag: x.tag, sex: x.sex, nascimento: x.birth_date });
+    }
+    crias.sort((p, q) => (q.nascimento ?? "").localeCompare(p.nascimento ?? ""));
+
+    return { mae, pai, irmaos, crias };
+  }, [detailAnimal, allAnimals, birthByCalf, birthsByMother]);
+
   const detailVaccinations = useMemo(
     () => (detailAnimalId ? vaccinations.filter((v) => v.animal_id === detailAnimalId) : []),
     [detailAnimalId, vaccinations]
@@ -1887,6 +1957,7 @@ export function AnimaisPageClient({
         onWeigh={(a) => openWeight(a)}
         onExit={(a) => setExitAnimal(a)}
         mesmoNumero={detailMesmoNumero}
+        familia={detailFamilia}
       />
       <AnimalExitDialog
         open={!!exitAnimal}
@@ -2429,6 +2500,18 @@ function weightsTitle(ws: AnimalWeight[]): string | undefined {
 }
 
 /** Tooltip nativo com todos os partos (data — sexo — nº). */
+/**
+ * O nº escrito como mãe ou pai no cadastro do PO, pronto para comparar com o
+ * brinco: "Nº 123", "n° 123", "N. 123" e "#123" viram "123".
+ */
+function numeroEscrito(texto: string): string {
+  return texto
+    .trim()
+    .toUpperCase()
+    .replace(/^(N\s*[º°.]|#)\s*/, "")
+    .trim();
+}
+
 function birthsTitle(births: AnimalBirth[]): string | undefined {
   if (births.length === 0) return undefined;
   return births

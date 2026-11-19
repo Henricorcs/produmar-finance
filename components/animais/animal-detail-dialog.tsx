@@ -62,6 +62,7 @@ import {
   useSoBovinos,
 } from "./animal-shared";
 import { TrocarMaeDialog } from "./trocar-mae-dialog";
+import { AnimalEvolucaoTab, type FamiliaAnimal } from "./animal-evolucao-tab";
 import type {
   AnimalBirth,
   AnimalTreatment,
@@ -112,9 +113,13 @@ interface Props {
    * sua ficha; aqui aparece quem já usou (ou usa) aquele número.
    */
   mesmoNumero?: AnimalWithInfo[];
+  /** Mãe, pai, irmãos e crias cadastrados — aba Evolução. */
+  familia?: FamiliaAnimal;
 }
 
-type Section = "ficha" | "vacinas" | "historico";
+type Section = "ficha" | "vacinas" | "evolucao" | "historico";
+
+const FAMILIA_VAZIA: FamiliaAnimal = { mae: null, pai: null, irmaos: [], crias: [] };
 
 export function AnimalDetailDialog({
   open,
@@ -138,6 +143,7 @@ export function AnimalDetailDialog({
   onWeigh,
   onExit,
   mesmoNumero = [],
+  familia = FAMILIA_VAZIA,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [section, setSection] = useState<Section>("ficha");
@@ -555,6 +561,7 @@ export function AnimalDetailDialog({
   const sections: { value: Section; label: string; count?: number }[] = [
     { value: "ficha", label: "Ficha" },
     ...(saiu ? [] : [{ value: "vacinas" as Section, label: "Vacinas", count: markedCount }]),
+    { value: "evolucao", label: "Evolução" },
     { value: "historico", label: "Histórico", count: events.length },
   ];
 
@@ -576,13 +583,13 @@ export function AnimalDetailDialog({
         </DialogHeader>
 
         {/* Abas internas */}
-        <div className="flex gap-1.5 mb-4">
+        <div className="flex gap-1 mb-4">
           {sections.map((s) => (
             <button
               key={s.value}
               type="button"
               onClick={() => setSection(s.value)}
-              className={`flex-1 px-3 min-h-[44px] rounded-lg text-sm font-medium border transition-colors active:scale-[0.97] ${
+              className={`flex-1 min-w-0 px-1 min-h-[44px] rounded-lg text-[13px] font-medium border whitespace-nowrap transition-colors active:scale-[0.97] ${
                 section === s.value
                   ? "bg-produmar-600 border-produmar-600 text-white"
                   : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
@@ -1108,6 +1115,15 @@ export function AnimalDetailDialog({
                 </>
               )}
             </div>
+          )}
+
+          {section === "evolucao" && (
+            <AnimalEvolucaoTab
+              animal={animal}
+              weights={weights}
+              familia={familia}
+              onOpenAnimal={onOpenAnimal}
+            />
           )}
 
           {section === "historico" && (
