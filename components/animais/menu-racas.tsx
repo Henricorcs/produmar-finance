@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { ChevronRight, ListFilter, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, ListFilter, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   SPECIES_META,
@@ -115,8 +115,18 @@ export function ListaRacas({ breeds, animals, value, onChange }: ListaProps) {
   const soBovinos = useSoBovinos();
   const tipos = useSpeciesOptions();
 
+  /**
+   * O tipo aberto no menu (só um por vez). Antes todos os tipos vinham com
+   * todas as raças abertas — Bovinos, Equinos com cinco raças zeradas,
+   * Caprinos... — e o menu virava uma lista comprida. Agora cada tipo é uma
+   * linha e as raças aparecem ao tocar nele. Abre já no tipo escolhido.
+   */
+  const [aberto, setAberto] = useState<AnimalSpecies | null>(
+    value.species === "todos" ? null : value.species
+  );
+
   return (
-    <nav aria-label="Escolher tipo e raça" className="space-y-3">
+    <nav aria-label="Escolher tipo e raça" className="space-y-0.5">
       {!soBovinos && (
         <Item
           label="Todos os animais"
@@ -133,22 +143,56 @@ export function ListaRacas({ breeds, animals, value, onChange }: ListaProps) {
         const racas = porLote ? [] : racasPorTipo.get(sp) ?? [];
         const semRaca = contagem.semRaca.get(sp) ?? 0;
         const total = contagem.porTipo.get(sp) ?? 0;
+        // peixe e ave não têm raça: o tipo é o próprio item
+        if (porLote)
+          return (
+            <Item
+              key={sp}
+              label={meta.plural}
+              ativo={ativo(sp, null)}
+              onClick={() => onChange({ species: sp, breedId: null })}
+              destaque
+            />
+          );
+
+        // Fechado, o tipo é uma linha só; as raças moram dentro dele
+        const estaAberto = soBovinos || aberto === sp;
+        const escolhidoAqui = value.species === sp;
         return (
           <div key={sp}>
-            {/* peixe e ave não têm raça: o tipo é o próprio item */}
-            {!porLote && (
-              <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                {meta.plural}
-              </p>
+            {!soBovinos && (
+              <button
+                type="button"
+                onClick={() => setAberto(estaAberto ? null : sp)}
+                aria-expanded={estaAberto}
+                className={cn(
+                  "w-full flex items-center gap-2 min-h-[44px] rounded-xl px-3 text-left text-sm font-semibold transition-colors active:scale-[0.98] hover:bg-slate-100 dark:hover:bg-slate-800",
+                  escolhidoAqui && !estaAberto
+                    ? "bg-produmar-50 text-produmar-700 dark:bg-produmar-950/40 dark:text-produmar-300"
+                    : total === 0
+                      ? "text-slate-400 dark:text-slate-600"
+                      : "text-slate-700 dark:text-slate-200"
+                )}
+              >
+                <span className="flex-1 min-w-0 truncate">{meta.plural}</span>
+                <span className="flex-shrink-0 text-xs font-normal tabular-nums text-slate-400 dark:text-slate-500">
+                  {total}
+                </span>
+                {estaAberto ? (
+                  <ChevronDown className="w-4 h-4 flex-shrink-0 text-slate-400" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 flex-shrink-0 text-slate-400" />
+                )}
+              </button>
             )}
-            <div className="space-y-0.5">
+            {estaAberto && (
+            <div className={cn("space-y-0.5", !soBovinos && "mt-0.5 mb-1 ml-3 border-l-2 border-slate-100 pl-1 dark:border-slate-800")}>
               <Item
-                label={porLote ? meta.plural : `Todos os ${meta.plural.toLowerCase()}`}
-                count={porLote ? undefined : total}
-                vazio={!porLote && total === 0}
+                label={`Todos os ${meta.plural.toLowerCase()}`}
+                count={total}
+                vazio={total === 0}
                 ativo={ativo(sp, null)}
                 onClick={() => onChange({ species: sp, breedId: null })}
-                destaque={porLote}
               />
               {/* o gado PO junto, qualquer que seja a raça: é nele que o
                   número vira o código de compra (GSC 7893, CSCN 21368...) */}
@@ -177,7 +221,7 @@ export function ListaRacas({ breeds, animals, value, onChange }: ListaProps) {
                 );
               })}
               {/* quem foi cadastrado sem raça também tem onde ser achado */}
-              {!porLote && semRaca > 0 && (
+              {semRaca > 0 && (
                 <Item
                   label="Sem raça no cadastro"
                   count={semRaca}
@@ -188,6 +232,7 @@ export function ListaRacas({ breeds, animals, value, onChange }: ListaProps) {
                 />
               )}
             </div>
+            )}
           </div>
         );
       })}
