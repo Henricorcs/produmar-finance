@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Car, Check, ChevronRight, Pencil, Plus, Printer, Trash2 } from "lucide-react";
+import { Car, Check, ChevronRight, Pencil, Plus, Printer, Search, Trash2, UserPlus } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { CampoComSugestoes, valoresUsados } from "@/components/ui/campo-com-sugestoes";
+import { valoresUsados } from "@/components/ui/campo-com-sugestoes";
 import {
-  salvarChecklistVeiculo,
-  excluirChecklistVeiculo,
-  type ChecklistVeiculoInput,
-} from "@/app/(app)/devedores/actions";
+  ORGAOS_RG,
+  PerguntaDoPasso,
+  RevisaoDosPassos,
+  juntarRg,
+  separarRg,
+  usePassoAPasso,
+  type PassoDef,
+} from "@/components/ui/passo-a-passo";
+import { salvarChecklistVeiculo, excluirChecklistVeiculo } from "@/app/(app)/devedores/actions";
 import { cn, formatDate, localDateISO, mascaraCpfCnpj, mascaraTelefone } from "@/lib/utils";
 import { enderecoDoDevedor } from "@/lib/devedor-endereco";
 import { CIDADE_DA_CONFISSAO } from "@/lib/confissao-divida";
@@ -46,12 +49,34 @@ interface DevedorDaLista {
   telefone: string;
 }
 
-type Form = Omit<ChecklistVeiculoInput, "loan_id">;
+/** As respostas, uma por etapa. "devedor" = a chave do devedor escolhido na lista. */
+type Campo =
+  | "devedor"
+  | "buyer_name"
+  | "buyer_document"
+  | "buyer_rg"
+  | "buyer_rg_orgao"
+  | "buyer_address"
+  | "buyer_phone"
+  | "vehicle_model"
+  | "vehicle_plate"
+  | "vehicle_year"
+  | "vehicle_color"
+  | "vehicle_chassis"
+  | "vehicle_renavam"
+  | "vehicle_km"
+  | "delivery_date"
+  | "delivery_place"
+  | "notes";
 
-const VAZIO: Form = {
+type Dados = Record<Campo, string>;
+
+const VAZIO: Dados = {
+  devedor: "",
   buyer_name: "",
   buyer_document: "",
   buyer_rg: "",
+  buyer_rg_orgao: "",
   buyer_address: "",
   buyer_phone: "",
   vehicle_model: "",
@@ -61,8 +86,8 @@ const VAZIO: Form = {
   vehicle_chassis: "",
   vehicle_renavam: "",
   vehicle_km: "",
-  delivery_place: "",
   delivery_date: "",
+  delivery_place: "",
   notes: "",
 };
 
@@ -74,74 +99,34 @@ function mascaraPlaca(s: string): string {
 
 const soLetrasENumeros = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
+/** O nome sem acento e sem espaço sobrando: "ANTÔNIO" e "ANTONIO" são o mesmo. */
+const nomeLimpo = (s: string) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+
 /**
  * CHECKLIST DE ENTREGA DE VEÍCULO — a folha que o comprador assina quando
- * recebe o veículo vendido. O comprador vem da lista de devedores (nome, CPF,
- * RG e endereço de uma vez) ou é digitado; o veículo pode vir da frota. Os
- * itens Sim/Não saem em branco na folha, para marcar à caneta na entrega.
+ * recebe o veículo vendido. Preenche-se POR ETAPAS, uma pergunta por tela
+ * (pedido do dono: todo formulário é assim): primeiro escolher o devedor da
+ * lista (puxa nome, CPF, RG, endereço e telefone e pula para o veículo) ou
+ * digitar o comprador, depois o veículo e a entrega, e no fim a revisão.
+ * Os itens Sim/Não saem em branco na folha, para marcar à caneta.
  */
 export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, veiculos }: Props) {
   const [isPending, startTransition] = useTransition();
-  /** "lista" = os já feitos; "form" = preenchendo; "pronto" = salvo, imprimir. */
+  /** "lista" = os já feitos; "form" = as etapas; "pronto" = salvo, imprimir. */
   const [tela, setTela] = useState<"lista" | "form" | "pronto">("lista");
   const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [loanId, setLoanId] = useState<string | null>(null);
-  const [f, setF] = useState<Form>(VAZIO);
+  const [dados, setDados] = useState<Dados>(VAZIO);
+  /** Abriu um já feito: começa na revisão, que corrige com um toque. */
+  const [comecarNaRevisao, setComecarNaRevisao] = useState(false);
   const [salvoId, setSalvoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const mudar = (campo: keyof Form, valor: string) => setF((x) => ({ ...x, [campo]: valor }));
-
-  function novo() {
-    setEditandoId(null);
-    setLoanId(null);
-    setF({ ...VAZIO, delivery_date: localDateISO(), delivery_place: CIDADE_DA_CONFISSAO.toUpperCase() });
-    setError(null);
-    setTela("form");
-  }
-
-  function editar(c: VehicleDeliveryChecklist) {
-    setEditandoId(c.id);
-    setLoanId(c.loan_id);
-    setF({
-      buyer_name: c.buyer_name,
-      buyer_document: c.buyer_document ?? "",
-      buyer_rg: c.buyer_rg ?? "",
-      buyer_address: c.buyer_address ?? "",
-      buyer_phone: c.buyer_phone ?? "",
-      vehicle_model: c.vehicle_model ?? "",
-      vehicle_plate: c.vehicle_plate ?? "",
-      vehicle_year: c.vehicle_year ?? "",
-      vehicle_color: c.vehicle_color ?? "",
-      vehicle_chassis: c.vehicle_chassis ?? "",
-      vehicle_renavam: c.vehicle_renavam ?? "",
-      vehicle_km: c.vehicle_km ?? "",
-      delivery_place: c.delivery_place ?? "",
-      delivery_date: c.delivery_date,
-      notes: c.notes ?? "",
-    });
-    setError(null);
-    setTela("form");
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    setSalvoId(null);
-    // sem nenhum feito ainda, abre direto no formulário
-    if (checklists.length === 0) novo();
-    else setTela("lista");
-    // só ao abrir
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
 
   /** Os devedores cadastrados, um por pessoa, com os dados da dívida mais recente. */
   const devedores = useMemo(() => {
     const vistos = new Map<string, DevedorDaLista>();
-    /** O nome sem acento e sem espaço sobrando: "ANTÔNIO" e "ANTONIO" são o mesmo. */
-    const nomeLimpo = (s: string) =>
-      s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
-    // a mais recente primeiro; com CPF antes de sem CPF — a dívida sem CPF da
-    // mesma pessoa não vira uma segunda linha na lista
+    // com CPF antes de sem CPF, e a mais recente primeiro — a dívida sem CPF
+    // da mesma pessoa não vira uma segunda linha na lista
     const ordenadas = [...dividas].sort((a, b) => {
       const ca = a.borrower_document?.trim() ? 0 : 1;
       const cb = b.borrower_document?.trim() ? 0 : 1;
@@ -169,26 +154,58 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
     return Array.from(vistos.values()).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }, [dividas]);
 
-  /** Escolheu um devedor: nome, CPF, RG, endereço e telefone de uma vez. */
-  function puxarDevedor(d: DevedorDaLista) {
-    setLoanId(d.loanId);
-    setF((x) => ({
-      ...x,
-      buyer_name: d.nome,
-      buyer_document: d.documento,
-      buyer_rg: d.rg,
-      buyer_address: d.endereco,
-      buyer_phone: d.telefone,
-    }));
+  function novo() {
+    setEditandoId(null);
+    setDados({ ...VAZIO, delivery_date: localDateISO(), delivery_place: CIDADE_DA_CONFISSAO.toUpperCase() });
+    setComecarNaRevisao(false);
+    setError(null);
+    setTela("form");
   }
 
-  /** As sugestões de cada campo: o que já foi escrito (e a frota, no veículo). */
+  function editar(c: VehicleDeliveryChecklist) {
+    const rg = separarRg(c.buyer_rg);
+    setEditandoId(c.id);
+    setDados({
+      devedor: devedores.find((d) => d.loanId === c.loan_id)?.chave ?? "",
+      buyer_name: c.buyer_name,
+      buyer_document: c.buyer_document ?? "",
+      buyer_rg: rg.numero,
+      buyer_rg_orgao: rg.orgao,
+      buyer_address: c.buyer_address ?? "",
+      buyer_phone: c.buyer_phone ?? "",
+      vehicle_model: c.vehicle_model ?? "",
+      vehicle_plate: c.vehicle_plate ?? "",
+      vehicle_year: c.vehicle_year ?? "",
+      vehicle_color: c.vehicle_color ?? "",
+      vehicle_chassis: c.vehicle_chassis ?? "",
+      vehicle_renavam: c.vehicle_renavam ?? "",
+      vehicle_km: c.vehicle_km ?? "",
+      delivery_date: c.delivery_date,
+      delivery_place: c.delivery_place ?? "",
+      notes: c.notes ?? "",
+    });
+    setComecarNaRevisao(true);
+    setError(null);
+    setTela("form");
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    setSalvoId(null);
+    // sem nenhum feito ainda, abre direto na primeira etapa
+    if (checklists.length === 0) novo();
+    else setTela("lista");
+    // só ao abrir
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  /** As sugestões de cada etapa: o que já foi escrito (e a frota, no veículo). */
   const sugestoes = useMemo(() => {
-    const de = (k: keyof VehicleDeliveryChecklist) =>
-      checklists.map((c) => c[k] as string | null | undefined);
+    const de = (k: keyof VehicleDeliveryChecklist) => checklists.map((c) => c[k] as string | null | undefined);
     return {
       nome: valoresUsados([...devedores.map((d) => d.nome), ...de("buyer_name")]),
-      modelo: valoresUsados([...veiculos.map((v) => v.name), ...de("vehicle_model")]),
+      orgao: valoresUsados([...ORGAOS_RG, ...checklists.map((c) => separarRg(c.buyer_rg).orgao)]),
+      modelo: valoresUsados([...veiculos.map((v) => v.name.toUpperCase()), ...de("vehicle_model")]),
       placa: valoresUsados(
         [...veiculos.map((v) => v.plate), ...de("vehicle_plate")].map((p) => (p ? mascaraPlaca(p) : p))
       ),
@@ -197,26 +214,100 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
     };
   }, [checklists, devedores, veiculos]);
 
-  /** Escolheu a placa ou o nome de um veículo da frota: o outro vem junto. */
-  function puxarVeiculo(por: "placa" | "modelo", valor: string) {
-    const alvo = valor.trim().toUpperCase();
-    const v = veiculos.find((x) =>
-      por === "placa"
-        ? soLetrasENumeros(x.plate ?? "") === soLetrasENumeros(alvo)
-        : x.name.trim().toUpperCase() === alvo
-    );
-    setF((x) => ({
-      ...x,
-      vehicle_plate: por === "placa" ? mascaraPlaca(valor) : v?.plate ? mascaraPlaca(v.plate) : x.vehicle_plate,
-      vehicle_model: por === "modelo" ? valor : v ? v.name.toUpperCase() : x.vehicle_model,
-    }));
+  /** Escolheu um devedor: nome, CPF, RG, endereço e telefone de uma vez. */
+  function dadosDoDevedor(d: DevedorDaLista): Partial<Dados> {
+    const rg = separarRg(d.rg);
+    return {
+      devedor: d.chave,
+      buyer_name: d.nome,
+      buyer_document: d.documento,
+      buyer_rg: rg.numero,
+      buyer_rg_orgao: rg.orgao,
+      buyer_address: d.endereco,
+      buyer_phone: d.telefone,
+    };
   }
 
+  /** Cada resposta — com o que vem junto (a placa traz o modelo da frota, e vice-versa). */
+  function mudar(campo: Campo, valor: string) {
+    setDados((x) => {
+      const novo = { ...x, [campo]: valor };
+      if (campo === "vehicle_plate") {
+        novo.vehicle_plate = mascaraPlaca(valor);
+        const v = veiculos.find((m) => m.plate && soLetrasENumeros(m.plate) === soLetrasENumeros(valor));
+        if (v && !x.vehicle_model.trim()) novo.vehicle_model = v.name.toUpperCase();
+      }
+      if (campo === "vehicle_model") {
+        const v = veiculos.find((m) => m.name.trim().toUpperCase() === valor.trim().toUpperCase());
+        if (v?.plate && !x.vehicle_plate.trim()) novo.vehicle_plate = mascaraPlaca(v.plate);
+      }
+      // o nome mudou à mão: deixa de ser o devedor escolhido na lista
+      if (campo === "buyer_name") {
+        const d = devedores.find((m) => m.chave === x.devedor);
+        if (d && nomeLimpo(d.nome) !== nomeLimpo(valor)) novo.devedor = "";
+      }
+      return novo;
+    });
+  }
+
+  // As etapas — montadas a cada render: a da lista de devedores usa o fluxo.
+  const todos: PassoDef<Campo>[] = [
+    {
+      campo: "devedor",
+      secao: "Comprador",
+      pergunta: "Quem está recebendo o veículo?",
+      tipo: "especial",
+      mostrar: (v) => devedores.find((d) => d.chave === v)?.nome ?? "digitado à mão",
+      especial: (valor) => (
+        <EscolherDevedor
+          devedores={devedores}
+          escolhido={valor}
+          onEscolher={(d) => {
+            setDados((x) => ({ ...x, ...dadosDoDevedor(d) }));
+            // os dados vieram todos da dívida: segue direto para o veículo
+            // (a revisão mostra tudo e corrige com um toque)
+            setTimeout(() => fluxo.irPara("vehicle_model"), 120);
+          }}
+          onDigitar={() => {
+            setDados((x) => ({ ...x, devedor: "" }));
+            fluxo.irPara("buyer_name");
+          }}
+        />
+      ),
+    },
+    { campo: "buyer_name", secao: "Comprador", pergunta: "Nome de quem recebe", tipo: "texto", maiusculo: true, obrigatorio: true, sugestoes: sugestoes.nome, placeholder: "nome completo" },
+    { campo: "buyer_document", secao: "Comprador", pergunta: "CPF ou CNPJ", tipo: "documento", placeholder: "só os números" },
+    { campo: "buyer_rg", secao: "Comprador", pergunta: "Número do RG", tipo: "texto", teclado: "numerico", teclasExtras: ["-", "X"], placeholder: "ex: 326785949" },
+    { campo: "buyer_rg_orgao", secao: "Comprador", pergunta: "Órgão expedidor do RG", tipo: "texto", maiusculo: true, atalhos: ORGAOS_RG, sugestoes: sugestoes.orgao, placeholder: "ex: SSP/MA" },
+    { campo: "buyer_address", secao: "Comprador", pergunta: "Endereço", tipo: "texto", maiusculo: true, placeholder: "rua, número, bairro, cidade" },
+    { campo: "buyer_phone", secao: "Comprador", pergunta: "Telefone", tipo: "telefone", placeholder: "opcional" },
+    { campo: "vehicle_model", secao: "Veículo", pergunta: "Marca e modelo", tipo: "texto", maiusculo: true, sugestoes: sugestoes.modelo, placeholder: "ex: FIAT STRADA" },
+    { campo: "vehicle_plate", secao: "Veículo", pergunta: "Placa", tipo: "texto", maiusculo: true, sugestoes: sugestoes.placa, placeholder: "ABC1D23" },
+    { campo: "vehicle_year", secao: "Veículo", pergunta: "Ano (fabricação/modelo)", tipo: "texto", placeholder: "ex: 2020/2021" },
+    { campo: "vehicle_color", secao: "Veículo", pergunta: "Cor", tipo: "texto", maiusculo: true, sugestoes: sugestoes.cor, placeholder: "ex: BRANCA" },
+    { campo: "vehicle_chassis", secao: "Veículo", pergunta: "Chassi", tipo: "texto", maiusculo: true, placeholder: "17 letras e números" },
+    { campo: "vehicle_renavam", secao: "Veículo", pergunta: "Renavam", tipo: "numero", maxDigitos: 11, placeholder: "só os números" },
+    { campo: "vehicle_km", secao: "Veículo", pergunta: "Km no painel na entrega", tipo: "numero", maxDigitos: 7, placeholder: "ex: 45000" },
+    { campo: "delivery_date", secao: "Entrega", pergunta: "Dia da entrega", tipo: "data", obrigatorio: true, fixo: true },
+    { campo: "delivery_place", secao: "Entrega", pergunta: "Local da entrega", tipo: "texto", maiusculo: true, sugestoes: sugestoes.local, placeholder: "cidade" },
+    { campo: "notes", secao: "Entrega", pergunta: "Observações (saem na folha)", tipo: "longo", placeholder: "opcional" },
+  ];
+
+  const fluxo = usePassoAPasso(todos, dados, open && tela === "form", comecarNaRevisao);
+  const { passo, passos, idx } = fluxo;
+
   function salvar() {
-    if (!f.buyer_name.trim()) return setError("Escreva o nome de quem está recebendo o veículo");
+    if (fluxo.faltando.length > 0)
+      return setError(`Falta preencher: ${fluxo.faltando.map((p) => p.pergunta.toLowerCase()).join(", ")}`);
     setError(null);
+    const loanId = devedores.find((d) => d.chave === dados.devedor)?.loanId ?? null;
+    const { devedor: _devedor, buyer_rg_orgao, ...resto } = dados;
     startTransition(async () => {
-      const r = await salvarChecklistVeiculo(editandoId, { ...f, loan_id: loanId });
+      const r = await salvarChecklistVeiculo(editandoId, {
+        ...resto,
+        buyer_rg: juntarRg(dados.buyer_rg, buyer_rg_orgao),
+        loan_id: loanId,
+      });
       if ("error" in r && r.error) return setError(r.error);
       if ("id" in r && r.id) {
         setSalvoId(r.id);
@@ -233,7 +324,16 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
     });
   }
 
-  const devedorEscolhido = devedores.find((d) => d.loanId === loanId)?.chave ?? "";
+  const titulo =
+    tela === "pronto"
+      ? "Checklist pronto"
+      : tela === "form"
+        ? fluxo.naRevisao
+          ? "Revisar o checklist"
+          : editandoId
+            ? "Corrigir checklist"
+            : "Novo checklist de entrega"
+        : "Checklist de entrega de veículo";
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -241,13 +341,7 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Car className="w-5 h-5 text-produmar-600" />
-            {tela === "pronto"
-              ? "Checklist pronto"
-              : tela === "form"
-                ? editandoId
-                  ? "Corrigir checklist"
-                  : "Novo checklist de entrega"
-                : "Checklist de entrega de veículo"}
+            {titulo}
           </DialogTitle>
         </DialogHeader>
 
@@ -264,9 +358,7 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
               {checklists.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 px-3 py-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-                      {c.buyer_name}
-                    </p>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{c.buyer_name}</p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                       {formatDate(c.delivery_date)}
                       {c.vehicle_model ? ` · ${c.vehicle_model}` : ""}
@@ -302,230 +394,58 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
                 </div>
               ))}
             </div>
+            {error && <Erro texto={error} />}
+            <DialogFooter className={STICKY_FOOTER}>
+              <Button type="button" variant="outline" onClick={onClose} className={cn(FOOTER_CANCEL, "h-11")}>
+                Fechar
+              </Button>
+              <Button type="button" onClick={novo} className={cn(FOOTER_SUBMIT, "h-11")}>
+                <Plus className="w-4 h-4" />
+                Novo checklist
+              </Button>
+            </DialogFooter>
           </div>
         )}
 
-        {/* O FORMULÁRIO */}
-        {tela === "form" && (
-          <div className="space-y-5">
-            <section className="space-y-3">
-              <h3 className="text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400">COMPRADOR</h3>
-              {devedores.length > 0 && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="ck_devedor">Puxar da lista de devedores</Label>
-                  <select
-                    id="ck_devedor"
-                    value={devedorEscolhido}
-                    onChange={(e) => {
-                      const d = devedores.find((x) => x.chave === e.target.value);
-                      if (d) puxarDevedor(d);
-                      else setLoanId(null);
-                    }}
-                    className="w-full h-12 rounded-md border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-base text-slate-900 dark:text-slate-100"
-                  >
-                    <option value="">— não está na lista (digitar abaixo) —</option>
-                    {devedores.map((d) => (
-                      <option key={d.chave} value={d.chave}>
-                        {d.nome}
-                        {d.documento ? ` · ${d.documento}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                    Escolhido, preenche nome, CPF, RG, endereço e telefone. Dá para corrigir embaixo.
-                  </p>
-                </div>
-              )}
-              <Campo rotulo="Nome de quem recebe *" id="ck_nome">
-                <CampoComSugestoes
-                  id="ck_nome"
-                  value={f.buyer_name}
-                  onChange={(e) => {
-                    mudar("buyer_name", e.target.value.toUpperCase());
-                    setLoanId(null);
-                  }}
-                  sugestoes={sugestoes.nome}
-                  onEscolher={(nome) => {
-                    const d = devedores.find((x) => x.nome.toUpperCase() === nome.toUpperCase());
-                    if (d) puxarDevedor(d);
-                    else mudar("buyer_name", nome);
-                  }}
-                  placeholder="nome completo"
-                  autoCapitalize="characters"
-                  className="h-12 text-base"
-                />
-              </Campo>
-              <div className="grid grid-cols-2 gap-3">
-                <Campo rotulo="CPF ou CNPJ" id="ck_doc">
-                  <Input
-                    id="ck_doc"
-                    value={f.buyer_document}
-                    onChange={(e) => mudar("buyer_document", mascaraCpfCnpj(e.target.value))}
-                    inputMode="numeric"
-                    autoComplete="off"
-                    className="h-12 text-base"
-                  />
-                </Campo>
-                <Campo rotulo="RG e órgão" id="ck_rg">
-                  <Input
-                    id="ck_rg"
-                    value={f.buyer_rg}
-                    onChange={(e) => mudar("buyer_rg", e.target.value.toUpperCase())}
-                    placeholder="123456 SSP/MA"
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    className="h-12 text-base"
-                  />
-                </Campo>
-              </div>
-              <Campo rotulo="Endereço" id="ck_end">
-                <Textarea
-                  id="ck_end"
-                  value={f.buyer_address}
-                  onChange={(e) => mudar("buyer_address", e.target.value.toUpperCase())}
-                  rows={2}
-                  autoCapitalize="characters"
-                  className="text-base"
-                />
-              </Campo>
-              <Campo rotulo="Telefone" id="ck_tel">
-                <Input
-                  id="ck_tel"
-                  value={f.buyer_phone}
-                  onChange={(e) => mudar("buyer_phone", mascaraTelefone(e.target.value))}
-                  inputMode="tel"
-                  autoComplete="off"
-                  className="h-12 text-base"
-                />
-              </Campo>
-            </section>
-
-            <section className="space-y-3">
-              <h3 className="text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400">VEÍCULO</h3>
-              <Campo rotulo="Marca e modelo" id="ck_modelo">
-                <CampoComSugestoes
-                  id="ck_modelo"
-                  value={f.vehicle_model}
-                  onChange={(e) => mudar("vehicle_model", e.target.value.toUpperCase())}
-                  sugestoes={sugestoes.modelo}
-                  onEscolher={(v) => puxarVeiculo("modelo", v)}
-                  placeholder="ex: FIAT STRADA"
-                  autoCapitalize="characters"
-                  className="h-12 text-base"
-                />
-              </Campo>
-              <div className="grid grid-cols-2 gap-3">
-                <Campo rotulo="Placa" id="ck_placa">
-                  <CampoComSugestoes
-                    id="ck_placa"
-                    value={f.vehicle_plate}
-                    onChange={(e) => mudar("vehicle_plate", mascaraPlaca(e.target.value))}
-                    sugestoes={sugestoes.placa}
-                    onEscolher={(v) => puxarVeiculo("placa", v)}
-                    placeholder="ABC1D23"
-                    autoCapitalize="characters"
-                    semDitado
-                    className="h-12 text-base"
-                  />
-                </Campo>
-                <Campo rotulo="Ano" id="ck_ano">
-                  <Input
-                    id="ck_ano"
-                    value={f.vehicle_year}
-                    onChange={(e) => mudar("vehicle_year", e.target.value.replace(/[^\d/]/g, "").slice(0, 9))}
-                    placeholder="2020/2021"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    className="h-12 text-base"
-                  />
-                </Campo>
-                <Campo rotulo="Cor" id="ck_cor">
-                  <CampoComSugestoes
-                    id="ck_cor"
-                    value={f.vehicle_color}
-                    onChange={(e) => mudar("vehicle_color", e.target.value.toUpperCase())}
-                    sugestoes={sugestoes.cor}
-                    onEscolher={(v) => mudar("vehicle_color", v)}
-                    autoCapitalize="characters"
-                    className="h-12 text-base"
-                  />
-                </Campo>
-                <Campo rotulo="Km na entrega" id="ck_km">
-                  <Input
-                    id="ck_km"
-                    value={f.vehicle_km}
-                    onChange={(e) => mudar("vehicle_km", e.target.value.replace(/[^\d.]/g, ""))}
-                    inputMode="numeric"
-                    autoComplete="off"
-                    className="h-12 text-base"
-                  />
-                </Campo>
-              </div>
-              <Campo rotulo="Chassi" id="ck_chassi">
-                <Input
-                  id="ck_chassi"
-                  value={f.vehicle_chassis}
-                  onChange={(e) => mudar("vehicle_chassis", soLetrasENumeros(e.target.value).slice(0, 17))}
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  semDitado
-                  className="h-12 text-base tracking-wide"
-                />
-              </Campo>
-              <Campo rotulo="Renavam" id="ck_renavam">
-                <Input
-                  id="ck_renavam"
-                  value={f.vehicle_renavam}
-                  onChange={(e) => mudar("vehicle_renavam", e.target.value.replace(/\D/g, "").slice(0, 11))}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  className="h-12 text-base"
-                />
-              </Campo>
-            </section>
-
-            <section className="space-y-3">
-              <h3 className="text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400">ENTREGA</h3>
-              <div className="grid grid-cols-[1fr_9.5rem] gap-3">
-                <Campo rotulo="Local" id="ck_local">
-                  <CampoComSugestoes
-                    id="ck_local"
-                    value={f.delivery_place}
-                    onChange={(e) => mudar("delivery_place", e.target.value.toUpperCase())}
-                    sugestoes={sugestoes.local}
-                    onEscolher={(v) => mudar("delivery_place", v)}
-                    autoCapitalize="characters"
-                    className="h-12 text-base"
-                  />
-                </Campo>
-                <Campo rotulo="Dia *" id="ck_data">
-                  <Input
-                    id="ck_data"
-                    type="date"
-                    value={f.delivery_date}
-                    onChange={(e) => mudar("delivery_date", e.target.value)}
-                    className="h-12"
-                  />
-                </Campo>
-              </div>
-              <Campo rotulo="Observações (saem na folha)" id="ck_obs">
-                <Textarea
-                  id="ck_obs"
-                  value={f.notes}
-                  onChange={(e) => mudar("notes", e.target.value.toUpperCase())}
-                  rows={2}
-                  placeholder="opcional"
-                  autoCapitalize="characters"
-                  className="text-base"
-                />
-              </Campo>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Os itens (documento, chave reserva, estepe, pneus...) saem na folha com Sim / Não em branco,
-                para marcar à caneta na hora da entrega.
-              </p>
-            </section>
-          </div>
-        )}
+        {/* AS ETAPAS — uma pergunta por tela */}
+        {tela === "form" &&
+          (passo ? (
+            <PerguntaDoPasso
+              passo={passo}
+              idx={idx}
+              total={passos.length}
+              valor={dados[passo.campo]}
+              onMudar={(v) => mudar(passo.campo, v)}
+              onAvancar={fluxo.avancar}
+              onVoltar={fluxo.voltar}
+              onRevisao={fluxo.irParaRevisao}
+              daRevisao={fluxo.daRevisao}
+              rodape={
+                passo.secao === "Entrega"
+                  ? "Os itens (documento, chave reserva, estepe, pneus...) saem na folha com Sim / Não em branco, para marcar à caneta na entrega."
+                  : "Só o nome é obrigatório. O que ficar em branco sai com a linha para completar à mão."
+              }
+            />
+          ) : (
+            <div className="space-y-4">
+              <RevisaoDosPassos passos={passos} dados={dados} onEditar={fluxo.editar} />
+              {error && <Erro texto={error} />}
+              <DialogFooter className={STICKY_FOOTER}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={fluxo.voltar}
+                  disabled={isPending}
+                  className={cn(FOOTER_CANCEL, "h-11")}
+                >
+                  Voltar
+                </Button>
+                <Button type="button" onClick={salvar} disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11")}>
+                  {isPending ? "Salvando..." : "Salvar e imprimir"}
+                </Button>
+              </DialogFooter>
+            </div>
+          ))}
 
         {/* SALVO — abrir a folha */}
         {tela === "pronto" && salvoId && (
@@ -551,59 +471,102 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
               </span>
               <ChevronRight className="w-5 h-5 text-produmar-500 flex-shrink-0" />
             </a>
+            <DialogFooter className={STICKY_FOOTER}>
+              <Button type="button" onClick={onClose} className="flex-1 h-11">
+                Concluir
+              </Button>
+            </DialogFooter>
           </div>
         )}
-
-        {error && (
-          <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/40 px-3 py-2 rounded-lg border border-red-100 dark:border-red-900/50">
-            {error}
-          </p>
-        )}
-
-        <DialogFooter className={STICKY_FOOTER}>
-          {tela === "lista" && (
-            <>
-              <Button type="button" variant="outline" onClick={onClose} className={cn(FOOTER_CANCEL, "h-11")}>
-                Fechar
-              </Button>
-              <Button type="button" onClick={novo} className={cn(FOOTER_SUBMIT, "h-11")}>
-                <Plus className="w-4 h-4" />
-                Novo checklist
-              </Button>
-            </>
-          )}
-          {tela === "form" && (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => (checklists.length > 0 ? setTela("lista") : onClose())}
-                disabled={isPending}
-                className={cn(FOOTER_CANCEL, "h-11")}
-              >
-                {checklists.length > 0 ? "Voltar" : "Cancelar"}
-              </Button>
-              <Button type="button" onClick={salvar} disabled={isPending} className={cn(FOOTER_SUBMIT, "h-11")}>
-                {isPending ? "Salvando..." : "Salvar e imprimir"}
-              </Button>
-            </>
-          )}
-          {tela === "pronto" && (
-            <Button type="button" onClick={onClose} className="flex-1 h-11">
-              Concluir
-            </Button>
-          )}
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function Campo({ rotulo, id, children }: { rotulo: string; id: string; children: React.ReactNode }) {
+/**
+ * A primeira etapa: a lista dos devedores, com busca. Um toque escolhe e puxa
+ * os dados; "Não está na lista" segue para digitar o comprador.
+ */
+function EscolherDevedor({
+  devedores,
+  escolhido,
+  onEscolher,
+  onDigitar,
+}: {
+  devedores: DevedorDaLista[];
+  escolhido: string;
+  onEscolher: (d: DevedorDaLista) => void;
+  onDigitar: () => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const q = nomeLimpo(busca);
+  const qDigitos = busca.replace(/\D/g, "");
+  const lista = devedores.filter(
+    (d) =>
+      !q ||
+      nomeLimpo(d.nome).includes(q) ||
+      (qDigitos.length >= 3 && d.documento.replace(/\D/g, "").includes(qDigitos))
+  );
+
   return (
-    <div className="space-y-1.5 min-w-0">
-      <Label htmlFor={id}>{rotulo}</Label>
-      {children}
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={onDigitar}
+        className="w-full flex items-center gap-2 min-h-[48px] px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-200"
+      >
+        <UserPlus className="w-4 h-4" />
+        Não está na lista — digitar o comprador
+      </button>
+      {devedores.length > 0 && (
+        <>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400 pt-1">
+            Ou escolha um devedor: nome, CPF, RG, endereço e telefone vêm junto.
+          </p>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <Input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="buscar por nome ou CPF"
+              autoComplete="off"
+              semDitado
+              className="h-12 pl-9 text-base"
+            />
+          </div>
+          <div className="max-h-[45vh] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+            {lista.length === 0 && (
+              <p className="px-3 py-3 text-sm text-slate-500 dark:text-slate-400">Ninguém com esse nome.</p>
+            )}
+            {lista.map((d) => (
+              <button
+                key={d.chave}
+                type="button"
+                onClick={() => onEscolher(d)}
+                className={cn(
+                  "w-full text-left px-3 py-2.5 min-h-[48px]",
+                  escolhido === d.chave
+                    ? "bg-produmar-50 dark:bg-produmar-950/40"
+                    : "hover:bg-slate-50 dark:hover:bg-slate-800"
+                )}
+              >
+                <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{d.nome}</span>
+                {d.documento && (
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">{d.documento}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+function Erro({ texto }: { texto: string }) {
+  return (
+    <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/40 px-3 py-2 rounded-lg border border-red-100 dark:border-red-900/50">
+      {texto}
+    </p>
   );
 }

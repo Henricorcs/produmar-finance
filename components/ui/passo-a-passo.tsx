@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { CampoComSugestoes } from "@/components/ui/campo-com-sugestoes";
 import { cn, formatBRLInput, formatDate, mascaraCpfCnpj, mascaraTelefone } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +58,11 @@ export interface PassoDef<C extends string> {
   /** Respostas prontas a um toque, embaixo do campo (ex.: "S/N"). */
   atalhos?: string[];
   /**
+   * O que já foi escrito nesta pergunta antes: aparece embaixo do campo
+   * enquanto se digita, filtrado letra a letra, para escolher com um toque.
+   */
+  sugestoes?: string[];
+  /**
    * Teclas que o teclado numérico do iPhone não tem — o hífen e o X do dígito
    * final do RG. Acrescentam no fim do que já foi digitado, sem fechar o teclado.
    */
@@ -77,6 +83,8 @@ function valorDaOpcao(o: OpcaoPasso): string {
 function rotuloDaOpcao(o: OpcaoPasso): string {
   return typeof o === "string" ? o : o.label;
 }
+
+const SEM_SUGESTOES: string[] = [];
 
 /** Órgãos expedidores do RG mais comuns por aqui, a um toque. */
 export const ORGAOS_RG = ["SSP/MA", "SEJUSP/MA", "DETRAN/MA", "PC/MA"];
@@ -478,12 +486,16 @@ function CampoDoPasso<C extends string>({
   }
 
   return (
-    <Input
+    // Sempre o mesmo campo (com ou sem sugestões): a árvore não muda de uma
+    // pergunta para a outra e o teclado do iPhone fica aberto.
+    <CampoComSugestoes
       id="pp_campo"
       ref={campoRef}
       // CPF/CNPJ e telefone salvos antes da máscara já aparecem formatados
       value={passo.tipo === "documento" || passo.tipo === "telefone" ? formatar(valor) : valor}
       onChange={(e) => onMudar(formatar(e.target.value))}
+      sugestoes={passo.sugestoes ?? SEM_SUGESTOES}
+      onEscolher={(v) => onMudar(formatar(v))}
       placeholder={passo.placeholder}
       inputMode={inputMode}
       enterKeyHint={ultimo ? "done" : "next"}
