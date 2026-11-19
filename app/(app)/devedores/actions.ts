@@ -676,6 +676,17 @@ export async function salvarChecklistVeiculo(id: string | null, input: Checklist
     if (/row-level security/i.test(msg)) return { error: "Seu usuário não pode gravar em Devedores." };
     return { error: `Erro ao salvar o checklist: ${msg || "tente de novo"}` };
   }
+
+  // O RG que faltava no cadastro do devedor e foi digitado aqui fica gravado
+  // na dívida dele: da próxima vez (outro checklist, a confissão de dívida)
+  // ele já vem. Só preenche o que está em branco — nunca troca um RG que existe.
+  if (campos.loan_id && campos.buyer_rg) {
+    await supabase
+      .from("loans")
+      .update({ borrower_rg: campos.buyer_rg })
+      .eq("id", campos.loan_id)
+      .or("borrower_rg.is.null,borrower_rg.eq.");
+  }
   revalidate();
   return { ok: true as const, id: (res.data as { id: string }).id };
 }

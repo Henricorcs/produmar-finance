@@ -29,6 +29,8 @@ interface Props {
   checklists?: VehicleDeliveryChecklist[];
   /** Os veículos da frota — placa e nome a um toque no checklist. */
   veiculos?: VeiculoDaFrota[];
+  /** CPF/CNPJ (só dígitos) → RG dado em outro cadastro (aluguéis, compradores). */
+  rgsPorDocumento?: Record<string, string>;
 }
 
 type DisplayStatus = "em_aberto" | "quitado" | "cancelado" | "atrasado";
@@ -98,7 +100,7 @@ const STATUS_BADGE: Record<DisplayStatus, { label: string; variant: "success" | 
   cancelado: { label: "Cancelado", variant: "muted" },
 };
 
-export function DevedoresPageClient({ loans, checklists = [], veiculos = [] }: Props) {
+export function DevedoresPageClient({ loans, checklists = [], veiculos = [], rgsPorDocumento = {} }: Props) {
   const [, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
@@ -386,6 +388,7 @@ export function DevedoresPageClient({ loans, checklists = [], veiculos = [] }: P
         dividas={loans}
         checklists={checklists}
         veiculos={veiculos}
+        rgsPorDocumento={rgsPorDocumento}
       />
       <LoanDetailDialog
         open={detailLive !== null}

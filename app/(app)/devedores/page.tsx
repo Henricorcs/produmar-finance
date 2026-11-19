@@ -22,7 +22,7 @@ export type LoanWithDetails = Loan & {
 export default async function DevedoresPage() {
   const supabase = createClient();
 
-  const [{ data }, boletosRes, checklistsRes, veiculosRes] = await Promise.all([
+  const [{ data }, boletosRes, checklistsRes, veiculosRes, contratosRes, compradoresRes] = await Promise.all([
     supabase
       .from("loans")
       .select("*, loan_payments(*), loan_installments(*), loan_attachments(*)")
@@ -41,6 +41,12 @@ export default async function DevedoresPage() {
       .limit(50),
     // Os veículos da frota: a placa e o nome a um toque no checklist
     supabase.from("machines").select("id, name, plate").order("name"),
+    // O RG que a pessoa já deu em outro cadastro (inquilino, fiador, comprador
+    // de imóvel) — o checklist acha pelo CPF quando a dívida não tem RG
+    supabase
+      .from("rental_contracts")
+      .select("tenant_document, tenant_rg, guarantor_document, guarantor_rg"),
+    supabase.from("property_buyers").select("document, rg"),
   ]);
 
   const boletos = boletosRes.error ? [] : ((boletosRes.data as LoanBoleto[]) ?? []);
@@ -54,5 +60,34 @@ export default async function DevedoresPage() {
     ? []
     : ((veiculosRes.data as { id: string; name: string; plate: string | null }[]) ?? []);
 
-  return <DevedoresPageClient loans={loans} checklists={checklists} veiculos={veiculos} />;
+  /** CPF/CNPJ (só os dígitos) → RG, juntado dos outros cadastros. */
+  const rgsPorDocumento: Record<string, string> = {};
+  const guardarRg = (doc: string | null | undefined, rg: string | null | undefined) => {
+    const d = (doc ?? "").replace(/\D/g, "");
+    const r = (rg ?? "").trim();
+    if (d && r && !rgsPorDocumento[d]) rgsPorDocumento[d] = r;
+  };
+  type ContratoRg = {
+    tenant_document: string | null;
+    tenant_rg: string | null;
+    guarantor_document: string | null;
+    guarantor_rg: string | null;
+  };
+  if (!contratosRes.error)
+    for (const c of (contratosRes.data as ContratoRg[]) ?? []) {
+      guardarRg(c.tenant_document, c.tenant_rg);
+      guardarRg(c.guarantor_document, c.guarantor_rg);
+    }
+  if (!compradoresRes.error)
+    for (const b of (compradoresRes.data as { document: string | null; rg: string | null }[]) ?? [])
+      guardarRg(b.document, b.rg);
+
+  return (
+    <DevedoresPageClient
+      loans={loans}
+      checklists={checklists}
+      veiculos={veiculos}
+      rgsPorDocumento={rgsPorDocumento}
+    />
+  );
 }

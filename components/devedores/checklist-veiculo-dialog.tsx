@@ -20,6 +20,9 @@ import { cn, formatDate, localDateISO, mascaraCpfCnpj, mascaraTelefone } from "@
 import { enderecoDoDevedor } from "@/lib/devedor-endereco";
 import { CIDADE_DA_CONFISSAO } from "@/lib/confissao-divida";
 import { STICKY_FOOTER, FOOTER_CANCEL, FOOTER_SUBMIT } from "@/components/frota/frota-shared";
+import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import { gerarChecklistVeiculoPdf } from "@/lib/checklist-veiculo-pdf";
+import type { ChecklistParaFolha } from "@/lib/checklist-veiculo";
 import type { VehicleDeliveryChecklist } from "@/lib/types";
 import type { LoanWithDetails } from "@/app/(app)/devedores/page";
 
@@ -36,6 +39,8 @@ interface Props {
   dividas: LoanWithDetails[];
   checklists: VehicleDeliveryChecklist[];
   veiculos: VeiculoDaFrota[];
+  /** CPF/CNPJ (só dígitos) → RG dado em outro cadastro (aluguéis, compradores). */
+  rgsPorDocumento?: Record<string, string>;
 }
 
 /** Um devedor da lista — a dívida mais recente dele é de onde vêm os dados. */
@@ -111,7 +116,14 @@ const nomeLimpo = (s: string) =>
  * digitar o comprador, depois o veículo e a entrega, e no fim a revisão.
  * Os itens Sim/Não saem em branco na folha, para marcar à caneta.
  */
-export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, veiculos }: Props) {
+export function ChecklistVeiculoDialog({
+  open,
+  onClose,
+  dividas,
+  checklists,
+  veiculos,
+  rgsPorDocumento = {},
+}: Props) {
   const [isPending, startTransition] = useTransition();
   /** "lista" = os já feitos; "form" = as etapas; "pronto" = salvo, imprimir. */
   const [tela, setTela] = useState<"lista" | "form" | "pronto">("lista");
@@ -132,27 +144,42 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
       const cb = b.borrower_document?.trim() ? 0 : 1;
       return ca - cb || (a.loan_date < b.loan_date ? 1 : -1);
     });
-    const nomesComDoc = new Set<string>();
+    /** Nome limpo → chave da pessoa (o CPF), para juntar a dívida sem CPF a ela. */
+    const chaveDoNome = new Map<string, string>();
     for (const l of ordenadas) {
       const doc = (l.borrower_document ?? "").replace(/\D/g, "");
       const nome = nomeLimpo(l.borrower_name);
       if (!nome) continue;
-      if (!doc && nomesComDoc.has(nome)) continue;
-      const chave = doc || nome;
-      if (vistos.has(chave)) continue;
-      if (doc) nomesComDoc.add(nome);
+      const chave = doc || chaveDoNome.get(nome) || nome;
+      if (!chaveDoNome.has(nome)) chaveDoNome.set(nome, chave);
+      const daDivida = {
+        rg: l.borrower_rg?.trim() ?? "",
+        endereco: enderecoDoDevedor(l),
+        telefone: mascaraTelefone(l.borrower_phone ?? ""),
+      };
+      const ja = vistos.get(chave);
+      if (ja) {
+        // a mesma pessoa em outra dívida: completa o que a primeira não tinha
+        // (o RG dado numa dívida antiga vale para a nova)
+        if (!ja.rg) ja.rg = daDivida.rg;
+        if (!ja.endereco) ja.endereco = daDivida.endereco;
+        if (!ja.telefone) ja.telefone = daDivida.telefone;
+        continue;
+      }
       vistos.set(chave, {
         chave,
         loanId: l.id,
         nome: l.borrower_name.trim(),
         documento: mascaraCpfCnpj(l.borrower_document ?? ""),
-        rg: l.borrower_rg ?? "",
-        endereco: enderecoDoDevedor(l),
-        telefone: mascaraTelefone(l.borrower_phone ?? ""),
+        ...daDivida,
       });
     }
+    // sem RG em nenhuma dívida: o que a pessoa deu em outro cadastro, pelo CPF
+    for (const d of vistos.values()) {
+      if (!d.rg) d.rg = rgsPorDocumento[d.documento.replace(/\D/g, "")] ?? "";
+    }
     return Array.from(vistos.values()).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  }, [dividas]);
+  }, [dividas, rgsPorDocumento]);
 
   function novo() {
     setEditandoId(null);
@@ -264,9 +291,10 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
           escolhido={valor}
           onEscolher={(d) => {
             setDados((x) => ({ ...x, ...dadosDoDevedor(d) }));
-            // os dados vieram todos da dívida: segue direto para o veículo
-            // (a revisão mostra tudo e corrige com um toque)
-            setTimeout(() => fluxo.irPara("vehicle_model"), 120);
+            // Os dados vieram do cadastro: segue para o veículo (a revisão
+            // mostra tudo). Sem RG em cadastro nenhum, para antes no RG — ao
+            // salvar, ele fica gravado na dívida e vem sozinho da próxima vez.
+            setTimeout(() => fluxo.irPara(d.rg ? "vehicle_model" : "buyer_rg"), 120);
           }}
           onDigitar={() => {
             setDados((x) => ({ ...x, devedor: "" }));
@@ -471,6 +499,8 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
               </span>
               <ChevronRight className="w-5 h-5 text-produmar-500 flex-shrink-0" />
             </a>
+            {/* o PDF da mesma folha: WhatsApp, e-mail, Arquivos */}
+            <CompartilharPdf chave={salvoId} gerar={() => gerarChecklistVeiculoPdf(paraFolha(dados))} />
             <DialogFooter className={STICKY_FOOTER}>
               <Button type="button" onClick={onClose} className="flex-1 h-11">
                 Concluir
@@ -561,6 +591,28 @@ function EscolherDevedor({
       )}
     </div>
   );
+}
+
+/** As respostas no formato da folha — em caixa alta, como o servidor grava. */
+function paraFolha(d: Dados): ChecklistParaFolha {
+  const t = (s: string) => s.trim().replace(/\s+/g, " ").toUpperCase() || null;
+  return {
+    buyer_name: t(d.buyer_name) ?? "",
+    buyer_document: t(d.buyer_document),
+    buyer_rg: t(juntarRg(d.buyer_rg, d.buyer_rg_orgao)),
+    buyer_address: t(d.buyer_address),
+    buyer_phone: t(d.buyer_phone),
+    vehicle_model: t(d.vehicle_model),
+    vehicle_plate: t(d.vehicle_plate),
+    vehicle_year: t(d.vehicle_year),
+    vehicle_color: t(d.vehicle_color),
+    vehicle_chassis: t(d.vehicle_chassis),
+    vehicle_renavam: t(d.vehicle_renavam),
+    vehicle_km: t(d.vehicle_km),
+    delivery_place: t(d.delivery_place),
+    delivery_date: d.delivery_date,
+    notes: t(d.notes),
+  };
 }
 
 function Erro({ texto }: { texto: string }) {

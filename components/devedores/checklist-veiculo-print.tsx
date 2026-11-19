@@ -1,31 +1,17 @@
 "use client";
 
-import { dataPorExtenso, formatDate } from "@/lib/utils";
-import { ASSINA_PELA_PRODUMAR } from "@/lib/compra-venda-contrato";
-import { CIDADE_DA_CONFISSAO } from "@/lib/confissao-divida";
+import { formatDate } from "@/lib/utils";
+import {
+  ITENS_DO_CHECKLIST as ITENS,
+  NIVEIS_DE_COMBUSTIVEL as NIVEIS_COMBUSTIVEL,
+  REPRESENTANTE_DO_VENDEDOR,
+  VENDEDOR_DO_CHECKLIST as VENDEDOR,
+  ehCnpjDoComprador,
+  localEDataDoChecklist,
+} from "@/lib/checklist-veiculo";
+import { gerarChecklistVeiculoPdf } from "@/lib/checklist-veiculo-pdf";
+import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
 import type { VehicleDeliveryChecklist } from "@/lib/types";
-
-/** Quem vende e entrega: a PRODUMAR, como na confissão de dívida. */
-const VENDEDOR = "PRODUMAR SERVIÇOS LTDA";
-
-/** Os itens conferidos na entrega — Sim / Não e observação, à caneta. */
-const ITENS = [
-  "Documento do veículo (CRLV)",
-  "Chave reserva",
-  "Manual do proprietário",
-  "Estepe",
-  "Macaco",
-  "Chave de roda",
-  "Triângulo",
-  "Extintor",
-  "Tapetes",
-  "Rádio / multimídia",
-  "Pneus em bom estado",
-  "Lataria e pintura sem avarias",
-  "Faróis e lanternas funcionando",
-];
-
-const NIVEIS_COMBUSTIVEL = ["Reserva", "1/4", "1/2", "3/4", "Cheio"];
 
 /**
  * A FOLHA DO CHECKLIST — cabe numa A4 só: comprador, veículo, a tabela dos
@@ -34,8 +20,7 @@ const NIVEIS_COMBUSTIVEL = ["Reserva", "1/4", "1/2", "3/4", "Cheio"];
  * completar à mão.
  */
 export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeliveryChecklist }) {
-  const ehCnpj = (c.buyer_document ?? "").replace(/\D/g, "").length === 14;
-  const local = (c.delivery_place?.trim() || CIDADE_DA_CONFISSAO).toUpperCase();
+  const ehCnpj = ehCnpjDoComprador(c);
   const veiculo = [c.vehicle_model, c.vehicle_plate && `placa ${c.vehicle_plate}`].filter(Boolean).join(", ");
 
   return (
@@ -72,6 +57,12 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
           >
             ← Voltar
           </button>
+          {/* o PDF da mesma folha, para mandar pelo WhatsApp ou e-mail */}
+          <CompartilharPdf
+            variante="barra"
+            chave={`${c.id}-${c.updated_at}`}
+            gerar={() => gerarChecklistVeiculoPdf(c)}
+          />
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
@@ -197,7 +188,7 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
               guarda e uso.
             </p>
             <p className="text-center font-semibold pt-3">
-              {local}, {dataPorExtenso(c.delivery_date)}. Hora: _____:_____
+              {localEDataDoChecklist(c)}
             </p>
           </section>
 
@@ -206,7 +197,7 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
             <div>
               <div className="border-t border-slate-800" />
               <p className="mt-1 font-bold">{VENDEDOR}</p>
-              <p>VENDEDOR · representada por {ASSINA_PELA_PRODUMAR}</p>
+              <p>VENDEDOR · representada por {REPRESENTANTE_DO_VENDEDOR}</p>
             </div>
             <div>
               <div className="border-t border-slate-800" />
