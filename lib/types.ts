@@ -624,6 +624,35 @@ export interface LoanBoleto {
   created_at: string;
 }
 
+/**
+ * Checklist de entrega de veículo vendido (migration 150), impresso para o
+ * comprador assinar. O comprador é COPIADO do devedor (ou digitado): mudar o
+ * cadastro depois não mexe no checklist já assinado. Os itens Sim/Não são
+ * marcados à caneta na entrega.
+ */
+export interface VehicleDeliveryChecklist {
+  id: string;
+  loan_id: string | null;
+  buyer_name: string;
+  buyer_document: string | null;
+  buyer_rg: string | null;
+  buyer_address: string | null;
+  buyer_phone: string | null;
+  vehicle_model: string | null;
+  vehicle_plate: string | null;
+  vehicle_year: string | null;
+  vehicle_color: string | null;
+  vehicle_chassis: string | null;
+  vehicle_renavam: string | null;
+  vehicle_km: string | null;
+  delivery_place: string | null;
+  delivery_date: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface LoanAttachment {
   id: string;
   loan_id: string;

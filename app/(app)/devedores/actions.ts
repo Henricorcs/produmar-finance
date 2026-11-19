@@ -599,3 +599,91 @@ export async function conferirPagamentosDasDividas(agora = false) {
     return { error: `Não consegui conferir no banco: ${r.erros[0]}` };
   return { ok: true as const, conferidos: r.conferidos, baixados: r.baixados };
 }
+
+// ── Checklist de entrega de veículo (migration 150) ─────────────────────────
+
+export interface ChecklistVeiculoInput {
+  loan_id: string | null;
+  buyer_name: string;
+  buyer_document: string;
+  buyer_rg: string;
+  buyer_address: string;
+  buyer_phone: string;
+  vehicle_model: string;
+  vehicle_plate: string;
+  vehicle_year: string;
+  vehicle_color: string;
+  vehicle_chassis: string;
+  vehicle_renavam: string;
+  vehicle_km: string;
+  delivery_place: string;
+  delivery_date: string;
+  notes: string;
+}
+
+/** Em branco vira nulo; o resto, sem espaço sobrando e em caixa alta. */
+function textoOuNulo(s: string | null | undefined): string | null {
+  const t = (s ?? "").trim().replace(/\s+/g, " ");
+  return t ? t.toUpperCase() : null;
+}
+
+/**
+ * Grava o checklist (novo ou corrigido) e devolve o id — a tela abre a folha
+ * para imprimir em seguida. Não mexe na dívida nem no caixa.
+ */
+export async function salvarChecklistVeiculo(id: string | null, input: ChecklistVeiculoInput) {
+  const nome = textoOuNulo(input.buyer_name);
+  if (!nome) return { error: "Escreva o nome de quem está recebendo o veículo" };
+  if (!input.delivery_date) return { error: "Informe o dia da entrega" };
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  const campos = {
+    loan_id: input.loan_id || null,
+    buyer_name: nome,
+    buyer_document: textoOuNulo(input.buyer_document),
+    buyer_rg: textoOuNulo(input.buyer_rg),
+    buyer_address: textoOuNulo(input.buyer_address),
+    buyer_phone: textoOuNulo(input.buyer_phone),
+    vehicle_model: textoOuNulo(input.vehicle_model),
+    vehicle_plate: textoOuNulo(input.vehicle_plate),
+    vehicle_year: textoOuNulo(input.vehicle_year),
+    vehicle_color: textoOuNulo(input.vehicle_color),
+    vehicle_chassis: textoOuNulo(input.vehicle_chassis),
+    vehicle_renavam: textoOuNulo(input.vehicle_renavam),
+    vehicle_km: textoOuNulo(input.vehicle_km),
+    delivery_place: textoOuNulo(input.delivery_place),
+    delivery_date: input.delivery_date,
+    notes: textoOuNulo(input.notes),
+  };
+
+  const res = id
+    ? await supabase.from("vehicle_delivery_checklists").update(campos).eq("id", id).select("id").single()
+    : await supabase
+        .from("vehicle_delivery_checklists")
+        .insert({ ...campos, created_by: user.id })
+        .select("id")
+        .single();
+
+  if (res.error || !res.data) {
+    const msg = res.error?.message ?? "";
+    if (/vehicle_delivery_checklists/.test(msg) && /does not exist|schema cache/i.test(msg))
+      return { error: "Falta rodar a migration 150 (checklist de entrega de veículo)." };
+    if (/row-level security/i.test(msg)) return { error: "Seu usuário não pode gravar em Devedores." };
+    return { error: `Erro ao salvar o checklist: ${msg || "tente de novo"}` };
+  }
+  revalidate();
+  return { ok: true as const, id: (res.data as { id: string }).id };
+}
+
+export async function excluirChecklistVeiculo(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("vehicle_delivery_checklists").delete().eq("id", id);
+  if (error) return { error: `Erro ao excluir: ${error.message}` };
+  revalidate();
+  return { ok: true as const };
+}

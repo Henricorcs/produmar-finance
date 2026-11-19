@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useMemo, useTransition } from "react";
-import { Plus, Pencil, Trash2, HandCoins, Search, Paperclip, Calculator } from "lucide-react";
+import { Plus, Pencil, Trash2, HandCoins, Search, Paperclip, Calculator, Car } from "lucide-react";
+import { ChecklistVeiculoDialog, type VeiculoDaFrota } from "./checklist-veiculo-dialog";
+import type { VehicleDeliveryChecklist } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -23,6 +25,10 @@ import type { LoanWithDetails } from "@/app/(app)/devedores/page";
 
 interface Props {
   loans: LoanWithDetails[];
+  /** Os checklists de entrega de veículo já feitos (migration 150). */
+  checklists?: VehicleDeliveryChecklist[];
+  /** Os veículos da frota — placa e nome a um toque no checklist. */
+  veiculos?: VeiculoDaFrota[];
 }
 
 type DisplayStatus = "em_aberto" | "quitado" | "cancelado" | "atrasado";
@@ -92,10 +98,11 @@ const STATUS_BADGE: Record<DisplayStatus, { label: string; variant: "success" | 
   cancelado: { label: "Cancelado", variant: "muted" },
 };
 
-export function DevedoresPageClient({ loans }: Props) {
+export function DevedoresPageClient({ loans, checklists = [], veiculos = [] }: Props) {
   const [, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
   const [editing, setEditing] = useState<Loan | null>(null);
   const [detail, setDetail] = useState<LoanWithDetails | null>(null);
   const [filter, setFilter] = useState<FilterValue>("");
@@ -197,10 +204,15 @@ export function DevedoresPageClient({ loans }: Props) {
             Quem deve para a empresa — quanto falta e quando vence
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" onClick={() => setCalcOpen(true)}>
             <Calculator className="w-4 h-4" />
             Calculadora
+          </Button>
+          {/* a folha para o comprador assinar na entrega do veículo vendido */}
+          <Button variant="outline" onClick={() => setChecklistOpen(true)}>
+            <Car className="w-4 h-4" />
+            Checklist veículo
           </Button>
           <Button onClick={openCreate}>
             <Plus className="w-4 h-4" />
@@ -368,6 +380,13 @@ export function DevedoresPageClient({ loans }: Props) {
 
       <LoanDialog open={dialogOpen} onClose={() => setDialogOpen(false)} loan={editing} dividas={loans} />
       <LoanCalculatorDialog open={calcOpen} onClose={() => setCalcOpen(false)} />
+      <ChecklistVeiculoDialog
+        open={checklistOpen}
+        onClose={() => setChecklistOpen(false)}
+        dividas={loans}
+        checklists={checklists}
+        veiculos={veiculos}
+      />
       <LoanDetailDialog
         open={detailLive !== null}
         onClose={() => setDetail(null)}
