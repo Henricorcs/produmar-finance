@@ -29,16 +29,19 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
         @media print {
           .no-print { display: none !important; }
           html, body { background: white !important; }
-          @page { size: A4; margin: 10mm 12mm; }
+          @page { size: A4; margin: 8mm 10mm; }
+          /* folha só: tudo encolhe um pouco e nada se parte em duas páginas */
+          html, body { height: auto !important; }
+          .doc { zoom: 0.9; break-inside: avoid; page-break-inside: avoid; }
           .doc { box-shadow: none !important; margin: 0 !important; max-width: none !important; }
           .doc-inner { padding: 0 !important; }
         }
         body { font-family: Arial, Helvetica, sans-serif; background: #f1f5f9; color: #0f172a;
                -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .doc { background: white; }
-        .ck td, .ck th { border: 1px solid #334155; padding: 3px 6px; }
-        .caixa { display: inline-block; width: 12px; height: 12px; border: 1.5px solid #0f172a; vertical-align: middle; }
-        .linha { border-bottom: 1px solid #334155; height: 18px; }
+        .ck td, .ck th { border: 1px solid #334155; padding: 2px 5px; }
+        .caixa { display: inline-block; width: 11px; height: 11px; border: 1.5px solid #0f172a; vertical-align: middle; }
+        .linha { border-bottom: 1px solid #334155; height: 15px; }
       `}</style>
 
       {/* Barra de cima — não sai na impressão */}
@@ -74,8 +77,8 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
       <div className="no-print" style={{ height: "calc(4.5rem + env(safe-area-inset-top))" }} />
 
       {/* A folha: larga como a A4 no computador; no celular encolhe junto */}
-      <div className="doc max-w-[794px] mx-auto my-4 sm:my-6 shadow-xl text-[11.5px] leading-snug text-slate-900">
-        <div className="doc-inner p-4 sm:p-8 space-y-3">
+      <div className="doc max-w-[794px] mx-auto my-4 sm:my-6 shadow-xl text-[10.5px] leading-tight text-slate-900">
+        <div className="doc-inner p-4 sm:p-8 space-y-2">
           <header className="text-center border-b-2 border-slate-800 pb-2">
             <h1 className="text-[15px] font-bold tracking-wide">CHECKLIST DE ENTREGA DE VEÍCULO</h1>
             <p className="text-[11px] text-slate-600">
@@ -142,7 +145,7 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
               </thead>
               <tbody>
                 {ITENS.map((item) => (
-                  <tr key={item} style={{ height: "20px" }}>
+                  <tr key={item} style={{ height: "17px" }}>
                     <td>{item}</td>
                     <td className="text-center">
                       <span className="caixa" />
@@ -153,7 +156,7 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
                     <td />
                   </tr>
                 ))}
-                <tr style={{ height: "24px" }}>
+                <tr style={{ height: "20px" }}>
                   <td className="font-semibold">Nível de combustível</td>
                   <td colSpan={3}>
                     <span className="flex flex-wrap gap-x-4 gap-y-1">
@@ -187,13 +190,13 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
               item por item no ato da entrega, assumindo a partir desta data e hora a responsabilidade pela sua
               guarda e uso.
             </p>
-            <p className="text-center font-semibold pt-3">
+            <p className="text-center font-semibold pt-2">
               {localEDataDoChecklist(c)}
             </p>
           </section>
 
           {/* ASSINATURAS */}
-          <section className="grid grid-cols-2 gap-8 pt-[16mm] text-center text-[11px]" style={{ breakInside: "avoid" }}>
+          <section className="grid grid-cols-2 gap-8 pt-[13mm] text-center text-[11px]" style={{ breakInside: "avoid" }}>
             <div>
               <div className="border-t border-slate-800" />
               <p className="mt-1 font-bold">{VENDEDOR}</p>
