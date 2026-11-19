@@ -82,7 +82,11 @@ function dupTagError(
     if (error.message.includes("uq_animals_tag"))
       return "Rode a migration 061 no Supabase para numerar cada tipo de animal separado";
     const what = species ? SPECIES_LABEL[normSpecies(species)] : "animal";
-    return `Já existe um ${what} com esse número`;
+    // com a 149, a trava só vale para quem está no rebanho: o número de quem
+    // foi vendido ou morreu fica livre. Sem ela, o que saiu ainda segura.
+    if (error.message.includes("uq_animals_species_tag"))
+      return `Já existe um ${what} com esse número (se ele já saiu do rebanho, rode a migration 149 no Supabase para reaproveitar o número)`;
+    return `Já existe um ${what} com esse número no rebanho`;
   }
   return speciesColumnError(error);
 }
@@ -1553,11 +1557,32 @@ export async function undoAnimalExit(animalId: string) {
 
   const { data: animal, error: readErr } = await supabase
     .from("animals")
-    .select("id, exit_transaction_id")
+    .select("id, tag, species, exit_transaction_id")
     .eq("id", animalId)
-    .maybeSingle<{ id: string; exit_transaction_id: string | null }>();
+    .maybeSingle<{
+      id: string;
+      tag: string;
+      species: AnimalSpecies | null;
+      exit_transaction_id: string | null;
+    }>();
   if (readErr) return { error: exitColumnError(readErr) };
   if (!animal) return { error: "Animal não encontrado" };
+
+  // O número dele pode ter ido para um animal novo (migration 149). Voltar
+  // assim criaria dois iguais no rebanho: o banco barra — e é antes de apagar
+  // o lançamento da venda que isso tem de ser dito.
+  const { data: dono } = await supabase
+    .from("animals")
+    .select("id")
+    .eq("species", normSpecies(animal.species))
+    .eq("tag", animal.tag)
+    .eq("active", true)
+    .neq("id", animalId)
+    .limit(1);
+  if (dono && dono.length > 0)
+    return {
+      error: `O nº ${animal.tag} já está com outro ${SPECIES_LABEL[normSpecies(animal.species)]} no rebanho. Para voltar este, edite e dê outro número a um dos dois.`,
+    };
 
   if (animal.exit_transaction_id) {
     await supabase.from("transactions").delete().eq("id", animal.exit_transaction_id);

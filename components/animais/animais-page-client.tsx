@@ -495,10 +495,34 @@ export function AnimaisPageClient({
   }, [vaccinations]);
 
   // O detalhe deriva do id — assim a tela reflete os dados recarregados do servidor
+  // (de allAnimals: quem foi vendido ou morreu também abre — a ficha é o histórico dele)
   const detailAnimal = useMemo(
-    () => (detailAnimalId ? animals.find((a) => a.id === detailAnimalId) ?? null : null),
-    [detailAnimalId, animals]
+    () => (detailAnimalId ? allAnimals.find((a) => a.id === detailAnimalId) ?? null : null),
+    [detailAnimalId, allAnimals]
   );
+  /**
+   * Os outros animais do mesmo tipo com o mesmo número (migration 149): o
+   * brinco de quem saiu é reaproveitado. Primeiro quem está no rebanho, depois
+   * as saídas da mais nova para a mais velha.
+   */
+  const detailMesmoNumero = useMemo(() => {
+    if (!detailAnimal) return [];
+    const tag = detailAnimal.tag.trim().toUpperCase();
+    const sp = speciesOf(detailAnimal.species);
+    return allAnimals
+      .filter(
+        (a) =>
+          a.id !== detailAnimal.id &&
+          speciesOf(a.species) === sp &&
+          a.tag.trim().toUpperCase() === tag
+      )
+      .sort((a, b) => {
+        const va = a.active !== false ? 1 : 0;
+        const vb = b.active !== false ? 1 : 0;
+        if (va !== vb) return vb - va;
+        return (b.exit_date ?? "").localeCompare(a.exit_date ?? "");
+      });
+  }, [detailAnimal, allAnimals]);
   const detailVaccinations = useMemo(
     () => (detailAnimalId ? vaccinations.filter((v) => v.animal_id === detailAnimalId) : []),
     [detailAnimalId, vaccinations]
@@ -1757,6 +1781,7 @@ export function AnimaisPageClient({
                     animal={a}
                     undoing={undoingExitId === a.id}
                     onUndo={() => handleUndoExit(a)}
+                    onOpen={() => setDetailAnimalId(a.id)}
                   />
                 ))}
               </div>
@@ -1830,6 +1855,7 @@ export function AnimaisPageClient({
         breeds={breeds}
         defaultSpecies={species === "todos" ? null : species}
         defaultBreedId={racaDoCadastro}
+        todos={allAnimals}
       />
       <AnimalDetailDialog
         open={!!detailAnimal}
@@ -1843,7 +1869,7 @@ export function AnimaisPageClient({
         motherBirth={detailAnimalId ? birthByCalf.get(detailAnimalId) ?? null : null}
         motherTag={
           detailAnimalId
-            ? animals.find((a) => a.id === birthByCalf.get(detailAnimalId)?.mother_id)?.tag ??
+            ? allAnimals.find((a) => a.id === birthByCalf.get(detailAnimalId)?.mother_id)?.tag ??
               null
             : null
         }
@@ -1860,6 +1886,7 @@ export function AnimaisPageClient({
         onBirth={(a) => openBirth(a)}
         onWeigh={(a) => openWeight(a)}
         onExit={(a) => setExitAnimal(a)}
+        mesmoNumero={detailMesmoNumero}
       />
       <AnimalExitDialog
         open={!!exitAnimal}
@@ -2437,16 +2464,24 @@ function ExitCard({
   animal,
   undoing,
   onUndo,
+  onOpen,
 }: {
   animal: AnimalWithInfo;
   undoing: boolean;
   onUndo: () => void;
+  /** Abre a ficha completa dele (pesagens, vacinas, partos) — só consulta. */
+  onOpen: () => void;
 }) {
   const died = animal.exit_reason === "morte";
   const amount = Number(animal.exit_amount ?? 0);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-3">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="w-full text-left -mx-1 px-1 rounded-lg active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+      >
       <div className="flex items-center gap-2">
         <span className="text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums">
           {animal.tag}
@@ -2486,15 +2521,26 @@ function ExitCard({
       {animal.exit_notes && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{animal.exit_notes}</p>
       )}
-
-      <button
-        type="button"
-        onClick={onUndo}
-        disabled={undoing}
-        className="mt-2 min-h-[36px] px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-400 transition-colors active:scale-[0.97] disabled:opacity-50"
-      >
-        {undoing ? "Desfazendo..." : "Voltar para o rebanho"}
       </button>
+
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="min-h-[36px] px-3 rounded-lg border border-produmar-200 dark:border-produmar-800 text-xs font-medium text-produmar-700 dark:text-produmar-300 transition-colors active:scale-[0.97] flex items-center gap-1"
+        >
+          Ver ficha
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onUndo}
+          disabled={undoing}
+          className="min-h-[36px] px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-400 transition-colors active:scale-[0.97] disabled:opacity-50"
+        >
+          {undoing ? "Desfazendo..." : "Voltar para o rebanho"}
+        </button>
+      </div>
     </div>
   );
 }

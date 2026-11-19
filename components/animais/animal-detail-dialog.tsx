@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { cn, formatDate, localDateISO } from "@/lib/utils";
+import { cn, formatBRL, formatDate, localDateISO } from "@/lib/utils";
 import {
   deleteAnimal,
   deleteAnimalPhoto,
@@ -106,6 +106,12 @@ interface Props {
   onWeigh: (animal: AnimalWithInfo) => void;
   /** Abre a baixa do animal: vendido ou morto. */
   onExit: (animal: AnimalWithInfo) => void;
+  /**
+   * Os outros animais do mesmo tipo com o MESMO número — o brinco é
+   * reaproveitado quando um morre ou é vendido (migration 149). Cada um tem a
+   * sua ficha; aqui aparece quem já usou (ou usa) aquele número.
+   */
+  mesmoNumero?: AnimalWithInfo[];
 }
 
 type Section = "ficha" | "vacinas" | "historico";
@@ -131,6 +137,7 @@ export function AnimalDetailDialog({
   onBirth,
   onWeigh,
   onExit,
+  mesmoNumero = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [section, setSection] = useState<Section>("ficha");
@@ -536,9 +543,18 @@ export function AnimalDetailDialog({
     })),
   ].sort((a, b) => (a.date < b.date ? 1 : -1));
 
+  /**
+   * Saiu do rebanho (vendido ou morto): a ficha fica só para consulta — o
+   * que aconteceu com ele continua todo aqui, mas não se vacina nem se pesa
+   * quem já foi embora. A situação de vacinas também some (para ele nada mais
+   * vence).
+   */
+  const saiu = animal.active === false;
+  const morreu = animal.exit_reason === "morte";
+
   const sections: { value: Section; label: string; count?: number }[] = [
     { value: "ficha", label: "Ficha" },
-    { value: "vacinas", label: "Vacinas", count: markedCount },
+    ...(saiu ? [] : [{ value: "vacinas" as Section, label: "Vacinas", count: markedCount }]),
     { value: "historico", label: "Histórico", count: events.length },
   ];
 
@@ -581,8 +597,87 @@ export function AnimalDetailDialog({
         <div className="space-y-4">
           {section === "ficha" && (
             <>
+              {/* Saiu do rebanho: o que aconteceu, logo no topo */}
+              {saiu && (
+                <div
+                  className={cn(
+                    "flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm",
+                    morreu
+                      ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  )}
+                >
+                  <HandCoins className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold">
+                      {morreu ? "Morreu" : "Vendido"}
+                      {animal.exit_date ? ` em ${formatDate(animal.exit_date)}` : ""}
+                      {!morreu && Number(animal.exit_amount ?? 0) > 0
+                        ? ` · ${formatBRL(Number(animal.exit_amount))}`
+                        : ""}
+                    </p>
+                    {(animal.exit_buyer || animal.exit_notes) && (
+                      <p className="text-xs opacity-80">
+                        {[animal.exit_buyer, animal.exit_notes].filter(Boolean).join(" · ")}
+                      </p>
+                    )}
+                    <p className="text-xs opacity-70 mt-0.5">
+                      Saiu do rebanho — a ficha fica guardada para consulta.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* O mesmo número em outros animais (149): o brinco foi reaproveitado */}
+              {mesmoNumero.length > 0 && (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  <p className="px-3 pt-2.5 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Histórico do nº {animal.tag}
+                  </p>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {mesmoNumero.map((o) => {
+                      const oSaiu = o.active === false;
+                      const oMorreu = o.exit_reason === "morte";
+                      return (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => onOpenAnimal(o.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+                        >
+                          <span
+                            className={cn(
+                              "px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide flex-shrink-0",
+                              !oSaiu
+                                ? "bg-produmar-50 text-produmar-700 dark:bg-produmar-950/40 dark:text-produmar-300"
+                                : oMorreu
+                                  ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                  : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                            )}
+                          >
+                            {!oSaiu ? "No rebanho" : oMorreu ? "Morreu" : "Vendido"}
+                          </span>
+                          <span className="flex-1 min-w-0 text-sm text-slate-700 dark:text-slate-200 truncate">
+                            {categoryLabel(o.category, o.sex, o.species)}
+                            {o.breed_name ? ` · ${o.breed_name}` : ""}
+                            <span className="text-slate-400">
+                              {oSaiu && o.exit_date
+                                ? ` · ${formatDate(o.exit_date)}`
+                                : o.birth_date
+                                  ? ` · nasc. ${formatDate(o.birth_date)}`
+                                  : ""}
+                            </span>
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-slate-300 flex-shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Para descarte (147): logo no topo, para ninguém deixar passar */}
-              {animal.descarte_em && (
+              {!saiu && animal.descarte_em && (
                 <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
                   <Ban className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -778,7 +873,17 @@ export function AnimalDetailDialog({
                 </div>
               )}
 
-              {/* Ações principais */}
+              {/* Ações principais — quem saiu do rebanho só imprime a ficha */}
+              {saiu ? (
+                <Button
+                  variant="outline"
+                  className="w-full h-12 sm:h-10"
+                  onClick={() => window.open(`/imprimir/animal/${animal.id}`, "_blank")}
+                >
+                  <Printer className="w-4 h-4" />
+                  Imprimir ficha
+                </Button>
+              ) : (
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   className="h-12 sm:h-10"
@@ -904,10 +1009,11 @@ export function AnimalDetailDialog({
                   </div>
                 )}
               </div>
+              )}
             </>
           )}
 
-          {section === "vacinas" && (
+          {section === "vacinas" && !saiu && (
             <div className="space-y-2">
               {vaccineRows.length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500 py-2">
@@ -1030,8 +1136,9 @@ export function AnimalDetailDialog({
               <Pencil className="w-3.5 h-3.5" />
               Editar
             </button>
-            {/* o vaqueiro nível 01 não exclui animal (146) */}
-            {!soBovinos && (
+            {/* o vaqueiro nível 01 não exclui animal (146); quem saiu do
+                rebanho também não se exclui daqui — a ficha é o histórico dele */}
+            {!soBovinos && !saiu && (
               <button
                 type="button"
                 onClick={handleDelete}

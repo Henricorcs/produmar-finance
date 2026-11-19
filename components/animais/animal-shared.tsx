@@ -307,15 +307,24 @@ export function numeroSemZeros(numero?: string | null): string {
  * um tipo de bicho, fica o do tipo que ele marcou. Nada achado → null.
  */
 export function acharMaeDoVaqueiro<
-  T extends { tag: string; tag_antigo?: string | null; species?: AnimalSpecies | null }
+  T extends {
+    tag: string;
+    tag_antigo?: string | null;
+    species?: AnimalSpecies | null;
+    active?: boolean;
+  }
 >(maes: T[], digitado: string, especie?: AnimalSpecies | null): T | null {
   const exato = digitado.trim().toUpperCase();
   const semZeros = numeroSemZeros(digitado);
   if (!exato) return null;
 
   const tipo = speciesOf(especie);
+  // o número de quem saiu é reaproveitado (149): a mãe é a que está no rebanho
   const melhor = (lista: T[]) =>
-    lista.find((a) => speciesOf(a.species) === tipo) ?? lista[0] ?? null;
+    lista.find((a) => speciesOf(a.species) === tipo && a.active !== false) ??
+    lista.find((a) => speciesOf(a.species) === tipo) ??
+    lista[0] ??
+    null;
 
   return (
     melhor(maes.filter((a) => a.tag.trim().toUpperCase() === exato)) ??

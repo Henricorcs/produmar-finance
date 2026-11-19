@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { cn, upperKeepingCaret } from "@/lib/utils";
+import { cn, formatDate, upperKeepingCaret } from "@/lib/utils";
 import { createAnimal, updateAnimal, uploadAnimalPhotos } from "@/app/(app)/animais/actions";
 import {
   FOOTER_CANCEL,
@@ -45,6 +45,12 @@ interface Props {
   defaultSpecies?: AnimalSpecies | null;
   /** Raça que o cadastro novo já vem marcado (a escolhida no menu de raças). */
   defaultBreedId?: string | null;
+  /**
+   * Todo o cadastro, inclusive quem saiu — para avisar, enquanto digita, que o
+   * número já foi de um animal vendido/morto (vira um animal NOVO, a ficha do
+   * antigo fica guardada) ou que já tem outro igual no rebanho.
+   */
+  todos?: Animal[];
 }
 
 export function AnimalDialog({
@@ -54,6 +60,7 @@ export function AnimalDialog({
   breeds,
   defaultSpecies,
   defaultBreedId = null,
+  todos = [],
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +98,22 @@ export function AnimalDialog({
     setPhotos([]);
     setError(null);
   }, [open, animal, defaultSpecies, defaultBreedId]);
+
+  /** Quem mais tem este número, no mesmo tipo (fora o próprio, na edição). */
+  const doNumero = useMemo(() => {
+    const n = tag.trim().toUpperCase();
+    if (!n) return [];
+    return todos.filter(
+      (a) =>
+        a.id !== animal?.id &&
+        speciesOf(a.species) === species &&
+        a.tag.trim().toUpperCase() === n
+    );
+  }, [tag, species, todos, animal?.id]);
+  const numeroNoRebanho = doNumero.some((a) => a.active !== false);
+  const numeroSaiu = doNumero
+    .filter((a) => a.active === false)
+    .sort((a, b) => (b.exit_date ?? "").localeCompare(a.exit_date ?? ""))[0];
 
   /** Cada raça é de um tipo — a lista segue o tipo escolhido. */
   const speciesBreeds = useMemo(
@@ -178,6 +201,19 @@ export function AnimalDialog({
               autoCapitalize="characters"
               autoComplete="off"
             />
+            {numeroNoRebanho ? (
+              <p className="text-xs text-red-600 dark:text-red-400">
+                Já tem um {SPECIES_META[species].label.toLowerCase()} nº {tag.trim()} no rebanho.
+              </p>
+            ) : numeroSaiu ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                O nº {tag.trim()} já foi de um {SPECIES_META[species].label.toLowerCase()} que{" "}
+                {numeroSaiu.exit_reason === "morte" ? "morreu" : "foi vendido"}
+                {numeroSaiu.exit_date ? ` em ${formatDate(numeroSaiu.exit_date)}` : ""}. Este
+                {animal ? " fica" : " entra"} como outro animal — a ficha do antigo continua
+                guardada em Saídas.
+              </p>
+            ) : null}
           </div>
 
           {/* TIPO num botão só: as 7 opções na tela poluíam o cadastro, e

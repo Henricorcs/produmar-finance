@@ -473,10 +473,14 @@ function EditarAplicacaoDialog({
   const provisorio = semNumero(linha.tag);
   const tagLimpo = tag.trim().toUpperCase();
   const mudouTag = tagLimpo !== "" && tagLimpo !== linha.tag.toUpperCase();
-  /** O animal do nº digitado, no mesmo tipo de bicho. */
+  /**
+   * O animal do nº digitado, no mesmo tipo de bicho — só quem está no rebanho:
+   * o número de quem foi vendido ou morreu é reaproveitado (migration 149).
+   */
   const outro = mudouTag
     ? animals.find(
         (a) =>
+          a.active !== false &&
           a.tag.toUpperCase() === tagLimpo &&
           a.id !== linha.animalId &&
           (!linha.species || a.species === linha.species)
