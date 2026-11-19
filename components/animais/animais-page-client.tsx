@@ -11,6 +11,7 @@ import {
   HandCoins,
   Hash,
   LayoutGrid,
+  Menu,
   Plus,
   Printer,
   Camera,
@@ -60,7 +61,6 @@ import { ProtocolosTab, type EtapaFeita } from "./protocolos-tab";
 import { DesmameAlerta } from "./desmame-alerta";
 import { DescarteAlerta } from "./descarte-alerta";
 import {
-  BotaoRacas,
   GavetaRacas,
   ListaRacas,
   GRUPO_PO,
@@ -1045,6 +1045,79 @@ export function AnimaisPageClient({
     <ListaRacas breeds={breeds} animals={animals} value={escolha} onChange={escolher} />
   );
 
+  /** A seção aberta agora — o nome dela vai embaixo do título "Animais". */
+  const abaAtual = abas.find((t) => t.value === tab) ?? abas[0];
+  /** Tem trabalho parado em alguma seção? Acende o pontinho no botão do menu. */
+  const temPendencia = abas.some((t) => t.alert && t.value !== tab);
+
+  /**
+   * O menu lateral: as seções, as ferramentas do rebanho e o tipo e raça,
+   * tudo num lugar só. Antes eram nove botões de aba em três fileiras, mais
+   * o cartão "Tipo e raça" e uma fileira de ferramentas embaixo da busca — a
+   * tela ficava toda misturada. No computador fica fixo à esquerda; no
+   * celular abre pelo botão de menu ao lado do título.
+   */
+  const menuLateral = (
+    <div className="space-y-4">
+      <nav aria-label="Seções" className="space-y-0.5">
+        <TituloMenu>Seções</TituloMenu>
+        {abas.map((t) => (
+          <ItemMenu
+            key={t.value}
+            icon={t.icon}
+            label={t.label}
+            count={t.count}
+            alert={t.alert}
+            ativo={tab === t.value}
+            onClick={() => {
+              setTab(t.value);
+              fecharMenu();
+            }}
+          />
+        ))}
+      </nav>
+
+      {!porLote && (
+        <div className="space-y-0.5">
+          <TituloMenu>Ferramentas</TituloMenu>
+          <ItemMenu
+            icon={Camera}
+            label="Peso pela foto"
+            onClick={() => {
+              fecharMenu();
+              openWeight(null);
+            }}
+          />
+          <ItemMenu
+            icon={Printer}
+            label="Imprimir guia"
+            onClick={() => {
+              fecharMenu();
+              window.open(printHref, "_blank");
+            }}
+          />
+          {/* Gado PO: trocar o número pelo código de compra (GSC 7893,
+              CSCN 21368...) de vários de uma vez */}
+          {codigoPOAnimais.length > 0 && (
+            <ItemMenu
+              icon={Hash}
+              label="Código de compra"
+              onClick={() => {
+                fecharMenu();
+                setCodigoPOOpen(true);
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
+        <TituloMenu>Tipo e raça</TituloMenu>
+        {listaRacas}
+      </div>
+    </div>
+  );
+
   return (
     <SoBovinosContext.Provider value={soBovinos}>
     <div className="space-y-4 animate-fade-in">
@@ -1061,76 +1134,47 @@ export function AnimaisPageClient({
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-medium text-produmar-800 dark:text-slate-100">Animais</h1>
+      {/* Cabeçalho: no celular o botão do menu lateral fica à esquerda do
+          título; embaixo do título, a seção aberta e o que está escolhido. */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setMenuAberto(true)}
+          aria-label="Abrir o menu de Animais"
+          className="lg:hidden relative w-11 h-11 flex-shrink-0 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-produmar-700 active:scale-[0.97] dark:border-slate-700 dark:bg-slate-900 dark:text-produmar-400"
+        >
+          <Menu className="w-5 h-5" />
+          {temPendencia && (
+            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setMenuAberto(true)}
+          className="min-w-0 flex-1 text-left lg:pointer-events-none"
+        >
+          <span className="block text-xl font-medium text-produmar-800 dark:text-slate-100">Animais</span>
           <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
-            Guia de vacinação do rebanho
+            {abaAtual.label}
+            <span className={cn(temEscolha && "font-semibold text-produmar-700 dark:text-produmar-400")}>
+              {" · "}
+              {nomeEscolha}
+            </span>
           </p>
-        </div>
+        </button>
         <Button onClick={openNewAnimal} className="flex-shrink-0 h-11 px-4">
           <Plus className="w-4 h-4" />
           Novo
         </Button>
       </div>
 
-      {/* Menu de tipo e raça à esquerda (só no computador) e a tela ao lado */}
+      {/* Menu lateral à esquerda (só no computador) e a tela ao lado */}
       <div className="lg:flex lg:items-start lg:gap-5">
         <aside className="hidden lg:block lg:w-56 lg:flex-shrink-0 lg:sticky lg:top-16 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-          <p className="px-3 pt-1 pb-2 text-sm font-semibold text-produmar-800 dark:text-slate-100">
-            Tipo e raça
-          </p>
-          {listaRacas}
+          {menuLateral}
         </aside>
 
         <div className="min-w-0 flex-1 space-y-4">
-      {/* No celular: o botão que abre a gaveta, com o que está escolhido */}
-      <BotaoRacas
-        nome={nomeEscolha}
-        filtrado={temEscolha}
-        onClick={() => setMenuAberto(true)}
-      />
-
-      {/* Abas — 4 por linha no celular, cabendo na largura da tela */}
-      <div className="grid grid-cols-4 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
-        {abas.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.value;
-          return (
-            <button
-              key={t.value}
-              onClick={() => setTab(t.value)}
-              className={cn(
-                "relative flex flex-col items-center justify-center gap-1 min-h-[58px] px-0.5 rounded-xl border text-[11px] font-medium transition-colors active:scale-[0.97]",
-                "sm:text-sm",
-                "sm:flex-row sm:min-h-0 sm:px-3 sm:py-2 sm:gap-1.5",
-                active
-                  ? "bg-produmar-600 border-produmar-600 text-white"
-                  : "bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-              )}
-            >
-              <Icon className="w-5 h-5 sm:w-4 sm:h-4" />
-              <span className="leading-none">{t.label}</span>
-              {!!t.count && (
-                <span
-                  className={cn(
-                    "absolute top-1 right-1 min-w-[20px] h-[20px] px-1 rounded-full text-xs font-semibold flex items-center justify-center",
-                    "sm:static sm:min-w-0 sm:h-auto sm:px-0 sm:bg-transparent sm:opacity-70",
-                    active
-                      ? "bg-white/25 text-white sm:text-white"
-                      : t.alert
-                      ? "bg-red-500 text-white sm:bg-transparent sm:text-red-500"
-                      : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 sm:bg-transparent"
-                  )}
-                >
-                  {t.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
 
       {/* ── Aba: Rebanho — a planilha do curral ────────────────────────────
           `uppercase` no bloco todo: o patrão pediu tudo em caixa alta aqui.
@@ -1277,38 +1321,8 @@ export function AnimaisPageClient({
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => window.open(printHref, "_blank")}
-                className="flex items-center justify-center gap-1.5 h-11 px-3 rounded-xl border border-produmar-200 bg-white text-xs font-semibold text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
-              >
-                <Printer className="w-4 h-4" />
-                Imprimir
-              </button>
-
-              {/* Atalho para a Pesagem com a câmera: escolhe o animal e
-                  toca em "Estimar pela foto" — sem precisar abrir a ficha */}
-              <button
-                type="button"
-                onClick={() => openWeight(null)}
-                className="flex items-center justify-center gap-1.5 h-11 px-3 rounded-xl border border-produmar-200 bg-white text-xs font-semibold text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
-              >
-                <Camera className="w-4 h-4" />
-                Peso pela foto
-              </button>
-
-              {/* Gado PO: trocar o número pelo código de compra (GSC 7893,
-                  CSCN 21368...) de vários de uma vez */}
-              {codigoPOAnimais.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setCodigoPOOpen(true)}
-                  className="flex items-center justify-center gap-1.5 h-11 px-3 rounded-xl border border-produmar-200 bg-white text-xs font-semibold text-produmar-700 dark:bg-slate-900 dark:border-slate-700 dark:text-produmar-400 transition-colors active:scale-[0.97]"
-                >
-                  <Hash className="w-4 h-4" />
-                  Código de compra
-                </button>
-              )}
+              {/* Imprimir, Peso pela foto e Código de compra foram para o
+                  menu lateral, em "Ferramentas" */}
 
               {/* Só aparece quando existe pendência marcada na mão */}
               {pendingCount > 0 && (
@@ -1804,8 +1818,8 @@ export function AnimaisPageClient({
         </div>
       </div>
 
-      <GavetaRacas open={menuAberto} onClose={fecharMenu}>
-        {listaRacas}
+      <GavetaRacas open={menuAberto} onClose={fecharMenu} titulo="Animais">
+        {menuLateral}
       </GavetaRacas>
 
       {/* Dialogs */}
@@ -2743,5 +2757,70 @@ function EmptyState({
       {hint && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{hint}</p>}
       {action && <div className="mt-3">{action}</div>}
     </div>
+  );
+}
+
+/** O título de cada bloco do menu lateral (Seções, Ferramentas, Tipo e raça). */
+function TituloMenu({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      {children}
+    </p>
+  );
+}
+
+/**
+ * Uma linha do menu lateral: ícone, nome e, quando há trabalho parado, o
+ * número em vermelho — o mesmo número que antes ficava em cima da aba.
+ */
+function ItemMenu({
+  icon: Icon,
+  label,
+  count,
+  alert,
+  ativo,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  count?: number;
+  alert?: boolean;
+  ativo?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={ativo ? "page" : undefined}
+      className={cn(
+        "w-full flex items-center gap-3 min-h-[44px] rounded-xl px-3 text-left text-sm font-medium transition-colors active:scale-[0.98]",
+        ativo
+          ? "bg-produmar-600 text-white"
+          : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+      )}
+    >
+      <Icon
+        className={cn(
+          "w-[18px] h-[18px] flex-shrink-0",
+          ativo ? "text-white" : "text-produmar-600 dark:text-produmar-400"
+        )}
+      />
+      <span className="flex-1 min-w-0 truncate">{label}</span>
+      {!!count && (
+        <span
+          className={cn(
+            "flex-shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold flex items-center justify-center tabular-nums",
+            ativo
+              ? "bg-white/25 text-white"
+              : alert
+                ? "bg-red-500 text-white"
+                : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+          )}
+        >
+          {count}
+        </span>
+      )}
+    </button>
   );
 }

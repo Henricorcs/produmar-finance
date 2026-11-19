@@ -300,10 +300,12 @@ export function GavetaRacas({
   open,
   onClose,
   children,
+  titulo = "Tipo e raça",
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  titulo?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -335,14 +337,14 @@ export function GavetaRacas({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Tipo e raça"
+        aria-label={titulo}
         className={cn(
           "absolute inset-y-0 left-0 flex w-[82vw] max-w-[320px] flex-col bg-white shadow-xl transition-transform duration-200 dark:bg-slate-900 pt-safe",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-          <p className="text-base font-semibold text-produmar-800 dark:text-slate-100">Tipo e raça</p>
+          <p className="text-base font-semibold text-produmar-800 dark:text-slate-100">{titulo}</p>
           <button
             type="button"
             onClick={onClose}
