@@ -31,6 +31,8 @@ interface Props {
   locais?: SupplyLocal[];
   /** Avisa quem abriu qual obra acabou de nascer (ex.: pra já selecionar). */
   onCreated?: (obraId: string) => void;
+  /** Obra nova aberta de dentro de um setor: já vem nele. */
+  presetLocalId?: string | null;
 }
 
 /**
@@ -41,7 +43,7 @@ interface Props {
  * O Estoque também usa este diálogo: ao lançar uma saída dá para cadastrar a
  * obra na hora, sem sair do lançamento.
  */
-export function SupplyObraDialog({ open, onClose, obra, locais = [], onCreated }: Props) {
+export function SupplyObraDialog({ open, onClose, obra, locais = [], onCreated, presetLocalId }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -58,10 +60,10 @@ export function SupplyObraDialog({ open, onClose, obra, locais = [], onCreated }
     setName(obra?.name ?? "");
     setClient(obra?.client ?? "");
     setNotes(obra?.notes ?? "");
-    setLocalId(obra?.local_id ?? "");
+    setLocalId(obra ? obra.local_id ?? "" : presetLocalId ?? "");
     setNovoLocal(null);
     setError(null);
-  }, [open, obra]);
+  }, [open, obra]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Cria o local e já o deixa escolhido — sem perder o que foi digitado. */
   function handleCriarLocal() {

@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   BarChart3,
   CalendarDays,
+  ChevronRight,
   HardHat,
   MapPin,
   MapPinned,
@@ -15,7 +17,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn, formatBRL } from "@/lib/utils";
 import { ObrasRelatorioMensal } from "./obras-relatorio-mensal";
 import { num } from "@/components/almoxarifado/supply-shared";
@@ -63,8 +64,126 @@ interface Props {
 
 /** A chave de agrupamento das obras sem local — vale como um grupo à parte. */
 const SEM_LOCAL = "sem-local";
-/** "Todos os setores" no menu do filtro (o menu não aceita valor vazio). */
-const TODOS = "todos";
+
+/** Um setor com as obras dele e a conta somada. */
+interface Setor {
+  id: string;
+  nome: string;
+  obras: SupplyObraUsage[];
+  total: number;
+  material: number;
+  maoDeObra: number;
+  despesas: number;
+}
+
+/** De onde vem o custo de um conjunto de obras. */
+function somar(lista: SupplyObraUsage[]) {
+  let material = 0;
+  let maoDeObra = 0;
+  let despesas = 0;
+  let maquinas = 0;
+  for (const o of lista) {
+    material += num(o.total_value);
+    // diária e serviço são as duas formas de pagar gente: no número do topo
+    // eles andam juntos, e o detalhe da obra é que separa um do outro
+    maoDeObra += num(o.labor_value) + num(o.service_value);
+    despesas += num(o.expense_value);
+    // a máquina pesada da diária (132) entra junto da despesa no topo; o
+    // detalhe da obra é que mostra ela separada
+    maquinas += num(o.machine_value);
+  }
+  despesas += maquinas;
+  return { material, maoDeObra, despesas, maquinas, total: material + maoDeObra + despesas };
+}
+
+/** As obras separadas por setor: maior gasto primeiro, "Sem setor" por último. */
+function agrupar(lista: SupplyObraUsage[]): Setor[] {
+  const map = new Map<string, { id: string; nome: string; obras: SupplyObraUsage[] }>();
+  for (const o of lista) {
+    const key = o.local_id ?? SEM_LOCAL;
+    const g = map.get(key) ?? { id: key, nome: o.local_name ?? "Sem setor", obras: [] };
+    g.obras.push(o);
+    map.set(key, g);
+  }
+  return Array.from(map.values())
+    .map((g) => {
+      const s = somar(g.obras);
+      return { ...g, total: s.total, material: s.material, maoDeObra: s.maoDeObra, despesas: s.despesas };
+    })
+    .sort((a, b) => {
+      if (a.id === SEM_LOCAL) return 1;
+      if (b.id === SEM_LOCAL) return -1;
+      return b.total - a.total;
+    });
+}
+
+/**
+ * O cartão do setor na primeira tela: nome, quantas obras, quanto já custou e
+ * uma barrinha mostrando o peso do material, da mão de obra e das despesas.
+ */
+function SetorCard({ setor, onOpen }: { setor: Setor; onOpen: () => void }) {
+  const semSetor = setor.id === SEM_LOCAL;
+  const t = setor.total || 1;
+  const partes = [
+    { v: setor.material, cor: "bg-orange-400", nome: "Material" },
+    { v: setor.maoDeObra, cor: "bg-emerald-500", nome: "Mão de obra" },
+    { v: setor.despesas, cor: "bg-violet-500", nome: "Despesas" },
+  ];
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        "w-full rounded-2xl border bg-white p-4 text-left transition-colors active:scale-[0.99] hover:border-produmar-200 dark:bg-slate-900 dark:hover:border-produmar-800",
+        semSetor
+          ? "border-dashed border-amber-300 dark:border-amber-800"
+          : "border-slate-200 dark:border-slate-700"
+      )}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={cn(
+            "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0",
+            semSetor
+              ? "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+              : "bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400"
+          )}
+        >
+          <MapPinned className="w-5 h-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate">
+            {setor.nome}
+          </p>
+          <p className="text-xs text-slate-400">
+            {setor.obras.length === 1 ? "1 obra" : `${setor.obras.length} obras`}
+          </p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+            {formatBRL(setor.total)}
+          </p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wide">gasto</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" />
+      </div>
+      {setor.total > 0 && (
+        <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+          {partes.map((p) =>
+            p.v > 0 ? (
+              <span
+                key={p.nome}
+                title={`${p.nome}: ${formatBRL(p.v)}`}
+                className={p.cor}
+                style={{ width: `${(p.v / t) * 100}%` }}
+              />
+            ) : null
+          )}
+        </div>
+      )}
+    </button>
+  );
+}
 
 /**
  * A lista de OBRAS (tabela supply_obras) — o coração do módulo.
@@ -115,8 +234,33 @@ export function ObrasEstoqueTab({
 
   const [visao, setVisao] = useState<"lista" | "relatorio">("lista");
   const [search, setSearch] = useState("");
-  /** Local escolhido no filtro — "" = todos. */
-  const [localFiltro, setLocalFiltro] = useState("");
+  /**
+   * O setor aberto — "" = a tela dos setores. A tela de Obras agora tem dois
+   * passos: primeiro um cartão por setor (Fazenda 01, Fazenda 02...), e só ao
+   * tocar num deles aparecem as obras dele. Antes vinham as 29 obras de uma
+   * vez, uma embaixo da outra, e a tela ficava poluída.
+   */
+  const [localFiltro, setLocalFiltroState] = useState("");
+
+  // O setor aberto fica no endereço (?setor=): recarregar a página ou voltar
+  // de outra tela devolve a pessoa para dentro do mesmo setor.
+  useEffect(() => {
+    try {
+      const s = new URL(window.location.href).searchParams.get("setor");
+      if (s) setLocalFiltroState(s);
+    } catch {}
+  }, []);
+
+  const setLocalFiltro = useCallback((id: string) => {
+    setLocalFiltroState(id);
+    try {
+      const url = new URL(window.location.href);
+      if (id) url.searchParams.set("setor", id);
+      else url.searchParams.delete("setor");
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch {}
+    window.scrollTo({ top: 0 });
+  }, []);
 
   // o diálogo deriva do id para refletir os dados recarregados do servidor
   const detailObra = useMemo(
@@ -124,57 +268,18 @@ export function ObrasEstoqueTab({
     [detailObraId, obras]
   );
 
-  /** O custo cheio da obra: material + mão de obra. */
-  function custo(o: SupplyObraUsage): number {
-    return num(o.total_cost ?? o.total_value);
-  }
+  /** As obras do setor aberto — ou todas, na tela dos setores. */
+  const obrasDoSetor = useMemo(
+    () => (localFiltro ? obras.filter((o) => (o.local_id ?? SEM_LOCAL) === localFiltro) : obras),
+    [obras, localFiltro]
+  );
 
-  const totais = useMemo(() => {
-    let material = 0;
-    let maoDeObra = 0;
-    let despesas = 0;
-    let maquinas = 0;
-    for (const o of obras) {
-      material += num(o.total_value);
-      // diária e serviço são as duas formas de pagar gente: no número do topo
-      // eles andam juntos, e o detalhe da obra é que separa um do outro
-      maoDeObra += num(o.labor_value) + num(o.service_value);
-      despesas += num(o.expense_value);
-      // a máquina pesada da diária (132) entra junto da despesa no topo; o
-      // detalhe da obra é que mostra ela separada
-      maquinas += num(o.machine_value);
-    }
-    despesas += maquinas;
-    return { material, maoDeObra, despesas, maquinas, total: material + maoDeObra + despesas };
-  }, [obras]);
-
-  /** Os grupos do filtro: cada local que tem obra, mais o "sem local". */
-  const gruposFiltro = useMemo(() => {
-    const porLocal = new Map<string, number>();
-    for (const o of obras) {
-      const key = o.local_id ?? SEM_LOCAL;
-      porLocal.set(key, (porLocal.get(key) ?? 0) + 1);
-    }
-    const lista = locais
-      .filter((l) => porLocal.has(l.id))
-      .map((l) => ({ id: l.id, nome: l.name, count: porLocal.get(l.id) ?? 0 }));
-    if (porLocal.has(SEM_LOCAL)) {
-      lista.push({
-        id: SEM_LOCAL,
-        nome: "Sem setor",
-        count: porLocal.get(SEM_LOCAL) ?? 0,
-      });
-    }
-    return lista;
-  }, [obras, locais]);
+  // Os números do topo acompanham: dentro da Fazenda 01, são os da Fazenda 01
+  const totais = useMemo(() => somar(obrasDoSetor), [obrasDoSetor]);
 
   const filtradas = useMemo(() => {
     const q = search.trim().toUpperCase();
-    return obras.filter((o) => {
-      if (localFiltro) {
-        const key = o.local_id ?? SEM_LOCAL;
-        if (key !== localFiltro) return false;
-      }
+    return obrasDoSetor.filter((o) => {
       if (!q) return true;
       return (
         o.name.includes(q) ||
@@ -182,36 +287,19 @@ export function ObrasEstoqueTab({
         (o.local_name ?? "").toUpperCase().includes(q)
       );
     });
-  }, [obras, search, localFiltro]);
+  }, [obrasDoSetor, search]);
 
   /**
    * As obras agrupadas por local, com o total de cada um. É o retrato que o
    * dono pede: "quanto já gastei na Fazenda 01, somando tudo que tem lá".
    */
-  const grupos = useMemo(() => {
-    const map = new Map<
-      string,
-      { id: string; nome: string; obras: SupplyObraUsage[]; total: number }
-    >();
-    for (const o of filtradas) {
-      const key = o.local_id ?? SEM_LOCAL;
-      const g = map.get(key) ?? {
-        id: key,
-        nome: o.local_name ?? "Sem setor",
-        obras: [],
-        total: 0,
-      };
-      g.obras.push(o);
-      g.total += custo(o);
-      map.set(key, g);
-    }
-    // maior gasto primeiro; "sem local" sempre por último, é uma pendência
-    return Array.from(map.values()).sort((a, b) => {
-      if (a.id === SEM_LOCAL) return 1;
-      if (b.id === SEM_LOCAL) return -1;
-      return b.total - a.total;
-    });
-  }, [filtradas]);
+  const grupos = useMemo(() => agrupar(filtradas), [filtradas]);
+  /** Os cartões da tela dos setores: sempre todos, sem a busca. */
+  const setores = useMemo(() => agrupar(obras), [obras]);
+
+  /** O setor aberto (some se o setor do endereço não existe mais). */
+  const setorAberto = localFiltro ? setores.find((g) => g.id === localFiltro) ?? null : null;
+  const emBusca = search.trim() !== "";
 
   /** A lista de obras (o que já existia) ou o relatório de gastos mês a mês. */
   const seletorVisao =
@@ -362,7 +450,34 @@ export function ObrasEstoqueTab({
         />
       ) : (
         <>
-          {/* Quanto tudo já custou, e de onde vem o custo */}
+          {/* Dentro de um setor: o caminho de volta e o nome dele em cima */}
+          {setorAberto && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setLocalFiltro("");
+                }}
+                className="flex items-center gap-1.5 h-11 pl-2 pr-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-produmar-700 active:scale-[0.97] dark:border-slate-700 dark:bg-slate-900 dark:text-produmar-400 flex-shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Setores
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5">
+                  <MapPinned className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                  {setorAberto.nome}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  {setorAberto.obras.length === 1 ? "1 obra" : `${setorAberto.obras.length} obras`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Quanto tudo já custou, e de onde vem o custo — do setor aberto,
+              ou de todos na tela dos setores */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <Kpi
               icon={Wallet}
@@ -398,43 +513,33 @@ export function ObrasEstoqueTab({
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por obra, local ou cliente..."
+              placeholder={
+                setorAberto ? `Buscar obra em ${setorAberto.nome}...` : "Buscar obra em todos os setores..."
+              }
               className="pl-9"
               autoComplete="off"
             />
           </div>
 
-          {/* Filtro por setor — num menu: os botões em fila não cabiam na tela
-              do celular e era preciso arrastar para achar a fazenda */}
-          {gruposFiltro.length > 1 && (
-            <Select
-              value={localFiltro || TODOS}
-              onValueChange={(v) => setLocalFiltro(v === TODOS ? "" : v)}
-            >
-              <SelectTrigger aria-label="Escolher o setor">
-                {/* div, não span: o gatilho corta em uma linha todo span filho
-                    direto, e isso empilhava o ícone em cima do nome */}
-                <div className="flex min-w-0 items-center gap-2">
-                  <MapPinned className="w-4 h-4 text-sky-500 flex-shrink-0" />
-                  <span className="truncate">
-                    <SelectValue />
-                  </span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TODOS}>Todos os setores ({obras.length})</SelectItem>
-                {gruposFiltro.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.nome} ({g.count})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {filtradas.length === 0 ? (
+          {!setorAberto && !emBusca ? (
+            /* A TELA DOS SETORES: um cartão por fazenda, com quantas obras e
+               quanto já custou. Toque e abrem as obras dela. */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {setores.map((g) => (
+                <SetorCard key={g.id} setor={g} onOpen={() => setLocalFiltro(g.id)} />
+              ))}
+            </div>
+          ) : filtradas.length === 0 ? (
             <EmptyState icon={Search} text="Nada encontrado com esse filtro." />
+          ) : setorAberto ? (
+            /* DENTRO DO SETOR: só as obras dele */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filtradas.map((o) => (
+                <SupplyObraCard key={o.id} obra={o} onOpen={() => setDetailObraId(o.id)} />
+              ))}
+            </div>
           ) : (
+            /* BUSCA NA TELA DOS SETORES: o que achou, separado por setor */
             <div className="space-y-5">
               {grupos.map((g) => (
                 <div key={g.id} className="space-y-2">
@@ -480,6 +585,7 @@ export function ObrasEstoqueTab({
         onClose={() => setObraDialogOpen(false)}
         obra={editObra}
         locais={locais}
+        presetLocalId={setorAberto && setorAberto.id !== SEM_LOCAL ? setorAberto.id : null}
       />
       <LocaisDialog
         open={locaisOpen}
