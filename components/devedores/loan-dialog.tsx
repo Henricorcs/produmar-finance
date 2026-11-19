@@ -41,7 +41,8 @@ import {
   mascaraCpfCnpj,
   mascaraTelefone,
 } from "@/lib/utils";
-import { mascaraCep } from "@/components/ui/passo-a-passo";
+import { mascaraCep, ORGAOS_RG, separarRg, juntarRg } from "@/components/ui/passo-a-passo";
+import { CampoComSugestoes, valoresUsados } from "@/components/ui/campo-com-sugestoes";
 import { enderecoDoDevedor } from "@/lib/devedor-endereco";
 import { LOAN_PAYMENT_METHODS, LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
 import type { Loan, LoanPaymentMethod, LoanRepaymentType } from "@/lib/types";
@@ -76,7 +77,7 @@ type TipoJuros = "percent" | "fixed" | "nenhum";
 
 /**
  * A DÍVIDA EM ETAPAS — uma pergunta por tela, como a OS da máquina:
- *   quem deve → quanto → juros → como vai pagar (parcelas) → forma → conferir.
+ *   quanto → juros → como vai pagar (parcelas) → quem deve → forma → conferir.
  * Com boleto, no fim aparecem os boletos gerados e o botão "Gerar no banco",
  * do mesmo jeito dos aluguéis.
  */
@@ -118,7 +119,12 @@ const TITULO: Record<Passo, string> = {
 type PassoEndereco = "rua" | "numero" | "complemento" | "bairro" | "cidade" | "cep";
 const PASSOS_ENDERECO: PassoEndereco[] = ["rua", "numero", "complemento", "bairro", "cidade", "cep"];
 
-const ETAPAS: Passo[] = ["devedor", "rg", "dados", ...PASSOS_ENDERECO, "valor", "juros", "parcelas", "forma", "conferir"];
+/**
+ * Primeiro a conta (pedido do dono): quanto deve, os juros e em quantas
+ * parcelas — e só com o valor de cada parcela na tela vêm os dados do devedor.
+ * A forma de pagamento fica depois deles: o boleto precisa do CPF.
+ */
+const ETAPAS: Passo[] = ["valor", "juros", "parcelas", "devedor", "rg", "dados", ...PASSOS_ENDERECO, "forma", "conferir"];
 /** Com CNPJ não tem RG: a tela dele sai da sequência. */
 const ETAPAS_EMPRESA: Passo[] = ETAPAS.filter((p) => p !== "rg");
 
@@ -192,7 +198,11 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
   const [nacionalidade, setNacionalidade] = useState("");
   const [estadoCivil, setEstadoCivil] = useState("");
   const [profissao, setProfissao] = useState("");
-  const [rg, setRg] = useState("");
+  // O RG é guardado num campo só ("123456 SSP/MA"), mas perguntado em dois,
+  // como nos aluguéis: o número e o órgão expedidor (este com os atalhos).
+  const [rgNumero, setRgNumero] = useState("");
+  const [rgOrgao, setRgOrgao] = useState("");
+  const rg = juntarRg(rgNumero, rgOrgao);
   const [endereco, setEndereco] = useState<Endereco>(ENDERECO_VAZIO);
   const [repNome, setRepNome] = useState("");
   const [repDoc, setRepDoc] = useState("");
@@ -223,7 +233,7 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    setPasso("devedor");
+    setPasso(ETAPAS[0]);
     setNome(loan?.borrower_name ?? "");
     // o que foi salvo sem pontos já aparece formatado
     setDocumento(mascaraCpfCnpj(loan?.borrower_document ?? ""));
@@ -232,7 +242,9 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
     setNacionalidade(loan ? loan.borrower_nationality ?? "" : "BRASILEIRO(A)");
     setEstadoCivil(loan?.borrower_marital_status ?? "");
     setProfissao(loan?.borrower_profession ?? "");
-    setRg(loan?.borrower_rg ?? "");
+    const rgSalvo = separarRg(loan?.borrower_rg);
+    setRgNumero(rgSalvo.numero);
+    setRgOrgao(rgSalvo.orgao);
     setEndereco(enderecoDaDivida(loan));
     setRepNome(loan?.borrower_rep_name ?? "");
     setRepDoc(mascaraCpfCnpj(loan?.borrower_rep_document ?? ""));
@@ -292,6 +304,33 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
       vencimento: somarMeses(primeiroVencimento, i),
     }));
   }, [nParcelas, total, primeiroVencimento]);
+
+  /**
+   * O que já foi escrito em cada campo nas outras dívidas — aparece embaixo do
+   * campo enquanto se digita, para escolher com um toque.
+   */
+  const sugestoes = useMemo(() => {
+    const de = (f: (l: LoanWithDetails) => string | null | undefined) => valoresUsados(dividas.map(f));
+    return {
+      nome: de((l) => l.borrower_name),
+      nacionalidade: de((l) => l.borrower_nationality),
+      profissao: de((l) => l.borrower_profession),
+      repNome: de((l) => l.borrower_rep_name),
+      orgao: valoresUsados([...ORGAOS_RG, ...dividas.map((l) => separarRg(l.borrower_rg).orgao)]),
+      rua: de((l) => l.borrower_street),
+      complemento: de((l) => l.borrower_complement),
+      bairro: de((l) => l.borrower_district),
+      cidade: de((l) => l.borrower_city),
+    };
+  }, [dividas]);
+
+  /** A UF que já foi usada com aquela cidade — vem junto quando ela é escolhida. */
+  function ufDaCidade(cidade: string): string {
+    const achada = dividas.find(
+      (l) => l.borrower_city?.trim().toUpperCase() === cidade.trim().toUpperCase() && l.borrower_state
+    );
+    return achada?.borrower_state ?? "";
+  }
 
   /** CNPJ (14 dígitos): os dados são da empresa — sede e quem assina por ela. */
   const ehEmpresa = documento.replace(/\D/g, "").length === 14;
@@ -493,10 +532,12 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="borrower_name">Nome de quem deve *</Label>
-                <Input
+                <CampoComSugestoes
                   id="borrower_name"
                   value={nome}
                   onChange={(e) => setNome(e.target.value.toUpperCase())}
+                  sugestoes={sugestoes.nome}
+                  onEscolher={setNome}
                   placeholder="nome completo"
                   autoCapitalize="characters"
                   className="h-12 text-base"
@@ -534,19 +575,78 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
           {passo === "rg" && (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="borrower_rg">RG (número e órgão)</Label>
+                <Label htmlFor="borrower_rg">Número do RG</Label>
                 <Input
                   id="borrower_rg"
-                  value={rg}
-                  onChange={(e) => setRg(e.target.value.toUpperCase())}
-                  onKeyDown={avancarNoEnter}
-                  placeholder="ex: 123456 SSP/MA"
-                  autoCapitalize="characters"
+                  value={rgNumero}
+                  onChange={(e) => setRgNumero(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    // "seguinte" no número vai para o órgão, na mesma tela
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    document.getElementById("borrower_rg_orgao")?.focus();
+                  }}
+                  placeholder="ex: 326785949"
+                  inputMode="numeric"
                   autoComplete="off"
                   enterKeyHint="next"
                   autoFocus
+                  className="h-14 text-lg tabular-nums"
+                />
+                {/* O hífen e o X do dígito, que o teclado numérico do iPhone não
+                    tem. Apertar não tira o foco: o teclado continua aberto. */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">Dígito no fim:</span>
+                  {["-", "X"].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setRgNumero((n) => n + t);
+                        document.getElementById("borrower_rg")?.focus();
+                      }}
+                      aria-label={t === "-" ? "Acrescentar hífen" : `Acrescentar ${t}`}
+                      className="min-w-[48px] min-h-[40px] px-3 rounded-xl border border-slate-200 bg-white text-base font-semibold text-slate-700 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
+                    >
+                      {t === "-" ? "–" : t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="borrower_rg_orgao">Órgão expedidor</Label>
+                <CampoComSugestoes
+                  id="borrower_rg_orgao"
+                  value={rgOrgao}
+                  onChange={(e) => setRgOrgao(e.target.value.toUpperCase())}
+                  sugestoes={sugestoes.orgao}
+                  onEscolher={setRgOrgao}
+                  onKeyDown={avancarNoEnter}
+                  placeholder="ex: SSP/MA"
+                  autoCapitalize="characters"
+                  enterKeyHint="next"
                   className="h-14 text-lg"
                 />
+                {/* os órgãos mais comuns a um toque, como nos aluguéis */}
+                <div className="flex flex-wrap gap-2">
+                  {ORGAOS_RG.map((o) => (
+                    <button
+                      key={o}
+                      type="button"
+                      onClick={() => setRgOrgao(rgOrgao === o ? "" : o)}
+                      className={cn(
+                        "min-h-[40px] px-4 rounded-xl border text-sm font-semibold transition-colors",
+                        rgOrgao === o
+                          ? "bg-produmar-600 border-produmar-600 text-white"
+                          : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
+                      )}
+                    >
+                      {o}
+                    </button>
+                  ))}
+                </div>
               </div>
               <p className="text-[12px] text-slate-500 dark:text-slate-400">
                 Vai na confissão de dívida. Em branco, sai a linha para completar à mão.
@@ -565,10 +665,12 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                 <>
                   <div className="space-y-1.5">
                     <Label htmlFor="borrower_rep_name">Quem assina pela empresa</Label>
-                    <Input
+                    <CampoComSugestoes
                       id="borrower_rep_name"
                       value={repNome}
                       onChange={(e) => setRepNome(e.target.value.toUpperCase())}
+                      sugestoes={sugestoes.repNome}
+                      onEscolher={setRepNome}
                       placeholder="nome do sócio ou administrador"
                       autoCapitalize="characters"
                       className="h-12 text-base"
@@ -590,10 +692,12 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                 <>
                   <div className="space-y-1.5">
                     <Label htmlFor="borrower_nationality">Nacionalidade</Label>
-                    <Input
+                    <CampoComSugestoes
                       id="borrower_nationality"
                       value={nacionalidade}
                       onChange={(e) => setNacionalidade(e.target.value.toUpperCase())}
+                      sugestoes={sugestoes.nacionalidade}
+                      onEscolher={setNacionalidade}
                       placeholder="BRASILEIRO(A)"
                       autoCapitalize="characters"
                       className="h-12 text-base"
@@ -616,10 +720,12 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="borrower_profession">Profissão</Label>
-                    <Input
+                    <CampoComSugestoes
                       id="borrower_profession"
                       value={profissao}
                       onChange={(e) => setProfissao(e.target.value.toUpperCase())}
+                      sugestoes={sugestoes.profissao}
+                      onEscolher={setProfissao}
                       placeholder="ex: AGRICULTOR, COMERCIANTE"
                       autoCapitalize="characters"
                       className="h-12 text-base"
@@ -651,11 +757,18 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                 <div className="grid grid-cols-[1fr_5rem] gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="borrower_city">Cidade</Label>
-                    <Input
+                    <CampoComSugestoes
                       key="borrower_city"
                       id="borrower_city"
                       value={endereco.cidade}
                       onChange={(e) => mudarEndereco("cidade", e.target.value.toUpperCase())}
+                      sugestoes={sugestoes.cidade}
+                      onEscolher={(c) => {
+                        mudarEndereco("cidade", c);
+                        // a UF de quando essa cidade foi usada vem junto
+                        const uf = ufDaCidade(c);
+                        if (uf && !endereco.uf) mudarEndereco("uf", uf);
+                      }}
                       onKeyDown={(e) => {
                         // "seguinte" na cidade vai para a UF, na mesma tela
                         if (e.key !== "Enter") return;
@@ -691,8 +804,8 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
               ) : (
                 <div className="space-y-1.5">
                   <Label htmlFor={`borrower_${passo}`}>{PERGUNTA_ENDERECO[passo].rotulo}</Label>
-                  <div className="flex gap-2">
-                    <Input
+                  <div className="flex items-start gap-2">
+                    <CampoComSugestoes
                       // a chave troca a cada parte: o campo nasce de novo e o foco vem para ele
                       key={passo}
                       id={`borrower_${passo}`}
@@ -703,6 +816,11 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                           passo === "cep" ? mascaraCep(e.target.value) : e.target.value.toUpperCase()
                         )
                       }
+                      // número e CEP não têm sugestão: são de cada um
+                      sugestoes={
+                        passo === "rua" || passo === "complemento" || passo === "bairro" ? sugestoes[passo] : []
+                      }
+                      onEscolher={(v) => mudarEndereco(passo, v)}
                       onKeyDown={avancarNoEnter}
                       placeholder={PERGUNTA_ENDERECO[passo].placeholder}
                       inputMode={PERGUNTA_ENDERECO[passo].numerico ? "numeric" : undefined}
@@ -710,7 +828,7 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                       autoComplete="off"
                       enterKeyHint="next"
                       autoFocus
-                      className="h-14 text-lg min-w-0 flex-1 tabular-nums"
+                      className="h-14 text-lg tabular-nums"
                     />
                     {passo === "numero" && (
                       <button
@@ -905,6 +1023,15 @@ export function LoanDialog({ open, onClose, loan, dividas = [] }: Props) {
                 )}
               </div>
 
+              {/* a conta pronta antes de pedir os dados do devedor */}
+              <Totais principal={principal} interest={interest} total={total} />
+              {previa.length > 0 && (
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  {previa.length}x de {formatBRL(previa[0].valor)}
+                  {previa[previa.length - 1].valor !== previa[0].valor &&
+                    ` (a última ${formatBRL(previa[previa.length - 1].valor)})`}
+                </p>
+              )}
               {previa.length > 0 && (
                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
                   {previa.map((p) => (
