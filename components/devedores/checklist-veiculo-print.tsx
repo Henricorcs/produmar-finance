@@ -151,7 +151,7 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
               </thead>
               <tbody>
                 {ITENS.map((item) => (
-                  <tr key={item} style={{ height: "22px" }}>
+                  <tr key={item} style={{ height: "20px" }}>
                     <td>{item}</td>
                     <td className="text-center">
                       <span className="caixa" />
@@ -202,7 +202,7 @@ export function ChecklistVeiculoPrint({ checklist: c }: { checklist: VehicleDeli
           </section>
 
           {/* ASSINATURAS */}
-          <section className="grid grid-cols-2 gap-8 pt-10 text-center text-[11px]" style={{ breakInside: "avoid" }}>
+          <section className="grid grid-cols-2 gap-8 pt-[16mm] text-center text-[11px]" style={{ breakInside: "avoid" }}>
             <div>
               <div className="border-t border-slate-800" />
               <p className="mt-1 font-bold">{VENDEDOR}</p>

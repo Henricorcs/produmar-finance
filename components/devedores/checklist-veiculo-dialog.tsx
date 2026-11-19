@@ -137,11 +137,25 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
   /** Os devedores cadastrados, um por pessoa, com os dados da dívida mais recente. */
   const devedores = useMemo(() => {
     const vistos = new Map<string, DevedorDaLista>();
-    const recentes = [...dividas].sort((a, b) => (a.loan_date < b.loan_date ? 1 : -1));
-    for (const l of recentes) {
+    /** O nome sem acento e sem espaço sobrando: "ANTÔNIO" e "ANTONIO" são o mesmo. */
+    const nomeLimpo = (s: string) =>
+      s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+    // a mais recente primeiro; com CPF antes de sem CPF — a dívida sem CPF da
+    // mesma pessoa não vira uma segunda linha na lista
+    const ordenadas = [...dividas].sort((a, b) => {
+      const ca = a.borrower_document?.trim() ? 0 : 1;
+      const cb = b.borrower_document?.trim() ? 0 : 1;
+      return ca - cb || (a.loan_date < b.loan_date ? 1 : -1);
+    });
+    const nomesComDoc = new Set<string>();
+    for (const l of ordenadas) {
       const doc = (l.borrower_document ?? "").replace(/\D/g, "");
-      const chave = doc || l.borrower_name.trim().toUpperCase();
-      if (!chave || vistos.has(chave)) continue;
+      const nome = nomeLimpo(l.borrower_name);
+      if (!nome) continue;
+      if (!doc && nomesComDoc.has(nome)) continue;
+      const chave = doc || nome;
+      if (vistos.has(chave)) continue;
+      if (doc) nomesComDoc.add(nome);
       vistos.set(chave, {
         chave,
         loanId: l.id,
@@ -244,6 +258,9 @@ export function ChecklistVeiculoDialog({ open, onClose, dividas, checklists, vei
               A folha que o comprador assina quando recebe o veículo vendido.
             </p>
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+              {checklists.length === 0 && (
+                <p className="px-3 py-3 text-sm text-slate-500 dark:text-slate-400">Nenhum checklist feito ainda.</p>
+              )}
               {checklists.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 px-3 py-2">
                   <div className="flex-1 min-w-0">
