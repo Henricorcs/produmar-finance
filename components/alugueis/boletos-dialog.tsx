@@ -37,8 +37,10 @@ import {
   boletoEmAberto,
   boletoNoBanco,
   mesesParaGerar,
+  quitacaoDoBoleto,
   situacaoDoBoleto,
   tituloDoBoleto,
+  type BaixaDoMes,
 } from "@/lib/alugueis-boletos";
 import {
   cancelarBoletoAluguel,
@@ -55,6 +57,8 @@ interface Props {
   contrato: RentalContractView | null;
   /** Os boletos valendo do contrato (sem os cancelados). */
   boletos: RentalBoleto[];
+  /** As baixas dadas no contrato: o boleto do mês pago direto fica quitado. */
+  baixas?: BaixaDoMes[];
   /** O recado de quando o contrato acabou de ser salvo ("12 boletos gerados..."). */
   mensagem?: string | null;
   /** Sem a migration 129 a tabela não existe. */
@@ -70,7 +74,7 @@ interface Props {
  * e Pix) — um de cada vez ou todos — e aí a baixa do mês entra sozinha quando
  * o inquilino paga.
  */
-export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, onClose }: Props) {
+export function BoletosDialog({ contrato, boletos, baixas = [], mensagem, pendente = false, onClose }: Props) {
   const [isPending, startTransition] = useTransition();
   const [acao, setAcao] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -96,9 +100,11 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
   const semBoleto = contrato ? mesesParaGerar(contrato, hoje).filter((m) => !comBoleto.has(m.competencia)).length : 0;
   const abertosFuturos = doCarne.filter((b) => boletoEmAberto(b) && b.due_date >= hoje).length;
   const emAberto = doCarne.filter(boletoEmAberto).length;
-  /** Só no sistema e ainda dá para mandar ao banco (não venceu, valor mínimo). */
+  /** Já pago (no banco ou com a baixa do mês dada na tela). */
+  const quitado = (b: RentalBoleto) => !!quitacaoDoBoleto(b, baixas);
+  /** Só no sistema e ainda dá para mandar ao banco (não venceu, valor mínimo, não foi pago). */
   const podeIrAoBanco = (b: RentalBoleto) =>
-    b.cora_status === "SISTEMA" && b.due_date >= hoje && Number(b.amount) >= VALOR_MINIMO_BOLETO;
+    b.cora_status === "SISTEMA" && b.due_date >= hoje && Number(b.amount) >= VALOR_MINIMO_BOLETO && !quitado(b);
   const paraOBanco = lista.filter(podeIrAoBanco).length;
 
   function fechar() {
@@ -174,8 +180,8 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
     });
   }
 
-  /** O carnê leva só as mensalidades em aberto. */
-  const abertos = doCarne.filter(boletoEmAberto);
+  /** O carnê leva as mensalidades em aberto e as já pagas (saem QUITADAS). */
+  const abertos = doCarne.filter((b) => boletoEmAberto(b) || quitado(b));
 
   /** Roda a ação; `onde` é para o recado ("gerado no banco"). */
   function rodar(chave: string, onde: string, fazer: () => Promise<unknown>) {
@@ -405,7 +411,11 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden max-h-[45vh] overflow-y-auto">
                 {lista.map((b) => {
-                  const s = situacaoDoBoleto(b, hoje);
+                  // pago direto (baixa dada na tela): o boleto continua "no sistema", mas está quitado
+                  const s =
+                    b.cora_status !== "PAID" && quitado(b)
+                      ? { label: "Quitado", chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" }
+                      : situacaoDoBoleto(b, hoje);
                   const banco = boletoNoBanco(b);
                   const avulso = boletoAvulso(b);
                   return (
@@ -447,7 +457,7 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                             <CompartilharPdf
                               variante="link"
                               chave={`${b.id}|${b.cora_status}|${b.amount}|${b.due_date}`}
-                              gerar={() => gerarCarnePdf(dadosDoCarne(contrato, [b]))}
+                              gerar={() => gerarCarnePdf(dadosDoCarne(contrato, [b], baixas))}
                             />
                           ) : (
                             <button type="button" onClick={() => setPdfDe(b.id)} className={link}>
@@ -490,13 +500,13 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                               PDF do boleto
                             </a>
                           )}
-                          {b.digitable_line && (
+                          {b.digitable_line && !quitado(b) && (
                             <button type="button" onClick={() => copiar(b.digitable_line!, `l${b.id}`)} className={link}>
                               <Copy className="w-3 h-3" />
                               {copiado === `l${b.id}` ? "Copiado!" : "Copiar código"}
                             </button>
                           )}
-                          {b.pix_emv && (
+                          {b.pix_emv && !quitado(b) && (
                             <button type="button" onClick={() => copiar(b.pix_emv!, `p${b.id}`)} className={link}>
                               <Copy className="w-3 h-3" />
                               {copiado === `p${b.id}` ? "Copiado!" : "Copiar Pix"}
@@ -543,7 +553,7 @@ export function BoletosDialog({ contrato, boletos, mensagem, pendente = false, o
                 <CompartilharPdf
                   variante="bloco"
                   chave={abertos.map((b) => `${b.id}|${b.cora_status}|${b.amount}|${b.due_date}`).join(",")}
-                  gerar={() => gerarCarnePdf(dadosDoCarne(contrato, abertos))}
+                  gerar={() => gerarCarnePdf(dadosDoCarne(contrato, abertos, baixas))}
                 />
               ) : (
                 <button

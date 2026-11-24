@@ -15,8 +15,11 @@ import {
   boletoNoBanco,
   boletoAvulso,
   linhaDigitavelFormatada,
+  quitacaoDoBoleto,
   rotuloDoTitulo,
   tituloDoBoleto,
+  type BaixaDoMes,
+  type Quitacao,
 } from "./alugueis-boletos";
 import { enderecoCurto } from "./alugueis-contrato";
 import { paraNomeDeArquivo } from "./contrato-pdf";
@@ -37,7 +40,7 @@ export interface CarneParaPdf {
   rotuloReferencia?: string; // "IMÓVEL"
   cabecalhoSistema?: string; // "CARNÊ DE ALUGUEL · PAGAR A"
   prefixoArquivo?: string; // "carne-aluguel"
-  boletos: Pick<
+  boletos: (Pick<
     RentalBoleto,
     | "competencia"
     | "due_date"
@@ -50,10 +53,16 @@ export interface CarneParaPdf {
     | "pix_emv"
     | "avulso"
     | "descricao"
-  >[];
+  > & {
+    /** Já pago: sai QUITADO, com o dia do recebimento, sem código de barras nem Pix. */
+    quitado?: Quitacao | null;
+  })[];
 }
 
-/** Os dados do carnê a partir do contrato e dos boletos em aberto. */
+/**
+ * Os dados do carnê a partir do contrato e dos boletos. Com as `baixas` do
+ * contrato, o boleto já pago sai marcado QUITADO.
+ */
 export function dadosDoCarne(
   contrato: Pick<
     RentalContractView,
@@ -65,7 +74,8 @@ export function dadosDoCarne(
     | "late_fee_percent"
     | "interest_percent"
   >,
-  boletos: CarneParaPdf["boletos"]
+  boletos: RentalBoleto[],
+  baixas: BaixaDoMes[] = []
 ): CarneParaPdf {
   const endereco = enderecoCurto(contrato);
   return {
@@ -73,7 +83,22 @@ export function dadosDoCarne(
     imovel: `nº ${contrato.property_code}${endereco ? ` · ${endereco}` : ""}`,
     multa: Number(contrato.late_fee_percent ?? MULTA_PADRAO),
     juros: Number(contrato.interest_percent ?? JUROS_PADRAO),
-    boletos: [...boletos].sort((a, b) => a.due_date.localeCompare(b.due_date)),
+    boletos: [...boletos]
+      .sort((a, b) => a.due_date.localeCompare(b.due_date))
+      .map((b) => ({
+        competencia: b.competencia,
+        due_date: b.due_date,
+        amount: b.amount,
+        cora_status: b.cora_status,
+        cora_invoice_id: b.cora_invoice_id,
+        digitable_line: b.digitable_line,
+        barcode: b.barcode,
+        our_number: b.our_number,
+        pix_emv: b.pix_emv,
+        avulso: b.avulso,
+        descricao: b.descricao,
+        quitado: quitacaoDoBoleto(b, baixas),
+      })),
   };
 }
 
@@ -163,7 +188,33 @@ export async function gerarCarnePdf(c: CarneParaPdf): Promise<File> {
     doc.setDrawColor(190);
     doc.line(x + 3, y + 32.5, x + largura - 3, y + 32.5);
 
-    if (banco) {
+    if (b.quitado) {
+      // ── já pago: o recibo, sem código de barras nem Pix (não pagar de novo) ──
+      const sx = x + largura / 2;
+      const sy = y + 38;
+      doc.setDrawColor(22, 128, 61);
+      doc.setLineWidth(0.8);
+      doc.roundedRect(sx - 32, sy, 64, 16, 2, 2);
+      doc.setTextColor(22, 128, 61);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      doc.text("QUITADO", sx, sy + 11, { align: "center" });
+      doc.setFontSize(9.5);
+      doc.text(
+        b.quitado.em ? `Pago em ${formatDate(b.quitado.em)}` : "Pagamento recebido",
+        sx,
+        sy + 23,
+        { align: "center" }
+      );
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(70);
+      doc.text("Esta parcela já foi paga à PRODUMAR. Não é preciso pagar de novo.", sx, sy + 29, {
+        align: "center",
+      });
+      doc.setTextColor(15);
+      doc.setDrawColor(30);
+    } else if (banco) {
       // ── linha digitável, código de barras e Pix ──
       const temQr = !!b.pix_emv;
       const larguraTexto = temQr ? largura - 46 : largura - 8;

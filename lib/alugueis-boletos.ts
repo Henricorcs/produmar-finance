@@ -1,6 +1,32 @@
 import { localDateISO } from "./utils";
 import { vencimentoDoMes } from "./alugueis";
-import type { RentalBoleto, RentalBoletoStatus, RentalContract } from "./types";
+import type { RentalBoleto, RentalBoletoStatus, RentalContract, RentalPayment } from "./types";
+
+/** A baixa de um mês dada na tela de Aluguéis (rental_payments). */
+export type BaixaDoMes = Pick<RentalPayment, "contract_id" | "competencia" | "amount" | "paid_at" | "paid_amount">;
+
+/** O boleto quitado: `em` é o dia do pagamento (null se o banco não disse). */
+export type Quitacao = { em: string | null };
+
+/**
+ * O boleto já foi pago? Vale o pago no banco (Cora) e a mensalidade com a
+ * BAIXA COMPLETA dada no sistema — o inquilino pagou direto (Pix, dinheiro),
+ * e o boleto continua "no sistema" porque a baixa fica no mês, não nele.
+ * Baixa parcial não quita.
+ */
+export function quitacaoDoBoleto(
+  b: Pick<RentalBoleto, "contract_id" | "competencia" | "cora_status" | "paid_at" | "avulso">,
+  baixas: BaixaDoMes[]
+): Quitacao | null {
+  if (b.cora_status === "CANCELLED") return null;
+  if (b.cora_status === "PAID") return { em: b.paid_at };
+  if (boletoAvulso(b)) return null;
+  const baixa = baixas.find(
+    (p) => p.contract_id === b.contract_id && p.competencia === b.competencia && !!p.paid_at
+  );
+  if (!baixa || Number(baixa.paid_amount) + 0.009 < Number(baixa.amount)) return null;
+  return { em: baixa.paid_at };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OS BOLETOS DO CONTRATO DE ALUGUEL

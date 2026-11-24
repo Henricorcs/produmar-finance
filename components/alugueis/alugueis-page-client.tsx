@@ -24,7 +24,7 @@ import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
 import { COBRANCA_META, cobrancasDoMes, type CobrancaDoMes } from "@/lib/alugueis";
 import { enderecoCurto } from "@/lib/alugueis-contrato";
-import { boletoEmAberto, boletoNoBanco } from "@/lib/alugueis-boletos";
+import { boletoEmAberto, boletoNoBanco, type BaixaDoMes } from "@/lib/alugueis-boletos";
 import { actionError } from "@/lib/action-result";
 import { conferirPagamentosNoBanco } from "@/app/(app)/alugueis/actions";
 import {
@@ -76,6 +76,8 @@ interface Props {
   /** Anexos de mobília do contrato de aluguel (migration 151) — o mais novo primeiro. */
   anexos?: RentalFurnitureAnnex[];
   anexosPendente?: boolean;
+  /** Todas as baixas dadas (de qualquer mês): o boleto pago direto sai quitado. */
+  baixas?: BaixaDoMes[];
   month: string;
   migrationPendente?: boolean;
 }
@@ -112,6 +114,7 @@ export function AlugueisPageClient({
   boletosPendente = false,
   anexos = [],
   anexosPendente = false,
+  baixas = [],
   month,
   migrationPendente = false,
 }: Props) {
@@ -614,6 +617,7 @@ export function AlugueisPageClient({
       <BoletosDialog
         contrato={boletosDe ? contracts.find((c) => c.id === boletosDe) ?? null : null}
         boletos={boletos.filter((b) => b.contract_id === boletosDe)}
+        baixas={baixas.filter((p) => p.contract_id === boletosDe)}
         mensagem={recadoBoletos}
         pendente={boletosPendente}
         onClose={() => setBoletosDe(null)}

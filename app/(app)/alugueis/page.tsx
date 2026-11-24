@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { AlugueisPageClient } from "@/components/alugueis/alugueis-page-client";
+import type { BaixaDoMes } from "@/lib/alugueis-boletos";
 import type {
   PowerOfAttorney,
   PropertyBuyer,
@@ -37,7 +38,7 @@ export default async function AlugueisPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes, assinadosRes, boletosRes, anexosRes] =
+  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes, assinadosRes, boletosRes, anexosRes, baixasRes] =
     await Promise.all([
     supabase.from("rental_properties").select("*").order("code"),
     supabase.from("v_rental_contracts").select("*").order("property_code"),
@@ -78,6 +79,11 @@ export default async function AlugueisPage({
       .select("*")
       .order("created_at", { ascending: false })
       .limit(500),
+    // todas as baixas dadas: o boleto do mês pago direto aparece quitado
+    supabase
+      .from("rental_payments")
+      .select("contract_id, competencia, amount, paid_at, paid_amount")
+      .not("paid_at", "is", null),
   ]);
 
   const templates = (templateRes.data as RentalContractTemplate[]) ?? [];
@@ -98,6 +104,7 @@ export default async function AlugueisPage({
       )}
       boletos={(boletosRes.data as RentalBoleto[]) ?? []}
       boletosPendente={!!boletosRes.error}
+      baixas={(baixasRes.data as BaixaDoMes[]) ?? []}
       anexos={(anexosRes.data as RentalFurnitureAnnex[]) ?? []}
       anexosPendente={!!anexosRes.error}
       month={month}

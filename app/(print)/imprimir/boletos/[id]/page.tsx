@@ -11,8 +11,10 @@ import {
   boletoNoBanco,
   boletoAvulso,
   linhaDigitavelFormatada,
+  quitacaoDoBoleto,
   rotuloDoTitulo,
   tituloDoBoleto,
+  type BaixaDoMes,
 } from "@/lib/alugueis-boletos";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { CarneBarra } from "@/components/alugueis/carne-barra";
@@ -39,16 +41,26 @@ export default async function ImprimirBoletosPage({
   const userId = await getCurrentUserId();
   if (!userId) redirect("/login");
 
-  const [contratoRes, boletosRes] = await Promise.all([
+  const [contratoRes, boletosRes, baixasRes] = await Promise.all([
     supabase.from("v_rental_contracts").select("*").eq("id", params.id).single(),
     supabase.from("rental_boletos").select("*").eq("contract_id", params.id).order("due_date"),
+    // as baixas dadas na tela: a parcela paga sai QUITADA
+    supabase
+      .from("rental_payments")
+      .select("contract_id, competencia, amount, paid_at, paid_amount")
+      .eq("contract_id", params.id),
   ]);
 
   const contrato = contratoRes.data as RentalContractView | null;
+  const baixas = (baixasRes.data as BaixaDoMes[]) ?? [];
   const boletos = ((boletosRes.data as RentalBoleto[]) ?? []).filter(
-    // sem ?b: o carnê das mensalidades (o avulso sai pelo botão dele)
-    (b) => boletoEmAberto(b) && (searchParams.b ? b.id === searchParams.b : !boletoAvulso(b))
+    // em aberto ou já quitado (sai marcado); sem ?b: o carnê das mensalidades
+    // (o avulso sai pelo botão dele)
+    (b) =>
+      (boletoEmAberto(b) || !!quitacaoDoBoleto(b, baixas)) &&
+      (searchParams.b ? b.id === searchParams.b : !boletoAvulso(b))
   );
+  const quitado = boletos.map((b) => quitacaoDoBoleto(b, baixas));
 
   if (!contrato || boletos.length === 0) {
     return (
@@ -66,8 +78,8 @@ export default async function ImprimirBoletosPage({
   }
 
   const qrs = await Promise.all(
-    boletos.map((b) =>
-      b.pix_emv ? QRCode.toString(b.pix_emv, { type: "svg", margin: 0, errorCorrectionLevel: "M" }) : null
+    boletos.map((b, i) =>
+      b.pix_emv && !quitado[i] ? QRCode.toString(b.pix_emv, { type: "svg", margin: 0, errorCorrectionLevel: "M" }) : null
     )
   );
 
@@ -96,7 +108,7 @@ export default async function ImprimirBoletosPage({
             ? `Boleto · ${tituloDoBoleto(boletos[0])} · ${contrato.tenant_name}`
             : `Carnê · ${contrato.tenant_name} · ${boletos.length} boleto(s)`
         }
-        carne={dadosDoCarne(contrato, boletos)}
+        carne={dadosDoCarne(contrato, boletos, baixas)}
       />
 
       <div className="folha max-w-[794px] mx-auto my-6 bg-white shadow-xl p-6 print:p-0">
@@ -144,7 +156,20 @@ export default async function ImprimirBoletosPage({
                 </div>
               </div>
 
-              {!boletoNoBanco(b) ? (
+              {quitado[i] ? (
+                // já pago: o recibo, sem código de barras nem Pix (não pagar de novo)
+                <div className="pt-3 pb-1 flex flex-col items-center text-center">
+                  <p className="border-[3px] border-green-700 text-green-700 rounded-md px-6 py-0.5 text-2xl font-black tracking-widest">
+                    QUITADO
+                  </p>
+                  <p className="mt-1 text-[12px] font-bold text-green-700">
+                    {quitado[i]!.em ? `Pago em ${formatDate(quitado[i]!.em!)}` : "Pagamento recebido"}
+                  </p>
+                  <p className="text-[10px] text-slate-600">
+                    Esta parcela já foi paga à PRODUMAR. Não é preciso pagar de novo.
+                  </p>
+                </div>
+              ) : !boletoNoBanco(b) ? (
                 <div className="pt-2 space-y-2 text-[11px]">
                   <p className="text-[10px] text-slate-600 leading-snug">
                     Pagamento direto à PRODUMAR (Pix, transferência ou dinheiro). Depois do vencimento: multa de{" "}
@@ -180,7 +205,7 @@ export default async function ImprimirBoletosPage({
               </div>
               )}
             </div>
-            {b.pdf_url && (
+            {b.pdf_url && !quitado[i] && (
               <a
                 href={b.pdf_url}
                 target="_blank"
