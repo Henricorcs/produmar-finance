@@ -16,7 +16,11 @@ function limpar(t: string): string {
     .replace(/[^\x00-\xFF]/g, "");
 }
 
-export async function gerarAnexoMobiliaPdf(a: AnexoMontado): Promise<File> {
+/**
+ * `carimbos`: o texto "Assinado digitalmente…" de cada linha de assinatura
+ * (na ordem: locador, locatário), quando vier do Assinar com certificado.
+ */
+export async function gerarAnexoMobiliaPdf(a: AnexoMontado, carimbos?: (string[] | null)[]): Promise<File> {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
@@ -143,18 +147,45 @@ export async function gerarAnexoMobiliaPdf(a: AnexoMontado): Promise<File> {
   }
 
   // ── Local, data e assinaturas (juntos, na mesma página) ──────────────────
-  const espacoAssinatura = 16;
-  const alturaFim = linha * 3 + a.assinaturas.length * (espacoAssinatura + 9);
+  const larguraAssinatura = 110;
+
+  /** As linhas do carimbo já quebradas na largura (a 2ª, o nome, em negrito). */
+  function linhasDoCarimbo(texto: string[] | null | undefined) {
+    if (!texto?.length) return [];
+    return texto.flatMap((t, j) => {
+      doc.setFont("helvetica", j === 1 ? "bold" : "normal");
+      doc.setFontSize(j === 1 ? 9 : 8);
+      return (doc.splitTextToSize(limpar(t), larguraAssinatura + 26) as string[]).map((l) => ({ l, j }));
+    });
+  }
+  const carimbados = a.assinaturas.map((_, i) => linhasDoCarimbo(carimbos?.[i]));
+  doc.setFontSize(fonte);
+
+  // sem carimbo, 1,6 cm para a caneta; com carimbo, o espaço que ele pede
+  const espacoDe = (i: number) => (carimbados[i].length ? Math.max(16, 6 + carimbados[i].length * 4) : 16);
+  const alturaFim = linha * 3 + a.assinaturas.reduce((t, _, i) => t + espacoDe(i) + 9, 0);
   y += linha;
   cabe(alturaFim);
   doc.setFont("helvetica", "bold");
   doc.text(limpar(a.localEData), meio, y, { align: "center" });
   y += linha;
 
-  const larguraAssinatura = 110;
   doc.setLineWidth(0.3);
-  for (const s of a.assinaturas) {
-    y += espacoAssinatura;
+  for (const [i, s] of a.assinaturas.entries()) {
+    y += espacoDe(i);
+    const carimbo = carimbados[i];
+    if (carimbo.length) {
+      // o texto em azul logo acima da linha, como nos contratos
+      const topo = y - carimbo.length * 4 - 1;
+      doc.setTextColor(30, 90, 160);
+      carimbo.forEach(({ l, j }, k) => {
+        doc.setFont("helvetica", j === 1 ? "bold" : "normal");
+        doc.setFontSize(j === 1 ? 9 : 8);
+        doc.text(l, meio, topo + 3 + k * 4, { align: "center" });
+      });
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(fonte);
+    }
     doc.line(meio - larguraAssinatura / 2, y, meio + larguraAssinatura / 2, y);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);

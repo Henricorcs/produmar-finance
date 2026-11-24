@@ -1474,6 +1474,8 @@ export async function salvarAnexoMobilia(
   if (id) {
     const { error } = await supabase.from("rental_furniture_annexes").update(anexoRow(input)).eq("id", id);
     if (error) return { error: anexoError(error) };
+    // editado: o PDF assinado tem a lista antiga
+    await descartarAssinatura("anexo_mobilia", id);
     revalidate();
     return { ok: true, id };
   }
@@ -1492,6 +1494,7 @@ export async function apagarAnexoMobilia(id: string) {
   const supabase = createClient();
   const { error } = await supabase.from("rental_furniture_annexes").delete().eq("id", id);
   if (error) return { error: anexoError(error) };
+  await descartarAssinatura("anexo_mobilia", id);
   revalidate();
   return { ok: true };
 }

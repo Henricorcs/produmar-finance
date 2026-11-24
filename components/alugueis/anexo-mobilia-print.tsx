@@ -4,7 +4,10 @@ import { useMemo } from "react";
 import { montarAnexo, type AnexoParaFolha, type Trecho } from "@/lib/anexo-mobilia";
 import { gerarAnexoMobiliaPdf } from "@/lib/anexo-mobilia-pdf";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
-import type { RentalContractView } from "@/lib/types";
+import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
+import { FaixaAssinado, baixarAssinado } from "@/components/ui/faixa-assinado";
+import { FolhasDoPdfAssinado } from "@/components/ui/visualizar-pdf";
+import type { DocumentoAssinado, RentalContractView } from "@/lib/types";
 
 /**
  * O ANEXO DE MOBÍLIA IMPRESSO — a folha do modelo do Word (com a moldura),
@@ -14,10 +17,16 @@ export function AnexoMobiliaPrint({
   anexo,
   contrato,
   modeloAluguel,
+  anexoId,
+  assinado = null,
 }: {
   anexo: AnexoParaFolha;
   contrato: RentalContractView;
   modeloAluguel: string | null;
+  /** O id do anexo guardado: é nele que o PDF assinado fica. */
+  anexoId: string;
+  /** O PDF assinado com certificado guardado (123). */
+  assinado?: DocumentoAssinado | null;
 }) {
   const a = useMemo(() => montarAnexo(anexo, contrato, modeloAluguel), [anexo, contrato, modeloAluguel]);
 
@@ -51,7 +60,17 @@ export function AnexoMobiliaPrint({
           >
             ← Voltar
           </button>
-          <CompartilharPdf variante="barra" chave={JSON.stringify(a)} gerar={() => gerarAnexoMobiliaPdf(a)} />
+          <CompartilharPdf
+            variante="barra"
+            chave={assinado ? assinado.url : JSON.stringify(a)}
+            gerar={() => (assinado ? baixarAssinado(assinado.url, a.nomeArquivo) : gerarAnexoMobiliaPdf(a))}
+          />
+          <AssinarComCertificado
+            assinaturas={a.assinaturas}
+            gerar={(carimbos) => gerarAnexoMobiliaPdf(a, carimbos)}
+            testemunhas={false}
+            documento={{ tipo: "anexo_mobilia", id: anexoId }}
+          />
           <button
             onClick={() => window.print()}
             className="bg-white text-produmar-700 font-semibold text-sm px-3 py-1.5 rounded-lg shadow hover:bg-produmar-50 transition-colors"
@@ -63,9 +82,16 @@ export function AnexoMobiliaPrint({
 
       <div className="no-print" style={{ height: "calc(4.5rem + env(safe-area-inset-top))" }} />
 
-      <div className="doc max-w-[794px] mx-auto my-6 shadow-xl p-3">
-        <FolhaDoAnexo a={a} />
-      </div>
+      {assinado && <FaixaAssinado assinado={assinado} />}
+
+      {/* A folha — assinada, é o próprio PDF assinado (o Imprimir imprime ele) */}
+      {assinado ? (
+        <FolhasDoPdfAssinado url={assinado.url} />
+      ) : (
+        <div className="doc max-w-[794px] mx-auto my-6 shadow-xl p-3">
+          <FolhaDoAnexo a={a} />
+        </div>
+      )}
     </>
   );
 }

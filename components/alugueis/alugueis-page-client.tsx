@@ -563,6 +563,7 @@ export function AlugueisPageClient({
       ) : aba === "mobilia" ? (
         <AnexosLista
           anexos={anexos}
+          assinados={assinados}
           contratos={contracts}
           busca={search}
           pendente={anexosPendente}
@@ -671,12 +672,15 @@ function semAcento(texto: string): string {
  */
 function AnexosLista({
   anexos,
+  assinados,
   contratos,
   busca,
   pendente,
   onAbrir,
 }: {
   anexos: RentalFurnitureAnnex[];
+  /** "anexo_mobilia:<id>" dos que têm o PDF assinado guardado. */
+  assinados: string[];
   contratos: RentalContractView[];
   busca: string;
   pendente: boolean;
@@ -827,6 +831,7 @@ function AnexosLista({
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   {itens.length} {itens.length === 1 ? "item" : "itens"}
                   {a.signed_at ? ` · assinatura em ${formatDate(a.signed_at)}` : ""}
+                  <SeloAssinado ok={assinados.includes(`anexo_mobilia:${a.id}`)} />
                 </p>
                 <div className="flex items-center gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
                   <button

@@ -2826,7 +2826,7 @@ export interface PropertyBuyer {
 }
 
 /** Os documentos que podem ser assinados com certificado (migration 123). */
-export type TipoDocumentoAssinavel = "aluguel" | "compra_venda" | "procuracao" | "confissao_divida";
+export type TipoDocumentoAssinavel = "aluguel" | "compra_venda" | "procuracao" | "confissao_divida" | "anexo_mobilia";
 
 /** O PDF assinado guardado de um contrato/procuração (migration 123). */
 export interface DocumentoAssinado {

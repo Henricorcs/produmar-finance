@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { PerguntaDoPasso, RevisaoDosPassos, usePassoAPasso, type PassoDef } from "@/components/ui/passo-a-passo";
 import { CompartilharPdf } from "@/components/ui/compartilhar-pdf";
+import { AssinarComCertificado } from "@/components/ui/assinar-com-certificado";
 import { actionError } from "@/lib/action-result";
 import { cn, formatBRL, formatBRLInput, localDateISO } from "@/lib/utils";
 import { apagarAnexoMobilia, salvarAnexoMobilia } from "@/app/(app)/alugueis/actions";
@@ -382,6 +383,15 @@ function AnexoPronto({
       </div>
 
       <CompartilharPdf chave={id + JSON.stringify(montado)} gerar={() => gerarAnexoMobiliaPdf(montado)} />
+
+      {/* só aparece para admin com certificado guardado */}
+      <AssinarComCertificado
+        variante="bloco"
+        assinaturas={montado.assinaturas}
+        gerar={(carimbos) => gerarAnexoMobiliaPdf(montado, carimbos)}
+        testemunhas={false}
+        documento={{ tipo: "anexo_mobilia", id }}
+      />
 
       <a
         href={`/imprimir/anexo-mobilia/${id}`}

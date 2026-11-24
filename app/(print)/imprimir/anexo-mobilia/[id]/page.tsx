@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/auth";
 import { AnexoMobiliaPrint } from "@/components/alugueis/anexo-mobilia-print";
 import { itensValidos } from "@/lib/anexo-mobilia";
+import { documentoAssinado } from "@/lib/documentos-assinados";
 import type { RentalContractTemplate, RentalContractView, RentalFurnitureAnnex } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -43,11 +44,15 @@ export default async function ImprimirAnexoMobiliaPage({ params }: { params: { i
     );
   }
 
+  const assinado = await documentoAssinado(supabase, "anexo_mobilia", anexo.id);
+
   return (
     <AnexoMobiliaPrint
       anexo={{ ...anexo, items: itensValidos(anexo.items) }}
       contrato={contrato}
       modeloAluguel={modelo?.body ?? null}
+      anexoId={anexo.id}
+      assinado={assinado}
     />
   );
 }

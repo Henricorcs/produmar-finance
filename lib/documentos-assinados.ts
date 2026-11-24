@@ -12,7 +12,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { removerArquivos, uploadBytes, urlDoArquivo } from "@/lib/storage";
 import type { DocumentoAssinado, TipoDocumentoAssinavel } from "@/lib/types";
 
-export const TIPOS_ASSINAVEIS: TipoDocumentoAssinavel[] = ["aluguel", "compra_venda", "procuracao", "confissao_divida"];
+export const TIPOS_ASSINAVEIS: TipoDocumentoAssinavel[] = [
+  "aluguel",
+  "compra_venda",
+  "procuracao",
+  "confissao_divida",
+  "anexo_mobilia",
+];
 
 /** O PDF assinado do documento, se tiver (lido com o login de quem abriu). */
 export async function documentoAssinado(
