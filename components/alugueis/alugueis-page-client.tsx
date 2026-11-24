@@ -135,6 +135,7 @@ export function AlugueisPageClient({
   const [editProcuracao, setEditProcuracao] = useState<PowerOfAttorney | null>(null);
   const [anexoOpen, setAnexoOpen] = useState(false);
   const [editAnexo, setEditAnexo] = useState<RentalFurnitureAnnex | null>(null);
+  const [contratoDoAnexo, setContratoDoAnexo] = useState<string | null>(null);
   // os boletos de qual contrato estão abertos, e o recado de quando acabou de salvar
   const [boletosDe, setBoletosDe] = useState<string | null>(null);
   const [recadoBoletos, setRecadoBoletos] = useState<string | null>(null);
@@ -565,8 +566,9 @@ export function AlugueisPageClient({
           contratos={contracts}
           busca={search}
           pendente={anexosPendente}
-          onAbrir={(a) => {
+          onAbrir={(a, contratoId = null) => {
             setEditAnexo(a);
+            setContratoDoAnexo(a ? null : contratoId);
             setAnexoOpen(true);
           }}
         />
@@ -649,9 +651,18 @@ export function AlugueisPageClient({
         anexos={anexos}
         contratos={contracts}
         modeloAluguel={template?.body ?? null}
+        contratoInicial={contratoDoAnexo}
       />
     </div>
   );
+}
+
+/** Para a busca: maiúsculo e sem acento ("Ana" acha "ANÁ"). */
+function semAcento(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase();
 }
 
 /**
@@ -669,18 +680,47 @@ function AnexosLista({
   contratos: RentalContractView[];
   busca: string;
   pendente: boolean;
-  onAbrir: (a: RentalFurnitureAnnex | null) => void;
+  /** `contratoId`: anexo novo que já começa com esse contrato (veio da busca). */
+  onAbrir: (a: RentalFurnitureAnnex | null, contratoId?: string | null) => void;
 }) {
   const contratoDe = (a: RentalFurnitureAnnex) => contratos.find((c) => c.id === a.contract_id) ?? null;
-  const q = busca.trim().toUpperCase();
+  const q = semAcento(busca.trim());
   const visiveis = q
     ? anexos.filter((a) => {
         const c = contratoDe(a);
-        return `${c?.tenant_name ?? ""} ${c?.property_code ?? ""} ${c?.property_street ?? ""} ${a.property_label ?? ""}`
-          .toUpperCase()
-          .includes(q);
+        return semAcento(
+          `${c?.tenant_name ?? ""} ${c?.property_code ?? ""} ${c?.property_street ?? ""} ${a.property_label ?? ""}`
+        ).includes(q);
       })
     : anexos;
+
+  /** O anexo mais novo de cada contrato: o inquilino achado abre o que já tem. */
+  const anexoDoContrato = new Map<string, RentalFurnitureAnnex>();
+  for (const a of anexos) {
+    const atual = anexoDoContrato.get(a.contract_id);
+    if (!atual || (a.created_at ?? "") > (atual.created_at ?? "")) anexoDoContrato.set(a.contract_id, a);
+  }
+
+  /**
+   * Digitou na busca: os inquilinos já cadastrados (pelo nome, nº ou rua do
+   * contrato de aluguel) aparecem para escolher com um toque — os ativos primeiro.
+   */
+  const achados = q
+    ? contratos
+        .filter(
+          (c) =>
+            semAcento(`${c.tenant_name ?? ""} ${c.property_name ?? ""} ${c.property_street ?? ""}`).includes(q) ||
+            String(c.property_code) === q
+        )
+        .sort((a, b) =>
+          a.status === b.status
+            ? (a.tenant_name ?? "").localeCompare(b.tenant_name ?? "", "pt-BR")
+            : a.status === "ativo"
+              ? -1
+              : 1
+        )
+        .slice(0, 12)
+    : [];
 
   return (
     <>
@@ -698,15 +738,58 @@ function AnexosLista({
         </Button>
       </div>
 
-      {visiveis.length === 0 ? (
-        <div className="text-center py-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-          <Sofa className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 px-6">
-            {anexos.length === 0
-              ? "Nenhum anexo ainda. Para casa ou kitnet mobiliada: escolha o contrato de aluguel e confira a lista de móveis e eletrodomésticos."
-              : "Nenhum anexo com esse filtro."}
+      {q && (
+        <div className="rounded-xl border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+          <p className="px-3 pt-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            Inquilinos cadastrados
           </p>
+          {achados.length === 0 ? (
+            <p className="px-3 pb-3 text-sm text-slate-500 dark:text-slate-400">
+              Nenhum contrato de aluguel com esse nome.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {achados.map((c) => {
+                const jaTem = anexoDoContrato.get(c.id) ?? null;
+                return (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() => onAbrir(jaTem, c.id)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-produmar-50 active:bg-produmar-50 dark:hover:bg-slate-800"
+                    >
+                      <CodigoDoImovel code={c.property_code} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                          {c.tenant_name}
+                        </span>
+                        <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                          {enderecoCurto(c) || c.property_name || "Sem endereço"}
+                          {c.status !== "ativo" ? " · contrato encerrado" : ""}
+                        </span>
+                      </span>
+                      <span className="flex-shrink-0 text-[11px] font-medium text-produmar-600 dark:text-produmar-400">
+                        {jaTem ? "Abrir anexo" : "Fazer anexo"}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
+      )}
+
+      {visiveis.length === 0 ? (
+        !q && (
+          <div className="text-center py-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+            <Sofa className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 px-6">
+              Nenhum anexo ainda. Para casa ou kitnet mobiliada: escolha o contrato de aluguel e confira a lista de
+              móveis e eletrodomésticos.
+            </p>
+          </div>
+        )
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {visiveis.map((a) => {

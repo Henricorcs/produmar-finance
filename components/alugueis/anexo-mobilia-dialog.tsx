@@ -75,19 +75,40 @@ interface Props {
   contratos: RentalContractView[];
   /** O modelo do contrato de aluguel em uso: dele sai a qualificação do locador. */
   modeloAluguel: string | null;
+  /** Anexo novo que já começa com este contrato (escolhido pela busca da tela). */
+  contratoInicial?: string | null;
 }
 
-export function AnexoMobiliaDialog({ open, onClose, anexo, anexos, contratos, modeloAluguel }: Props) {
+export function AnexoMobiliaDialog({
+  open,
+  onClose,
+  anexo,
+  anexos,
+  contratos,
+  modeloAluguel,
+  contratoInicial = null,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [dados, setDados] = useState<Dados>(() => dadosIniciais(null));
   const [salvo, setSalvo] = useState<string | null>(null);
 
+  /** O contrato que veio da busca (só num anexo novo). */
+  const contratoDaBusca = !anexo && contratoInicial ? contratos.find((c) => c.id === contratoInicial) ?? null : null;
+
   useEffect(() => {
     if (!open) return;
-    setDados(dadosIniciais(anexo));
+    const inicio = dadosIniciais(anexo);
+    if (contratoDaBusca) {
+      inicio.contrato = contratoDaBusca.id;
+      inicio.property_label = rotuloDoImovel(contratoDaBusca);
+      inicio.mobilias = JSON.stringify(mobiliaDoImovel(contratoDaBusca) ?? MOBILIAS_DO_MODELO);
+    }
+    setDados(inicio);
     setErro(null);
     setSalvo(null);
+    // abrir o diálogo é o gatilho; o contrato da busca vem junto com ele
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, anexo]);
 
   const contrato = contratos.find((c) => c.id === dados.contrato) ?? null;
@@ -186,6 +207,13 @@ export function AnexoMobiliaDialog({ open, onClose, anexo, anexos, contratos, mo
 
   const fluxo = usePassoAPasso(passos, dados, open, !!anexo);
   const { passo, idx } = fluxo;
+
+  // o contrato já veio escolhido pela busca: começa na pergunta seguinte
+  // (fica depois do usePassoAPasso, que ao abrir volta para a primeira)
+  useEffect(() => {
+    if (open && contratoDaBusca) fluxo.irPara("property_label");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const paraFolha = () => ({
     property_label: dados.property_label,
