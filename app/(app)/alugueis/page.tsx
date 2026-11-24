@@ -7,6 +7,7 @@ import type {
   RentalBoleto,
   RentalContractTemplate,
   RentalContractView,
+  RentalFurnitureAnnex,
   RentalPayment,
   RentalProperty,
 } from "@/lib/types";
@@ -36,7 +37,7 @@ export default async function AlugueisPage({
   const startDate = `${month}-01`;
   const endDate = new Date(year, monthNum, 0).toISOString().split("T")[0];
 
-  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes, assinadosRes, boletosRes] =
+  const [propertiesRes, contractsRes, paymentsRes, templateRes, vendasRes, compradoresRes, procuracoesRes, assinadosRes, boletosRes, anexosRes] =
     await Promise.all([
     supabase.from("rental_properties").select("*").order("code"),
     supabase.from("v_rental_contracts").select("*").order("property_code"),
@@ -71,6 +72,12 @@ export default async function AlugueisPage({
     supabase.from("signed_documents").select("doc_type, doc_id"),
     // os boletos do aluguel emitidos na Cora (129 — sem ela, nenhum)
     supabase.from("rental_boletos").select("*").neq("cora_status", "CANCELLED").order("due_date"),
+    // anexos de mobília (151 — sem ela a aba abre com o aviso)
+    supabase
+      .from("rental_furniture_annexes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500),
   ]);
 
   const templates = (templateRes.data as RentalContractTemplate[]) ?? [];
@@ -91,6 +98,8 @@ export default async function AlugueisPage({
       )}
       boletos={(boletosRes.data as RentalBoleto[]) ?? []}
       boletosPendente={!!boletosRes.error}
+      anexos={(anexosRes.data as RentalFurnitureAnnex[]) ?? []}
+      anexosPendente={!!anexosRes.error}
       month={month}
       migrationPendente={!!propertiesRes.error}
     />

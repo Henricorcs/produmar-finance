@@ -2749,6 +2749,31 @@ export interface RentalBoleto {
   created_at: string;
 }
 
+/** Um item do anexo de mobília: "Sofá: 02 lugares cinza — Estado: BOM — R$ 700,00". */
+export interface ItemDeMobilia {
+  /** O cômodo em que fica ("SALA DE ESTAR/JANTAR", "COZINHA E ÁREA DE SERVIÇO"...). */
+  comodo: string;
+  nome: string;
+  descricao: string;
+  estado: string;
+  valor: number;
+}
+
+/** O anexo de mobília do contrato de aluguel — imóvel mobiliado (migration 151). */
+export interface RentalFurnitureAnnex {
+  id: string;
+  contract_id: string;
+  /** "KITNET", "CASA"... — o que sai em "o imóvel, KITNET, situado na...". */
+  property_label: string | null;
+  items: ItemDeMobilia[];
+  notes: string | null;
+  city: string | null;
+  signed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** O modelo do contrato, com os campos {{ASSIM}} trocados na impressão. */
 export interface RentalContractTemplate {
   id: string;

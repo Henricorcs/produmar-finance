@@ -44,7 +44,7 @@ export const ASSINA_PELA_PRODUMAR = "NILMA PEREIRA DA COSTA";
  * parágrafo "LOCADOR:" (modelo apagado ou reescrito). CNPJ conferido pelos
  * dígitos verificadores em 16/10/2026.
  */
-const PRODUMAR_PADRAO =
+export const PRODUMAR_PADRAO =
   "PRODUMAR SERVIÇOS LTDA, CNPJ nº 55.837.468/0001-27, situada na Av. Antônia Portela, Nº 40, Centro – São Mateus do Maranhão/MA, Cep.: 65470-000, neste ato representada pela sua sócia administradora Sra. Nilma Pereira da Costa portadora do RG nº 024907792003-6 SSPMA e CPF nº 022843973-60";
 
 const ORDINAIS = [

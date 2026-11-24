@@ -14,6 +14,7 @@ import {
   Printer,
   Receipt,
   Search,
+  Sofa,
   TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,8 @@ import { BoletosDialog } from "./boletos-dialog";
 import { ModeloDialog } from "./modelo-dialog";
 import { CompraVendaDialog } from "./compra-venda-dialog";
 import { ProcuracaoDialog } from "./procuracao-dialog";
+import { AnexoMobiliaDialog } from "./anexo-mobilia-dialog";
+import { itensValidos, totalDaMobilia } from "@/lib/anexo-mobilia";
 import { CodigoDoImovel } from "./alugueis-shared";
 import {
   rentalKindLabel,
@@ -46,6 +49,7 @@ import {
   type RentalBoleto,
   type RentalContractTemplate,
   type RentalContractView,
+  type RentalFurnitureAnnex,
   type RentalPayment,
   type RentalProperty,
 } from "@/lib/types";
@@ -69,17 +73,21 @@ interface Props {
   /** Boletos do aluguel emitidos na Cora, sem os cancelados (129). */
   boletos?: RentalBoleto[];
   boletosPendente?: boolean;
+  /** Anexos de mobília do contrato de aluguel (migration 151) — o mais novo primeiro. */
+  anexos?: RentalFurnitureAnnex[];
+  anexosPendente?: boolean;
   month: string;
   migrationPendente?: boolean;
 }
 
-type Aba = "mes" | "imoveis" | "compra" | "procuracao";
+type Aba = "mes" | "imoveis" | "compra" | "procuracao" | "mobilia";
 
 const ABAS = [
   { value: "mes" as const, label: "Aluguéis do mês" },
   { value: "imoveis" as const, label: "Imóveis" },
   { value: "compra" as const, label: "Compra e venda" },
   { value: "procuracao" as const, label: "Procurações" },
+  { value: "mobilia" as const, label: "Anexo mobília" },
 ];
 
 /**
@@ -102,6 +110,8 @@ export function AlugueisPageClient({
   assinados = [],
   boletos = [],
   boletosPendente = false,
+  anexos = [],
+  anexosPendente = false,
   month,
   migrationPendente = false,
 }: Props) {
@@ -123,6 +133,8 @@ export function AlugueisPageClient({
   const [editCompra, setEditCompra] = useState<PropertySaleContract | null>(null);
   const [procuracaoOpen, setProcuracaoOpen] = useState(false);
   const [editProcuracao, setEditProcuracao] = useState<PowerOfAttorney | null>(null);
+  const [anexoOpen, setAnexoOpen] = useState(false);
+  const [editAnexo, setEditAnexo] = useState<RentalFurnitureAnnex | null>(null);
   // os boletos de qual contrato estão abertos, e o recado de quando acabou de salvar
   const [boletosDe, setBoletosDe] = useState<string | null>(null);
   const [recadoBoletos, setRecadoBoletos] = useState<string | null>(null);
@@ -547,6 +559,17 @@ export function AlugueisPageClient({
             Modelo do contrato
           </button>
         </>
+      ) : aba === "mobilia" ? (
+        <AnexosLista
+          anexos={anexos}
+          contratos={contracts}
+          busca={search}
+          pendente={anexosPendente}
+          onAbrir={(a) => {
+            setEditAnexo(a);
+            setAnexoOpen(true);
+          }}
+        />
       ) : aba === "procuracao" ? (
         <ProcuracoesLista
           procuracoes={procuracoes}
@@ -619,7 +642,136 @@ export function AlugueisPageClient({
         contratos={contracts}
         compras={compras}
       />
+      <AnexoMobiliaDialog
+        open={anexoOpen}
+        onClose={() => setAnexoOpen(false)}
+        anexo={editAnexo}
+        anexos={anexos}
+        contratos={contracts}
+        modeloAluguel={template?.body ?? null}
+      />
     </div>
+  );
+}
+
+/**
+ * Aba ANEXO MOBÍLIA: o imóvel alugado mobiliado. Cada anexo sai do contrato de
+ * aluguel (locatário e imóvel vêm dele) com a lista de móveis e eletrodomésticos.
+ */
+function AnexosLista({
+  anexos,
+  contratos,
+  busca,
+  pendente,
+  onAbrir,
+}: {
+  anexos: RentalFurnitureAnnex[];
+  contratos: RentalContractView[];
+  busca: string;
+  pendente: boolean;
+  onAbrir: (a: RentalFurnitureAnnex | null) => void;
+}) {
+  const contratoDe = (a: RentalFurnitureAnnex) => contratos.find((c) => c.id === a.contract_id) ?? null;
+  const q = busca.trim().toUpperCase();
+  const visiveis = q
+    ? anexos.filter((a) => {
+        const c = contratoDe(a);
+        return `${c?.tenant_name ?? ""} ${c?.property_code ?? ""} ${c?.property_street ?? ""} ${a.property_label ?? ""}`
+          .toUpperCase()
+          .includes(q);
+      })
+    : anexos;
+
+  return (
+    <>
+      {pendente && (
+        <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-400 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>Rode a migration 151 no Supabase para guardar os anexos de mobília.</span>
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => onAbrir(null)}>
+          <Plus className="w-4 h-4" />
+          Novo anexo de mobília
+        </Button>
+      </div>
+
+      {visiveis.length === 0 ? (
+        <div className="text-center py-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+          <Sofa className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 px-6">
+            {anexos.length === 0
+              ? "Nenhum anexo ainda. Para casa ou kitnet mobiliada: escolha o contrato de aluguel e confira a lista de móveis e eletrodomésticos."
+              : "Nenhum anexo com esse filtro."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {visiveis.map((a) => {
+            const c = contratoDe(a);
+            const itens = itensValidos(a.items);
+            const total = totalDaMobilia(itens);
+            return (
+              <div
+                key={a.id}
+                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {c && <CodigoDoImovel code={c.property_code} />}
+                      {a.property_label && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                          {a.property_label}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                      {c?.tenant_name ?? "Contrato apagado"}
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                      {c ? enderecoCurto(c) || c.property_name || "Sem endereço" : "—"}
+                    </p>
+                  </div>
+                  {total > 0 && (
+                    <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100 flex-shrink-0">
+                      {formatBRL(total)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {itens.length} {itens.length === 1 ? "item" : "itens"}
+                  {a.signed_at ? ` · assinatura em ${formatDate(a.signed_at)}` : ""}
+                </p>
+                <div className="flex items-center gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => onAbrir(a)}
+                    className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                  >
+                    <FileSignature className="w-3 h-3" />
+                    Editar
+                  </button>
+                  {c && (
+                    <a
+                      href={`/imprimir/anexo-mobilia/${a.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] font-medium text-produmar-600 dark:text-produmar-400 flex items-center gap-1"
+                    >
+                      <Printer className="w-3 h-3" />
+                      Imprimir
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }
 

@@ -21,7 +21,8 @@ import {
 import { vencimentoDoMes } from "@/lib/alugueis";
 import { conferirBoletosNaCora } from "@/lib/alugueis-baixa-cora";
 import { localDateISO } from "@/lib/utils";
-import type { RentalBoleto, RentalContractStatus, RentalContractView } from "@/lib/types";
+import { itensValidos } from "@/lib/anexo-mobilia";
+import type { ItemDeMobilia, RentalBoleto, RentalContractStatus, RentalContractView } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ALUGUÉIS — imóveis, contratos e a baixa do aluguel de cada mês
@@ -1424,6 +1425,73 @@ export async function apagarProcuracao(id: string) {
   const { error } = await supabase.from("power_of_attorneys").delete().eq("id", id);
   if (error) return { error: procuracaoError(error) };
   await descartarAssinatura("procuracao", id);
+  revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANEXO DE MOBÍLIA — o imóvel mobiliado (migration 151)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AnexoMobiliaInput {
+  contract_id: string;
+  property_label?: string | null;
+  items: ItemDeMobilia[];
+  notes?: string | null;
+  city?: string | null;
+  signed_at?: string | null;
+}
+
+function anexoError(error: { code?: string; message: string }): string {
+  if (error.code === "42P01" || error.code === "42703" || error.message.includes("rental_furniture_annexes"))
+    return "Rode a migration 151 no Supabase para guardar os anexos de mobília";
+  return error.message;
+}
+
+function anexoRow(input: AnexoMobiliaInput) {
+  return {
+    contract_id: input.contract_id,
+    property_label: clean(input.property_label),
+    items: itensValidos(input.items),
+    notes: raw(input.notes),
+    city: raw(input.city),
+    signed_at: input.signed_at?.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function salvarAnexoMobilia(
+  id: string | null,
+  input: AnexoMobiliaInput
+): Promise<{ error: string } | { ok: true; id: string }> {
+  if (!input.contract_id) return { error: "Escolha o contrato de aluguel" };
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Não autenticado" };
+
+  if (id) {
+    const { error } = await supabase.from("rental_furniture_annexes").update(anexoRow(input)).eq("id", id);
+    if (error) return { error: anexoError(error) };
+    revalidate();
+    return { ok: true, id };
+  }
+
+  const { data, error } = await supabase
+    .from("rental_furniture_annexes")
+    .insert({ ...anexoRow(input), created_by: user.id })
+    .select("id")
+    .single();
+  if (error || !data) return { error: anexoError(error ?? { message: "Erro ao salvar" }) };
+  revalidate();
+  return { ok: true, id: data.id as string };
+}
+
+export async function apagarAnexoMobilia(id: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("rental_furniture_annexes").delete().eq("id", id);
+  if (error) return { error: anexoError(error) };
   revalidate();
   return { ok: true };
 }
