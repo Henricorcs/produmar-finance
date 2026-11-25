@@ -101,7 +101,10 @@ export function MedidorDeCerca({ salvas = [] }: { salvas?: Medicao[] }) {
   }
 
   function recomecar() {
-    if (pontos.length > 0 && !confirm("Apagar os pontos marcados e começar uma medida nova?")) return;
+    const pergunta = id
+      ? "Começar uma medida nova? A cerca salva fica como está; só o que mudou agora sem salvar se perde."
+      : "Apagar os pontos marcados e começar uma medida nova?";
+    if (pontos.length > 0 && !confirm(pergunta)) return;
     zerar();
     setAviso(null);
   }
@@ -158,9 +161,16 @@ export function MedidorDeCerca({ salvas = [] }: { salvas?: Medicao[] }) {
   return (
     <div className="space-y-4">
       {aberta && (
-        <p className="rounded-lg border border-produmar-200 bg-produmar-50 px-3 py-2 text-sm text-produmar-700 dark:border-slate-700 dark:bg-slate-800 dark:text-produmar-400">
-          Mexendo na medida salva <span className="font-semibold">{aberta.nome}</span>.
-        </p>
+        <div className="flex items-center gap-2 rounded-lg border border-produmar-200 bg-produmar-50 px-3 py-2 text-sm text-produmar-700 dark:border-slate-700 dark:bg-slate-800 dark:text-produmar-400">
+          <p className="min-w-0 flex-1">
+            Mexendo na medida salva <span className="font-semibold">{aberta.nome}</span>.
+          </p>
+          {/* sai da salva (ela fica como está) e começa uma cerca nova */}
+          <Button type="button" size="sm" variant="outline" className="h-9 shrink-0 bg-white dark:bg-slate-900" onClick={recomecar}>
+            <RotateCcw className="h-4 w-4" />
+            Nova medida
+          </Button>
+        </div>
       )}
 
       {/* O total */}
