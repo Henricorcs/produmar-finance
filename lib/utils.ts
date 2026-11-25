@@ -160,6 +160,14 @@ export function mascaraTelefone(bruto: string): string {
   return `(${ddd}) ${resto.slice(0, corte)}-${resto.slice(corte)}`;
 }
 
+/**
+ * Para as buscas: maiúsculo e sem acento — digitar "joao" acha "JOÃO" e
+ * "Ana" acha "ANÁ". Compare sempre os dois lados passados por aqui.
+ */
+export function paraBusca(texto: string | null | undefined): string {
+  return (texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+}
+
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",

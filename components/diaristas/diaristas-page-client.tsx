@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn, formatBRL, formatDate, getInitials, servicoConta } from "@/lib/utils";
+import { cn, formatBRL, formatDate, getInitials, paraBusca, servicoConta } from "@/lib/utils";
 import { monthKey, monthLabel, monthRange } from "./diarista-shared";
 import { DiaristaDialog } from "./diarista-dialog";
 import { DiaristaDetailDialog } from "./diarista-detail-dialog";
@@ -284,13 +284,12 @@ export function DiaristasPageClient({
   const ativos = diaristas.filter((d) => d.active);
 
   const listados = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = paraBusca(search.trim());
     return diaristas
       .filter((d) => (mostrarArquivados ? true : d.active))
       .filter((d) =>
         q
-          ? d.name.toLowerCase().includes(q) ||
-            (d.profession ?? "").toLowerCase().includes(q)
+          ? paraBusca(`${d.name} ${d.profession ?? ""}`).includes(q)
           : true
       )
       .filter((d) => (tipoFiltro ? (d.worker_type ?? "diarista") === tipoFiltro : true))

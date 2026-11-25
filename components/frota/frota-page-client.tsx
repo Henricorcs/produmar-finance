@@ -17,7 +17,7 @@ import { FilterTabs } from "@/components/ui/filter-tabs";
 import { MonthNav } from "@/components/ui/month-nav";
 import { SummaryStatCard } from "@/components/ui/summary-stat-card";
 import { QuickCreateMachineDialog } from "@/components/operacoes/quick-create-machine-dialog";
-import { cn, formatBRL, formatDate, machineCategoryLabel } from "@/lib/utils";
+import { cn, formatBRL, formatDate, machineCategoryLabel, paraBusca } from "@/lib/utils";
 import { DespesaDialog } from "./despesa-dialog";
 import { RelatorioOsTab } from "./relatorio-os-tab";
 import { RelatorioMensalTab } from "./relatorio-mensal-tab";
@@ -206,15 +206,13 @@ export function FrotaPageClient({
 
   /** Veículo inativo só aparece se ainda teve movimento no mês. */
   const visiveis = useMemo(() => {
-    const q = search.trim().toUpperCase();
+    const q = paraBusca(search.trim());
     return machines.filter((m) => {
       if (!m.active && !fichaPorMaquina.has(m.id)) return false;
       if (categoria !== "todas" && (m.category ?? "outro") !== categoria) return false;
       if (!q) return true;
       return (
-        m.name.toUpperCase().includes(q) ||
-        (m.plate ?? "").toUpperCase().includes(q) ||
-        machineCategoryLabel(m.category).toUpperCase().includes(q)
+        paraBusca(`${m.name} ${m.plate ?? ""} ${machineCategoryLabel(m.category)}`).includes(q)
       );
     });
   }, [machines, search, categoria, fichaPorMaquina]);

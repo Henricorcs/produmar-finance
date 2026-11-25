@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatBRL, formatDate, daysUntil } from "@/lib/utils";
+import { formatBRL, formatDate, daysUntil, paraBusca } from "@/lib/utils";
 import { undoWriteoff } from "@/app/(app)/ferramentas/actions";
 import { ToolDialog } from "./tool-dialog";
 import { CheckoutDialog } from "./checkout-dialog";
@@ -188,15 +188,13 @@ export function FerramentasPageClient({
 
   // ── Filtro da lista de patrimônio ────────────────────────────────────────────
   const filteredTools = useMemo(() => {
-    const q = search.trim().toUpperCase();
+    const q = paraBusca(search.trim());
     return scopedTools.filter((t) => {
       if (statusFilter === "todas" ? t.status === "baixada" : t.status !== statusFilter)
         return false;
       if (!q) return true;
       return (
-        t.name.includes(q) ||
-        (t.code ?? "").includes(q) ||
-        (t.current_borrower ?? "").includes(q)
+        paraBusca(`${t.name} ${t.code ?? ""} ${t.current_borrower ?? ""}`).includes(q)
       );
     });
   }, [scopedTools, search, statusFilter]);

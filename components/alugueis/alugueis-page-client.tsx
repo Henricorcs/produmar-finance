@@ -136,6 +136,8 @@ export function AlugueisPageClient({
   const [editCompra, setEditCompra] = useState<PropertySaleContract | null>(null);
   const [procuracaoOpen, setProcuracaoOpen] = useState(false);
   const [editProcuracao, setEditProcuracao] = useState<PowerOfAttorney | null>(null);
+  /** Procuração nova a partir de quem foi escolhido na busca ("aluguel:<id>" / "venda:<id>"). */
+  const [origemDaProcuracao, setOrigemDaProcuracao] = useState<string | null>(null);
   const [anexoOpen, setAnexoOpen] = useState(false);
   const [editAnexo, setEditAnexo] = useState<RentalFurnitureAnnex | null>(null);
   const [contratoDoAnexo, setContratoDoAnexo] = useState<string | null>(null);
@@ -213,14 +215,14 @@ export function AlugueisPageClient({
   );
 
   const filtradas = useMemo(() => {
-    const q = search.trim().toUpperCase();
+    const q = semAcento(search.trim());
     if (!q) return cobrancas;
     return cobrancas.filter(
       (c) =>
-        c.contract.tenant_name.toUpperCase().includes(q) ||
         String(c.contract.property_code) === q ||
-        (c.contract.property_name ?? "").toUpperCase().includes(q) ||
-        (c.contract.property_street ?? "").toUpperCase().includes(q)
+        semAcento(
+          `${c.contract.tenant_name} ${c.contract.property_name ?? ""} ${c.contract.property_street ?? ""}`
+        ).includes(q)
     );
   }, [cobrancas, search]);
 
@@ -248,16 +250,15 @@ export function AlugueisPageClient({
   }, [contracts]);
 
   const imoveisVisiveis = useMemo(() => {
-    const q = search.trim().toUpperCase();
+    const q = semAcento(search.trim());
     return properties.filter((p) => {
       if (!p.active && !contratoDoImovel.has(p.id)) return false;
       if (!q) return true;
       return (
         String(p.code) === q ||
-        (p.name ?? "").toUpperCase().includes(q) ||
-        (p.street ?? "").toUpperCase().includes(q) ||
-        (p.district ?? "").toUpperCase().includes(q) ||
-        (contratoDoImovel.get(p.id)?.tenant_name ?? "").toUpperCase().includes(q)
+        semAcento(
+          `${p.name ?? ""} ${p.street ?? ""} ${p.district ?? ""} ${contratoDoImovel.get(p.id)?.tenant_name ?? ""}`
+        ).includes(q)
       );
     });
   }, [properties, search, contratoDoImovel]);
@@ -582,8 +583,11 @@ export function AlugueisPageClient({
           assinados={assinados}
           busca={search}
           pendente={procuracaoPendente}
-          onAbrir={(p) => {
+          contratos={contracts}
+          compras={compras}
+          onAbrir={(p, origem = null) => {
             setEditProcuracao(p);
+            setOrigemDaProcuracao(p ? null : origem);
             setProcuracaoOpen(true);
           }}
         />
@@ -648,6 +652,7 @@ export function AlugueisPageClient({
         imoveis={properties}
         contratos={contracts}
         compras={compras}
+        origemInicial={origemDaProcuracao}
       />
       <AnexoMobiliaDialog
         open={anexoOpen}
@@ -668,6 +673,62 @@ function semAcento(texto: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toUpperCase();
+}
+
+/** Um nome já cadastrado que a busca achou. */
+type ItemCadastrado = { chave: string; codigo?: number; nome: string; detalhe: string; acao?: string };
+
+/**
+ * NOMES JÁ CADASTRADOS, logo abaixo da busca: digitou uma letra, quem já está
+ * no sistema aparece para escolher com um toque.
+ */
+function Cadastrados({
+  titulo,
+  vazio,
+  acao,
+  itens,
+  onEscolher,
+}: {
+  titulo: string;
+  vazio: string;
+  /** O que o toque faz (ex.: "Fazer procuração"); cada item pode trocar o seu. */
+  acao: string;
+  itens: ItemCadastrado[];
+  onEscolher: (chave: string) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+      <p className="px-3 pt-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+        {titulo}
+      </p>
+      {itens.length === 0 ? (
+        <p className="px-3 pb-3 text-sm text-slate-500 dark:text-slate-400">{vazio}</p>
+      ) : (
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          {itens.map((it) => (
+            <li key={it.chave}>
+              <button
+                type="button"
+                onClick={() => onEscolher(it.chave)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-produmar-50 active:bg-produmar-50 dark:hover:bg-slate-800"
+              >
+                {it.codigo != null && <CodigoDoImovel code={it.codigo} />}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                    {it.nome}
+                  </span>
+                  <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">{it.detalhe}</span>
+                </span>
+                <span className="flex-shrink-0 text-[11px] font-medium text-produmar-600 dark:text-produmar-400">
+                  {it.acao ?? acao}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -874,26 +935,82 @@ function AnexosLista({
 function ProcuracoesLista({
   procuracoes,
   assinados,
+  contratos,
+  compras,
   busca,
   pendente,
   onAbrir,
 }: {
   procuracoes: PowerOfAttorney[];
   assinados: string[];
+  contratos: RentalContractView[];
+  compras: PropertySaleContract[];
   busca: string;
   pendente: boolean;
-  onAbrir: (p: PowerOfAttorney | null) => void;
+  /** `origem`: procuração nova que já começa com esse outorgante (veio da busca). */
+  onAbrir: (p: PowerOfAttorney | null, origem?: string | null) => void;
 }) {
-  const q = busca.trim().toUpperCase();
+  const q = semAcento(busca.trim());
   const visiveis = q
-    ? procuracoes.filter(
-        (p) =>
-          (p.grantor_name ?? "").toUpperCase().includes(q) ||
-          (p.attorney_name ?? "").toUpperCase().includes(q) ||
-          (p.account_number ?? "").includes(q) ||
-          (p.grantor_street ?? "").toUpperCase().includes(q)
+    ? procuracoes.filter((p) =>
+        semAcento(
+          `${p.grantor_name ?? ""} ${p.attorney_name ?? ""} ${p.account_number ?? ""} ${p.grantor_street ?? ""}`
+        ).includes(q)
       )
     : procuracoes;
+
+  /** Quantas procurações cada outorgante já tem (pelo nome). */
+  const jaTem = (nome: string | null | undefined) =>
+    procuracoes.filter((p) => semAcento(p.grantor_name ?? "") === semAcento(nome ?? "")).length;
+
+  /**
+   * Digitou na busca: os nomes já cadastrados — inquilinos dos aluguéis e
+   * vendedores da compra e venda — aparecem para escolher com um toque; a
+   * procuração nova já sai com o outorgante preenchido.
+   */
+  const achados: ItemCadastrado[] = q
+    ? [
+        ...contratos
+          .filter(
+            (c) =>
+              semAcento(`${c.tenant_name ?? ""} ${c.property_name ?? ""} ${c.property_street ?? ""}`).includes(q) ||
+              String(c.property_code) === q
+          )
+          .sort((a, b) =>
+            a.status === b.status
+              ? (a.tenant_name ?? "").localeCompare(b.tenant_name ?? "", "pt-BR")
+              : a.status === "ativo"
+                ? -1
+                : 1
+          )
+          .map((c) => ({
+            chave: `aluguel:${c.id}`,
+            codigo: c.property_code,
+            nome: c.tenant_name,
+            detalhe: [
+              "Inquilino",
+              enderecoCurto(c) || c.property_name,
+              c.status !== "ativo" ? "contrato encerrado" : null,
+              jaTem(c.tenant_name) ? `já tem ${jaTem(c.tenant_name)} procuração(ões)` : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          })),
+        ...compras
+          .filter((c) => c.seller_name && semAcento(`${c.seller_name} ${enderecoCompra(c)}`).includes(q))
+          .map((c) => ({
+            chave: `venda:${c.id}`,
+            nome: c.seller_name!,
+            detalhe: [
+              "Vendedor",
+              enderecoCompra(c),
+              jaTem(c.seller_name) ? `já tem ${jaTem(c.seller_name)} procuração(ões)` : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          })),
+      ].slice(0, 12)
+    : [];
 
   return (
     <>
@@ -923,16 +1040,32 @@ function ProcuracoesLista({
         </a>
       </div>
 
+      {q && (
+        <Cadastrados
+          titulo="Nomes cadastrados"
+          vazio="Nenhum inquilino ou vendedor com esse nome."
+          acao="Fazer procuração"
+          itens={achados}
+          onEscolher={(chave) => onAbrir(null, chave)}
+        />
+      )}
+
       {visiveis.length === 0 ? (
-        <div className="text-center py-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-          <FileSignature className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 px-6">
-            {procuracoes.length === 0
-              ? "Nenhuma procuração ainda. Use para trocar a titularidade da conta de energia na EQUATORIAL."
-              : "Nenhuma procuração com esse filtro."}
-          </p>
-        </div>
+        !q && (
+          <div className="text-center py-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+            <FileSignature className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 px-6">
+              Nenhuma procuração ainda. Use para trocar a titularidade da conta de energia na EQUATORIAL.
+            </p>
+          </div>
+        )
       ) : (
+        <>
+        {q && (
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            Procurações já feitas
+          </p>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {visiveis.map((p) => (
             <div
@@ -984,6 +1117,7 @@ function ProcuracoesLista({
             </div>
           ))}
         </div>
+        </>
       )}
     </>
   );
@@ -1009,13 +1143,10 @@ function ComprasLista({
   pendente: boolean;
   onAbrir: (c: PropertySaleContract | null) => void;
 }) {
-  const q = busca.trim().toUpperCase();
+  const q = semAcento(busca.trim());
   const visiveis = q
-    ? compras.filter(
-        (c) =>
-          (c.seller_name ?? "").toUpperCase().includes(q) ||
-          enderecoCompra(c).toUpperCase().includes(q) ||
-          (c.property_registration ?? "").toUpperCase().includes(q)
+    ? compras.filter((c) =>
+        semAcento(`${c.seller_name ?? ""} ${enderecoCompra(c)} ${c.property_registration ?? ""}`).includes(q)
       )
     : compras;
 

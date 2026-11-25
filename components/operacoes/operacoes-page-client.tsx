@@ -34,7 +34,7 @@ import {
   deleteServiceOrder,
   updateServiceOrderStatus,
 } from "@/app/(app)/operacoes/actions";
-import { formatBRL, formatDate, localDateISO, osBillingLabel, osStatusLabel, osTypeLabel } from "@/lib/utils";
+import { formatBRL, formatDate, localDateISO, osBillingLabel, osStatusLabel, osTypeLabel, paraBusca } from "@/lib/utils";
 import type {
   Category,
   CostCenter,
@@ -202,7 +202,7 @@ export function OperacoesPageClient({
         result = result.filter((o) => o.status === activeFilter);
       }
     }
-    const q = search.trim().toLowerCase();
+    const q = paraBusca(search.trim());
     if (q) {
       result = result.filter((o) =>
         [
@@ -216,7 +216,7 @@ export function OperacoesPageClient({
           ...o.service_order_items.map((it) => it.description),
         ]
           .filter(Boolean)
-          .some((field) => field!.toString().toLowerCase().includes(q))
+          .some((field) => paraBusca(field!.toString()).includes(q))
       );
     }
     return result;

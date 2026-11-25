@@ -488,6 +488,8 @@ interface Props {
   imoveis?: RentalProperty[];
   /** Contratos de compra e venda: o vendedor vira o outorgante. */
   compras?: PropertySaleContract[];
+  /** Procuração nova que já começa com o outorgante de um contrato ("aluguel:<id>" ou "venda:<id>") — veio da busca. */
+  origemInicial?: string | null;
 }
 
 /** Uma linha da lista "puxar de um contrato". */
@@ -501,6 +503,7 @@ export function ProcuracaoDialog({
   contratos = [],
   imoveis = [],
   compras = [],
+  origemInicial = null,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -510,8 +513,11 @@ export function ProcuracaoDialog({
   useEffect(() => {
     if (!open) return;
     setDados(dadosIniciais(procuracao));
+    // escolhido na busca da aba: o outorgante já entra preenchido
+    if (!procuracao && origemInicial) puxarDoContrato(origemInicial);
     setErro(null);
     setSalva(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, procuracao]);
 
   const outorgados = useMemo(() => outorgadosCadastrados(procuracoes), [procuracoes]);
@@ -587,6 +593,13 @@ export function ProcuracaoDialog({
 
   const fluxo = usePassoAPasso(todosOsPassos, dados, open, !!procuracao);
   const { passo, passos, idx } = fluxo;
+
+  // o outorgante já veio da busca: pula o "puxar de um contrato" e vai para a
+  // pergunta seguinte (fica depois do usePassoAPasso, que ao abrir volta à 1ª)
+  useEffect(() => {
+    if (open && !procuracao && origemInicial) fluxo.irPara("company");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function salvar() {
     setErro(null);

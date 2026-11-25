@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatBRL, formatDate, formatQty } from "@/lib/utils";
+import { formatBRL, formatDate, formatQty, paraBusca } from "@/lib/utils";
 import {
   deleteSupplyMovement,
   getSupplyPhotoUrls,
@@ -231,15 +231,12 @@ export function AlmoxarifadoPageClient({
 
   // ── Filtro da lista ─────────────────────────────────────────────────────────
   const filteredItems = useMemo(() => {
-    const q = search.trim().toUpperCase();
+    const q = paraBusca(search.trim());
     return scopedItems.filter((i) => {
       if (statusFilter !== "todos" && i.status !== statusFilter) return false;
       if (!q) return true;
       return (
-        i.name.includes(q) ||
-        (i.code ?? "").includes(q) ||
-        (i.location ?? "").includes(q) ||
-        (i.category_name ?? "").includes(q)
+        paraBusca(`${i.name} ${i.code ?? ""} ${i.location ?? ""} ${i.category_name ?? ""}`).includes(q)
       );
     });
   }, [scopedItems, search, statusFilter]);

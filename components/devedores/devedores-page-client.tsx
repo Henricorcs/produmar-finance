@@ -18,6 +18,7 @@ import {
   formatBRL,
   formatDate,
   daysUntil,
+  paraBusca,
 } from "@/lib/utils";
 import { LOAN_PAYMENT_METHOD_LABEL } from "@/lib/types";
 import type { Loan } from "@/lib/types";
@@ -131,16 +132,16 @@ export function DevedoresPageClient({ loans, checklists = [], veiculos = [], rgs
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = paraBusca(search.trim());
     return decorated.filter(({ loan, status }) => {
       if (filter && status !== filter) return false;
       if (!q) return true;
       // A busca pega o nome E a forma de pagamento: digitar "pix" separa num
       // toque quem paga por pix, que é como a cobrança se organiza no dia.
       const forma = loan.payment_method
-        ? LOAN_PAYMENT_METHOD_LABEL[loan.payment_method].toLowerCase()
+        ? paraBusca(LOAN_PAYMENT_METHOD_LABEL[loan.payment_method])
         : "";
-      return loan.borrower_name.toLowerCase().includes(q) || forma.includes(q);
+      return paraBusca(loan.borrower_name).includes(q) || forma.includes(q);
     });
   }, [decorated, filter, search]);
 

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { HardHat, Plus, Search, Wallet, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatBRL } from "@/lib/utils";
+import { formatBRL, paraBusca } from "@/lib/utils";
 import { ObraDialog } from "./obra-dialog";
 import { ObraDetailDialog } from "./obra-detail-dialog";
 import { ObrasEstoqueTab } from "./obras-estoque-tab";
@@ -158,15 +158,13 @@ export function ObrasPageClient({
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toUpperCase();
+    const q = paraBusca(search.trim());
     return activeObras.filter((o) => {
       if (statusFilter !== "todas" && o.status !== statusFilter) return false;
       if (!q) return true;
       const client = o.contact_id ? contactsById.get(o.contact_id)?.name ?? "" : "";
       return (
-        o.name.includes(q) ||
-        (o.location ?? "").includes(q) ||
-        client.toUpperCase().includes(q)
+        paraBusca(`${o.name} ${o.location ?? ""} ${client}`).includes(q)
       );
     });
   }, [activeObras, search, statusFilter, contactsById]);
