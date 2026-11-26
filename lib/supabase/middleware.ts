@@ -113,8 +113,10 @@ export async function updateSession(request: NextRequest) {
     // Vaqueiro nível 01: a tela de Animais (só bovinos — o RLS da migration
     // 146 garante) e a impressão da ficha e do relatório do rebanho. Fechado
     // como o da prefeitura: nada de hub, outros módulos ou configurações.
+    // Técnico ABCZ (migration 153): o mesmo caminho, só que a tela abre no
+    // grupo "Gado PO" — e o banco só manda gado PO para ele.
     if (
-      role === "vaqueiro_n1" &&
+      (role === "vaqueiro_n1" || role === "tecnico_abcz") &&
       !(
         path === "/animais" ||
         path.startsWith("/animais/") ||
@@ -204,6 +206,7 @@ export async function updateSession(request: NextRequest) {
       role !== "prefeitura" &&
       role !== "chacaras" &&
       role !== "vaqueiro_n1" &&
+      role !== "tecnico_abcz" &&
       !isPublicRoute
     ) {
       const allowedModules = user.user_metadata?.allowed_modules as string[] | undefined;

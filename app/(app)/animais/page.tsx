@@ -39,6 +39,14 @@ function ehBovino(species?: string | null): boolean {
 }
 
 /**
+ * Raça PO — a mesma regra do ehRacaPO da tela e do nome_de_raca_po do banco
+ * (153). Repetida aqui porque o animal-shared é de cliente.
+ */
+function ehNomePO(raca?: string | null): boolean {
+  return /(^|[\s(])P\.?\s*O\.?($|[\s)])/i.test((raca ?? "").trim());
+}
+
+/**
  * ?tipo=bovino&raca=<id> — o que está escolhido no menu de raças. Fica na URL
  * para a escolha sobreviver ao recarregar a página.
  * ?desmame=1 — veio do sino do topo: abre a lista das crias prontas para desmamar.
@@ -57,8 +65,12 @@ export default async function AnimaisPage({
   const profile = await getProfile();
   // ?ver=vaqueiro_n1 — o admin vê a tela do jeito que o vaqueiro nível 01 vê
   // (o "Ver como ele" de Configurações), sem precisar da senha de ninguém.
-  const previa = profile?.role === "admin" && searchParams.ver === "vaqueiro_n1";
-  const soBovinos = profile?.role === "vaqueiro_n1" || previa;
+  // ?ver=tecnico_abcz — idem para o Técnico ABCZ (153): só o gado PO.
+  const previaPO = profile?.role === "admin" && searchParams.ver === "tecnico_abcz";
+  const previa =
+    (profile?.role === "admin" && searchParams.ver === "vaqueiro_n1") || previaPO;
+  const soPO = profile?.role === "tecnico_abcz" || previaPO;
+  const soBovinos = profile?.role === "vaqueiro_n1" || soPO || previa;
   const nada = Promise.resolve({ data: [] as unknown[] });
 
   const [
@@ -231,6 +243,9 @@ export default async function AnimaisPage({
   // O valor da venda fica fora do que vai para o celular do vaqueiro nível 01.
   const animais = ((animalsRes.data as AnimalWithInfo[]) ?? [])
     .filter((a) => !previa || ehBovino(a.species))
+    // Técnico ABCZ: só o gado PO. O RLS da 153 já não manda o resto; o filtro
+    // aqui serve à prévia do admin e fica de garantia.
+    .filter((a) => !soPO || (ehBovino(a.species) && ehNomePO(a.breed_name)))
     .map((a) =>
       soBovinos
         ? {
@@ -249,15 +264,26 @@ export default async function AnimaisPage({
   // feito aqui, com a mesma regra do banco — tipo vazio conta como bovino, e o
   // que pende de um animal vai junto com ele.
   const idsDoGado = new Set(animais.map((a) => a.id));
+  const filtra = previa || soPO;
   const soGado = <T extends { species?: string | null }>(rows: T[]): T[] =>
-    previa ? rows.filter((r) => ehBovino(r.species)) : rows;
+    filtra ? rows.filter((r) => ehBovino(r.species)) : rows;
   const doGado = <T,>(rows: T[], animalDe: (r: T) => string | null | undefined): T[] =>
-    previa
+    filtra
       ? rows.filter((r) => {
           const id = animalDe(r);
           return !!id && idsDoGado.has(id);
         })
       : rows;
+  // O parto entra se a mãe OU a cria é do gado que ele vê — o bezerro PO de
+  // receptora comum continua aparecendo para o Técnico ABCZ (153).
+  const partos = ((birthsRes.data as AnimalBirth[]) ?? []).filter(
+    (r) =>
+      !filtra ||
+      (soPO
+        ? (!!r.mother_id && idsDoGado.has(r.mother_id)) ||
+          (!!r.calf_animal_id && idsDoGado.has(r.calf_animal_id))
+        : idsDoGado.has(r.mother_id ?? r.calf_animal_id ?? ""))
+  );
   const protocolosDoGado = soGado((protocolosRes.data as AnimalProtocolo[]) ?? []);
   const idsDosProtocolos = new Set(protocolosDoGado.map((p) => p.id));
 
@@ -265,21 +291,23 @@ export default async function AnimaisPage({
     <AnimaisPageClient
       soBovinos={soBovinos}
       previaVaqueiroN1={previa}
-      pendenciasDoNascimento={soGado(
-        (pendenciasDoNascimento as ProtocoloPendencia[] | null) ?? []
-      )}
+      soPO={soPO}
+      // conferir o nascimento que o vaqueiro manda é do patrão — o Técnico
+      // ABCZ não vê os envios (153)
+      pendenciasDoNascimento={
+        soPO ? [] : soGado((pendenciasDoNascimento as ProtocoloPendencia[] | null) ?? [])
+      }
       animals={animais}
-      breeds={soGado((breedsRes.data as AnimalBreed[]) ?? [])}
+      breeds={soGado((breedsRes.data as AnimalBreed[]) ?? []).filter(
+        (b) => !soPO || ehNomePO(b.name)
+      )}
       vaccines={soGado((vaccinesRes.data as AnimalVaccine[]) ?? [])}
       vaccinations={doGado((vaccinationsRes.data as VaccinationRow[]) ?? [], (r) => r.animal_id)}
       treatments={doGado((treatmentsRes.data as AnimalTreatment[]) ?? [], (r) => r.animal_id)}
-      births={doGado(
-        (birthsRes.data as AnimalBirth[]) ?? [],
-        (r) => r.mother_id ?? r.calf_animal_id
-      )}
+      births={partos}
       pendings={doGado((pendingRes.data as AnimalVaccinePending[]) ?? [], (r) => r.animal_id)}
       weights={doGado((weightsRes.data as AnimalWeight[]) ?? [], (r) => r.animal_id)}
-      birthRequests={soGado((birthRequestsRes.data as AnimalBirthRequest[]) ?? [])}
+      birthRequests={soPO ? [] : soGado((birthRequestsRes.data as AnimalBirthRequest[]) ?? [])}
       financeiro={(financeiroRes.data as AnimalFinanceiroLinha[]) ?? []}
       despesas={(despesasRes.data as AnimalDespesa[]) ?? []}
       vendas={(vendasRes.data as AnimalVenda[]) ?? []}
@@ -290,7 +318,7 @@ export default async function AnimaisPage({
       medicamentos={soGado((medicamentosRes.data as AnimalMedicamento[]) ?? [])}
       protocolos={protocolosDoGado}
       protocoloItens={((protocoloItensRes.data as AnimalProtocoloItem[]) ?? []).filter(
-        (i) => !previa || idsDosProtocolos.has(i.protocolo_id)
+        (i) => !filtra || idsDosProtocolos.has(i.protocolo_id)
       )}
       aplicacoes={soGado((aplicacoesRes.data as AnimalProtocoloAplicacao[]) ?? [])}
       aplicacaoAnimais={doGado(

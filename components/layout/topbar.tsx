@@ -8,7 +8,7 @@ import { signOutAction } from "@/app/login/actions";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BlocoNotas } from "@/components/layout/bloco-notas";
 import { BotaoAtualizar } from "@/components/layout/botao-atualizar";
-import type { Profile } from "@/lib/types";
+import { ehAcessoDoGado, type Profile } from "@/lib/types";
 
 type NotifItem = {
   id: string;
@@ -49,7 +49,8 @@ export function Topbar({
   // Vaqueiro nível 01 (migration 146): o sino é só dos animais (desmame e
   // descarte) — contas a pagar e Configurações não são da conta dele (o
   // middleware nem deixa abrir).
-  const ehVaqueiroN1 = profile?.role === "vaqueiro_n1";
+  // O Técnico ABCZ (migration 153) anda pelo mesmo caminho, só no gado PO.
+  const ehVaqueiroN1 = ehAcessoDoGado(profile?.role);
 
   return (
     <header className="produmar-hero text-white pt-safe">
@@ -257,7 +258,11 @@ export function Topbar({
                       {profile?.email}
                     </div>
                     <div className="mt-1.5 inline-block text-[10px] uppercase tracking-wide bg-produmar-50 dark:bg-produmar-900/40 text-produmar-700 dark:text-produmar-300 px-2 py-0.5 rounded">
-                      {ehVaqueiroN1 ? "Vaqueiro nível 01" : profile?.role ?? "—"}
+                      {profile?.role === "tecnico_abcz"
+                        ? "Técnico ABCZ"
+                        : ehVaqueiroN1
+                          ? "Vaqueiro nível 01"
+                          : profile?.role ?? "—"}
                     </div>
                   </div>
                   {!ehVaqueiroN1 && (

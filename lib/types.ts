@@ -26,7 +26,20 @@ export type UserRole =
    * só bovino — sem excluir, sem saída, sem dinheiro e sem mexer nos
    * cadastros. O banco garante pelo RLS (migration 146).
    */
-  | "vaqueiro_n1";
+  | "vaqueiro_n1"
+  /**
+   * Na tela: TÉCNICO ABCZ. O Vaqueiro nível 01 com mais uma trava: só o gado
+   * PO (o grupo "Gado PO" da tela de Animais). O banco garante (migration 153).
+   */
+  | "tecnico_abcz";
+
+/**
+ * Perfis com o acesso fechado na tela de Animais (vaqueiro nível 01 e técnico
+ * ABCZ): sem hub, sem excluir, sem saída, sem dinheiro, sem mexer nos cadastros.
+ */
+export function ehAcessoDoGado(role?: string | null): boolean {
+  return role === "vaqueiro_n1" || role === "tecnico_abcz";
+}
 export type TransactionType = "entrada" | "saida";
 export type TransactionStatus = "pendente" | "pago" | "recebido" | "vencido" | "cancelado";
 export type InvoiceSource = "xml" | "pdf" | "manual";

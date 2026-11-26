@@ -41,6 +41,8 @@ function normWeight(v?: number | null): number {
  */
 async function barradoParaVaqueiroN1(): Promise<{ error: string } | null> {
   const profile = await getProfile();
+  if (profile?.role === "tecnico_abcz")
+    return { error: "O acesso de Técnico ABCZ não permite isto. Peça ao patrão." };
   if (profile?.role !== "vaqueiro_n1") return null;
   return { error: "O acesso de Vaqueiro nível 01 não permite isto. Peça ao patrão." };
 }

@@ -189,6 +189,11 @@ interface Props {
   soBovinos?: boolean;
   /** O admin abriu ?ver=vaqueiro_n1: mostra a faixa avisando que é a prévia. */
   previaVaqueiroN1?: boolean;
+  /**
+   * Técnico ABCZ (migration 153), ou a prévia dele: a tela fica presa no grupo
+   * "Gado PO" — o banco nem manda outro gado.
+   */
+  soPO?: boolean;
 }
 
 /**
@@ -210,6 +215,15 @@ function escolhaDaUrl(
   if (raca === SEM_RACA && !criacaoPorLote(species)) return { species, breedId: SEM_RACA };
   if (raca === GRUPO_PO && species === "bovino") return { species, breedId: GRUPO_PO };
   return { species, breedId: null };
+}
+
+/**
+ * Técnico ABCZ (153): a escolha nunca sai do gado PO. Uma raça PO (as únicas
+ * que chegam para ele) fica; qualquer outra coisa vira o grupo "Gado PO".
+ */
+function escolhaDoPO(e: EscolhaRaca): EscolhaRaca {
+  if (e.species === "bovino" && e.breedId && e.breedId !== SEM_RACA) return e;
+  return { species: "bovino", breedId: GRUPO_PO };
 }
 
 type Tab =
@@ -298,6 +312,7 @@ export function AnimaisPageClient({
   descarteInicial = false,
   soBovinos = false,
   previaVaqueiroN1 = false,
+  soPO = false,
 }: Props) {
   const [, startTransition] = useTransition();
   /** Célula `animalId|vaccineId` sendo gravada — evita toque duplo. */
@@ -315,6 +330,8 @@ export function AnimaisPageClient({
    */
   const [escolha, setEscolha] = useState<EscolhaRaca>(() => {
     const e = escolhaDaUrl(tipoInicial, racaInicial, breeds);
+    // Técnico ABCZ: o grupo "Gado PO" ou uma raça PO — nada fora disso
+    if (soPO) return escolhaDoPO(e);
     // Vaqueiro nível 01: o gado é o rebanho inteiro dele — abre em Bovinos
     // (e ?tipo=equino na URL não muda nada: o banco nem manda outro tipo)
     if (soBovinos && e.species !== "bovino") return { species: "bovino", breedId: null };
@@ -330,8 +347,11 @@ export function AnimaisPageClient({
    * assim a escolha sobrevive ao recarregar e ao voltar para a tela.
    */
   const escolher = useCallback((e0: EscolhaRaca) => {
-    const e: EscolhaRaca =
-      soBovinos && e0.species !== "bovino" ? { species: "bovino", breedId: null } : e0;
+    const e: EscolhaRaca = soPO
+      ? escolhaDoPO(e0)
+      : soBovinos && e0.species !== "bovino"
+        ? { species: "bovino", breedId: null }
+        : e0;
     setEscolha(e);
     setMenuAberto(false);
     try {
@@ -344,7 +364,7 @@ export function AnimaisPageClient({
     } catch {
       // sem URL a escolha continua valendo na tela — só não sobrevive ao recarregar
     }
-  }, [soBovinos]);
+  }, [soBovinos, soPO]);
   /** Atalho para os botões que escolhem um tipo inteiro. */
   const setSpecies = (sp: SpeciesFilter) => escolher({ species: sp, breedId: null });
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
@@ -1220,7 +1240,15 @@ export function AnimaisPageClient({
         <div className="flex items-center gap-2 rounded-xl border border-lime-300 bg-lime-50 px-3 py-2 text-sm text-lime-900 dark:border-lime-800 dark:bg-lime-950/30 dark:text-lime-200">
           <Eye className="w-4 h-4 flex-shrink-0" />
           <span className="min-w-0 flex-1">
-            Prévia: assim o <strong>Vaqueiro nível 01</strong> vê a tela — só bovinos.
+            {soPO ? (
+              <>
+                Prévia: assim o <strong>Técnico ABCZ</strong> vê a tela — só o gado PO.
+              </>
+            ) : (
+              <>
+                Prévia: assim o <strong>Vaqueiro nível 01</strong> vê a tela — só bovinos.
+              </>
+            )}
           </span>
           <a href="/animais" className="font-semibold underline flex-shrink-0">
             Sair

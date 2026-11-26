@@ -4,7 +4,7 @@ import { getCurrentUserId, getProfile } from "@/lib/auth";
 import { Topbar } from "@/components/layout/topbar";
 import { TabsNav } from "@/components/layout/tabs-nav";
 import { hasHubModules } from "@/lib/module-access";
-import type { UserNote } from "@/lib/types";
+import { ehAcessoDoGado, type UserNote } from "@/lib/types";
 
 /**
  * O dia de `meses` meses atrás (AAAA-MM-DD). Dia que não existe no mês de
@@ -94,7 +94,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Chácaras: a agenda das chácaras e mais nada, no mesmo molde (migration 143)
   const isChacaras     = profile?.role === "chacaras";
   // Vaqueiro nível 01: a tela de Animais, só bovinos (migration 146)
-  const isVaqueiroN1   = profile?.role === "vaqueiro_n1";
+  // Técnico ABCZ: a mesma tela, só no gado PO (migration 153)
+  const isVaqueiroN1   = ehAcessoDoGado(profile?.role);
 
   // Vaqueiro nível 01: a tela de Animais e mais nada — sem nav de módulos, na
   // largura cheia (é a mesma tela do patrão). O sino mostra só o desmame, que
