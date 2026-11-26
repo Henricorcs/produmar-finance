@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { assinarComCertificados, listarCertificados } from "@/app/(app)/configuracoes/certificados-actions";
 import { carimboDoCertificado, linhaDoCertificado, nomeNoCarimbo } from "@/lib/certificado-na-folha";
 import { VisualizarPdf } from "@/components/ui/visualizar-pdf";
+import { useCompartilharArquivo } from "@/components/ui/aviso-compartilhado";
 import type { CertificadoResumo, TipoDocumentoAssinavel } from "@/lib/types";
 
 /**
@@ -46,6 +47,8 @@ export function AssinarComCertificado({
   /** O PDF assinado ficou guardado no sistema? (e, se não, por quê) */
   const [guardado, setGuardado] = useState(false);
   const [avisoGuardar, setAvisoGuardar] = useState<string | null>(null);
+  // depois de compartilhar o PDF assinado, o aviso "Documento compartilhado"
+  const { compartilhar, aviso: avisoCompartilhado } = useCompartilharArquivo();
   const router = useRouter();
 
   function fechar() {
@@ -231,14 +234,14 @@ export function AssinarComCertificado({
                 <Button
                   type="button"
                   className="w-full h-12"
-                  onClick={() =>
-                    navigator.share({ files: [pronto.arquivo], title: pronto.arquivo.name }).catch(() => {})
-                  }
+                  onClick={() => void compartilhar(pronto.arquivo)}
                 >
                   <Share2 className="w-4 h-4" />
                   Compartilhar PDF assinado
                 </Button>
-              ) : (
+              ) : null}
+              {avisoCompartilhado}
+              {podeCompartilhar ? null : (
                 <a
                   href={pronto.url}
                   download={pronto.arquivo.name}

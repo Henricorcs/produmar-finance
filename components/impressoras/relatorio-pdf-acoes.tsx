@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Download, FileText, Loader2, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCompartilharArquivo } from "@/components/ui/aviso-compartilhado";
 import { dadosDoRelatorio } from "@/app/(app)/impressoras/actions";
 import { gerarRelatorioImpressoesPdf, nomeDoArquivo } from "@/lib/relatorio-impressoes-pdf";
 
@@ -53,13 +54,10 @@ export function RelatorioPdfAcoes({ billingId }: { billingId: string }) {
     };
   }, [billingId]);
 
-  async function compartilhar() {
-    if (!arquivo) return;
-    try {
-      await navigator.share({ files: [arquivo], title: arquivo.name });
-    } catch {
-      // cancelou o menu, ou o aparelho recusou: o botão de abrir continua ali
-    }
+  // depois de compartilhar, o aviso "Documento compartilhado"
+  const { compartilhar: compartilharArquivo, aviso } = useCompartilharArquivo();
+  function compartilhar() {
+    if (arquivo) void compartilharArquivo(arquivo);
   }
 
   if (erro) {
@@ -91,6 +89,7 @@ export function RelatorioPdfAcoes({ billingId }: { billingId: string }) {
           Compartilhar o PDF
         </Button>
       )}
+      {aviso}
       <a
         href={url}
         target="_blank"

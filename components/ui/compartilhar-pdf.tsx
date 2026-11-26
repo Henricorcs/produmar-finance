@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, Loader2, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCompartilharArquivo } from "@/components/ui/aviso-compartilhado";
 
 /**
  * COMPARTILHAR O PDF (WhatsApp, e-mail, Arquivos...).
@@ -62,13 +63,11 @@ export function CompartilharPdf({
     typeof navigator.canShare === "function" &&
     navigator.canShare({ files: [arquivo] });
 
-  async function compartilhar() {
-    if (!arquivo) return;
-    try {
-      await navigator.share({ files: [arquivo], title: arquivo.name });
-    } catch {
-      // cancelou o menu, ou o aparelho recusou: o PDF continua para baixar
-    }
+  // depois de compartilhar, o aviso "Documento compartilhado" (cancelar o
+  // menu não avisa nada: o PDF continua para baixar)
+  const { compartilhar: compartilharArquivo, aviso } = useCompartilharArquivo();
+  function compartilhar() {
+    if (arquivo) void compartilharArquivo(arquivo);
   }
 
   const estilo =
@@ -97,14 +96,17 @@ export function CompartilharPdf({
 
   if (podeCompartilhar) {
     return (
-      <button
-        type="button"
-        onClick={compartilhar}
-        className={cn(estilo, "inline-flex items-center justify-center gap-1.5 transition-colors")}
-      >
-        <Share2 className="w-4 h-4" />
-        Compartilhar PDF
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={compartilhar}
+          className={cn(estilo, "inline-flex items-center justify-center gap-1.5 transition-colors")}
+        >
+          <Share2 className="w-4 h-4" />
+          Compartilhar PDF
+        </button>
+        {aviso}
+      </>
     );
   }
 
