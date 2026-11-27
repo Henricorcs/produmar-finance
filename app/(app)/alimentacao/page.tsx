@@ -31,11 +31,17 @@ export default async function AlimentacaoPage({
   const de = `${dia.slice(0, 7)}-01`;
   const ate = `${dia.slice(0, 7)}-${String(new Date(ano, mes, 0).getDate()).padStart(2, "0")}`;
 
-  const [pessoasRes, refeicoes, profile] = await Promise.all([
+  const [pessoasRes, refeicoes, profile, configRes] = await Promise.all([
     supabase.from("alimentacao_pessoas").select("*").order("nome", { ascending: true }),
     refeicoesDoMes(supabase, de, ate),
     getProfile(),
+    // o valor de cada refeição hoje (155); sem a config, R$ 15,00
+    supabase.from("alimentacao_config").select("valor_refeicao").eq("id", 1).maybeSingle(),
   ]);
+  const valorConfig = Number(
+    (configRes.data as { valor_refeicao?: number } | null)?.valor_refeicao
+  );
+  const valorRefeicao = Number.isFinite(valorConfig) && valorConfig >= 0 ? valorConfig : 15;
 
   const role = profile?.role as string | undefined;
   const podeMarcar =
@@ -54,6 +60,7 @@ export default async function AlimentacaoPage({
       hoje={hoje}
       abaInicial={searchParams.v === "mes" ? "mes" : "dia"}
       podeMarcar={podeMarcar}
+      valorRefeicao={valorRefeicao}
       migrationPendente={!!pessoasRes.error}
     />
   );
@@ -73,14 +80,16 @@ async function refeicoesDoMes(
   for (let i = 0; i < 50_000; i += LOTE) {
     const { data, error } = await supabase
       .from("alimentacao_refeicoes")
-      .select("pessoa_id, data")
+      .select("pessoa_id, data, valor")
       .gte("data", de)
       .lte("data", ate)
       .order("data", { ascending: true })
       .order("pessoa_id", { ascending: true })
       .range(i, i + LOTE - 1);
     if (error || !data) break;
-    todas.push(...(data as AlimentacaoRefeicao[]));
+    todas.push(
+      ...(data as AlimentacaoRefeicao[]).map((r) => ({ ...r, valor: Number(r.valor ?? 0) }))
+    );
     if (data.length < LOTE) break;
   }
   return todas;

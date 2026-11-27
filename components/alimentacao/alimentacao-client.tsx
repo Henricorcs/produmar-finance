@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { actionError } from "@/lib/action-result";
-import { cn, localDateISO, paraBusca } from "@/lib/utils";
+import { cn, formatBRL, localDateISO, paraBusca } from "@/lib/utils";
 import {
   WEEKDAY_INITIALS,
   longDay,
@@ -25,6 +25,7 @@ import {
 } from "@/components/diaristas/diarista-shared";
 import { marcarRefeicao, marcarVarios } from "@/app/(app)/alimentacao/actions";
 import { PessoaDialog } from "./pessoa-dialog";
+import { ValorDialog } from "./valor-dialog";
 import type { AlimentacaoPessoa, AlimentacaoRefeicao } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +50,8 @@ interface Props {
   abaInicial: Aba;
   podeMarcar: boolean;
   migrationPendente: boolean;
+  /** O valor de cada refeição hoje (155) — o que entra na marcação nova. */
+  valorRefeicao: number;
 }
 
 const chave = (pessoaId: string, data: string) => `${pessoaId}|${data}`;
@@ -71,6 +74,7 @@ export function AlimentacaoClient({
   abaInicial,
   podeMarcar,
   migrationPendente,
+  valorRefeicao,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -83,6 +87,7 @@ export function AlimentacaoClient({
   const [erro, setErro] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editando, setEditando] = useState<AlimentacaoPessoa | null>(null);
+  const [valorOpen, setValorOpen] = useState(false);
 
   /**
    * O que foi tocado nesta tela e ainda pode não ter voltado do banco: vale
@@ -90,11 +95,16 @@ export function AlimentacaoClient({
    */
   const [ajustes, setAjustes] = useState<Map<string, boolean>>(new Map());
 
+  /** Quem comeu em cada dia → quanto custou a refeição (155). */
   const marcadas = useMemo(() => {
-    const s = new Set(refeicoes.map((r) => chave(r.pessoa_id, r.data)));
-    ajustes.forEach((comeu, k) => (comeu ? s.add(k) : s.delete(k)));
-    return s;
-  }, [refeicoes, ajustes]);
+    const m = new Map(refeicoes.map((r) => [chave(r.pessoa_id, r.data), Number(r.valor)]));
+    ajustes.forEach((comeu, k) => {
+      // a marcação nova leva o valor de hoje, como o servidor grava
+      if (comeu) m.set(k, m.get(k) ?? valorRefeicao);
+      else m.delete(k);
+    });
+    return m;
+  }, [refeicoes, ajustes, valorRefeicao]);
 
   const [ano, mes] = dia.split("-").map(Number);
   const mesDaTela = dia.slice(0, 7);
@@ -208,25 +218,32 @@ export function AlimentacaoClient({
   }, [pessoas, busca, mostrarArquivados, marcadas, dia]);
 
   const comeramNoDia = pessoas.filter((p) => marcadas.has(chave(p.id, dia))).length;
+  const custoDoDia = pessoas.reduce((s, p) => s + (marcadas.get(chave(p.id, dia)) ?? 0), 0);
   const faltamNoDia = ativos.filter((p) => !marcadas.has(chave(p.id, dia)));
 
   // ── o mês ──────────────────────────────────────────────────────────────────
 
   const doMes = useMemo(() => {
     const porDia = new Map<string, number>();
-    const porPessoa = new Map<string, string[]>();
-    marcadas.forEach((k) => {
+    const porPessoa = new Map<string, { datas: string[]; custo: number }>();
+    let custo = 0;
+    marcadas.forEach((valor, k) => {
       const [pessoaId, data] = k.split("|");
       if (!data?.startsWith(mesDaTela)) return;
       porDia.set(data, (porDia.get(data) ?? 0) + 1);
-      porPessoa.set(pessoaId, [...(porPessoa.get(pessoaId) ?? []), data]);
+      const p = porPessoa.get(pessoaId) ?? { datas: [], custo: 0 };
+      p.datas.push(data);
+      p.custo += valor;
+      porPessoa.set(pessoaId, p);
+      custo += valor;
     });
     const nomePorId = new Map(pessoas.map((p) => [p.id, p]));
     const pessoasDoMes = [...porPessoa.entries()]
-      .map(([id, datas]) => ({
+      .map(([id, p]) => ({
         id,
         pessoa: nomePorId.get(id),
-        datas: datas.sort(),
+        datas: p.datas.sort(),
+        custo: p.custo,
       }))
       .sort(
         (a, b) =>
@@ -234,7 +251,7 @@ export function AlimentacaoClient({
           (a.pessoa?.nome ?? "").localeCompare(b.pessoa?.nome ?? "")
       );
     const total = [...porDia.values()].reduce((s, n) => s + n, 0);
-    return { porDia, pessoasDoMes, total, diasComComida: porDia.size };
+    return { porDia, pessoasDoMes, total, custo, diasComComida: porDia.size };
   }, [marcadas, mesDaTela, pessoas]);
 
   const celulas = monthCells(ano, mes - 1);
@@ -333,6 +350,11 @@ export function AlimentacaoClient({
                   {" "}
                   · {ativos.length} na lista
                 </span>
+                {custoDoDia > 0 && (
+                  <span className="block text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                    {formatBRL(custoDoDia)} no dia
+                  </span>
+                )}
               </p>
               {dia !== hoje && (
                 <button
@@ -478,10 +500,28 @@ export function AlimentacaoClient({
               </span>
               <Seta lado="dir" onClick={() => trocarMes(1)} label="Próximo mês" />
             </div>
+            <div className="rounded-lg bg-orange-50 dark:bg-orange-950/30 px-3 py-2.5 text-center">
+              <p className="text-2xl font-semibold tabular-nums text-orange-600 dark:text-orange-400">
+                {formatBRL(doMes.custo)}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">custo da alimentação no mês</p>
+            </div>
             <div className="grid grid-cols-3 gap-2 text-center">
-              <Numero label="refeições no mês" value={doMes.total} destaque />
-              <Numero label="pessoas comeram" value={doMes.pessoasDoMes.length} />
-              <Numero label="dias com comida" value={doMes.diasComComida} />
+              <Numero label="refeições no mês" value={String(doMes.total)} />
+              <Numero label="pessoas comeram" value={String(doMes.pessoasDoMes.length)} />
+              <Numero label="dias com comida" value={String(doMes.diasComComida)} />
+            </div>
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span className="tabular-nums">{formatBRL(valorRefeicao)} por refeição</span>
+              {podeMarcar && (
+                <button
+                  type="button"
+                  onClick={() => setValorOpen(true)}
+                  className="font-semibold text-produmar-600 dark:text-produmar-400 hover:underline"
+                >
+                  Trocar valor
+                </button>
+              )}
             </div>
           </div>
 
@@ -533,7 +573,7 @@ export function AlimentacaoClient({
             </p>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-produmar-100/60 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-              {doMes.pessoasDoMes.map(({ id, pessoa, datas }) => (
+              {doMes.pessoasDoMes.map(({ id, pessoa, datas, custo }) => (
                 <div key={id} className="flex items-start gap-3 px-3 py-2.5">
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
@@ -550,6 +590,9 @@ export function AlimentacaoClient({
                     <span className="block text-[10px] text-slate-400 dark:text-slate-500">
                       {datas.length === 1 ? "refeição" : "refeições"}
                     </span>
+                    <span className="block text-xs font-medium tabular-nums text-slate-600 dark:text-slate-300">
+                      {formatBRL(custo)}
+                    </span>
                   </span>
                 </div>
               ))}
@@ -559,6 +602,11 @@ export function AlimentacaoClient({
       )}
 
       <PessoaDialog open={dialogOpen} onClose={() => setDialogOpen(false)} pessoa={editando} />
+      <ValorDialog
+        open={valorOpen}
+        onClose={() => setValorOpen(false)}
+        valorAtual={valorRefeicao}
+      />
     </div>
   );
 }
@@ -577,7 +625,7 @@ function Seta({ lado, onClick, label }: { lado: "esq" | "dir"; onClick: () => vo
   );
 }
 
-function Numero({ label, value, destaque }: { label: string; value: number; destaque?: boolean }) {
+function Numero({ label, value, destaque }: { label: string; value: string; destaque?: boolean }) {
   return (
     <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2 py-2">
       <p

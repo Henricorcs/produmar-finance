@@ -3233,4 +3233,6 @@ export interface AlimentacaoPessoa {
 export interface AlimentacaoRefeicao {
   pessoa_id: string;
   data: string;
+  /** Quanto custou — o valor da refeição no dia em que foi marcada (155). */
+  valor: number;
 }

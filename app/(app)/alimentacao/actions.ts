@@ -35,6 +35,39 @@ async function usuario(supabase: ReturnType<typeof createClient>) {
   return user;
 }
 
+/** O valor de cada refeição hoje (155). Sem a config, R$ 15,00. */
+async function valorDaRefeicao(supabase: ReturnType<typeof createClient>): Promise<number> {
+  const { data } = await supabase
+    .from("alimentacao_config")
+    .select("valor_refeicao")
+    .eq("id", 1)
+    .maybeSingle();
+  const v = Number((data as { valor_refeicao?: number } | null)?.valor_refeicao);
+  return Number.isFinite(v) && v >= 0 ? v : 15;
+}
+
+/**
+ * Troca o valor da refeição. Vale para o que for marcado daqui para frente:
+ * o que já foi marcado guarda o valor que tinha (155).
+ */
+export async function salvarValorRefeicao(valor: number): Promise<Simples> {
+  const v = Math.round(Number(valor) * 100) / 100;
+  if (!Number.isFinite(v) || v < 0) return { error: "Informe o valor da refeição." };
+  const supabase = createClient();
+  const user = await usuario(supabase);
+  if (!user) return { error: "Não autenticado" };
+  const { error } = await supabase
+    .from("alimentacao_config")
+    .upsert({ id: 1, valor_refeicao: v, updated_by: user.id, updated_at: new Date().toISOString() });
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205")
+      return { error: "Rode a migration 155 no Supabase para guardar o valor da refeição" };
+    return { error: erroDaAlimentacao(error) };
+  }
+  revalidatePath("/alimentacao");
+  return { ok: true };
+}
+
 /** Põe alguém na lista de quem come, ou corrige o nome e o recado. */
 export async function salvarPessoa(
   id: string | null,
@@ -114,7 +147,7 @@ export async function marcarRefeicao(
       await supabase
         .from("alimentacao_refeicoes")
         .upsert(
-          { pessoa_id: pessoaId, data, created_by: user.id },
+          { pessoa_id: pessoaId, data, valor: await valorDaRefeicao(supabase), created_by: user.id },
           { onConflict: "pessoa_id,data", ignoreDuplicates: true }
         )
     : await supabase
@@ -137,8 +170,9 @@ export async function marcarVarios(pessoaIds: string[], data: string): Promise<S
   const user = await usuario(supabase);
   if (!user) return { error: "Não autenticado" };
 
+  const valor = await valorDaRefeicao(supabase);
   const { error } = await supabase.from("alimentacao_refeicoes").upsert(
-    ids.map((pessoa_id) => ({ pessoa_id, data, created_by: user.id })),
+    ids.map((pessoa_id) => ({ pessoa_id, data, valor, created_by: user.id })),
     { onConflict: "pessoa_id,data", ignoreDuplicates: true }
   );
   if (error) return { error: erroDaAlimentacao(error) };
