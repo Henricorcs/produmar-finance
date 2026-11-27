@@ -3214,3 +3214,23 @@ export interface ChacaraReserva {
   created_at: string;
   updated_at: string;
 }
+
+// ============================================================================
+// ALIMENTAÇÃO — quem comeu o bandeco em cada dia (migration 154)
+// ============================================================================
+
+/** Quem come: lista à parte do cadastro de Colaboradores. */
+export interface AlimentacaoPessoa {
+  id: string;
+  nome: string;
+  observacao: string | null;
+  ativo: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** A pessoa comeu naquele dia — uma linha por pessoa por dia. */
+export interface AlimentacaoRefeicao {
+  pessoa_id: string;
+  data: string;
+}

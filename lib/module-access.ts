@@ -45,7 +45,8 @@ export const MODULE_ROUTE_PREFIXES: Record<ModuleSlug, string[]> = {
   estoque: ["/almoxarifado"],
   // Módulo próprio, mas o dado é atrelado ao Estoque (a diária cai numa obra
   // de supply_obras) — ver lib/modules.ts e a migration 060.
-  diaristas: ["/diaristas"],
+  // A Alimentação (quem comeu o bandeco) mora no mesmo módulo (154).
+  diaristas: ["/diaristas", "/alimentacao"],
   obras: ["/obras", "/medir-cerca"],
   animais: ["/animais"],
   // Aluguéis: imóveis, contratos e o aluguel de cada mês (migration 078) — e

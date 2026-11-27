@@ -517,12 +517,18 @@ export function RevisaoDosPassos<C extends string>({
   dados,
   onEditar,
   topo,
+  avisoEmBranco,
 }: {
   passos: PassoDef<C>[];
   dados: Record<C, string>;
   onEditar: (campo: C) => void;
   /** O que vem antes da lista (ex.: quem é a outra parte do contrato). */
   topo?: ReactNode;
+  /**
+   * O recado dos campos em branco. O padrão fala do papel ("linha para a
+   * caneta"); o formulário que não vira papel passa o seu.
+   */
+  avisoEmBranco?: string;
 }) {
   const secoes: { titulo: string; itens: PassoDef<C>[] }[] = [];
   for (const p of passos) {
@@ -545,8 +551,12 @@ export function RevisaoDosPassos<C extends string>({
 
       {emBranco > 0 && (
         <p className="text-[11px] text-slate-500 dark:text-slate-400">
-          {emBranco} {emBranco === 1 ? "campo ficou" : "campos ficaram"} em branco — saem no papel
-          como linha para a caneta. Toque em qualquer item para corrigir.
+          {avisoEmBranco ?? (
+            <>
+              {emBranco} {emBranco === 1 ? "campo ficou" : "campos ficaram"} em branco — saem no
+              papel como linha para a caneta. Toque em qualquer item para corrigir.
+            </>
+          )}
         </p>
       )}
 

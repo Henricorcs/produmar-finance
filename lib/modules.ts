@@ -23,6 +23,7 @@ import {
   Ruler,
   LandPlot,
   Trees,
+  UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
 
@@ -127,6 +128,8 @@ export const APP_MODULES: AppModule[] = [
       "bg-violet-50 text-violet-600 dark:bg-violet-900/40 dark:text-violet-400",
     tabs: [
       { href: "/diaristas", label: "Colaboradores", short: "Colab.", icon: Users },
+      // quem comeu o bandeco em cada dia — lista à parte, só da comida (154)
+      { href: "/alimentacao", label: "Alimentação", short: "Comida", icon: UtensilsCrossed },
     ],
   },
   {
