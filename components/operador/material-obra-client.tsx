@@ -331,6 +331,13 @@ export function OperadorMaterialClient({ items, obras, locais, sectors, pending 
                 }}
                 placeholder="Toque para escolher a obra..."
                 searchPlaceholder="Buscar obra..."
+                telaCheia
+                titulo="Escolher obra"
+                lembrarRecentes="obras"
+                getDetalhe={(o) =>
+                  [!localId && o.local_id ? nomeDoLocal.get(o.local_id) : null, o.client]
+                    .filter(Boolean)
+                    .join(" · ")}
                 emptyMessage={localId ? "Nenhuma obra neste setor" : "Nenhuma obra cadastrada"}
               />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">

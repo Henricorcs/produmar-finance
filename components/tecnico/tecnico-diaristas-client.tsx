@@ -254,6 +254,7 @@ export function TecnicoDiaristasClient({
         maquinas={maquinas}
         maquinaPronta={maquinaPronta}
         defaultObraId={ultimaObraId}
+        dias={dias}
         onSaved={(obraId, emAberto) => {
           setUltimaObraId(obraId || null);
           const data = pendingDate ? formatDate(pendingDate) : "";

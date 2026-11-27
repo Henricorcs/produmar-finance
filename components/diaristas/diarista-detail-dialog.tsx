@@ -553,6 +553,7 @@ export function DiaristaDetailDialog({
           sectors={sectors}
           maquinas={maquinas}
           maquinaPronta={maquinaPronta}
+          dias={dias}
           onSaved={() => setPendingDate(null)}
         />
 

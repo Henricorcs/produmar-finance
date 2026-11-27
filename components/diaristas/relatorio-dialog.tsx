@@ -124,6 +124,8 @@ export function RelatorioDialog({
               getLabel={(o) => o.name}
               placeholder="Todas"
               searchPlaceholder="Buscar obra..."
+              telaCheia
+              titulo="Escolher obra"
               emptyMessage="Nenhuma obra cadastrada"
             />
           </div>

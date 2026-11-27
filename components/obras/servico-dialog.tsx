@@ -363,6 +363,9 @@ export function ServicoDialog({
                 getLabel={(o) => o.name}
                 placeholder="Toque para escolher a obra..."
                 searchPlaceholder="Buscar obra..."
+                telaCheia
+                titulo="Escolher obra"
+                lembrarRecentes="obras"
                 emptyMessage="Nenhuma obra cadastrada"
               />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">

@@ -806,6 +806,7 @@ export function AcertoDialog({
           sectors={sectors}
           maquinas={maquinas}
           maquinaPronta={maquinaPronta}
+          dias={dias}
           onSaved={() => {
             setDiaPendente(null);
             setForma(null);

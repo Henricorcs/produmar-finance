@@ -212,6 +212,9 @@ export function CheckoutDialog({ open, onClose, availableTools, presetToolId, ob
                 getLabel={(o) => o.name}
                 placeholder="Vincular a uma obra (opcional)..."
                 searchPlaceholder="Buscar obra..."
+                telaCheia
+                titulo="Escolher obra"
+                lembrarRecentes="obras"
                 emptyMessage="Nenhuma obra cadastrada"
               />
             </div>

@@ -211,6 +211,10 @@ export function SupplyObraSectorsDialog({
               )}
               placeholder="Toque para escolher a obra..."
               searchPlaceholder="Buscar obra..."
+              telaCheia
+              titulo="Escolher obra"
+              lembrarRecentes="obras"
+              getDetalhe={(o) => o.client}
               emptyMessage="Nenhuma obra cadastrada"
             />
           </div>

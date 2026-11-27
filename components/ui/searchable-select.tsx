@@ -1,8 +1,36 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronDown, Search, Plus, Check, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, paraBusca } from "@/lib/utils";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+
+/** Quantas escolhas recentes aparecem no topo da tela de escolha. */
+const MAX_RECENTES = 5;
+/** Lista curta não precisa de "usadas por último": cabe tudo na tela. */
+const MIN_ITENS_PARA_RECENTES = 9;
+
+function chaveRecentes(nome: string) {
+  return `produmar:recentes:${nome}`;
+}
+
+function lerRecentesDoAparelho(nome: string): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(chaveRecentes(nome)) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function guardarRecenteNoAparelho(nome: string, id: string) {
+  try {
+    const lista = [id, ...lerRecentesDoAparelho(nome).filter((x) => x !== id)].slice(0, 10);
+    localStorage.setItem(chaveRecentes(nome), JSON.stringify(lista));
+  } catch {
+    // modo privado / sem espaço: só não lembra
+  }
+}
 
 interface Props<T> {
   items: T[];
@@ -29,6 +57,24 @@ interface Props<T> {
    * Tocar de novo na opção escolhida tira a escolha (se `clearable`).
    */
   inline?: boolean;
+  /**
+   * TELA DE ESCOLHA: tocar no campo abre uma janela própria, da altura da
+   * tela, só para escolher — busca no alto, linhas grandes de tocar e as
+   * usadas por último em cima. Para listas compridas (as obras), que no
+   * celular ficavam espremidas e cortadas dentro do diálogo.
+   */
+  telaCheia?: boolean;
+  /** Título da tela de escolha (ex.: "Escolher obra"). */
+  titulo?: string;
+  /** Segunda linha de cada opção na tela de escolha (ex.: o cliente da obra). */
+  getDetalhe?: (item: T) => string | null | undefined;
+  /** Ids que aparecem em "Usadas por último", na ordem (ex.: do colaborador). */
+  recentes?: string[];
+  /**
+   * Nome para o aparelho lembrar as últimas escolhas (ex.: "obras"). Completa
+   * `recentes` quando faltam itens.
+   */
+  lembrarRecentes?: string;
 }
 
 export function SearchableSelect<T>({
@@ -47,7 +93,107 @@ export function SearchableSelect<T>({
   autoFocusSearch = false,
   suggestOnType = false,
   inline = false,
+  telaCheia = false,
+  titulo,
+  getDetalhe,
+  recentes,
+  lembrarRecentes,
 }: Props<T>) {
+  if (telaCheia && !inline) {
+    return (
+      <SeletorEmTela
+        items={items}
+        value={value}
+        onChange={onChange}
+        getId={getId}
+        getLabel={getLabel}
+        renderItem={renderItem}
+        placeholder={placeholder}
+        searchPlaceholder={searchPlaceholder}
+        emptyMessage={emptyMessage}
+        onCreateNew={onCreateNew}
+        createNewLabel={createNewLabel}
+        clearable={clearable}
+        suggestOnType={suggestOnType}
+        titulo={titulo}
+        getDetalhe={getDetalhe}
+        recentes={recentes}
+        lembrarRecentes={lembrarRecentes}
+      />
+    );
+  }
+  return (
+    <SeletorSimples
+      items={items}
+      value={value}
+      onChange={onChange}
+      getId={getId}
+      getLabel={getLabel}
+      renderItem={renderItem}
+      placeholder={placeholder}
+      searchPlaceholder={searchPlaceholder}
+      emptyMessage={emptyMessage}
+      onCreateNew={onCreateNew}
+      createNewLabel={createNewLabel}
+      clearable={clearable}
+      autoFocusSearch={autoFocusSearch}
+      suggestOnType={suggestOnType}
+      inline={inline}
+    />
+  );
+}
+
+/** A busca não liga para acento nem maiúscula ("joao" acha JOÃO). */
+function filtrar<T>(
+  items: T[],
+  query: string,
+  getLabel: (item: T) => string,
+  getDetalhe?: (item: T) => string | null | undefined
+): T[] {
+  const q = paraBusca(query.trim());
+  if (!q) return items;
+  return items.filter(
+    (i) =>
+      paraBusca(getLabel(i)).includes(q) ||
+      (getDetalhe ? paraBusca(getDetalhe(i)).includes(q) : false)
+  );
+}
+
+function SeletorSimples<T>({
+  items,
+  value,
+  onChange,
+  getId,
+  getLabel,
+  renderItem,
+  placeholder,
+  searchPlaceholder,
+  emptyMessage,
+  onCreateNew,
+  createNewLabel,
+  clearable,
+  autoFocusSearch,
+  suggestOnType,
+  inline,
+}: Required<
+  Pick<
+    Props<T>,
+    | "items"
+    | "value"
+    | "onChange"
+    | "getId"
+    | "getLabel"
+    | "placeholder"
+    | "searchPlaceholder"
+    | "emptyMessage"
+    | "createNewLabel"
+    | "clearable"
+    | "autoFocusSearch"
+    | "suggestOnType"
+    | "inline"
+  >
+> &
+  Pick<Props<T>, "renderItem" | "onCreateNew">) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,9 +228,7 @@ export function SearchableSelect<T>({
   const hasQuery = query.trim().length > 0;
   // Com suggestOnType, a lista só aparece depois de digitar algo.
   const filtered = hasQuery
-    ? items.filter((i) =>
-        getLabel(i).toLowerCase().includes(query.trim().toLowerCase())
-      )
+    ? filtrar(items, query, getLabel)
     : suggestOnType
     ? []
     : items;
@@ -255,5 +399,273 @@ export function SearchableSelect<T>({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * O campo abre uma janela própria só para escolher. No celular ela ocupa a
+ * faixa da tela que o teclado deixa livre (a mesma conta dos diálogos), então
+ * a busca fica sempre à vista e a lista rola inteira dentro dela.
+ * É um Dialog de verdade, empilhado por cima de quem estiver aberto: o
+ * "voltar" do aparelho fecha só a escolha.
+ */
+function SeletorEmTela<T>({
+  items,
+  value,
+  onChange,
+  getId,
+  getLabel,
+  renderItem,
+  placeholder,
+  searchPlaceholder,
+  emptyMessage,
+  onCreateNew,
+  createNewLabel,
+  clearable,
+  suggestOnType,
+  titulo,
+  getDetalhe,
+  recentes,
+  lembrarRecentes,
+}: Required<
+  Pick<
+    Props<T>,
+    | "items"
+    | "value"
+    | "onChange"
+    | "getId"
+    | "getLabel"
+    | "placeholder"
+    | "searchPlaceholder"
+    | "emptyMessage"
+    | "createNewLabel"
+    | "clearable"
+    | "suggestOnType"
+  >
+> &
+  Pick<
+    Props<T>,
+    "renderItem" | "onCreateNew" | "titulo" | "getDetalhe" | "recentes" | "lembrarRecentes"
+  >) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [doAparelho, setDoAparelho] = useState<string[]>([]);
+
+  const selected = items.find((i) => getId(i) === value);
+
+  // As últimas escolhas deste aparelho: lidas ao abrir (só existem no navegador)
+  useEffect(() => {
+    if (open && lembrarRecentes) setDoAparelho(lerRecentesDoAparelho(lembrarRecentes));
+  }, [open, lembrarRecentes]);
+
+  const usadas = useMemo(() => {
+    if (items.length < MIN_ITENS_PARA_RECENTES) return [];
+    const porId = new Map<string, T>();
+    for (const i of items) porId.set(getId(i), i);
+    const lista: T[] = [];
+    const vistos = new Set<string>();
+    for (const id of [...(recentes ?? []), ...doAparelho]) {
+      if (lista.length >= MAX_RECENTES) break;
+      const item = porId.get(id);
+      if (!item || vistos.has(id)) continue;
+      vistos.add(id);
+      lista.push(item);
+    }
+    return lista;
+    // getId muda a cada render do pai; a lista e os ids é que importam
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, recentes, doAparelho]);
+
+  const hasQuery = query.trim().length > 0;
+  const filtered = hasQuery
+    ? filtrar(items, query, getLabel, getDetalhe)
+    : suggestOnType
+    ? []
+    : items;
+  const mostrarUsadas = !hasQuery && usadas.length > 0;
+
+  function fechar(o: boolean) {
+    setOpen(o);
+    if (!o) setQuery("");
+  }
+
+  function escolher(item: T) {
+    const id = getId(item);
+    onChange(id);
+    if (lembrarRecentes) guardarRecenteNoAparelho(lembrarRecentes, id);
+    fechar(false);
+  }
+
+  function clear(e: React.MouseEvent) {
+    e.stopPropagation();
+    onChange("");
+  }
+
+  function linha(item: T, chave: string) {
+    const id = getId(item);
+    const isSelected = id === value;
+    const detalhe = getDetalhe?.(item);
+    return (
+      <button
+        key={chave}
+        type="button"
+        onClick={() => escolher(item)}
+        className={cn(
+          "w-full flex items-center gap-3 px-4 py-3.5 min-h-[3.25rem] text-left",
+          "border-b border-slate-100 dark:border-slate-800",
+          "hover:bg-produmar-50 active:bg-produmar-100 dark:hover:bg-slate-800 dark:active:bg-slate-700 transition-colors",
+          isSelected && "bg-produmar-50 dark:bg-slate-800"
+        )}
+      >
+        <div className="flex-1 min-w-0">
+          {getDetalhe ? (
+            <>
+              <div
+                className={cn(
+                  "text-base leading-snug text-slate-900 dark:text-slate-100 break-words",
+                  isSelected && "font-semibold"
+                )}
+              >
+                {getLabel(item)}
+              </div>
+              {detalhe && (
+                <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {detalhe}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className={cn("text-base", isSelected && "font-semibold")}>
+              {renderItem ? renderItem(item) : getLabel(item)}
+            </div>
+          )}
+        </div>
+        {isSelected && (
+          <Check className="w-5 h-5 text-produmar-600 dark:text-produmar-400 flex-shrink-0" />
+        )}
+      </button>
+    );
+  }
+
+  const rotulo =
+    "px-4 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-800";
+  const detalheEscolhido = selected && getDetalhe ? getDetalhe(selected) : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="group flex min-h-11 sm:min-h-10 w-full items-center justify-between gap-2 rounded-md border border-produmar-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-base sm:text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-produmar-500 focus:border-produmar-500 transition-colors"
+      >
+        <span
+          className={cn(
+            "block truncate flex-1 text-left min-w-0",
+            !selected && "text-slate-400 dark:text-slate-500"
+          )}
+        >
+          {selected ? (
+            getDetalhe ? (
+              <>
+                {getLabel(selected)}
+                {detalheEscolhido && (
+                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                    {" "}· {detalheEscolhido}
+                  </span>
+                )}
+              </>
+            ) : renderItem ? (
+              renderItem(selected)
+            ) : (
+              getLabel(selected)
+            )
+          ) : (
+            placeholder
+          )}
+        </span>
+        {clearable && selected && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={clear}
+            className="-my-2 -mr-1 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+            aria-label="Limpar seleção"
+          >
+            <X className="h-4 w-4" />
+          </span>
+        )}
+        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+      </button>
+
+      <Dialog open={open} onOpenChange={fechar}>
+        <DialogContent
+          className={cn(
+            "p-0 sm:p-0 overflow-hidden flex flex-col",
+            // ocupa a faixa livre inteira (a mesma conta do max-height da
+            // .dialog-visible-band): com o teclado aberto, encolhe junto
+            "h-[calc(var(--dialog-free-h)_-_2.5rem)] sm:h-[80vh]"
+          )}
+        >
+          <div className="flex-shrink-0 border-b border-slate-100 dark:border-slate-800">
+            <DialogTitle className="px-4 pt-4 pb-2 pr-14">{titulo ?? placeholder}</DialogTitle>
+            <div className="px-3 pb-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  inputMode="search"
+                  enterKeyHint="search"
+                  autoComplete="off"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className="w-full h-11 rounded-lg bg-slate-100 dark:bg-slate-800 text-base pl-9 pr-10 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-produmar-500"
+                />
+                {hasQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery("")}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-slate-400"
+                    aria-label="Limpar busca"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+            {mostrarUsadas && (
+              <>
+                <div className={rotulo}>Usadas por último</div>
+                {usadas.map((item) => linha(item, `u-${getId(item)}`))}
+                <div className={rotulo}>Todas ({items.length})</div>
+              </>
+            )}
+            {filtered.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-slate-400 dark:text-slate-500 text-center">
+                {suggestOnType && !hasQuery ? "Digite para buscar…" : emptyMessage}
+              </div>
+            ) : (
+              filtered.map((item) => linha(item, getId(item)))
+            )}
+            {onCreateNew && (
+              <button
+                type="button"
+                onClick={() => {
+                  fechar(false);
+                  onCreateNew();
+                }}
+                className="w-full flex items-center gap-2 px-4 py-4 text-base font-medium text-produmar-600 dark:text-produmar-400 hover:bg-produmar-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                {createNewLabel}
+              </button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

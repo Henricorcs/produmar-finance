@@ -410,6 +410,9 @@ export function FenceRateDialog({ open, onClose, obras, sectors, presetObraId }:
               getLabel={(o) => o.name}
               placeholder="Toque para escolher a obra..."
               searchPlaceholder="Buscar obra..."
+              telaCheia
+              titulo="Escolher obra"
+              lembrarRecentes="obras"
               emptyMessage="Nenhuma obra cadastrada"
             />
           </div>
@@ -625,6 +628,9 @@ export function FenceRunDialog({
               getLabel={(o) => o.name}
               placeholder="Toque para escolher a obra..."
               searchPlaceholder="Buscar obra..."
+              telaCheia
+              titulo="Escolher obra"
+              lembrarRecentes="obras"
               emptyMessage="Nenhuma obra cadastrada"
             />
           </div>

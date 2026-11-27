@@ -182,6 +182,10 @@ export function DiariasSemObraDialog({
               )}
               placeholder="Toque para escolher a obra..."
               searchPlaceholder="Buscar obra..."
+              telaCheia
+              titulo="Escolher obra"
+              lembrarRecentes="obras"
+              getDetalhe={(o) => o.local_name}
               emptyMessage="Nenhuma obra cadastrada"
             />
           </div>

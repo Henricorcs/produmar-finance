@@ -17,7 +17,7 @@ import { createDiaristaDia } from "@/app/(app)/diaristas/actions";
 import { erroDoNovoServico, lerHorimetro } from "@/lib/maquina-na-diaria";
 import { longDay } from "./diarista-shared";
 import { CamposDaMaquina } from "./servicos-de-maquina";
-import type { Diarista, SupplyObraSector } from "@/lib/types";
+import type { Diarista, DiaristaDia, SupplyObraSector } from "@/lib/types";
 
 /** Obra do Estoque, do jeito enxuto que esta tela precisa. */
 export interface DiaristaObra {
@@ -59,6 +59,12 @@ interface Props {
   /** Obra do lançamento anterior — quem está numa obra lança vários seguidos. */
   defaultObraId?: string | null;
   /**
+   * Os dias já lançados (pode vir de todo mundo: a tela separa os deste
+   * colaborador). As obras dos dias mais recentes dele aparecem no topo da
+   * escolha da obra.
+   */
+  dias?: Pick<DiaristaDia, "diarista_id" | "obra_id" | "work_date" | "created_at">[];
+  /**
    * Deu certo: quem abriu limpa o dia pendente e guarda a obra usada.
    * `emAberto` = o serviço começou e ainda falta o horímetro final.
    */
@@ -81,8 +87,27 @@ export function LancarDiaDialog({
   maquinas,
   maquinaPronta,
   defaultObraId,
+  dias,
   onSaved,
 }: Props) {
+  /** As obras em que ele trabalhou por último, da mais nova para a mais velha. */
+  const obrasRecentes = useMemo(() => {
+    if (!dias || !diarista) return [];
+    const dele = dias
+      .filter((d) => d.diarista_id === diarista.id && d.obra_id)
+      .sort(
+        (a, b) =>
+          b.work_date.localeCompare(a.work_date) ||
+          (b.created_at ?? "").localeCompare(a.created_at ?? "")
+      );
+    const ids: string[] = [];
+    for (const d of dele) {
+      if (!ids.includes(d.obra_id as string)) ids.push(d.obra_id as string);
+      if (ids.length >= 5) break;
+    }
+    return ids;
+  }, [dias, diarista]);
+
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -265,6 +290,11 @@ export function LancarDiaDialog({
               )}
               placeholder="Toque para escolher a obra..."
               searchPlaceholder="Buscar obra..."
+              telaCheia
+              titulo="Escolher obra"
+              lembrarRecentes="obras"
+              recentes={obrasRecentes}
+              getDetalhe={(o) => o.client}
               emptyMessage="Nenhuma obra cadastrada"
             />
             <p className="text-[11px] text-slate-400 dark:text-slate-500">

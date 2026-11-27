@@ -338,6 +338,10 @@ export function TecnicoClient({
                   localId ? "Toque para escolher a obra..." : "Escolha o setor primeiro"
                 }
                 searchPlaceholder="Buscar obra..."
+                telaCheia
+                titulo="Escolher obra"
+                lembrarRecentes="obras"
+                getDetalhe={(o) => o.client}
                 emptyMessage="Nenhuma obra neste setor"
               />
 

@@ -379,6 +379,10 @@ export function SupplyRequestDialog({
                 )}
                 placeholder="Nenhuma obra (opcional)"
                 searchPlaceholder="Buscar obra..."
+                telaCheia
+                titulo="Escolher obra"
+                lembrarRecentes="obras"
+                getDetalhe={(o) => o.client}
                 emptyMessage="Nenhuma obra cadastrada"
               />
             </div>

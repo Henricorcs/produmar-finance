@@ -1124,6 +1124,10 @@ export function ServiceOrderDialog({
         )}
         placeholder={rotulo ? "Para qual obra levar (opcional)..." : "Nenhuma — escolha se for pra obra"}
         searchPlaceholder="Buscar obra..."
+        telaCheia
+        titulo="Escolher obra"
+        lembrarRecentes="obras"
+        getDetalhe={(o) => o.client}
         emptyMessage="Nenhuma obra cadastrada no Estoque"
       />
       {!rotulo && (
@@ -1147,6 +1151,9 @@ export function ServiceOrderDialog({
           getLabel={(o) => o.name}
           placeholder="Vincular a uma obra (opcional)..."
           searchPlaceholder="Buscar obra..."
+          telaCheia
+          titulo="Escolher obra"
+          lembrarRecentes="obras"
           emptyMessage="Nenhuma obra cadastrada"
         />
       </div>
