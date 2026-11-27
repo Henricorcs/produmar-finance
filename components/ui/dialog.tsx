@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 //   back() de limpeza (não devem fechar o diálogo de baixo).
 const dialogStack: Array<() => void> = [];
 let suppressPopstate = 0;
+/** O popstate que já foi descontado de suppressPopstate (ver handlePopState). */
+let popstateIgnorado: Event | null = null;
 let dialogIdCounter = 0;
 
 // ── A faixa da tela que o teclado deixa livre ────────────────────────────────
@@ -169,10 +171,16 @@ const Dialog = ({
     };
     dialogStack.push(close);
 
-    const handlePopState = () => {
-      // popstate gerado pelo nosso próprio back() de limpeza: ignora um
+    const handlePopState = (e: PopStateEvent) => {
+      // popstate gerado pelo nosso próprio back() de limpeza: ignora um.
+      // Todos os diálogos abertos recebem o MESMO evento: o primeiro desconta
+      // e marca o evento, e os outros também o ignoram. Antes cada um olhava
+      // só o contador — com três empilhados (detalhe → lançar dia → escolher
+      // obra), o primeiro zerava o contador e o do meio fechava por engano.
+      if (e === popstateIgnorado) return;
       if (suppressPopstate > 0) {
         suppressPopstate--;
+        popstateIgnorado = e;
         return;
       }
       // botão "voltar" de verdade: só o diálogo do topo fecha
